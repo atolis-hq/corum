@@ -2,6 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-04-12  
+**Amended:** 2026-04-14 — structural ownership edge types added (see amendment at end)  
 **Deciders:** Product Owner  
 **Depends on:** ADR-004 (Template Pack Format), ADR-003b (Core Logical Data Model)  
 **Related:** ADR-006 (Linter and Validator)
@@ -97,7 +98,9 @@ Constraint violations are linter **warnings** by default in v1, not errors. The 
 
 ## Core Edge Type Vocabulary
 
-The following eight edge types are defined by the tool. They are always available, always carry the same semantics, and are not declared in any pack. All template edge declarations must reference only these names.
+### Semantic edges
+
+The following eight edge types express relationships between nodes and are authored explicitly in edge files. They are always available, always carry the same semantics, and are not declared in any pack. All template edge declarations must reference only these names (or the structural ownership types below).
 
 | Type | Applies between | Meaning |
 |---|---|---|
@@ -107,8 +110,19 @@ The following eight edge types are defined by the tool. They are always availabl
 | `calls` | root → root | Source invokes the target contract boundary |
 | `implements` | root → root | Source is a concrete realisation of the target contract |
 | `maps-to` | field → field only | Source field corresponds to target field across a schema boundary. **Hard error if used between non-Field nodes.** |
-| `derived-from` | any → any | Source is computed from the target. Valid at root level (ReadModel from DomainModel) and field level (projected field from source field). |
+| `derived-from` | any → any | Source is computed from the target. Valid at root level and field level. |
 | `renamed-from` | any → any | Source was previously known as the target identity (PDR-005) |
+
+### Structural ownership edges
+
+The following two edge types express parent-child ownership relationships derived automatically from cluster file structure. They are **never authored in edge files** — they are extracted by the graph loader from the inline structure of cluster files and materialised as first-class edges in the runtime graph.
+
+| Type | Applies between | Meaning |
+|---|---|---|
+| `has-field` | Schema / DomainModel / ValueObject → Field | Parent node owns this Field node. Implied by the inline field definition in the cluster file. |
+| `has-value` | EnumDefinition → EnumValue | EnumDefinition owns this EnumValue node. Implied by the inline value definition in the cluster file. |
+
+**`has-field` and `has-value` are valid in template `edges` declarations** (as `outgoing` on the parent template and `incoming` on the child template) so that constraint checks work correctly. They are **not valid in edge files** — authoring an explicit `has-field` or `has-value` edge in an edge file is a lint error (E-008).
 
 **`maps-to` vs `derived-from`:** These are distinct and should not be conflated. `maps-to` is a specific field-to-field correspondence — this request field maps to this domain model field. `derived-from` expresses a broader computational relationship — this read model is derived from this aggregate; this projected field is derived from this source field. A `ReadModel` is `derived-from` a `DomainModel`; it does not `maps-to` it.
 
@@ -116,7 +130,7 @@ The following eight edge types are defined by the tool. They are always availabl
 
 ## Template Edge Declarations
 
-Templates declare which edge types they participate in using up to three optional sections. All type names must be from the core vocabulary above.
+Templates declare which edge types they participate in using up to three optional sections. All type names must be from the full vocabulary above (semantic or structural ownership types).
 
 ```
 edges:
@@ -133,7 +147,30 @@ All three sections are optional. A template with no `edges` section is unconstra
 
 ## Default Pack Template Edge Declarations
 
-Using only the eight core edge types defined in ADR-003b:
+```yaml
+# Schema — owns Field nodes; participates in reads
+edges:
+  outgoing: [has-field, reads]
+```
+
+```yaml
+# EnumDefinition — owns EnumValue nodes
+edges:
+  outgoing: [has-value]
+```
+
+```yaml
+# EnumValue — owned by EnumDefinition
+edges:
+  incoming: [has-value]
+```
+
+```yaml
+# Field — owned by Schema/DomainModel/ValueObject; field-level lineage
+edges:
+  incoming: [has-field]
+  supports: [maps-to, derived-from]
+```
 
 ```yaml
 # APIEndpoint — directly calls or produces a command; does not trigger reactively
@@ -151,10 +188,10 @@ edges:
 ```
 
 ```yaml
-# DomainModel — can be read from and derived from; may produce events
+# DomainModel — owns fields and enums; can be read from and derived from; may produce events
 edges:
+  outgoing: [has-field, has-value, produces]
   supports: [reads, derived-from]
-  outgoing: [produces]
 ```
 
 ```yaml
@@ -166,12 +203,12 @@ edges:
 
 ```yaml
 # DomainEvent — inherits Event edge declarations via extends
-# No additional edge declarations needed; behaviour is the same as the base
+# No additional edge declarations needed
 ```
 
 ```yaml
 # IntegrationEvent — inherits Event edge declarations via extends
-# No additional edge declarations needed; behaviour is the same as the base
+# No additional edge declarations needed
 ```
 
 ```yaml
@@ -181,9 +218,9 @@ edges:
 ```
 
 ```yaml
-# Field — field-level lineage only; maps-to and derived-from in either direction
+# ValueObject — owns fields; used as a shared structured type
 edges:
-  supports: [maps-to, derived-from]
+  outgoing: [has-field]
 ```
 
 ```yaml
@@ -206,15 +243,17 @@ edges:
 
 The linter applies these checks to every edge:
 
-1. **Vocabulary check:** Edge `type` must be one of the eight core types. Any other value is a **hard error**.
+1. **Vocabulary check:** Edge `type` must be one of the ten types in this ADR (eight semantic types plus `has-field` and `has-value`). Any other value is a **hard error**.
 
 2. **`maps-to` structural check:** `maps-to` edges must connect two Field nodes. Any other combination is a **hard error**.
 
-3. **Source constraint check:** If the source node's template declares `outgoing` or `supports`, the edge type must appear in one of them. Violation is a **warning** (configurable to error per repo via linter config).
+3. **`has-field` / `has-value` in edge files:** `has-field` and `has-value` must not appear in authored edge files — they are implied by cluster structure. If found in an edge file, it is a **hard error** (E-008).
 
-4. **Target constraint check:** If the target node's template declares `incoming` or `supports`, the edge type must appear in one of them. Violation is a **warning** (configurable to error per repo).
+4. **Source constraint check:** If the source node's template declares `outgoing` or `supports`, the edge type must appear in one of them. Violation is a **warning** (configurable to error per repo via linter config).
 
-5. **`renamed-from` directionality:** `renamed-from` edges should always point from the new identity to the old. The linter warns if the edge appears reversed based on node state (a `removed` node as the target is expected; a `removed` node as the source is suspicious).
+5. **Target constraint check:** If the target node's template declares `incoming` or `supports`, the edge type must appear in one of them. Violation is a **warning** (configurable to error per repo).
+
+6. **`renamed-from` directionality:** `renamed-from` edges should always point from the new identity to the old. The linter warns if the edge appears reversed based on node state (a `removed` node as the target is expected; a `removed` node as the source is suspicious).
 
 If a template has no `edges` declaration at all, no constraint checks are applied for that endpoint — the missing declaration is treated as unconstrained, not as `supports: []`.
 
@@ -228,7 +267,7 @@ Because the edge type vocabulary is defined in the tool, packs do not contain an
 
 ## Future Work: Custom Edge Type Extension
 
-Teams with domain-specific relationships not covered by the eight core types have no extension mechanism in v1. When a concrete need arises, the options to evaluate are:
+Teams with domain-specific relationships not covered by the ten core types have no extension mechanism in v1. When a concrete need arises, the options to evaluate are:
 
 - Pack-defined edge types with cross-pack conflict detection
 - A registered extension namespace (e.g. `x-saga-step`) similar to OpenAPI vendor extensions  
@@ -242,10 +281,11 @@ The `supports`/`outgoing`/`incoming` declaration model in templates extends natu
 
 From this ADR, the linter must enforce:
 
-- All edge `type` values are from the core vocabulary (**error**)
+- All edge `type` values are from the full vocabulary (ten types) (**error**)
 - `maps-to` edges connect two Field nodes (**error**)
+- `has-field` and `has-value` do not appear in authored edge files (**error**, rule E-008)
 - Overlap between `supports`, `outgoing`, and `incoming` within a single template declaration is rejected (**error**)
-- Edge type names in `supports`, `outgoing`, and `incoming` are from the core vocabulary (**error**)
+- Edge type names in `supports`, `outgoing`, and `incoming` are from the full vocabulary (**error**)
 - Where source or target has declared constraints (via `supports` or directional sections), the edge type is permitted (**warning** by default; configurable to error)
 
 ---
@@ -255,8 +295,9 @@ From this ADR, the linter must enforce:
 **What becomes easier:**
 - Most templates simply list which edge types they participate in via `supports` — no directional reasoning required for the common case
 - Templates with strong directional semantics (APIEndpoint, DomainEvent) can express that precisely via `outgoing`/`incoming`
-- All eight core types have stable, tool-understood semantics — agents and drift detection can rely on them
+- All ten core types have stable, tool-understood semantics — agents and drift detection can rely on them
 - Cross-pack composition requires no coordination — all templates reference the same core vocabulary
+- Ownership edges (`has-field`, `has-value`) are automatically extracted and never require explicit authoring, eliminating a class of potential authoring errors
 
 **What becomes harder:**
 - Teams needing relationship types not in the core vocabulary have no v1 mechanism
@@ -265,12 +306,24 @@ From this ADR, the linter must enforce:
 **What is newly possible:**
 - The linter can detect suspicious directional violations — a `triggers` edge pointing at an `APIEndpoint` will warn because `APIEndpoint` declares `outgoing: [triggers]`
 - `derived-from` and `maps-to` chains can be traversed reliably by drift detection because their semantics are guaranteed by the tool
+- `has-field` and `has-value` ownership chains are graph-traversable at runtime — the MCP server can answer "all fields owned by this Schema" or "all values in this EnumDefinition" via graph traversal
+
+---
+
+## Amendment: 2026-04-14
+
+**Added:** `has-field` and `has-value` structural ownership edge types.
+
+**Reason:** The `Schema` and `EnumDefinition` templates declared `outgoing: [has-field]` and `outgoing: [has-value]` respectively in their template edge sections, but these type names were not in the ADR-defined vocabulary. This caused a pre-existing violation of E-004 (template edge declaration vocabulary). The amendment formalises both types as structural ownership edges, documents that they are extracted from cluster file structure rather than authored in edge files, and adds E-008 to prohibit their use in edge files.
+
+**Prior description of "eight core types"** throughout this document and in ADR-003b is amended to "ten core types" (eight semantic plus two structural ownership types).
 
 ---
 
 ## Related
 
-- ADR-003b: Core logical data model — defines the eight core edge types used throughout this ADR
+- ADR-003b: Core logical data model — defines the semantic edge types used throughout this ADR; amended by this ADR to include structural ownership types
+- ADR-003d: Inline schema definition and reference resolution — has-field and has-value are the ownership edges implied by inline schema and enum definitions
 - ADR-004: Template pack format — pack structure; templates include `edges:` declarations referencing core types from this ADR
 - ADR-006: Linter and validator — implements the validation logic described here
 - PDR-005: Deletions, renames, and collisions — `renamed-from` edge type semantics

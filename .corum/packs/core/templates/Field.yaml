@@ -8,9 +8,15 @@ description: |
   fields in other nodes via maps-to edges. The field name is the node
   label; it is not a property on this node.
 
-  When a Field is defined inline within a Schema or APIEndpoint node file,
-  the has-field edge is implied by structure and extracted automatically.
-  Maps-to edges are always declared explicitly as they cross node boundaries.
+  A field's type is either a primitive scalar (scalarType) or a reference
+  to another node that defines the type's shape (objectRef). These are
+  mutually exclusive. objectRef covers all structured types: Schema,
+  EnumDefinition, ValueObject, and DomainModel.
+
+  When a Field is defined inline within a Schema, EnumDefinition, or
+  APIEndpoint node file, the has-field edge from the parent to this Field
+  is implied by structure and extracted automatically. Maps-to edges are
+  always declared explicitly as they cross node boundaries.
 
 properties:
   type: object
@@ -34,9 +40,11 @@ properties:
     objectRef:
       type: string
       description: |
-        Node ID of a Schema, ValueObject, DomainModel, or EnumDefinition that
-        defines the shape of this field. Mutually exclusive with scalarType.
-        Postgres enforces referential integrity on this value.
+        Node ID of a Schema, EnumDefinition, ValueObject, or DomainModel that
+        defines the shape of this field. In APIEndpoint and other cluster files
+        that support inline definitions, this may also be a local name from the
+        schemas or enums block, resolved local-first before global lookup.
+        Mutually exclusive with scalarType.
     nullable:
       type: boolean
       description: "Whether this field may be absent or null"

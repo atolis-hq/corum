@@ -7,21 +7,23 @@ description: |
   definition of what callers may invoke, what they must provide, and
   what they will receive in return.
 
-  Schemas may be defined in a top-level schemas block within the node file
-  (for schemas specific to this endpoint) or as standalone Schema node files
-  (for schemas shared across multiple endpoints or nodes). The request and
-  responses fields reference schemas by local name or global node ID; local
-  names are resolved first, then global node ID lookup is attempted.
+  Schemas may be defined in a schemas block within the node file (for
+  schemas specific to this endpoint) or as standalone Schema node files
+  (for schemas shared across multiple endpoints or nodes). Enums follow
+  the same pattern via the enums block.
 
-  Local schemas can reference each other via objectRef using their local name,
-  enabling arbitrary nesting depth within a single file. Each local schema
-  generates a scoped Schema node in the graph and has-field edges for its
-  fields. An objectRef within a local schema that resolves to another local
-  schema generates an implicit reads edge between those Schema nodes.
+  Inline schemas and enums are intentionally flat at the field level.
+  Nested object types are expressed through objectRef references to another
+  local schema by name, a local enum by name, or a global node ID.
 
-  Field maps-to edges — connecting a field in this endpoint to a field
-  in another node — are always declared explicitly regardless of where
-  the schema is defined.
+  Reference resolution order for objectRef, request, and responses values:
+    1. Local schemas block — resolved to {node-id}.schemas.{local-name}
+    2. Local enums block  — resolved to {node-id}.enums.{local-name}
+    3. Global node ID     — resolved against the graph; generates a reads edge
+
+  has-field and has-value edges to locally-defined schemas and enums are
+  implied by structure and extracted automatically. Maps-to edges connecting
+  fields across node boundaries are always declared explicitly in edge files.
 
 properties:
   type: object
@@ -59,19 +61,19 @@ properties:
     request:
       type: string
       description: |
-        Local schema name (defined in this file's schemas block) or global
-        node ID of a standalone Schema node. Omit for operations with no
-        body (e.g. GET, DELETE).
+        Local schema name or global Schema node ID describing the request body.
+        Resolved local-first (schemas block, then enums block, then global).
+        Omit for operations with no body (e.g. GET, DELETE).
       examples:
         - create-order-request
-        - shared-create-order-request
 
     responses:
       type: object
       minProperties: 1
       description: |
         Map of HTTP status code (or 'default') to a local schema name or
-        global Schema node ID describing the response body.
+        global Schema node ID describing the response body. Each value is
+        resolved local-first.
       propertyNames:
         pattern: "^(default|[1-5][0-9]{2})$"
       additionalProperties:
@@ -84,13 +86,14 @@ properties:
 
 schemas:
   description: |
-    Locally scoped Schema definitions owned by this endpoint. Use for schemas
-    that are specific to this endpoint and not shared across nodes. Schemas
-    defined here can reference each other via objectRef using their local name,
-    enabling arbitrarily deep nesting within a single file.
+    Locally scoped Schema definitions owned by this endpoint. Each entry
+    becomes a Schema node with ID {node-id}.schemas.{local-name} and
+    owned Field nodes with IDs {node-id}.schemas.{local-name}.fields.{field-name}.
 
-    Schemas that are shared across multiple endpoints or nodes should be
-    defined as standalone Schema node files and referenced by global node ID.
+    Schemas can reference each other and local enums via objectRef using
+    their local name, enabling arbitrary nesting depth within a single file.
+    Schemas shared across multiple endpoints should be standalone Schema
+    node files referenced by global node ID.
 
   type: object
   additionalProperties:
@@ -101,14 +104,13 @@ schemas:
     properties:
       description:
         type: string
-        description: "Optional description of this schema's purpose"
       fields:
         type: object
         minProperties: 1
         description: |
-          Flat map of field name to field definition. Keys are field names.
-          Use objectRef to reference another local schema by name or a global
-          Schema/ValueObject node by ID — this is how nesting is expressed.
+          Flat map of field name to field definition. Use objectRef to
+          reference another local schema or enum by name, or a global node
+          by ID. This is how nesting beyond one level is expressed.
         additionalProperties:
           type: object
           additionalProperties: false
@@ -131,9 +133,10 @@ schemas:
             objectRef:
               type: string
               description: |
-                Local schema name or global node ID (Schema, ValueObject,
-                DomainModel, EnumDefinition) that defines the shape of this
-                field. Mutually exclusive with scalarType.
+                Local schema name, local enum name, or global node ID
+                (Schema, EnumDefinition, ValueObject, DomainModel) that
+                defines the type of this field. Resolved local-first.
+                Mutually exclusive with scalarType.
             nullable:
               type: boolean
             cardinality:
@@ -148,6 +151,66 @@ schemas:
             - required: [objectRef]
               not:
                 required: [scalarType]
+
+enums:
+  description: |
+    Locally scoped EnumDefinition nodes owned by this endpoint. Each entry
+    becomes an EnumDefinition node with ID {node-id}.enums.{local-name}.
+    Each value within it becomes an EnumValue node with ID
+    {node-id}.enums.{local-name}.values.{value-key}, independently
+    addressable for state, stability, and threads.
+
+    Enums shared across multiple endpoints should be standalone
+    EnumDefinition cluster files referenced by global node ID.
+
+  type: object
+  additionalProperties:
+    type: object
+    additionalProperties: false
+    required:
+      - values
+    properties:
+      description:
+        type: string
+        description: "Optional description of this enum's purpose"
+      values:
+        type: object
+        minProperties: 1
+        description: |
+          Map of value key to EnumValue definition. The key is the local
+          addressing name used in objectRef references within this file.
+          The name property is the actual string constant in the contract.
+        additionalProperties:
+          type: object
+          additionalProperties: false
+          required:
+            - name
+          properties:
+            name:
+              type: string
+              description: |
+                The string constant as it appears in the contract
+                (e.g. PENDING, CONFIRMED). Convention is SCREAMING_SNAKE_CASE.
+            description:
+              type: string
+              description: "Human-readable description of what this value means"
+            state:
+              type: string
+              enum:
+                - draft
+                - proposed
+                - agreed
+                - future
+                - removed
+                - implemented
+              description: "Lifecycle state of this value. Defaults to proposed."
+            stability:
+              type: string
+              enum:
+                - unstable
+                - stable
+                - deprecated
+              description: "Stability of this value. Defaults to unstable."
 
 edges:
   outgoing:

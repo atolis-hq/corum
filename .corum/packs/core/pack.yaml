@@ -4,3 +4,5 @@ description: "Core templates required by all graphs"
 templates:
   - Schema
   - Field
+  - EnumDefinition
+  - EnumValue
