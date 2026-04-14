@@ -1,0 +1,68 @@
+name: APIEndpoint
+version: "1.0.0"
+core: false
+abstract: false
+description: |
+  An HTTP operation exposed to external consumers. The authoritative
+  definition of what callers may invoke, what they must provide, and
+  what they will receive in return.
+
+properties:
+  $defs:
+    HttpMethod:
+      type: string
+      enum:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+
+  type: object
+  additionalProperties: false
+  required:
+    - method
+    - path
+  properties:
+    method:
+      $ref: "#/$defs/HttpMethod"
+      description: "HTTP method"
+      examples:
+        - GET
+        - POST
+    path:
+      type: string
+      pattern: "^/"
+      description: "URL path pattern, for example /orders/{orderId}"
+      examples:
+        - /orders
+        - /orders/{orderId}
+    auth:
+      type: string
+      default: bearer-token
+      description: "Authentication mechanism"
+      examples:
+        - bearer-token
+        - api-key
+        - none
+    basePath:
+      type: string
+      description: "Optional base path prefix applied to all routes in this service"
+      examples:
+        - /api/v1
+        - /internal
+
+edges:
+  outgoing:
+    - calls
+    - produces
+  supports:
+    - reads
+
+ui:
+  icon: api-endpoint
+  colour: "#4A90D9"
+  displayProperties:
+    - method
+    - path
+  badge: method

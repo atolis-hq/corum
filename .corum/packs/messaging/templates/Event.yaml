@@ -1,0 +1,26 @@
+name: Event
+version: "1.0.0"
+core: false
+abstract: true
+description: |
+  Abstract base for all event types. Defines the shared payload schema.
+  Use DomainEvent for internal facts; IntegrationEvent for cross-service contracts.
+
+properties:
+  type: object
+  additionalProperties: false
+  properties:
+    correlationId:
+      type: string
+      description: "Optional correlation ID for tracing event chains"
+
+edges:
+  outgoing:
+    - triggers
+  incoming:
+    - produces
+
+ui:
+  icon: event
+  colour: "#E8A838"
+  displayProperties: []

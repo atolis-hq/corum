@@ -160,8 +160,7 @@ The graph is the top-level container. It is represented by `graph.yaml` in the r
 | Property | Type | Required | Description |
 |---|---|---|---|
 | `name` | string | yes | Human-readable name of this graph |
-| `templatePack` | string | yes | Active template pack name |
-| `templatePackVersion` | string | yes | Semver version of the active template pack |
+| `templatePacks` | list | yes | Active template packs loaded for this graph |
 | `components` | list | yes | All components declared in this graph repo |
 
 ---
@@ -232,3 +231,4 @@ These are constraints that any implementation of this model must maintain, regar
 - PDR-001: Tool scope and node taxonomy — establishes the state and stability semantics formalised here
 - PDR-003: Template packs and plugin architecture — establishes that all node types are templates, including Field
 - PDR-005: Deletions, renames, and collisions — establishes the soft-delete and rename-as-edge semantics reflected in this model
+

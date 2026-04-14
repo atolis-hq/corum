@@ -1,0 +1,19 @@
+name: DomainModel
+version: "1.0.0"
+core: false
+abstract: false
+description: |
+  A domain entity or aggregate root expressed as a named model with
+  fields, enums, invariants, and operations owned in its cluster file.
+
+edges:
+  supports:
+    - reads
+    - derived-from
+  outgoing:
+    - produces
+
+ui:
+  icon: domain-model
+  colour: "#2E8B57"
+  displayProperties: []

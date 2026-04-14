@@ -80,13 +80,13 @@ Packs are split along three lines — spec-aligned, domain, and methodology — 
 These packs contain templates that correspond to concepts in an external specification format. Each ships alongside its adapter (the component that imports/exports the spec format). Teams install the packs matching the spec formats their services use.
 
 **`core` pack** — always loaded; required by all other packs  
-Contains `Field` (the only `core: true` template) and the abstract `Event` base.
+Contains `Field` (the only `core: true` template).
 
 **`rest` pack** — for HTTP/REST services (adapter: OpenAPI)  
 Contains `APIEndpoint`.
 
 **`messaging` pack** — for event-driven services (adapter: AsyncAPI)  
-Contains `IntegrationEvent` (extends Event) and `DomainEvent` (extends Event).
+Contains the abstract `Event` base plus `IntegrationEvent` (extends Event) and `DomainEvent` (extends Event).
 
 **`graphql` pack** — for GraphQL services (adapter: GraphQL SDL) — *planned*  
 Will contain `GraphQLQuery`, `GraphQLMutation`, `GraphQLSubscription`, `GraphQLType`.
@@ -150,7 +150,6 @@ core/
   pack.yaml
   templates/
     Field.yaml             # core: true — required by the tool itself
-    Event.yaml             # abstract: true — base for all event subtypes
   edge-types.yaml          # Reserved for future custom edge type extension (see ADR-004b)
   components/              # Reserved for UI components (future ADR)
 
@@ -162,8 +161,9 @@ rest/
 messaging/
   pack.yaml
   templates/
-    DomainEvent.yaml       # extends: Event (from core pack)
-    IntegrationEvent.yaml  # extends: Event (from core pack)
+    Event.yaml             # abstract: true ??? base for all event subtypes
+    DomainEvent.yaml       # extends: Event (from messaging pack)
+    IntegrationEvent.yaml  # extends: Event (from messaging pack)
 
 domain/
   pack.yaml
@@ -219,7 +219,7 @@ name: messaging
 version: "1.0.0"
 description: "Templates for event-driven services. Adapter: AsyncAPI"
 requires:
-  - core     # Event abstract base lives in core
+  - core
 templates:
   - DomainEvent
   - IntegrationEvent
@@ -250,7 +250,7 @@ The `requires` field declares pack dependencies. If a required pack is not loade
 A template marked `abstract: true` defines shared schema for subtypes and cannot be instantiated directly. Concrete subtypes use `extends` to inherit the schema and override or supplement as needed.
 
 ```yaml
-# templates/Event.yaml
+# messaging/templates/Event.yaml
 
 name: Event
 version: "1.0.0"
@@ -571,7 +571,7 @@ Event modelling nodes capture the structure of an Adam Dymitruk-style event mode
 | `GraphQLSubscription` | false | false | Real-time stream in a GraphQL schema; extends Event |
 | `GraphQLType` | false | false | Named type in a GraphQL schema; maps to DomainModel concepts |
 
-The GraphQL pack ships with a GraphQL SDL adapter. `GraphQLSubscription` extends `Event` from the core pack.
+The GraphQL pack ships with a GraphQL SDL adapter. `GraphQLSubscription` extends `Event` from the messaging pack.
 
 ---
 
@@ -684,3 +684,6 @@ The `ui:` hints in each template are the v1 fallback. Generic rendering uses the
 - ADR-006: Linter and validator — enforces template compliance on all node files and validates pack integrity
 - PDR-001: Tool scope and node taxonomy — progressive enrichment philosophy; state and stability model
 - PDR-003: Template packs and plugin architecture — product decisions implemented by this ADR
+
+
+

@@ -1,0 +1,12 @@
+name: ValueObject
+version: "1.0.0"
+core: false
+abstract: false
+description: |
+  A shared type with no independent identity. Value objects are often
+  reused across models and endpoints through field type references.
+
+ui:
+  icon: value-object
+  colour: "#7A6F9B"
+  displayProperties: []

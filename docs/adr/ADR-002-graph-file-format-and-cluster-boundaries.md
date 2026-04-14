@@ -432,8 +432,15 @@ edges:
 ```yaml
 schema-version: "1.0"
 name: "Acme Corp Design Graph"
-templatePack: default
-templatePackVersion: "1.0.0"
+templatePacks:  
+  - name: core
+    version: "1.0.0"
+  - name: rest
+    version: "1.0.0"
+  - name: messaging
+    version: "1.0.0"
+  - name: domain
+    version: "1.0.0"
 
 components:
   - id: orders
@@ -519,3 +526,5 @@ From this ADR, the linter must enforce:
 - ADR-006: Linter and validator — enforces the naming and referential integrity rules defined here
 - PDR-001: Tool scope and node taxonomy — state model (`draft`, `proposed`, `agreed`, `future`, `removed`, `implemented`) and stability levels (`unstable`, `stable`, `deprecated`)
 - PDR-003: Template packs and plugin architecture — establishes that `Field` is a core template and that all node types are templates
+
+

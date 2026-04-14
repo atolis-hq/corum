@@ -1,0 +1,23 @@
+name: DomainOperation
+version: "1.0.0"
+core: false
+abstract: false
+description: |
+  A named unit of behaviour within a domain model. Behavioural flow is
+  expressed through graph edges rather than embedded execution logic.
+
+edges:
+  supports:
+    - reads
+  outgoing:
+    - produces
+    - triggers
+    - calls
+  incoming:
+    - triggers
+    - calls
+
+ui:
+  icon: domain-operation
+  colour: "#5B8C5A"
+  displayProperties: []

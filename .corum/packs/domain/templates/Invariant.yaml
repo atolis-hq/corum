@@ -1,0 +1,12 @@
+name: Invariant
+version: "1.0.0"
+core: false
+abstract: false
+description: |
+  A business rule that must always hold for the owning model or process.
+  Invariants are first-class nodes so they can carry lifecycle metadata.
+
+ui:
+  icon: invariant
+  colour: "#C26D3A"
+  displayProperties: []

@@ -1,0 +1,12 @@
+name: domain
+version: "1.0.0"
+description: "Internal domain model templates. No external spec format."
+requires:
+  - core
+templates:
+  - DomainModel
+  - DomainOperation
+  - Command
+  - ReadModel
+  - ValueObject
+  - Invariant
