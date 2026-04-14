@@ -7,9 +7,18 @@ description: |
   boundary for a structured payload or type; all actual properties are
   represented as Field nodes rather than inline objects.
 
+  When fields are defined inline within a Schema node file, has-field edges
+  are implied by structure and extracted automatically by the system.
+  Standalone Schema nodes referenced by node ID from another node (e.g. an
+  APIEndpoint) generate an explicit reads edge in Postgres.
+
 properties:
   type: object
   additionalProperties: false
+
+edges:
+  outgoing:
+    - has-field
 
 ui:
   icon: schema

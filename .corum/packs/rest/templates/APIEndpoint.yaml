@@ -7,9 +7,32 @@ description: |
   definition of what callers may invoke, what they must provide, and
   what they will receive in return.
 
+  Schemas may be defined in a top-level schemas block within the node file
+  (for schemas specific to this endpoint) or as standalone Schema node files
+  (for schemas shared across multiple endpoints or nodes). The request and
+  responses fields reference schemas by local name or global node ID; local
+  names are resolved first, then global node ID lookup is attempted.
+
+  Local schemas can reference each other via objectRef using their local name,
+  enabling arbitrary nesting depth within a single file. Each local schema
+  generates a scoped Schema node in the graph and has-field edges for its
+  fields. An objectRef within a local schema that resolves to another local
+  schema generates an implicit reads edge between those Schema nodes.
+
+  Field maps-to edges — connecting a field in this endpoint to a field
+  in another node — are always declared explicitly regardless of where
+  the schema is defined.
+
 properties:
-  $defs:
-    HttpMethod:
+  type: object
+  additionalProperties: false
+  required:
+    - method
+    - path
+    - responses
+  properties:
+
+    method:
       type: string
       enum:
         - GET
@@ -20,26 +43,11 @@ properties:
         - HEAD
         - PATCH
         - TRACE
-    SchemaNodeRef:
-      type: string
-      description: "Node ID of a Schema that owns the request or response fields"
-      examples:
-        - create-order-request
-        - order-response
-
-  type: object
-  additionalProperties: false
-  required:
-    - method
-    - path
-    - responses
-  properties:
-    method:
-      $ref: "#/$defs/HttpMethod"
-      description: "HTTP method"
+      description: "HTTP method for this operation"
       examples:
         - GET
         - POST
+
     path:
       type: string
       pattern: "^/"
@@ -47,28 +55,105 @@ properties:
       examples:
         - /orders
         - /orders/{orderId}
+
     request:
-      $ref: "#/$defs/SchemaNodeRef"
-      description: "Optional schema node describing the request body"
+      type: string
+      description: |
+        Local schema name (defined in this file's schemas block) or global
+        node ID of a standalone Schema node. Omit for operations with no
+        body (e.g. GET, DELETE).
+      examples:
+        - create-order-request
+        - shared-create-order-request
+
     responses:
       type: object
       minProperties: 1
+      description: |
+        Map of HTTP status code (or 'default') to a local schema name or
+        global Schema node ID describing the response body.
       propertyNames:
         pattern: "^(default|[1-5][0-9]{2})$"
       additionalProperties:
-        $ref: "#/$defs/SchemaNodeRef"
-      description: "Response schema node IDs keyed by HTTP status code or default"
+        type: string
+        description: "Local schema name or global Schema node ID"
       examples:
         - "200": order-response
         - "201": order-created-response
-          "404": problem-response
+          "404": problem-detail
+
+schemas:
+  description: |
+    Locally scoped Schema definitions owned by this endpoint. Use for schemas
+    that are specific to this endpoint and not shared across nodes. Schemas
+    defined here can reference each other via objectRef using their local name,
+    enabling arbitrarily deep nesting within a single file.
+
+    Schemas that are shared across multiple endpoints or nodes should be
+    defined as standalone Schema node files and referenced by global node ID.
+
+  type: object
+  additionalProperties:
+    type: object
+    additionalProperties: false
+    required:
+      - fields
+    properties:
+      description:
+        type: string
+        description: "Optional description of this schema's purpose"
+      fields:
+        type: object
+        minProperties: 1
+        description: |
+          Flat map of field name to field definition. Keys are field names.
+          Use objectRef to reference another local schema by name or a global
+          Schema/ValueObject node by ID — this is how nesting is expressed.
+        additionalProperties:
+          type: object
+          additionalProperties: false
+          required:
+            - nullable
+            - cardinality
+          properties:
+            scalarType:
+              type: string
+              enum:
+                - uuid
+                - string
+                - integer
+                - decimal
+                - boolean
+                - datetime
+                - date
+                - time
+              description: "Primitive scalar type. Mutually exclusive with objectRef."
+            objectRef:
+              type: string
+              description: |
+                Local schema name or global node ID (Schema, ValueObject,
+                DomainModel, EnumDefinition) that defines the shape of this
+                field. Mutually exclusive with scalarType.
+            nullable:
+              type: boolean
+            cardinality:
+              type: string
+              enum:
+                - one
+                - many
+          oneOf:
+            - required: [scalarType]
+              not:
+                required: [objectRef]
+            - required: [objectRef]
+              not:
+                required: [scalarType]
 
 edges:
   outgoing:
+    - reads
     - calls
     - produces
-  supports:
-    - reads
 
 ui:
   icon: api-endpoint

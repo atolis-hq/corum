@@ -3,23 +3,40 @@ version: "1.0.0"
 core: true
 abstract: false
 description: |
-  A named property within a schema node. Fields are the atomic unit of
-  field-level lineage. Every field is independently addressable, stateful,
-  and can be connected to fields in other nodes via maps-to edges.
+  A named property within a Schema node. Fields are the atomic unit of
+  field-level lineage — independently addressable and connectable to
+  fields in other nodes via maps-to edges. The field name is the node
+  label; it is not a property on this node.
+
+  When a Field is defined inline within a Schema or APIEndpoint node file,
+  the has-field edge is implied by structure and extracted automatically.
+  Maps-to edges are always declared explicitly as they cross node boundaries.
 
 properties:
   type: object
   additionalProperties: false
   required:
-    - fieldType
     - nullable
     - cardinality
   properties:
-    fieldType:
+    scalarType:
+      type: string
+      enum:
+        - uuid
+        - string
+        - integer
+        - decimal
+        - boolean
+        - datetime
+        - date
+        - time
+      description: "Primitive scalar type. Mutually exclusive with objectRef."
+    objectRef:
       type: string
       description: |
-        Scalar type (uuid, string, integer, decimal, boolean, datetime) or
-        a node ID referencing a DomainModel, EnumDefinition, or ValueObject
+        Node ID of a Schema, ValueObject, DomainModel, or EnumDefinition that
+        defines the shape of this field. Mutually exclusive with scalarType.
+        Postgres enforces referential integrity on this value.
     nullable:
       type: boolean
       description: "Whether this field may be absent or null"
@@ -29,8 +46,21 @@ properties:
         - one
         - many
       description: "Whether this field holds a single value or a collection"
+  oneOf:
+    - required:
+        - scalarType
+      not:
+        required:
+          - objectRef
+    - required:
+        - objectRef
+      not:
+        required:
+          - scalarType
 
 edges:
+  incoming:
+    - has-field
   supports:
     - maps-to
     - derived-from
@@ -39,6 +69,7 @@ ui:
   icon: field
   colour: "#888888"
   displayProperties:
-    - fieldType
+    - scalarType
+    - objectRef
     - nullable
     - cardinality

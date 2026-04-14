@@ -2,7 +2,8 @@
 
 **Status:** Reference — normative companion to ADR-006  
 **Date:** 2026-04-12  
-**Derives from:** ADR-002, ADR-003b, ADR-004, ADR-004b  
+**Amended:** 2026-04-14 — S-series rules added (ADR-003d)  
+**Derives from:** ADR-002, ADR-003b, ADR-003d, ADR-004, ADR-004b  
 **Governed by:** ADR-006 (severity model, deployment contexts, extensibility)
 
 Rules in this catalogue are derived directly from structural decisions in previous ADRs. No rule is invented here — each references the ADR that establishes the underlying constraint. Default severities follow the model in ADR-006: errors reflect structural invariants the tool depends on; warnings reflect quality and convention rules that teams may tighten via configuration.
@@ -13,7 +14,7 @@ Rules in this catalogue are derived directly from structural decisions in previo
 
 These rules run in the MCP server on startup. Failures prevent the server from starting. All other rules run in CI and the local CLI only.
 
-`F-005`, `F-007`, `T-001`, `T-002`, `T-006`, `T-007`, `T-008`, `T-010`, `E-001`, `E-002`, `R-001`
+`F-005`, `F-007`, `T-001`, `T-002`, `T-006`, `T-007`, `T-008`, `T-010`, `E-001`, `E-002`, `R-001`, `S-004`, `S-005`, `S-006`
 
 ---
 
@@ -53,7 +54,7 @@ The `schema-version` in a file must be compatible with the current tool version.
 `fromField` and `toField` values in `fieldMappings` blocks in edge files must resolve to field IDs declared in their respective cluster files. Unresolvable field references are errors.
 
 **F-012 — No inline cross-node relationships** `error`  
-Cluster files must not declare edges to other root nodes inline. All cross-node relationships must be in edge files. Type references within `properties` (e.g. a field's `fieldType` referencing a `DomainModel` node ID) are not edges and are not subject to this rule.
+Cluster files must not declare edges to other root nodes inline. All cross-node relationships must be in edge files. Type references within `properties` (e.g. a field's `objectRef` referencing a `DomainModel` node ID) are not edges and are not subject to this rule.
 
 **F-013 — Component registry completeness** `warning`  
 Every component directory under `components/` should be declared in `graph.yaml`. Undeclared component directories are loadable but flagged as unregistered.
@@ -144,6 +145,30 @@ A `renamed-from` chain must not form a cycle. A → renamed-from → B → renam
 
 ---
 
+## Schema Reference Rules (ADR-003d)
+
+These rules govern the `schemas` block in APIEndpoint cluster files, local schema reference resolution, and the `scalarType`/`objectRef` field type model introduced in ADR-003d.
+
+**S-001 — Local schema name shadows global node ID** `warning`  
+A key in a node file's `schemas` block that matches a global node ID in the graph takes precedence over the global node (local-first resolution). The shadowing is flagged so authors can verify the collision is intentional rather than an accidental name clash. Promotable to error for teams who want to prohibit shadowing entirely.
+
+**S-002 — Unresolved schema reference** `error`  
+A value in `properties.request`, any entry in `properties.responses`, or any `objectRef` within a `schemas` block field definition that resolves to neither a local schema name nor a valid global node ID is an unresolvable reference. This extends R-002 to cover local lookup as the first resolution step before global lookup. The error message must indicate which step failed to aid diagnosis.
+
+**S-003 — Local schema defined but not referenced** `warning`  
+A schema defined in the `schemas` block that is not referenced by `properties.request`, any entry in `properties.responses`, or any `objectRef` within the same file's field definitions is unreachable. Unreferenced local schemas are authoring errors — either the reference was removed and the schema not cleaned up, or the schema was intended for a different key. Promotable to error.
+
+**S-004 — `objectRef` cycle in local schemas** `error`  
+A cycle in `objectRef` references among local schemas within the same file is rejected. If schema A references schema B via `objectRef` and schema B references schema A, the graph loader cannot resolve the object shape and will loop. Detected at load time; prevents server startup.
+
+**S-005 — `scalarType` and `objectRef` both present on a field** `error`  
+A field definition that declares both `scalarType` and `objectRef` is structurally invalid — these properties are mutually exclusive. A field is either a primitive type or a reference to a named node; it cannot be both. Detected at load time; prevents server startup if the field is in a node the server attempts to load.
+
+**S-006 — Field carries neither `scalarType` nor `objectRef`** `error`  
+A field definition that declares neither `scalarType` nor `objectRef` has no resolvable type and cannot be represented as a graph node. The field is incomplete. Detected at load time; prevents server startup if the field is in a node the server attempts to load.
+
+---
+
 ## Rule Summary
 
 | ID | Source | Default | Promotable | Startup subset |
@@ -185,3 +210,9 @@ A `renamed-from` chain must not form a cycle. A → renamed-from → B → renam
 | E-005 | ADR-004b | warning | error | no |
 | E-006 | ADR-004b | warning | error | no |
 | E-007 | ADR-004b | error | — | no |
+| S-001 | ADR-003d | warning | error | no |
+| S-002 | ADR-003d | error | — | no |
+| S-003 | ADR-003d | warning | error | no |
+| S-004 | ADR-003d | error | — | **yes** |
+| S-005 | ADR-003d | error | — | **yes** |
+| S-006 | ADR-003d | error | — | **yes** |
