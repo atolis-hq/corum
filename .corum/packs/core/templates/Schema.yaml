@@ -1,0 +1,17 @@
+name: Schema
+version: "1.0.0"
+core: true
+abstract: false
+description: |
+  A reusable object-shaped contract that owns Field nodes. Schema is the
+  boundary for a structured payload or type; all actual properties are
+  represented as Field nodes rather than inline objects.
+
+properties:
+  type: object
+  additionalProperties: false
+
+ui:
+  icon: schema
+  colour: "#5D7A8C"
+  displayProperties: []

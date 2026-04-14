@@ -13,16 +13,26 @@ properties:
       type: string
       enum:
         - GET
-        - POST
         - PUT
-        - PATCH
+        - POST
         - DELETE
+        - OPTIONS
+        - HEAD
+        - PATCH
+        - TRACE
+    SchemaNodeRef:
+      type: string
+      description: "Node ID of a Schema that owns the request or response fields"
+      examples:
+        - create-order-request
+        - order-response
 
   type: object
   additionalProperties: false
   required:
     - method
     - path
+    - responses
   properties:
     method:
       $ref: "#/$defs/HttpMethod"
@@ -37,20 +47,21 @@ properties:
       examples:
         - /orders
         - /orders/{orderId}
-    auth:
-      type: string
-      default: bearer-token
-      description: "Authentication mechanism"
+    request:
+      $ref: "#/$defs/SchemaNodeRef"
+      description: "Optional schema node describing the request body"
+    responses:
+      type: object
+      minProperties: 1
+      propertyNames:
+        pattern: "^(default|[1-5][0-9]{2})$"
+      additionalProperties:
+        $ref: "#/$defs/SchemaNodeRef"
+      description: "Response schema node IDs keyed by HTTP status code or default"
       examples:
-        - bearer-token
-        - api-key
-        - none
-    basePath:
-      type: string
-      description: "Optional base path prefix applied to all routes in this service"
-      examples:
-        - /api/v1
-        - /internal
+        - "200": order-response
+        - "201": order-created-response
+          "404": problem-response
 
 edges:
   outgoing:
