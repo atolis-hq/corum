@@ -24,8 +24,8 @@ The linter is described along two independent axes. Understanding both is essent
 
 | Stage | Input the rule needs | Example rules |
 |---|---|---|
-| **Stage 1 — file-local / pack-local** | One file being parsed, or the loaded template pack set. No cross-file graph state. | F-001 ID format, F-005 YAML 1.2, F-007 schema-version present, F-009 valid state, T-001 template resolves, T-002 abstract instantiation, T-006–T-011 pack rules, E-001 core edge type, E-003/E-004 template edge declaration |
-| **Stage 2 — graph-wide** | The fully loaded in-memory / cached graph including cross-file node and edge resolution. | R-001 node ID uniqueness across repo, R-002 edge endpoint resolution, E-002 `maps-to` structural check, E-005/E-006 source/target edge constraint, E-007 renamed-from cycle, R-004/R-005 removed/renamed directionality, T-003/T-004 per-node property conformance, F-011 fieldMappings endpoint resolution, T-012 schema drift |
+| **Stage 1 - file-local / pack-local** | One file being parsed, or the loaded template pack set. No cross-file graph state. | F-001 ID format, F-005 YAML 1.2, F-007 schema-version present, F-009 valid state, T-001 template resolves, T-002 abstract instantiation, T-003 required property presence, T-004 property schema conformance, T-005 unknown properties, T-006-T-012 pack/template rules, E-001 core edge type, E-003/E-004 template edge declaration |
+| **Stage 2 - graph-wide** | The fully loaded in-memory / cached graph including cross-file node and edge resolution. | R-001 node ID uniqueness across repo, R-002 edge endpoint resolution, E-002 `maps-to` structural check, E-005/E-006 source/target edge constraint, E-007 renamed-from cycle, R-004/R-005 removed/renamed directionality, F-011 fieldMappings endpoint resolution, S-series local reference reachability/cycles where they cross materialised owned nodes |
 
 **Key property:** stage 2 rules cannot run until the graph has been loaded — parsed, template-resolved, and materialised into the query layer. Stage 1 rules can run on a single file in isolation.
 
@@ -39,13 +39,13 @@ Same rule catalogue, three contexts ([ADR-006](../adr/ADR-006-linter-and-validat
 | **Local CLI (`corum lint`)** | Full rule set | Agents and engineers verify before committing. Identical output format and exit code to CI. |
 | **CI (PR check)** | Full rule set | Gate merges. Produces inline PR annotations via SARIF. |
 
-CLI and CI are the same runner invoked differently. Startup is a different runner profile that short-circuits after the startup subset passes.
+CLI and CI are the same runner invoked differently. Startup is a different runner profile that runs only the startup subset and short-circuits on the first startup-blocking error.
 
 ### 2.3 How the axes compose
 
 Every rule has a fixed stage. Most rules run in every deployment context. A rule in the startup subset is just a rule flagged as cheap and critical enough to run on MCP start — it still fires on CLI and CI.
 
-The startup subset contains rules from **both stages**. It includes pack-level structural rules (T-001, T-002, T-006–T-008, T-011, E-001, E-002) and the core graph-wide integrity rule (R-001 — ID uniqueness). This is why the MCP server must do a real graph load at startup, not just a file scan: to confirm a graph can be served at all, you need to load enough of it to check the invariants.
+The startup subset contains rules from **both stages**. It includes pack-level and file-local structural rules (T-001, T-002, T-006-T-008, T-011, E-001) and core graph-wide integrity rules (R-001 ID uniqueness, E-002 `maps-to` field-role validation). This is why the MCP server must do a real graph load at startup, not just a file scan: to confirm a graph can be served at all, you need to load enough of it to check the invariants.
 
 ---
 
@@ -106,7 +106,7 @@ The two-stage linter is tightly coupled to the graph-loading pipeline in `@corum
 │    R-003 cross-repo references · R-004 removed node isolation   │
 │    R-005 renamed-from directionality                            │
 │    F-011 fieldMappings endpoint resolution                      │
-│    E-002 maps-to Field-to-Field · E-005/E-006 source/target     │
+|    E-002 maps-to field-role nodes; E-005/E-006 source/target     |
 │    edge constraints · E-007 renamed-from cycle                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -117,7 +117,7 @@ Stage 2 rules depend on cross-file resolution that cannot be computed from a sin
 
 - **R-001 uniqueness** requires the set of every declared ID across the repo.
 - **R-002 edge endpoint resolution** requires knowing whether the ID referenced in an edge's `from`/`to` exists anywhere in the repo.
-- **E-002 `maps-to` structural check** requires resolving both endpoints to nodes and checking their template is `Field`.
+- **E-002 `maps-to` structural check** requires resolving both endpoints to nodes and checking their templates declare the core semantic role `field`.
 - **E-005/E-006 source/target constraint checks** require both endpoint nodes *and* their templates loaded, to see whether the edge type is declared on either side.
 - **E-007 renamed-from cycle detection** requires walking the graph of `renamed-from` edges.
 
@@ -194,7 +194,7 @@ packages/linter/
           yaml-safe.ts
           schema-version.ts
           ...
-        template/              # T-001, T-002, T-005, T-012
+        template/              # T-001..T-005, T-012
         template-pack/         # T-006..T-011 — run once per pack load
         edge-declaration/      # E-001, E-003, E-004
       stage2/
@@ -209,7 +209,6 @@ packages/linter/
           source-edge-constraint.ts
           target-edge-constraint.ts
           renamed-from-cycle.ts
-        property-conformance/  # T-003, T-004 (run per node against loaded template)
     formatters/
       text.ts
       json.ts

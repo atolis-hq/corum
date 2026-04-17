@@ -12,7 +12,7 @@ The Corum engine has no hardcoded node types, no built-in knowledge of any spec 
 
 | Extension point | Owned by | Distribution | Implementation layer |
 |---|---|---|---|
-| **Template pack** | `@corum/template-core` | npm package (or local path) | Domain |
+| **Template pack** | `@corum/template-core` | `.corum/packs/*`, local path, or npm package | Domain |
 | **Spec adapter** | `@corum/adapters-api` | npm package, typically re-exported by a pack | Application |
 | **Output plugin** | `@corum/adapters-api` (shared port) | npm package | Application |
 | **View plugin (web)** | Future web-side registry | npm package | Interface |
@@ -37,15 +37,16 @@ pack-name/
 ```
 
 Each template YAML is a JSON Schema for the `properties` block plus metadata (description, UI hints, edge participation).
+Core templates may also declare a reserved `coreRole` value such as `field`, `enum-definition`, or `enum-value`. The engine may depend on those roles for graph invariants, but it still loads the template from YAML and does not depend on the template name.
 
 ### 2.2 Built-in vs. third-party
 
-Built-in packs (`pack-core`, `pack-rest`, `pack-messaging`, `pack-domain`, etc.) live in this repo as regular workspace packages — **nothing about them is special-cased by the engine**. They are loaded by the same path-resolver that loads a team's `my-extensions` pack. The only distinction is that they are listed in `@corum/cli`'s default `graph.yaml` template and ship as bundled dependencies of the CLI.
+Built-in packs (`core`, `rest`, `messaging`, `domain`, etc.) live in this repo under `.corum/packs/*` as plain pack directories - **nothing about them is special-cased by the engine**. They are loaded by the same path-resolver that loads a team's `my-extensions` pack. The CLI default `graph.yaml` points to these paths when scaffolding a graph repo.
 
 ### 2.3 Loading
 
 1. `graph.yaml` declares `templatePacks: [{ name, version, path? }]`.
-2. `@corum/template-core` resolves each entry — by workspace name, npm resolution, or explicit path.
+2. `@corum/template-core` resolves each entry - by explicit path first, then by package resolution for third-party packs.
 3. All packs are loaded, then `extends` chains are resolved across the full loaded set.
 4. Template name collisions are a hard error — no silent precedence.
 5. The resolved, merged template set becomes read-only for the session.
@@ -194,12 +195,12 @@ This is where most of the "cleverness" of the import pipeline lives, not in the 
 
 ### 3.4 Adapter packaging
 
-Each adapter is a standalone package (`@corum/adapter-openapi`) that a spec-aligned template pack depends on. Installing `@corum/pack-rest` transitively installs `@corum/adapter-openapi`. A team wanting just the template pack without the adapter can use a thin variant — but by default the two travel together, because installing the `rest` pack without the ability to import OpenAPI is rarely useful.
+Each adapter is a standalone package (`@corum/adapter-openapi`) that declares which template pack it requires. Built-in spec-aligned packs live under `.corum/packs`; package installation concerns belong to adapters and CLI distribution, not to the pack YAML itself.
 
-The MCP server and CLI discover adapters via the loaded pack set — each pack may declare an adapter entry point:
+The MCP server and CLI discover adapters via adapter registration. A loaded pack may name the adapter it is commonly paired with, but the pack remains data and does not import adapter code:
 
 ```yaml
-# pack-rest/pack.yaml
+# .corum/packs/rest/pack.yaml
 name: rest
 version: "1.0.0"
 templates: [APIEndpoint]
@@ -210,7 +211,7 @@ adapter:
 
 ### 3.5 The TypeSpec opportunity
 
-[REF-typespec-integration-opportunities](../adr/REF-typespec-integration-opportunities.md) notes TypeSpec as a higher-fidelity alternative to OpenAPI for extraction. The adapter interface supports this directly — `@corum/adapter-typespec` is another package implementing `SpecAdapter`, paired with its own pack or piggybacking on `pack-rest`. No engine change needed.
+[REF-typespec-integration-opportunities](../adr/REF-typespec-integration-opportunities.md) notes TypeSpec as a higher-fidelity alternative to OpenAPI for extraction. The adapter interface supports this directly - `@corum/adapter-typespec` is another package implementing `SpecAdapter`, paired with its own pack or with the built-in `.corum/packs/rest` templates. No engine change needed.
 
 ---
 
@@ -259,7 +260,7 @@ Registration via pack `components/` directory + a `view-plugins.ts` manifest. De
 
 ## 6. What is not pluggable (by design)
 
-- **The logical data model.** `Node`, `Edge`, `Field`, the universal node properties, the state and stability enums are structural invariants of the engine. Packs extend — they do not replace.
+- **The logical data model and core semantic roles.** `Node`, `Edge`, `Field`, the universal node properties, the state and stability enums are structural invariants of the engine. Packs extend the model, but reserved `coreRole` contracts such as `field` are fixed because graph rules depend on them.
 - **The core edge vocabulary.** `maps-to`, `triggers`, `produces`, `reads`, `calls`, `implements`, `derived-from`, `renamed-from` are fixed in v1 ([ADR-004b](../adr/ADR-004b-edge-type-vocabulary-and-constraints.md)).
 - **The file format.** Cluster files, edge files, `graph.yaml` are defined by [ADR-002](../adr/ADR-002-graph-file-format-and-cluster-boundaries.md). The format version is bumped through migration, not overridden by plugins.
 - **The storage model.** Git-as-canonical-store + SQLite-as-cache is fixed for v1. Alternative stores are a hosted-tier concern.
@@ -273,7 +274,7 @@ This constraint is intentional. It keeps the core engine small, auditable, and f
 
 Each extension point has a dedicated test harness in the repo:
 
-- **Template packs** — a `test/packs.ts` harness loads every pack under `packages/pack-*/`, resolves `extends`, meta-schema-validates, and asserts that the minimal examples in each pack load without errors. Runs in CI on every PR.
+- **Template packs** - a `test/packs.ts` harness loads every pack under `.corum/packs/`, resolves `extends`, meta-schema-validates, and asserts that the minimal examples in each pack load without errors. Runs in CI on every PR.
 - **Adapters** — a contract test suite in `@corum/adapters-api/test/contract.ts` that any `SpecAdapter` implementation can import and run. Covers: `canRead` behaviour on the happy path and rejected sources, idempotent `read` (running twice produces the same `CandidateGraph`), `write` round-trip where applicable, `AdapterContext.emit` usage for every warning.
 - **Output plugins** — same shape as adapters, write-only half.
 - **End-to-end import → graph → export** tests in `test/integration/` use real fixture OpenAPI files to verify that extraction + reconciliation produces the expected cluster files on disk.
@@ -284,7 +285,7 @@ Each extension point has a dedicated test harness in the repo:
 
 A team wanting to ship a custom pack or adapter:
 
-1. Create an npm package following the `pack-*` / `adapter-*` conventions.
+1. Create an npm package following the pack directory convention or adapter package convention.
 2. Publish to npm (private or public).
 3. Declare the pack in their graph repo's `graph.yaml`.
 4. The `@corum/cli` resolves, loads, and validates the pack at startup.

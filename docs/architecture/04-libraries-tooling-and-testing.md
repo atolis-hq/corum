@@ -151,9 +151,9 @@ Target coverage: 95%+ line and branch. The domain is small and worth exhausting.
 
 Packages: `@corum/graph`, `@corum/linter`, `@corum/adapters-api`.
 
-- Tests run against in-memory `GraphRepository` and `GraphCache` fakes declared in `@corum/graph/test/fakes.ts`.
+- Tests run against in-memory `GraphRepository` and `GraphCache` fakes that implement the contracts from `@corum/ports`.
 - Linter rules tested per-rule, each with representative fixture files exercising both pass and fail cases. The fixtures live under `packages/linter/test/fixtures/` as minimal YAML files.
-- Contract tests for the `GraphCache` port run against both the fake and the real `@corum/cache` implementation — any behaviour divergence is a bug.
+- Contract tests for the `GraphCache` port run against both the fake and the real `@corum/cache` implementation - any behaviour divergence is a bug.
 
 ### 3.3 Infrastructure — isolated integration tests
 

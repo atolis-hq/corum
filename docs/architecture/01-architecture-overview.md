@@ -22,7 +22,7 @@ The logical data model, file format, and every major decision below are settled 
 These are the non-negotiable properties of the implementation. They constrain every decision below.
 
 1. **The graph model is uniform.** Everything is a node or an edge. Fields, enum values, invariants, and operations are first-class nodes at runtime, even though they are grouped into cluster files for readability ([ADR-002](../adr/ADR-002-graph-file-format-and-cluster-boundaries.md), [ADR-003b](../adr/ADR-003b-core-logical-data-model.md)).
-2. **The core engine knows nothing about node types.** All node types — including `Field` — are loaded from template packs. The engine validates templates against a meta-schema and validates nodes against their template's JSON Schema. It never case-matches on a template name ([ADR-004](../adr/ADR-004-template-pack-format.md)).
+2. **The engine knows core semantic roles, not hardcoded node type names.** Every node type, including `Field`, is still declared by template YAML. A small set of core templates declare reserved semantic roles such as `field`, `enum-definition`, and `enum-value`; graph and lint rules may depend on those roles, never on the literal template name. A team can rename or extend the template while preserving the role contract.
 3. **Template packs are data, not code.** A pack is a directory of YAML files — a `pack.yaml` manifest plus one template YAML per node type. No TypeScript, no build step, no published npm package required. The engine discovers packs by path (built-ins, workspace, local directory, or fetched archive) and loads them dynamically at startup. Adapters (spec readers/writers) are code; packs are not. See [03 — Extensibility § Template packs](03-extensibility-packs-adapters-plugins.md#2-template-packs).
 4. **Git is the canonical store.** YAML cluster files in a Git repo are the source of truth. The runtime cache (SQLite) is a projection; if it is lost, it rebuilds from Git. There is no hosted database in v1 ([ADR-001](../adr/ADR-001-storage-and-interaction-architecture.md)).
 5. **One write path for every mutation.** Whether a change originates from an MCP tool, a CLI command, or a spec-adapter import, it flows through the same `file-format` emitter guided by the same template. Adapters never touch YAML, paths, or files directly. See [§5.6 Persistence model](#56-persistence-model).
@@ -89,7 +89,7 @@ Dependencies flow downward only. The domain layer has no imports from anything a
 
 Pure TypeScript types and functions — zero runtime dependencies beyond a JSON Schema validator.
 
-- **Logical data model** — `Node`, `Edge`, `Field`, `Component`, `Graph`, state and stability enums, edge type vocabulary (`maps-to`, `triggers`, `produces`, `reads`, `calls`, `implements`, `derived-from`, `renamed-from`).
+- **Logical data model** - `Node`, `Edge`, `Field`, `Component`, `Graph`, state and stability enums, edge type vocabulary (`maps-to`, `triggers`, `produces`, `reads`, `calls`, `implements`, `derived-from`, `renamed-from`). Core semantic roles such as `field` are declared by template metadata and validated by the pack loader.
 - **Template pack model** — `Template`, `TemplatePack`, `PackManifest`. Functions for resolving `extends` chains, merging child + parent `properties` schemas via JSON Schema `allOf`, detecting abstract template instantiation, detecting template-name collisions.
 - **Identity** — `NodeId`, `EdgeId` types with validation and parsing helpers (`{component}.{node-type}.{name}[.{path}]`).
 
@@ -99,7 +99,7 @@ Nothing here reads files, opens a database, or makes network calls. The domain l
 
 Use cases that orchestrate the domain against infrastructure.
 
-- **`@corum/graph`** — Builds and holds the runtime graph. Owns the SQLite schema and CTEs that implement multi-branch overlay projection. Exposes commands (`createNode`, `upsertEdge`, `softRemove`, `rename`) and queries (`getCluster`, `listClusters`, `getLineage`, `getFieldLineage`, `getBranchVersions`, `searchText`). Materialises owned children from cluster files as first-class nodes.
+- **`@corum/graph`** - Builds and queries the runtime graph through ports. Exposes commands (`createNode`, `upsertEdge`, `softRemove`, `rename`) and queries (`getCluster`, `listClusters`, `getLineage`, `getFieldLineage`, `getBranchVersions`, `searchText`). Materialises owned children from cluster files as first-class nodes in the projection, but does not own the SQLite implementation.
 - **`@corum/linter`** — Rule engine with the catalogue from [REF-006-rules](../adr/REF-006-rules.md). Two-stage pipeline: stage 1 runs per-file during parsing (format, IDs, template resolution, edge vocabulary); stage 2 runs against the loaded graph cache (cross-file reference resolution, `maps-to` structural check, removed/renamed directionality, cycle detection). Same rule set across three deployment contexts — CLI, CI, and MCP startup subset — with the startup profile short-circuiting on the first subset error. Full treatment in [05 — Linting](05-linting.md).
 - **`@corum/adapters-api`** — The `SpecAdapter` interface (§6.3). Adapter host that loads registered adapters at startup.
 - **`@corum/adapter-openapi`, `@corum/adapter-asyncapi`, …** — Format-specific implementations. Each ships with its spec-aligned pack.
@@ -115,7 +115,7 @@ Adapters that translate external protocols to application commands and queries.
 
 - **`@corum/file-format`** — YAML 1.2 parser and emitter restricted to the safe subset ([ADR-002 § YAML Safety Constraints](../adr/ADR-002-graph-file-format-and-cluster-boundaries.md)). Cluster file schema, edge file schema, `graph.yaml` schema. Round-trip-stable emitter that preserves comments and key order on write-through. Given a node and its template, produces the canonical YAML layout (property key order, owned-child nesting) — the template is what tells the emitter *how* a node of a given type becomes YAML, so there is no per-type code in the emitter itself. This is the single write path used by MCP mutations, CLI edits, and spec-adapter imports alike.
 - **`@corum/repo`** — Git integration via `isomorphic-git` (see [04](04-libraries-tooling-and-testing.md)). Resolves refs, fetches incrementally, computes `git diff --name-only` between commit SHAs, commits mutation tool calls, pushes to the remote. Knows nothing about YAML — it deals in file paths and blob contents.
-- **`@corum/cache`** — SQLite schema and migration runner. Incremental-apply functions driven by the diff from `@corum/repo` and the parsed documents from `@corum/file-format`. The tables and CTEs for branch-overlay projection live here.
+- **`@corum/cache`** - SQLite schema and migration runner. It is a rebuildable projection of YAML files, not a second source of truth. Incremental-apply functions consume parsed documents from `@corum/file-format`; if the cache is missing or suspect, it is discarded and rebuilt from the working tree or Git ref.
 
 ---
 
@@ -140,16 +140,17 @@ Identical to cold start, but step 3 is a single incremental fetch — typically 
 
 ### 5.3 Mutation (MCP `create cluster`)
 
-Every mutation is an atomic transaction — the tool call either completes with the working tree fully updated *and* the cache in sync, or the working tree is untouched. See [§5.6 Persistence model](#56-persistence-model) for the full persistence semantics.
+Every mutation writes YAML first and treats SQLite as a projection. The command either leaves final YAML paths untouched, or writes the complete YAML batch and refreshes the cache from those written files. The cache is never the authoritative side of the transaction. See [�5.6 Persistence model](#56-persistence-model).
 
-1. Validate the request against the target template's JSON Schema (pre-flight — stage 1 file rules applied to the candidate).
-2. Resolve the node's template (`@corum/template-core`) to get the canonical YAML layout — property key order and owned-child nesting.
-3. Render the YAML document(s) via `@corum/file-format` to in-memory buffers (no disk write yet).
-4. Stage the filesystem change without touching final paths: write rendered YAML to temp siblings and, for replacements/removals, create rollback siblings for the current file contents.
-5. Open a SQLite transaction and apply the cache delta for the mutation.
-6. Run the stage 2 startup subset against the in-transaction cache state (new node ID uniqueness, resolvable edges, `maps-to` structural constraint). On hard error: rollback the SQLite transaction, remove temp/rollback siblings, surface the diagnostic - the working tree was never touched.
-7. Finalise the transaction: atomically rename temp siblings into their final paths, then commit the SQLite transaction. If finalisation fails before the cache commit, restore rollback siblings and rollback SQLite. If the process dies mid-finalisation, startup recovery uses the mutation journal to either complete the cache projection from disk or restore the previous files before serving.
-8. Return the layered cluster response. **No Git commit is made here** - working tree updates are eager, commits are explicit (see �5.6).
+1. Validate the request against the target template's JSON Schema where possible from the request alone.
+2. Resolve the node's template (`@corum/template-core`) to get the canonical YAML layout - property key order and owned-child nesting.
+3. Render the YAML document(s) via `@corum/file-format` to in-memory buffers.
+4. Parse those rendered buffers through the normal file-format parser and run all stage 1 lint rules against the candidate YAML. On hard error: discard the buffers and return diagnostics; no final file path was touched.
+5. Build a temporary graph projection by applying the parsed candidate documents to an isolated cache transaction or in-memory overlay. This is validation-only; it is not the live cache.
+6. Run the stage 2 startup subset against that temporary projection. On hard error: discard the overlay and buffers, remove temp files if any were created, and return diagnostics; the working tree and live cache are untouched.
+7. Stage the filesystem change as temp siblings and atomically rename the whole batch into the working tree. After this point, YAML is authoritative and externally visible.
+8. Refresh the live SQLite cache by parsing the YAML files that were actually written and applying the resulting diff. If cache refresh fails, mark the cache invalid and rebuild it from the working tree before serving further reads or mutations; do not roll back valid YAML because SQLite is only a projection.
+9. Return the layered cluster response. **No Git commit is made here** - working tree updates are eager, commits are explicit (see �5.6).
 
 ### 5.4 Import (`corum import openapi <file>`)
 
@@ -159,28 +160,30 @@ The import is one large transaction — every spec file produces one or more clu
 2. Parse the spec file (`@corum/adapter-openapi`, using `openapi-types` and a real parser).
 3. Produce a `CandidateGraph` — nodes with `state: proposed`, `extractedFrom` populated, candidate edges, idempotent IDs. The adapter produces logical graph data only; it never touches YAML or the filesystem.
 4. Reconcile against the live graph in `@corum/graph` — matching existing nodes by ID, diffing properties, proposing `maps-to` edges for field mappings.
-5. For each new or changed node, resolve its template and call `@corum/file-format` to emit the cluster file — the same write path used by MCP mutations. Write all files to the working tree atomically. Emit linter diagnostics for ambiguous cases (e.g. an OpenAPI schema that could be a request shape or a `DomainModel`).
+5. For each new or changed node, resolve its template and call `@corum/file-format` to emit candidate cluster files. The resulting YAML batch goes through the same validate -> temporary projection -> stage 2 -> atomic rename -> cache refresh flow as MCP mutations. Emit linter diagnostics for ambiguous cases (e.g. an OpenAPI schema that could be a request shape or a `DomainModel`).
 6. **Default:** leave the working tree dirty so the user can review the diff, make tweaks, and commit when ready. **With `--commit "message"`:** commit the entire import as one atomic Git commit for CI / scripted flows.
 
 ### 5.5 Direct file-access path
 
 An agent with a cloned repo edits a YAML file directly, commits, pushes. The MCP server picks it up on the next fetch cycle. Everything still works because the file format is the canonical contract — the MCP server's cache is a projection of it.
+Corum's write semantics mirror Git itself: a working tree that updates eagerly, and commits that are explicit. SQLite is a read/query acceleration layer rebuilt from YAML, not a second write model.
 
 ### 5.6 Persistence model
 
-Corum's write semantics mirror Git itself: a working tree that updates eagerly, and commits that are explicit. There are three layers.
 
-**1. Transaction = one command or tool call.** Each MCP tool invocation or CLI mutation is an atomic unit. Within it: validate -> render YAML -> stage temp files and rollback siblings -> apply the candidate cache delta inside a SQLite transaction -> run stage 2 validation -> atomically rename temp files into the working tree -> commit the SQLite transaction. If any step fails before finalisation completes, rollback siblings restore the previous files and the SQLite transaction is rolled back. No "dirty in-memory node" state outlives the call.
+**1. Transaction = one command or tool call.** Each MCP tool invocation or CLI mutation is an atomic YAML write unit. Within it: validate request -> render YAML -> parse candidate YAML -> run stage 1 -> build a temporary graph projection -> run stage 2 -> atomically rename the YAML batch into the working tree -> refresh the live cache from the written YAML. Before the rename, failure leaves final file paths untouched. After the rename, the YAML is the source of truth and cache repair means rebuilding the projection, not editing YAML back from SQLite.
 
-**2. Working tree = eager.** As soon as a mutation's transaction commits in-process, the YAML is on disk. External tools — editors, `git status`, the cache sync watcher, direct-file-access agents — see it immediately. There is no `save()` step; the process does not buffer mutations in RAM waiting to be flushed. This matters because the cache is a *projection of the files* and read traffic may run concurrently with writes.
+**2. Working tree = eager and authoritative.** As soon as a mutation's YAML batch is renamed into place, external tools - editors, `git status`, direct-file-access agents - see it immediately. There is no `save()` step and no durable cache-only state. This avoids a two-way sync problem: writes flow YAML -> cache, never cache -> YAML except through the same file-format emitter before the YAML write.
 
-**3. Git commit = explicit and batched.** Writing to the working tree is not the same as committing. A caller (human, agent, or CI) can fire ten `create-cluster` / `create-edge` tool calls, watch the working tree update after each, then commit once via the `sync` / `commit` CLI command or the corresponding MCP tool. Commits are the point where intent is captured in history and where branches get pushed. Deferring to an explicit commit step keeps history readable — a rename operation that touches N edge files lands as a single commit rather than N noisy ones.
+**3. SQLite cache = disposable projection.** The cache may be updated incrementally for speed, but its correctness is judged against the files. If the process crashes, a checksum mismatches, or cache refresh fails, startup discards or repairs the SQLite file by reparsing the working tree or target Git ref. No user data exists only in SQLite.
+
+**4. Git commit = explicit and batched.** Writing to the working tree is not the same as committing. A caller (human, agent, or CI) can fire ten `create-cluster` / `create-edge` tool calls, watch the working tree update after each, then commit once via the `sync` / `commit` CLI command or the corresponding MCP tool. Commits are the point where intent is captured in history and where branches get pushed. Deferring to an explicit commit step keeps history readable - a rename operation that touches N edge files lands as a single commit rather than N noisy ones.
 
 **Why not write-through to Git on every mutation?** Tempting for auditability, but every micro-edit would produce a commit, history becomes noise, and multi-file logical operations should land as one commit, not N.
 
-**Why not defer disk writes until an explicit `save()`?** Would let the cache and files drift, require a complex in-memory dirty-tracking layer, and break the invariant that *files are the source of truth*. Keeping the working tree eager keeps the model honest: if it's in the cache, it's on disk.
+**Why not mutate SQLite first?** That creates a two-way sync problem: the system must decide whether files or SQLite win after every crash or partial failure. Corum avoids that class of bugs by making YAML the only durable mutation target. Temporary projections are allowed for validation, but they are discarded unless and until the YAML write succeeds.
 
-**Rollback semantics.** Stage 2 validation runs *after* files are rendered and staged as temp siblings, and *after* the candidate cache delta has been applied inside an open SQLite transaction, but *before* temp-to-final rename and SQLite commit. A stage 2 hard error rolls back SQLite, discards temp files, removes rollback siblings, and leaves both the working tree and cache untouched. Finalisation renames temp files into final paths and then commits SQLite; if that finalisation fails before commit, rollback siblings restore the previous files and the SQLite transaction is rolled back. Once rename+commit succeeds, the transaction is committed in-process; from there, undoing a change is a normal Git operation (the user reverts in their editor or via `git checkout`). If the process crashes mid-finalisation, startup recovery reads the mutation journal before loading the graph and either completes the cache projection from the working tree or restores the previous file set before serving.
+**Rollback semantics.** Before temp-to-final rename, rollback means deleting temp files and candidate cache overlays. After temp-to-final rename succeeds, the mutation is committed to the working tree; if cache refresh fails, the cache is invalidated and rebuilt from YAML. Undoing a committed YAML change is a normal Git or editor operation.
 
 ---
 
@@ -188,8 +191,8 @@ Corum's write semantics mirror Git itself: a working tree that updates eagerly, 
 
 ### 6.1 Clean architecture layering
 
-- **Dependency rule:** arrows point inward. `@corum/schema` has no dependencies on anything in this repo. `@corum/graph` imports `@corum/schema` and `@corum/template-core` only. `@corum/mcp-server` imports the application layer; it does not reach into `@corum/cache` directly. Enforced via [`dependency-cruiser`](https://github.com/sverweij/dependency-cruiser).
-- **Ports and adapters where it matters:** `@corum/graph` declares interfaces for `GraphRepository`, `GraphCache`, and `SpecAdapter`. The SQLite cache, isomorphic-git repo, and OpenAPI adapter implement those interfaces. Swapping SQLite for Postgres in the hosted tier is a second implementation, not a rewrite.
+- **Dependency rule:** arrows point inward. `@corum/schema` and `@corum/template-core` are the innermost domain packages. `@corum/ports` is the inner boundary-contract package. Application packages consume ports; infrastructure packages implement ports; interface packages wire implementations in composition roots. Enforced via [`dependency-cruiser`](https://github.com/sverweij/dependency-cruiser).
+- **Ports and adapters where it matters:** `@corum/ports` declares interfaces for `GraphRepository`, `GraphCache`, staged file writes, and read snapshots. `@corum/graph` consumes those ports; `@corum/repo`, `@corum/cache`, and filesystem implementations provide them. Swapping SQLite for Postgres in the hosted tier is a second implementation, not a rewrite.
 - **No leakage in the core:** the domain and application layers never import `fs`, `node:child_process`, or a database driver. They receive repositories and caches as dependencies.
 
 ### 6.2 Extensibility points
@@ -227,7 +230,7 @@ Drawn from [ADR-003b § Invariants](../adr/ADR-003b-core-logical-data-model.md#i
 - Node IDs are globally unique across the repo; owned-node IDs are prefixed with their owner.
 - Nodes are never hard-deleted — removal is a state transition to `removed`. Edges *are* hard-deleted.
 - Edge endpoints must resolve to declared node IDs (linter at CI; runtime tolerates unresolved cross-repo references).
-- `maps-to` edges connect `Field` nodes only — this is an error-level linter rule.
+- `maps-to` edges connect nodes whose template declares the core semantic role `field` - this is an error-level linter rule.
 - Abstract templates cannot be instantiated.
 - Every node carries `state`, `stability`, `lastModifiedAt`, and `schemaVersion`.
 
@@ -246,7 +249,7 @@ These are implemented once in `@corum/graph` and `@corum/linter`; they are not d
 
 ## 8. What the core engine never does
 
-- Case-match on template names. The engine treats `APIEndpoint` and a team-defined `MyCustomEndpoint` identically.
+- Case-match on template names. The engine treats a template named `APIEndpoint` and a team-defined `MyCustomEndpoint` identically unless a template explicitly declares a reserved core semantic role. Core roles are stable contracts; template names are not.
 - Embed spec-format knowledge. OpenAPI lives in `@corum/adapter-openapi`, not in `@corum/graph`.
 - Reach for `fs` or `git` from the domain layer. Those live in `@corum/repo` and `@corum/file-format`, behind interfaces.
 - Mutate Git directly from the MCP tool implementations. Tool implementations call `@corum/graph` commands, which go through the repository port.
@@ -270,7 +273,7 @@ Recommended order. Each step is independently valuable — you can stop at any p
 1. **`@corum/schema`** — the logical data model. Write it, test it, nothing else. This is the reference every other package agrees on.
 2. **`@corum/template-core`** — pack loader, meta-schema, `extends` merge. Test with a handful of representative templates from ADR-004.
 3. **`@corum/file-format`** — cluster and edge YAML parse/emit, round-trip tests over the ADR-002 examples.
-4. **`@corum/pack-core` + `@corum/pack-domain` + `@corum/pack-rest` + `@corum/pack-messaging`** — ship the default template pack set as real packs loaded by the engine. No special-casing for defaults.
+4. **Built-in `.corum/packs/*`** - ship the default template pack set (`core`, `domain`, `rest`, `messaging`) as real pack directories loaded by the engine. No special-casing for defaults.
 5. **`@corum/repo`** — Git integration via `isomorphic-git`. Fetch, diff, commit, push. Test with a fixture repo.
 6. **`@corum/cache`** — SQLite schema, incremental apply, branch-overlay projection queries. Test with generated graphs of varying size.
 7. **`@corum/graph`** — command/query surface, branch projection, materialisation of owned nodes. The first point at which all five lower layers compose.
