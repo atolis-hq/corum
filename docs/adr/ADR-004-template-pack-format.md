@@ -149,7 +149,11 @@ Each pack is a directory with the same internal structure regardless of type.
 core/
   pack.yaml
   templates/
+    _base.yaml             # Implicitly inherited by all templates — declares schemas/enums sections
     Field.yaml             # core: true — required by the tool itself
+    Schema.yaml
+    EnumDefinition.yaml
+    EnumValue.yaml
   edge-types.yaml          # Reserved for future custom edge type extension (see ADR-004b)
   components/              # Reserved for UI components (future ADR)
 
@@ -320,6 +324,43 @@ A node can exist with just `name` and `version`. All other sections add schema e
 
 ---
 
+### Base template
+
+A special `_base.yaml` template in the `core` pack is implicitly inherited by every template. It declares the universal owned sections available on all node types — authors do not need to repeat these in their own templates.
+
+```yaml
+# core/templates/_base.yaml
+name: base
+version: "1.0.0"
+description: |
+  Implicitly inherited by all templates. Declares universal owned sections.
+
+schemas:
+  item-template: Schema
+  description: "Locally scoped Schema nodes owned by this node."
+
+enums:
+  item-template: EnumDefinition
+  description: "Locally scoped EnumDefinition nodes owned by this node."
+```
+
+---
+
+### Owned sections and `item-template`
+
+Template files declare owned child sections using `item-template` to reference the template that governs each item. The loader validates each item against the referenced template's `properties` schema — no duplication of the child schema is needed.
+
+```yaml
+# Owned section declaration pattern
+invariants:
+  item-template: Invariant
+  description: "Owned Invariant nodes. Each entry becomes an Invariant node."
+```
+
+This pattern applies wherever a node type owns child nodes of a specific template type. Universal sections (`schemas`, `enums`) come from `_base.yaml`. Template-specific sections are declared in the owning template.
+
+---
+
 ### Full template structure
 
 ```yaml
@@ -339,9 +380,9 @@ description: |
 # Universal node properties (id, template, state, stability, etc.) are always
 # present on every node and are not declared here.
 #
-# Owned child structures (request schema, response schemas, and their fields)
-# are governed by the cluster file format in ADR-002 and the Field core template,
-# not by this schema. Only flat, scalar-valued properties belong here.
+# properties may contain scalar values, objects, or string references that the
+# loader resolves to other nodes (e.g. request: "create-order-request" resolves
+# to a Schema node). Only the flat configuration of this node belongs here.
 properties:
   $defs:
     HttpMethod:
@@ -363,28 +404,29 @@ properties:
       pattern: "^/"
       description: "URL path pattern — e.g. /orders/{orderId}"
       examples: ["/orders", "/orders/{orderId}"]
-    auth:
+    request:
       type: string
-      default: "bearer-token"
-      description: "Authentication mechanism"
-      examples: ["bearer-token", "api-key", "none"]
-    basePath:
-      type: string
-      description: "Optional base path prefix applied to all routes in this service"
-      examples: ["/api/v1", "/internal"]
+      description: "Local schema name or global Schema node ID for the request body"
+    responses:
+      type: object
+      minProperties: 1
+      propertyNames:
+        pattern: "^(default|[1-5][0-9]{2})$"
+      additionalProperties:
+        type: string
+      description: "Map of HTTP status code to local schema name or global Schema node ID"
 
-# Edge declarations: which edge types this node may send and receive.
-# References names from the core edge type vocabulary defined in ADR-003b.
-# supports — participates in either direction (common case)
+# schemas: and enums: are inherited from _base.yaml — not declared here.
+
+# edge-types: declares which edge types this node may send and receive.
+# References names from the core edge type vocabulary defined in ADR-004b.
+# supports — participates in either direction
 # outgoing — sends only; incoming — receives only
-# See ADR-004b for the full declaration model and validation rules.
-edges:
-  outgoing: [calls, produces]
-  supports: [reads]
+edge-types:
+  outgoing: [reads, calls, produces]
+  incoming: [triggers]
 
 # UI section: display hints used by the generic renderer in v1.
-# Purpose-built UI components (bundled in components/) override these hints
-# when available. See the future UI component bundling ADR.
 ui:
   icon: api-endpoint
   colour: "#4A90D9"
@@ -447,7 +489,7 @@ ui:
 
 **Extension rules enforced by the linter:**
 - Child `properties` are merged with parent via `allOf` — child may not remove parent required properties
-- Child may override `description`, `ui`, and `edges`
+- Child may override `description`, `ui`, and `edge-types`
 - `extends` must reference a template present in the loaded packs
 - Circular extension chains are rejected
 
@@ -455,29 +497,36 @@ ui:
 
 ### `Field` template (core)
 
-`Field` is the only core template. The `type`, `nullable`, and `cardinality` properties are fixed — they are the structural invariants the graph depends on for field-level lineage. Teams may extend `Field` with additional properties.
+`Field` is the only core template. The `scalarType`/`objectRef`, `nullable`, and `cardinality` properties are fixed — they are the structural invariants the graph depends on for field-level lineage. Teams may extend `Field` with additional properties.
 
 ```yaml
 name: Field
 version: "1.0.0"
 core: true
 description: |
-  A named property within a schema node. Fields are the atomic unit of
+  A named property within a schema or model node. Fields are the atomic unit of
   field-level lineage. Every field is independently addressable, stateful,
   and can be connected to fields in other nodes via maps-to edges.
+
+  A field's type is either a primitive scalar (scalarType) or a reference to
+  another node that defines the type's shape (objectRef). These are mutually
+  exclusive.
 
 properties:
   type: object
   required:
-    - fieldType
     - nullable
     - cardinality
   properties:
-    fieldType:
+    scalarType:
+      type: string
+      enum: [uuid, string, integer, decimal, boolean, datetime, date, time]
+      description: "Primitive scalar type. Mutually exclusive with objectRef."
+    objectRef:
       type: string
       description: |
-        Scalar type (uuid, string, integer, decimal, boolean, datetime) or
-        a node ID referencing a DomainModel, EnumDefinition, or ValueObject
+        Local schema name, local enum name, or global node ID defining this
+        field's type. Resolved local-first. Mutually exclusive with scalarType.
     nullable:
       type: boolean
       description: "Whether this field may be absent or null"
@@ -485,17 +534,28 @@ properties:
       type: string
       enum: [one, many]
       description: "Whether this field holds a single value or a collection"
+  oneOf:
+    - required: [scalarType]
+      not: { required: [objectRef] }
+    - required: [objectRef]
+      not: { required: [scalarType] }
+
+edge-types:
+  incoming:
+    - has-field
+  supports:
+    - maps-to
+    - derived-from
 
 ui:
   icon: field
   colour: "#888888"
   displayProperties:
-    - fieldType
+    - scalarType
+    - objectRef
     - nullable
     - cardinality
 ```
-
-Note: the property is named `fieldType` rather than `type` to avoid collision with JSON Schema's own `type` keyword when the template's property schema is parsed.
 
 ---
 
@@ -640,7 +700,7 @@ From this ADR, the linter must enforce:
 - No two loaded packs define a template with the same name
 - Template `extends` references resolve to a template in the loaded packs
 - Child templates do not narrow or remove parent required properties
-- Edge type names in `edges.supports`, `edges.outgoing`, and `edges.incoming` declarations are from the core vocabulary (see ADR-004b)
+- Edge type names in `edge-types.supports`, `edge-types.outgoing`, and `edge-types.incoming` declarations are from the core vocabulary (see ADR-004b)
 
 ---
 

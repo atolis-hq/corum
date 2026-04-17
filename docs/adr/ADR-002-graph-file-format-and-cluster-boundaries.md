@@ -106,20 +106,20 @@ graph-repo/
   graph.yaml                              # Repo-level metadata, template pack declaration
   components/
     orders/                               # One directory per component
-      api-endpoints/                      # One subdirectory per node type (from template pack)
-        POST-orders.yaml                  # Cluster: endpoint + request/response schemas + fields
-        GET-orders-{id}.yaml
-      domain-models/
+      APIEndpoints/                       # Folder named after the template (PascalCase, plural)
+        create-order.yaml                 # Cluster: endpoint + request/response schemas + fields
+        get-order.yaml
+      DomainModels/
         order.yaml                        # Cluster: model + fields + enums + invariants + operations
         order-item.yaml
-      domain-events/
+      DomainEvents/
         order-placed.yaml                 # Cluster: event + payload schema + fields
-      shared-types/
+      ValueObjects/
         money.yaml                        # Cluster: shared value object used across models
       edges/
-        api-endpoints--domain-models.yaml # Within-component edges between these node types
-        api-endpoints--operations.yaml
-        operations--domain-events.yaml
+        APIEndpoints--DomainModels.yaml   # Within-component edges between these node types
+        APIEndpoints--DomainOperations.yaml
+        DomainOperations--DomainEvents.yaml
     payments/
       ...
   edges/
@@ -132,18 +132,20 @@ graph-repo/
 
 Node IDs are **fully qualified and declared explicitly in each file**. The folder structure is for human navigation only — it does not contribute to ID resolution.
 
-**Format:** `{component}.{node-type}.{node-name}`
+**Format:** `{component}.{TemplateName}.{node-name}`
+
+The template name segment matches the template name exactly (PascalCase singular), corresponding to the plural folder that contains the file.
 
 Examples:
-- `orders.api-endpoints.post-orders`
-- `orders.domain-models.order`
-- `payments.domain-models.payment`
+- `orders.APIEndpoint.create-order`
+- `orders.DomainModel.order`
+- `payments.DomainModel.payment`
 
 **Owned node IDs** extend the root node ID:
-- `orders.domain-models.order.fields.customer-id`
-- `orders.domain-models.order.enums.status`
-- `orders.domain-models.order.enums.status.values.cancelled`
-- `orders.api-endpoints.post-orders.request.fields.customer-id`
+- `orders.DomainModel.order.fields.customerId`
+- `orders.DomainModel.order.enums.order-status`
+- `orders.DomainModel.order.enums.order-status.values.cancelled`
+- `orders.APIEndpoint.create-order.schemas.create-order-request.fields.customerId`
 
 **Rationale for explicit over folder-derived IDs:** If IDs were derived from folder paths, reorganising the directory structure would silently break all edge references and field mappings. With explicit IDs in the file, a directory move is immediately caught by the linter — the declared ID no longer matches the expected path. Renames have the same blast radius either way; explicit IDs make that blast radius visible.
 
@@ -397,33 +399,28 @@ fields:
 Edge files declare typed, directional relationships between root nodes. Directionality is inside the file; the filename is alphabetical and carries no directional meaning.
 
 ```yaml
-# components/orders/edges/api-endpoints--domain-models.yaml
-
-schema-version: "1.0"
+# components/orders/edges/APIEndpoints--DomainModels.yaml
 
 edges:
-  - id: orders.api-endpoints.post-orders--reads--orders.domain-models.order
-    from: orders.api-endpoints.post-orders
-    to: orders.domain-models.order
+  - from: orders.APIEndpoint.create-order
+    to: orders.DomainModel.order
     type: reads
-    state: proposed
-    stability: unstable
-    description: "POST /orders reads from the Order domain model"
-    fieldMappings:
-      - fromField: orders.api-endpoints.post-orders.request.fields.customer-id
-        toField: orders.domain-models.order.fields.customer-id
-        notes: "Direct pass-through"
+    notes: POST /orders creates and returns an Order aggregate
 
-      - fromField: orders.api-endpoints.post-orders.response.201.fields.order-id
-        toField: orders.domain-models.order.fields.order-id
-        notes: "Direct pass-through"
+  - from: orders.APIEndpoint.create-order.schemas.create-order-response.fields.orderId
+    to: orders.DomainModel.order.fields.id
+    type: maps-to
+
+  - from: orders.APIEndpoint.create-order.schemas.create-order-request.fields.customerId
+    to: orders.DomainModel.order.fields.customerId
+    type: maps-to
 ```
 
-**Edge file naming:** alphabetical by the two node-type directory names being connected. Enforced by the linter. `api-endpoints--domain-models.yaml` not `domain-models--api-endpoints.yaml`.
+**Edge IDs are derived, not declared.** The loader computes each edge's ID as `{from}__{type}__{to}` at load time. Authors never write edge IDs — they are always derivable from the three required fields and cannot drift out of sync.
+
+**Edge file naming:** alphabetical by the two template folder names being connected. Enforced by the linter. `APIEndpoints--DomainModels.yaml` not `DomainModels--APIEndpoints.yaml`.
 
 **Cross-component edge file naming:** alphabetical by the two component directory names. Lives in the top-level `edges/` directory. `orders--payments.yaml` not `payments--orders.yaml`.
-
-**`fieldMappings` is serialisation shorthand.** In the logical model (ADR-003b), field-level lineage is represented as `maps-to` edges between field nodes — structurally identical to any other edge. In the file format, embedding field mappings inline on a root-to-root edge is a practical convenience that avoids generating large numbers of individual field-to-field edge files. When the MCP server loads the graph, each `fieldMappings` entry is materialised as a first-class `maps-to` edge between the two field nodes. The linter validates `fromField` and `toField` as valid field node IDs declared in their respective cluster files.
 
 ---
 
@@ -481,9 +478,9 @@ From this ADR, the linter must enforce:
 - All owned node IDs are prefixed with their root node ID
 - All edge files are named in alphabetical node-type order
 - All cross-component edge files are named in alphabetical component order
-- All `from`, `to`, `fromField`, and `toField` references resolve to a declared ID in the graph repo
+- All `from` and `to` references resolve to a declared node ID in the graph repo
 - No cross-node relationships declared inline in cluster files — they must be in edge files
-- All node-type directory names match a type declared in the active template pack
+- All template folder names are the plural PascalCase form of a template name declared in the active template pack
 - All `state` and `stability` values are valid members of their respective enumerations
 
 ---

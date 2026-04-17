@@ -1,0 +1,99 @@
+id: orders.DomainModel.order
+template: DomainModel
+component: orders
+state: agreed
+stability: stable
+schemaVersion: "1"
+lastModifiedAt: "2026-04-17"
+
+properties:
+  description: A placed customer order; aggregate root for the orders bounded context
+  aggregate: true
+  schema: order   # resolves to orders.DomainModel.order.schemas.order
+
+# --- Inline schemas ------------------------------------------------------
+# Become Schema nodes: orders.DomainModel.order.schemas.{key}
+# Fields within: ...schemas.{key}.fields.{field-name}
+
+schemas:
+  order:
+    description: Structure of the order aggregate
+    fields:
+      id:
+        scalarType: uuid
+        nullable: false
+        cardinality: one
+      customerId:
+        scalarType: uuid
+        nullable: false
+        cardinality: one
+      status:
+        objectRef: order-status   # resolves to local enum below
+        nullable: false
+        cardinality: one
+      items:
+        objectRef: order-line-item   # resolves to local schema below
+        nullable: false
+        cardinality: many
+      totalAmount:
+        scalarType: decimal
+        nullable: false
+        cardinality: one
+      notes:
+        scalarType: string
+        nullable: true
+        cardinality: one
+
+  order-line-item:
+    description: A single line item within the order
+    fields:
+      productId:
+        scalarType: uuid
+        nullable: false
+        cardinality: one
+      quantity:
+        scalarType: integer
+        nullable: false
+        cardinality: one
+      unitPrice:
+        scalarType: decimal
+        nullable: false
+        cardinality: one
+
+# --- Inline enums --------------------------------------------------------
+# Become EnumDefinition nodes: orders.DomainModel.order.enums.{key}
+# Values: ...enums.{key}.values.{value-key}
+
+enums:
+  order-status:
+    description: Lifecycle state of an order within the domain
+    values:
+      pending:
+        name: PENDING
+        description: Order received, awaiting processing
+      confirmed:
+        name: CONFIRMED
+        description: Order accepted and confirmed
+      cancelled:
+        name: CANCELLED
+        description: Order cancelled before fulfilment
+
+# --- Invariants ----------------------------------------------------------
+# Become Invariant nodes: orders.DomainModel.order.invariants.{key}
+
+invariants:
+  must-have-items:
+    description: An order must contain at least one line item at all times
+  total-matches-items:
+    description: totalAmount must equal the sum of (quantity × unitPrice) across all items
+
+# --- Operations ----------------------------------------------------------
+# Become DomainOperation nodes: orders.DomainModel.order.operations.{key}
+
+operations:
+  place:
+    description: Create a new order from validated customer intent
+  confirm:
+    description: Mark the order as confirmed by the fulfilment system
+  cancel:
+    description: Cancel an in-progress order, returning reserved stock

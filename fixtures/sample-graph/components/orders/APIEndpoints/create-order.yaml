@@ -1,0 +1,115 @@
+id: orders.APIEndpoint.create-order
+template: APIEndpoint
+component: orders
+state: agreed
+stability: stable
+schemaVersion: "1"
+lastModifiedAt: "2026-04-17"
+
+properties:
+  method: POST
+  path: /orders
+  request: create-order-request
+  responses:
+    "201": create-order-response
+    "400": problem-detail
+    "409": problem-detail
+
+# --- Inline schemas ------------------------------------------------------
+# Each entry becomes a Schema node: orders.APIEndpoint.create-order.schemas.{key}
+# Each field within becomes a Field node: ...schemas.{key}.fields.{field-name}
+
+schemas:
+  create-order-request:
+    description: Request body for creating an order
+    fields:
+      customerId:
+        scalarType: uuid
+        nullable: false
+        cardinality: one
+      items:
+        objectRef: order-line-item   # resolves to local schema below
+        nullable: false
+        cardinality: many
+      notes:
+        scalarType: string
+        nullable: true
+        cardinality: one
+
+  order-line-item:
+    description: A single line item within the order
+    fields:
+      productId:
+        scalarType: uuid
+        nullable: false
+        cardinality: one
+      quantity:
+        scalarType: integer
+        nullable: false
+        cardinality: one
+      unitPrice:
+        scalarType: decimal
+        nullable: false
+        cardinality: one
+
+  create-order-response:
+    description: Confirmed order details returned on successful creation
+    fields:
+      orderId:
+        scalarType: uuid
+        nullable: false
+        cardinality: one
+      status:
+        objectRef: order-status   # resolves to local enum below
+        nullable: false
+        cardinality: one
+      customerId:
+        scalarType: uuid
+        nullable: false
+        cardinality: one
+      items:
+        objectRef: order-line-item
+        nullable: false
+        cardinality: many
+      totalAmount:
+        scalarType: decimal
+        nullable: false
+        cardinality: one
+
+  problem-detail:
+    description: RFC 7807 error response body
+    fields:
+      type:
+        scalarType: string
+        nullable: false
+        cardinality: one
+      title:
+        scalarType: string
+        nullable: false
+        cardinality: one
+      status:
+        scalarType: integer
+        nullable: false
+        cardinality: one
+      detail:
+        scalarType: string
+        nullable: true
+        cardinality: one
+
+# --- Inline enums --------------------------------------------------------
+# Each entry becomes: orders.APIEndpoint.create-order.enums.{key}
+# Each value becomes: ...enums.{key}.values.{value-key}
+
+enums:
+  order-status:
+    description: Lifecycle state of an order as visible to API consumers
+    values:
+      pending:
+        name: PENDING
+        description: Order received, awaiting processing
+      confirmed:
+        name: CONFIRMED
+        description: Order accepted and confirmed by the system
+      cancelled:
+        name: CANCELLED
+        description: Order cancelled before fulfilment
