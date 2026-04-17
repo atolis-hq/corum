@@ -19,15 +19,13 @@ corum/
   .dependency-cruiser.cjs        # layer boundary rules
   vitest.config.ts               # shared test config
   packages/
-    schema/                      # @corum/schema            - domain: logical model
+    schema/                      # @corum/schema            - domain: logical model + port interfaces
     template-core/               # @corum/template-core     - domain: pack format + extends
-    ports/                       # @corum/ports             - inner boundary contracts
     file-format/                 # @corum/file-format       - infra: YAML cluster/edge files
     repo/                        # @corum/repo              - infra: Git integration
     cache/                       # @corum/cache             - infra: SQLite schema + apply
     graph/                       # @corum/graph             - application: commands/queries
     linter/                      # @corum/linter            - application: rule engine
-    adapters-api/                # @corum/adapters-api      - application: SpecAdapter port
     adapter-openapi/             # @corum/adapter-openapi   - adapter: OpenAPI 3
     adapter-asyncapi/            # @corum/adapter-asyncapi  - adapter: AsyncAPI 3
     mcp-server/                  # @corum/mcp-server        - interface: MCP tools
@@ -62,11 +60,10 @@ Each package belongs to exactly one layer. Dependencies point inward only.
 
 | Layer | Packages | May depend on |
 |---|---|---|
-| **Domain** | `schema`, `template-core` | (nothing in the repo) |
-| **Inner ports** | `ports` | Domain |
-| **Application** | `graph`, `linter`, `adapters-api` | Domain, Inner ports |
-| **Adapters** | `adapter-openapi`, `adapter-asyncapi` | Domain, Inner ports, `adapters-api` |
-| **Infrastructure** | `file-format`, `repo`, `cache` | Domain, Inner ports |
+| **Domain** | `schema` (includes `src/ports/`), `template-core` | (nothing in the repo) |
+| **Application** | `graph`, `linter` | Domain |
+| **Adapters** | `adapter-openapi`, `adapter-asyncapi` | Domain |
+| **Infrastructure** | `file-format`, `repo`, `cache` | Domain |
 | **Interface** | `mcp-server`, `cli`, `web` | Application, Infrastructure (via composition root only) |
 | **Composition** | `cli`, app bundles | Everything |
 
@@ -93,8 +90,15 @@ Enforced via `dependency-cruiser` rules (see [04 § Tooling](04-libraries-toolin
   identity.ts          # NodeId / EdgeId parsing, validation, formatting
   state.ts             # State + Stability enums and transitions
   errors.ts            # DomainError hierarchy
+  ports/
+    repository.ts      # GraphRepository, BranchRef, FileChange
+    cache.ts           # GraphCache, CacheApplyPlan, GraphReadSnapshot
+    adapters.ts        # SpecAdapter, OutputPlugin, CandidateGraph, AdapterContext,
+                       # WriteInput — interfaces consumed by adapter packages
   index.ts
 ```
+
+Port interfaces live in `src/ports/` rather than a separate package because they are pure TypeScript contracts with no logic, and every other package already depends on `@corum/schema`. Co-locating eliminates a package whose only content was type declarations.
 
 **Tests:** pure unit tests. Property-based tests for identity parsing via `fast-check`.
 
@@ -123,33 +127,13 @@ Enforced via `dependency-cruiser` rules (see [04 § Tooling](04-libraries-toolin
 
 ---
 
-### 3.2 Inner Ports
-
-#### `@corum/ports`
-
-**Purpose:** Boundary contracts owned by the inner architecture. Infrastructure implements these ports; application services consume them. Keeping them outside `@corum/graph` lets `@corum/repo` and `@corum/cache` implement the contracts without importing an application package.
-
-**Exports:**
-
-```
-/src
-  repository.ts        # GraphRepository, BranchRef, FileChange
-  cache.ts             # GraphCache, CacheApplyPlan, GraphReadSnapshot
-  filesystem.ts        # staged file write and recovery journal contracts
-  index.ts
-```
-
-**Dependencies:** `@corum/schema` only. If a contract needs a higher-level DTO, the DTO belongs here or in `@corum/schema`, not in an infrastructure package.
-
----
-
-### 3.3 Application
+### 3.2 Application
 
 #### `@corum/graph`
 
-**Purpose:** The command and query surface over the graph. Owns runtime orchestration, branch projection, and mutation workflows. Talks to infrastructure through `@corum/ports`.
+**Purpose:** The command and query surface over the graph. Owns runtime orchestration, branch projection, and mutation workflows. Talks to infrastructure through port interfaces declared in `@corum/schema`.
 
-**Ports:** imported from `@corum/ports`, implemented by `@corum/repo` and `@corum/cache`, and wired together in the CLI/MCP composition root. `@corum/graph` does not declare infrastructure contracts itself.
+**Ports:** imported from `@corum/schema` (`src/ports/`), implemented by `@corum/repo` and `@corum/cache`, and wired together in the CLI/MCP composition root. `@corum/graph` does not declare infrastructure contracts itself.
 
 **Commands** (mutations) and **queries** are exposed as a `GraphService` that composes a `GraphRepository`, a `GraphCache`, and a loaded pack set.
 
@@ -184,15 +168,9 @@ Rules receive a read-only view of the loaded graph + pack set and emit `Diagnost
 
 ---
 
-#### `@corum/adapters-api`
-
-**Purpose:** Declares the `SpecAdapter` interface and adapter registration/lookup.
-
-See [03 — Extensibility § Adapters](03-extensibility-packs-adapters-plugins.md#spec-adapters) for the full interface. The package itself is tiny — types plus a registry.
-
 ---
 
-### 3.4 Infrastructure
+### 3.3 Infrastructure
 
 #### `@corum/file-format`
 
@@ -253,11 +231,11 @@ Tests: spin up a fixture repo under `fixtures/graph-repos/` with a known commit 
   index.ts
 ```
 
-Uses `better-sqlite3` (synchronous, fast, embedded). The SQLite file is the same artefact as the local cache from ADR-001.
+Uses `node:sqlite` (Node 22.5+ built-in, no native compilation) for the synchronous SQLite API, and `umzug` for versioned schema migrations. The SQLite file is the same artefact as the local cache from ADR-001.
 
 ---
 
-### 3.5 Adapters and Built-in Pack Assets
+### 3.4 Adapters and Built-in Pack Assets
 
 Adapters are TypeScript packages. Template packs are repository assets under `.corum/packs`, not workspace packages. This keeps YAML templates visible as normal graph-pack data and prevents adapters from depending on `@corum/file-format` just to ship pack files.
 
@@ -281,7 +259,7 @@ See [03 - Extensibility](03-extensibility-packs-adapters-plugins.md) for the ful
 
 ---
 
-### 3.6 Interface
+### 3.5 Interface
 
 #### `@corum/mcp-server`
 
@@ -349,7 +327,7 @@ Each tool is a thin adapter: parse MCP arguments → call a `GraphService` metho
 
 ---
 
-### 3.7 UI (deferred)
+### 3.6 UI (deferred)
 
 #### `@corum/ui-core` (future)
 
@@ -370,21 +348,19 @@ Enforced in `.dependency-cruiser.cjs`:
 ```js
 module.exports = {
   forbidden: [
-    // Domain may not import anything outside the domain layer
+    // Domain may not import anything outside the domain layer.
+    // schema/ports subdirectory is still domain — this rule covers it.
     { from: { path: '^packages/schema' }, to: { pathNot: '^packages/schema' } },
     { from: { path: '^packages/template-core' }, to: { pathNot: '^packages/(schema|template-core)' } },
 
-    // Ports are inner boundary contracts. They may depend on domain only.
-    { from: { path: '^packages/ports' }, to: { pathNot: '^packages/(schema|template-core|ports)' } },
+    // Application may depend on domain only, not infrastructure or interfaces.
+    { from: { path: '^packages/(graph|linter)' }, to: { path: '^packages/(repo|cache|file-format|mcp-server|cli|web)' } },
 
-    // Application may depend on domain and ports, not infrastructure or interfaces.
-    { from: { path: '^packages/(graph|linter|adapters-api)' }, to: { path: '^packages/(repo|cache|file-format|mcp-server|cli|web)' } },
-
-    // Adapters may depend on domain, ports, and adapters-api, but not file-format or graph internals.
+    // Adapters may depend on domain only — SpecAdapter interface is in @corum/schema/ports.
     { from: { path: '^packages/adapter-' }, to: { path: '^packages/(repo|cache|file-format|graph|linter|mcp-server|cli|web)' } },
 
-    // Infrastructure may implement ports but may not import application or interface packages.
-    { from: { path: '^packages/(repo|cache|file-format)' }, to: { path: '^packages/(graph|linter|adapters-api|mcp-server|cli|web)' } },
+    // Infrastructure may implement domain port interfaces but may not import application or interface packages.
+    { from: { path: '^packages/(repo|cache|file-format)' }, to: { path: '^packages/(graph|linter|mcp-server|cli|web)' } },
 
     // Interface may not import infrastructure directly except through the CLI composition root.
     { from: { path: '^packages/mcp-server' }, to: { path: '^packages/(repo|cache|file-format)' } },
@@ -411,7 +387,7 @@ The `composition.ts` file in `@corum/cli` is excluded — it is the only entry p
 
 - **No default exports.** Always named.
 - **Errors are typed** — every package exports a discriminated `XxxError` union. No `throw new Error('...')` with stringly-typed messages at package boundaries.
-- **All I/O returns `Promise`.** No sync APIs at package boundaries (except `@corum/cache`, which exposes both because `better-sqlite3` is sync — the sync variants are internal-only).
+- **All I/O returns `Promise`.** No sync APIs at package boundaries (except `@corum/cache`, which exposes both because `node:sqlite` is sync — the sync variants are internal-only).
 - **No `any`.** `unknown` at boundaries, validated.
 - **Every package has a `test/` alongside `src/`.** Unit tests co-located; integration tests in a top-level `test/integration/`.
 

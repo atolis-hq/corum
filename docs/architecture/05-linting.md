@@ -12,7 +12,7 @@ Corum has no database enforcing referential integrity at write time. The graph's
 
 The linter is therefore not an optional quality tool — it is the **integrity layer** of the system. If the linter is weak or slow, the graph drifts; if it is strong and fast, the file-first storage model holds together.
 
-This document describes the two-stage pipeline that makes that possible, how the stages compose with the graph-loading pipeline, and how the linter is structured in code to support three deployment contexts (CI, local CLI, MCP startup) over the same rule catalogue.
+This document describes the two-stage pipeline that makes that possible, how it relates to the (separate) graph-loading pipeline, and how the linter is structured in code to support two deployment contexts (CLI and CI) over the same rule catalogue — with MCP startup handled by a lighter load-only path.
 
 ---
 
@@ -35,83 +35,68 @@ Same rule catalogue, three contexts ([ADR-006](../adr/ADR-006-linter-and-validat
 
 | Context | Runs | Purpose |
 |---|---|---|
-| **MCP server startup** | Startup subset only (declared in REF-006-rules) | Confirm the graph is loadable before serving mutation tools. Failures refuse the server start. |
+| **MCP server startup** | Pack schema validation + file parse only (no lint rules) | Confirm the graph is structurally loadable. Query tools served immediately. Mutation tools gated on a subsequent clean `corum lint`. |
 | **Local CLI (`corum lint`)** | Full rule set | Agents and engineers verify before committing. Identical output format and exit code to CI. |
 | **CI (PR check)** | Full rule set | Gate merges. Produces inline PR annotations via SARIF. |
 
-CLI and CI are the same runner invoked differently. Startup is a different runner profile that runs only the startup subset and short-circuits on the first startup-blocking error.
+CLI and CI are the same runner invoked identically. MCP startup is a separate, lighter phase — it loads the graph but defers linting to the first mutation call (or an explicit `corum lint`).
 
 ### 2.3 How the axes compose
 
-Every rule has a fixed stage. Most rules run in every deployment context. A rule in the startup subset is just a rule flagged as cheap and critical enough to run on MCP start — it still fires on CLI and CI.
-
-The startup subset contains rules from **both stages**. It includes pack-level and file-local structural rules (T-001, T-002, T-006-T-008, T-011, E-001) and core graph-wide integrity rules (R-001 ID uniqueness, E-002 `maps-to` field-role validation). This is why the MCP server must do a real graph load at startup, not just a file scan: to confirm a graph can be served at all, you need to load enough of it to check the invariants.
+Every rule has a fixed stage. All rules run in both CLI and CI contexts. At MCP startup no lint rules fire — the server loads packs (schema validation via `@corum/template-core`) and parses files (structural check via `@corum/file-format`), then immediately serves query tools. Mutation tools are gated on the server having seen a clean `corum lint` result; the first mutation call triggers a full lint pass if one has not already completed for the current working tree.
 
 ---
 
-## 3. The pipeline — how linting interleaves with loading
+## 3. The pipeline — loading then linting as separate phases
 
-The two-stage linter is tightly coupled to the graph-loading pipeline in `@corum/graph`. Running linting as a post-hoc pass over already-loaded data would double the work; instead, stage 1 rules fire *during* parsing, and stage 2 rules fire once the cache is fully populated.
+Loading and linting are two distinct, sequentially-ordered phases. Loading populates the cache; linting is a read-only pass over the result. Keeping them separate means `@corum/graph` has no compile-time dependency on `@corum/linter`, both phases are independently testable, and the MCP server can serve query tools as soon as loading completes without waiting for a full lint.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
+│ PHASE 1 — LOAD  (no lint rules fire)                            │
+│                                                                 │
 │ 1. Load template packs                                          │
 │    @corum/template-core                                         │
 │    ├─ Meta-schema validate every pack.yaml and template file    │
 │    ├─ Resolve `extends` chains, merge via JSON Schema `allOf`   │
-│    └─ Detect name collisions                                    │
+│    └─ Detect name collisions  (fatal — stops here on failure)   │
 │                                                                 │
-│    STAGE 1 pack rules fire here:                                │
-│    T-006 Field core present · T-007 name uniqueness             │
-│    T-008 extends resolves · T-009 no circular extends           │
-│    T-010 child does not narrow · T-011 requires satisfied       │
-│    E-003/E-004 template edge declarations                       │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │ loaded pack set (read-only)
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 2. Walk files, parse YAML, per-file validate                    │
-│    @corum/file-format + @corum/graph (orchestrator)             │
-│    For each cluster and edge file:                              │
-│    ├─ YAML 1.2 safe parse                                       │
-│    ├─ File-format schema check                                  │
-│    └─ Resolve node's template, validate properties JSON Schema  │
+│ 2. Walk files, parse YAML                                       │
+│    @corum/file-format                                           │
+│    ├─ YAML 1.2 safe parse (rejects anchors, !! tags)            │
+│    └─ File-format structural schema check                       │
+│       (parse failures surfaced as warnings; server continues    │
+│        with the parseable subset)                               │
 │                                                                 │
-│    STAGE 1 file rules fire here (per file):                     │
-│    F-001 ID format · F-002 owned ID prefix · F-003 edge naming  │
-│    F-004 node-type dir · F-005 YAML 1.2 · F-006 prohibited      │
-│    F-007 schema-version · F-008 compat · F-009/F-010 enums      │
-│    F-012 no inline edges · F-013 component registry             │
-│    T-001 template resolves · T-002 abstract instantiation       │
-│    T-003/T-004/T-005 property conformance · T-012 schema drift  │
-│    E-001 core edge type                                         │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │ parsed documents
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
 │ 3. Materialise into SQLite cache                                │
 │    @corum/cache                                                 │
 │    ├─ Upsert nodes, edges, fields, field_mappings               │
 │    ├─ Materialise owned children as first-class rows            │
-│    └─ Build branch overlays for open branches                   │
+│    └─ Branch overlays built lazily on first branch-scoped query │
 └───────────────────────────┬─────────────────────────────────────┘
-                            │ loaded graph (read-only snapshot)
+                            │ loaded graph ready — query tools served
+                            │ (MCP startup completes here)
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ 4. Graph-wide validation                                        │
-│    @corum/linter stage 2 runner over the cache                  │
+│ PHASE 2 — LINT  (CLI/CI, or before first MCP mutation)          │
 │                                                                 │
-│    STAGE 2 rules fire here (cross-file, whole-graph):           │
+│ 4. Stage 1 — per-file rules                                     │
+│    @corum/linter over the parsed file set + pack set            │
+│    F-001..F-013 (file format) · T-001..T-012 (template)         │
+│    E-001, E-003/E-004 (edge declaration)                        │
+│                                                                 │
+│ 5. Stage 2 — graph-wide rules                                   │
+│    @corum/linter over the cache snapshot                        │
 │    R-001 ID uniqueness · R-002 edge endpoint resolution         │
 │    R-003 cross-repo references · R-004 removed node isolation   │
 │    R-005 renamed-from directionality                            │
 │    F-011 fieldMappings endpoint resolution                      │
-|    E-002 maps-to field-role nodes; E-005/E-006 source/target     |
+│    E-002 maps-to field-role nodes · E-005/E-006 source/target   │
 │    edge constraints · E-007 renamed-from cycle                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 3.1 Why stage 2 *must* load the data
+### 3.1 Why stage 2 *must* run after full materialisation
 
 Stage 2 rules depend on cross-file resolution that cannot be computed from a single file:
 
@@ -121,7 +106,7 @@ Stage 2 rules depend on cross-file resolution that cannot be computed from a sin
 - **E-005/E-006 source/target constraint checks** require both endpoint nodes *and* their templates loaded, to see whether the edge type is declared on either side.
 - **E-007 renamed-from cycle detection** requires walking the graph of `renamed-from` edges.
 
-Running these rules against a partially-loaded or streaming pipeline would produce false positives (missing nodes look unresolved when they're just not read yet). The architecture therefore enforces a clean boundary: **stage 1 completes across all files before stage 2 runs**. The cache is the snapshot that stage 2 reads.
+Running these rules against a partially-loaded or streaming pipeline would produce false positives (missing nodes look unresolved when they're just not read yet). Stage 1 completes across all files before stage 2 runs. The cache snapshot is what stage 2 reads — queried as indexed lookups rather than file scans (see §5.3).
 
 ### 3.2 Fast path for incremental linting
 
@@ -142,10 +127,11 @@ Stage 2 queries are the hot path — they inform every rule's implementation (se
 
 ### 4.1 MCP server startup (`@corum/mcp-server`)
 
-- Runs the startup subset only (declared rule IDs in [REF-006-rules](../adr/REF-006-rules.md#startup-subset)).
-- Invoked after packs load and the cache is populated; in practice both stage 1 and stage 2 rules from the subset fire, interleaved with the loading pipeline above.
-- A single `error` severity finding refuses server startup and returns a structured failure to the MCP client with rule ID, file, line, and a suggested fix. Mutation tools are not served.
-- Query tools may be served even on startup failure if configured — degraded-read mode for inspection — but this is off by default.
+- Loads template packs via `@corum/template-core` (meta-schema validation, `extends` resolution, collision detection). Pack parse failures are fatal — a malformed pack cannot be used.
+- Parses all cluster and edge files via `@corum/file-format` (structural schema check only — no lint rules). Parse failures for individual files are surfaced as warnings; the server starts with the parseable subset.
+- Populates the SQLite cache and **immediately serves query tools** (`get-cluster`, `search`, `get-lineage`, etc.).
+- **Mutation tools are gated**: the server checks whether a full `corum lint` has been run and passed for the current working tree. If not, the first mutation call triggers a full lint pass inline before proceeding. If lint produces errors, the mutation is rejected and diagnostics are returned.
+- Branch overlays (`branch_nodes`, `branch_edges`) are populated lazily on the first branch-scoped query rather than at startup.
 
 ### 4.2 Local CLI (`corum lint`)
 
@@ -178,10 +164,10 @@ packages/linter/
     diagnostic.ts              # Diagnostic, Severity, RuleMetadata types
     rule.ts                    # Rule<Stage1Ctx>, Rule<Stage2Ctx> interfaces
     runner/
-      index.ts                 # LinterRunner orchestrator
-      profile.ts               # DeploymentProfile: cli | ci | startup
-      stage1.ts                # walks files, invokes Stage1 rules
-      stage2.ts                # walks loaded graph, invokes Stage2 rules
+      index.ts                 # lintGraph() entry point
+      profile.ts               # DeploymentProfile: cli | ci
+      stage1.ts                # runs Stage1 rules over parsed file set
+      stage2.ts                # runs Stage2 rules over cache snapshot
       incremental.ts           # --changed-since fast path
     config.ts                  # parses `linter` block of graph.yaml
     rules/
@@ -234,7 +220,6 @@ export interface RuleMetadata {
   readonly source: string;         // e.g. "ADR-003b"
   readonly defaultSeverity: Severity;
   readonly promotable: boolean;
-  readonly inStartupSubset: boolean;
   readonly stage: 1 | 2;
 }
 
@@ -265,7 +250,7 @@ Both rule kinds return lazy iterators so large result sets stream to the formatt
 
 ### 5.2 Why two interfaces rather than one
 
-The rule interfaces differ in what they receive. A unified `ctx` with both `file` and `graph` would tempt stage 1 rules to reach into the graph — defeating the streaming-per-file model and slowing CI. Two interfaces make the dependency explicit and let the runner schedule them differently: stage 1 runs concurrently across files; stage 2 runs once, serially, after the graph is ready.
+The rule interfaces differ in what they receive. A unified `ctx` with both `file` and `graph` would tempt stage 1 rules to reach into the graph — preventing concurrent file-level execution and slowing CI. Two interfaces make the dependency explicit and let the runner schedule them differently: stage 1 runs concurrently across parsed files; stage 2 runs once, serially, against the fully-materialised cache snapshot.
 
 ### 5.3 Graph query surface for stage 2
 
@@ -284,49 +269,58 @@ The cache pre-computes indexes that turn most stage 2 rules into indexed lookups
 
 ## 6. Interaction with the graph-loading pipeline
 
-`@corum/graph` is the orchestrator. It composes the packs, the file-format parser, the cache, and the linter runner:
+Loading and linting are separate functions. `@corum/graph` owns loading and has no compile-time dependency on `@corum/linter`. The CLI and MCP server call both in sequence; the split is what lets the MCP server serve queries before linting completes.
 
 ```ts
-// Simplified pseudocode in @corum/graph/src/load.ts
+// @corum/graph/src/load.ts — loading only, no lint
 export async function loadGraph(opts: LoadOptions): Promise<LoadedGraph> {
-  const diagnostics = new DiagnosticSink();
+  // Step 1 — packs (schema validation, extends resolution)
+  const packs = await templateCore.loadPacks(opts.graphConfig);
+  // Fatal if any pack fails to parse or resolves a collision — cannot continue.
 
-  // Step 1 — packs (stage 1 pack rules)
-  const packs = await templateCore.loadPacks(opts.graphConfig, { diagnostics });
-  linter.runStage1Pack(packs, diagnostics);
-
-  if (diagnostics.hasStartupBlockingError(opts.profile)) return abort(diagnostics);
-
-  // Step 2 — parse files (stage 1 file rules, per file)
+  // Step 2 — parse files (structural validity only, no lint rules)
   const parsedFiles: ParsedFile[] = [];
   for await (const file of repo.walkGraphFiles(opts.ref)) {
-    const parsed = fileFormat.parse(file);
-    linter.runStage1File(parsed, packs, diagnostics);
+    const parsed = fileFormat.parse(file);   // surfacing parse errors as warnings
     parsedFiles.push(parsed);
   }
 
-  if (diagnostics.hasStartupBlockingError(opts.profile)) return abort(diagnostics);
-
   // Step 3 — materialise
   const cache = await cacheImpl.apply(buildApplyPlan(parsedFiles));
+  // Branch overlays are built lazily; not populated here.
 
-  // Step 4 — stage 2
-  const snapshot = cache.snapshot();
-  for await (const diag of linter.runStage2(snapshot, packs, opts.profile)) {
+  return { cache, packs, parsedFiles };
+}
+
+// @corum/linter/src/runner/index.ts — separate lint pass
+export async function lintGraph(
+  loaded: LoadedGraph,
+  profile: DeploymentProfile,
+): Promise<DiagnosticSink> {
+  const diagnostics = new DiagnosticSink();
+
+  // Stage 1 — per-file rules, run concurrently
+  await Promise.all(
+    loaded.parsedFiles.map(file =>
+      stage1Runner.runFile(file, loaded.packs, diagnostics),
+    ),
+  );
+
+  // Stage 2 — graph-wide rules, serially against cache snapshot
+  const snapshot = loaded.cache.snapshot();
+  for await (const diag of stage2Runner.run(snapshot, loaded.packs)) {
     diagnostics.add(diag);
   }
 
-  if (diagnostics.hasStartupBlockingError(opts.profile)) return abort(diagnostics);
-
-  return { cache, packs, diagnostics };
+  return diagnostics;
 }
 ```
 
 Three properties worth calling out:
 
-1. **Early exit on startup-blocking errors.** The MCP startup profile aborts as soon as a subset-error fires, without materialising the rest of the graph. CLI and CI profiles always complete all stages so the full diagnostic set is available.
-2. **Diagnostics are a first-class output of loading.** Every loader call returns a `LoadedGraph` with a `diagnostics` field. Non-startup consumers (CLI, CI) iterate this to produce reports; MCP consumers check it to decide whether to serve mutation tools.
-3. **The linter never writes.** It is a read-only consumer of packs, parsed files, and the cache snapshot. Mutation tools in the MCP server run the linter's startup subset after their own write but still never allow the linter to mutate.
+1. **`@corum/graph` does not import `@corum/linter`.** The MCP server and CLI wire them together in the composition root. This removes a circular-risk dependency and makes each independently testable.
+2. **Diagnostics flow from lint, not from load.** `loadGraph` returns a `LoadedGraph` with no diagnostics field. `lintGraph` returns a `DiagnosticSink`. Callers (CLI, CI, MCP mutation gate) decide what to do with the result.
+3. **The linter never writes.** It is a read-only consumer of packs, parsed files, and the cache snapshot.
 
 ---
 
@@ -355,7 +349,7 @@ Covered in [04 — Testing](04-libraries-tooling-and-testing.md#3-testing-strate
 
 - **Per-rule fixtures.** Each rule has a minimal fixture that triggers it exactly once, and a sibling fixture that passes. These are the regression net — a rule change that breaks either is caught immediately.
 - **Whole-graph fixtures.** A single handcrafted fixture graph (`fixtures/linter-golden/`) exercises every rule at least once. Expected diagnostics are asserted against a golden JSON. PRs that change rule output surface as a golden-file diff.
-- **Staged runs.** Tests cover each deployment profile (cli, ci, startup) — startup must produce the declared subset exactly and exit early on the first blocking error.
+- **Load vs. lint separation.** Tests confirm that `loadGraph` produces no diagnostics — it returns a `LoadedGraph` only. `lintGraph` is tested separately against a pre-loaded graph fixture, covering CLI and CI profiles.
 - **Incremental.** Tests for the `--changed-since` fast path assert that a change touching one file produces the same diagnostics as a full run, for affected files only.
 
 ---
@@ -363,7 +357,7 @@ Covered in [04 — Testing](04-libraries-tooling-and-testing.md#3-testing-strate
 ## 9. Future extensions
 
 - **Pack-defined custom rules** ([ADR-006 Option C](../adr/ADR-006-linter-and-validator.md#option-c-custom-rules-via-pack-defined-validators-future)) — deferred. When introduced, custom rules ship inside packs and slot into the stage 1 or stage 2 pipeline based on their declared input needs (file vs. graph). The existing two-stage boundary is what makes custom rules safe to host — a custom rule declares its stage and the runner enforces it.
-- **Lint-on-write in the MCP server** beyond the startup subset — rejected for v1 (ADR-006 decision 1). Revisit when benchmarks show the subset is missing writes it could cheaply catch.
+- **Lint-on-write in the MCP server** beyond the mutation gate — considered and deferred for v1 (ADR-006 decision 1). The current model (full lint before first mutation, then per-mutation stage 1 + post-write stage 2) is the balance point; revisit if profiling shows the post-write stage 2 pass is too slow for interactive use.
 - **Auto-fix hints.** Stage 1 rules often know the exact text to fix (e.g. F-003 edge file naming). An optional `fix` field on `Diagnostic` can surface a suggested replacement — deferred until the CLI has an interactive mode.
 
 ---

@@ -13,8 +13,8 @@ The Corum engine has no hardcoded node types, no built-in knowledge of any spec 
 | Extension point | Owned by | Distribution | Implementation layer |
 |---|---|---|---|
 | **Template pack** | `@corum/template-core` | `.corum/packs/*`, local path, or npm package | Domain |
-| **Spec adapter** | `@corum/adapters-api` | npm package, typically re-exported by a pack | Application |
-| **Output plugin** | `@corum/adapters-api` (shared port) | npm package | Application |
+| **Spec adapter** | `@corum/schema` (`src/ports/adapters.ts`) | npm package, typically re-exported by a pack | Adapters |
+| **Output plugin** | `@corum/schema` (`src/ports/adapters.ts`) | npm package | Adapters |
 | **View plugin (web)** | Future web-side registry | npm package | Interface |
 
 The engine depends on none of these concretely. It depends on their interfaces only.
@@ -92,7 +92,7 @@ A question the architecture had to answer early: should spec formats (OpenAPI, A
 
 ### 3.2 The `SpecAdapter` interface
 
-Declared in `@corum/adapters-api`:
+Declared in `@corum/schema/src/ports/adapters.ts`. Adapter packages depend only on `@corum/schema` — no application-layer imports required.
 
 ```ts
 export interface SpecAdapter {
@@ -140,10 +140,19 @@ export interface AdapterContext {
   readonly packs: LoadedPack[];
   /** The active namespace being imported into, if scoped. */
   readonly namespace?: string;
-  /** Read-only access to the current graph for reconciliation hints. */
-  readonly graph: Pick<GraphService, 'listClusters' | 'getCluster' | 'getTemplate'>;
+  /** Read-only access to the current graph for reconciliation hints.
+   *  Declared as a structural interface here so adapters don't depend on @corum/graph. */
+  readonly graph: GraphQueryFacade;
   /** Diagnostics surface — adapters raise warnings/errors rather than throwing. */
   emit(diagnostic: AdapterDiagnostic): void;
+}
+
+/** Minimal read-only graph surface needed by adapters during reconciliation.
+ *  @corum/graph's GraphService implements this structurally. */
+export interface GraphQueryFacade {
+  listClusters(namespace?: string): Promise<Node[]>;
+  getCluster(id: NodeId): Promise<Node | undefined>;
+  getTemplate(name: string): Promise<Template | undefined>;
 }
 
 export interface CandidateGraph {
@@ -195,7 +204,7 @@ This is where most of the "cleverness" of the import pipeline lives, not in the 
 
 ### 3.4 Adapter packaging
 
-Each adapter is a standalone package (`@corum/adapter-openapi`) that declares which template pack it requires. Built-in spec-aligned packs live under `.corum/packs`; package installation concerns belong to adapters and CLI distribution, not to the pack YAML itself.
+Each adapter is a standalone package (`@corum/adapter-openapi`) that depends only on `@corum/schema` (for `SpecAdapter`, `CandidateGraph`, and domain types). No application-layer imports. Built-in spec-aligned packs live under `.corum/packs`; package installation concerns belong to adapters and CLI distribution, not to the pack YAML itself.
 
 The MCP server and CLI discover adapters via adapter registration. A loaded pack may name the adapter it is commonly paired with, but the pack remains data and does not import adapter code:
 
@@ -217,7 +226,7 @@ adapter:
 
 ## 4. Output plugins
 
-An output plugin is a write-only variant of a spec adapter. Some formats are export-only (e.g. Markdown docs, Mermaid diagrams, a Confluence page). They implement a subset of `SpecAdapter`:
+An output plugin is a write-only variant of a spec adapter. Some formats are export-only (e.g. Markdown docs, Mermaid diagrams, a Confluence page). They implement a subset of `SpecAdapter`, declared alongside it in `@corum/schema/src/ports/adapters.ts`:
 
 ```ts
 export interface OutputPlugin {
@@ -275,7 +284,7 @@ This constraint is intentional. It keeps the core engine small, auditable, and f
 Each extension point has a dedicated test harness in the repo:
 
 - **Template packs** - a `test/packs.ts` harness loads every pack under `.corum/packs/`, resolves `extends`, meta-schema-validates, and asserts that the minimal examples in each pack load without errors. Runs in CI on every PR.
-- **Adapters** — a contract test suite in `@corum/adapters-api/test/contract.ts` that any `SpecAdapter` implementation can import and run. Covers: `canRead` behaviour on the happy path and rejected sources, idempotent `read` (running twice produces the same `CandidateGraph`), `write` round-trip where applicable, `AdapterContext.emit` usage for every warning.
+- **Adapters** — a contract test suite in `packages/adapter-openapi/test/contract.ts` (and similarly for each adapter) that any `SpecAdapter` implementation can import and run against its own implementation. The suite is co-located with the first adapter and exported as a shared test helper. Covers: `canRead` behaviour on the happy path and rejected sources, idempotent `read` (running twice produces the same `CandidateGraph`), `write` round-trip where applicable, `AdapterContext.emit` usage for every warning.
 - **Output plugins** — same shape as adapters, write-only half.
 - **End-to-end import → graph → export** tests in `test/integration/` use real fixture OpenAPI files to verify that extraction + reconciliation produces the expected cluster files on disk.
 

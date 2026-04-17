@@ -36,6 +36,7 @@ Each selection below names a library, the layer it belongs to, and the **only** 
 |---|---|---|---|
 | Git | `isomorphic-git` | MIT | Pure JS reimplementation of Git — closest equivalent to C#'s LibGit2Sharp in spirit. No native bindings, no shell-out, no system `git` required. Works identically on Windows/macOS/Linux/CI containers. Fits the zero-infra mandate of [ADR-001](../adr/ADR-001-storage-and-interaction-architecture.md) |
 | Diff between refs | `isomorphic-git` `walk()` + own diff | MIT | We only need name-only diff per ADR-001 §Cache Model |
+| Atomic file writes | `write-file-atomic` | ISC | Temp-sibling + atomic rename for mutation write path; handles cross-platform edge cases and replaces the bespoke recovery-journal contract |
 | Glob | `fast-glob` | MIT | For linter `ignore` patterns in `graph.yaml` |
 | Path handling | Node stdlib | — | No dep |
 
@@ -48,10 +49,8 @@ Each selection below names a library, the layer it belongs to, and the **only** 
 
 | Concern | Library | License | Why |
 |---|---|---|---|
-| Embedded SQLite | `better-sqlite3` | MIT | Synchronous API (matches the single-agent-session model); fastest bindings; battle-tested |
-| Migrations | own lightweight runner | — | `better-sqlite3` + a migrations table; full ORM or migration framework is overkill |
-
-*Alternative:* `node:sqlite` (Node 22 stdlib). Attractive but still experimental in 22 LTS; revisit for v2 once stable.
+| Embedded SQLite | `node:sqlite` | — | Node 22.5+ built-in; no native compilation required; synchronous API. Eliminates the native-toolchain dependency that `better-sqlite3` would introduce — consistent with the zero-native-build constraint applied to `isomorphic-git` |
+| Migrations | `umzug` | MIT | Migration-only library (no ORM); versioned, file-based, minimal. Addresses the migration concern without the query-shaping overhead of a full ORM |
 
 ### 1.5 MCP
 
@@ -93,7 +92,8 @@ Deferred — these are placeholder commitments, revisable when the UI ADR lands.
 
 ### 1.9 Libraries we deliberately don't use
 
-- **ORMs (`drizzle`, `prisma`, `typeorm`)** — SQLite CTEs for recursive graph queries work better when written directly. ORMs get in the way of the projection queries.
+- **ORMs (`drizzle`, `prisma`, `typeorm`)** — SQLite CTEs for recursive graph queries work better when written directly. ORMs get in the way of the projection queries. (`umzug` is migration-only and not an ORM.)
+- **`better-sqlite3`** — requires native bindings (node-gyp, platform compiler), violating the zero-native-toolchain constraint. `node:sqlite` (Node 22.5+, stable) covers the same synchronous SQLite API without native compilation.
 - **`js-yaml`** — YAML 1.1; suffers the Norway problem (`NO` parsed as `false`). Prohibited by [ADR-002](../adr/ADR-002-graph-file-format-and-cluster-boundaries.md#yaml-safety-constraints).
 - **`chalk`** — big dependency tree for what `picocolors` does in 100 lines.
 - **`lodash`** — modern TypeScript has what we need in the stdlib and in small focused packages.
@@ -149,9 +149,9 @@ Target coverage: 95%+ line and branch. The domain is small and worth exhausting.
 
 ### 3.2 Application — unit tests with in-memory fakes
 
-Packages: `@corum/graph`, `@corum/linter`, `@corum/adapters-api`.
+Packages: `@corum/graph`, `@corum/linter`.
 
-- Tests run against in-memory `GraphRepository` and `GraphCache` fakes that implement the contracts from `@corum/ports`.
+- Tests run against in-memory `GraphRepository` and `GraphCache` fakes that implement the port contracts from `@corum/schema`.
 - Linter rules tested per-rule, each with representative fixture files exercising both pass and fail cases. The fixtures live under `packages/linter/test/fixtures/` as minimal YAML files.
 - Contract tests for the `GraphCache` port run against both the fake and the real `@corum/cache` implementation - any behaviour divergence is a bug.
 
@@ -183,7 +183,7 @@ All integration tests are deterministic — no wall-clock sleeps, fixed `lastMod
 
 ### 3.6 Contract tests for extensions
 
-Declared in `@corum/adapters-api/test/contract.ts`. Any adapter or output plugin package imports this suite and runs it against its implementation. This is the primary safety net for third-party extensions.
+The contract test suite is co-located with `@corum/adapter-openapi` and exported as a shared test helper. Any adapter or output plugin imports and runs it against its own implementation. This is the primary safety net for third-party extensions.
 
 ### 3.7 Performance
 
