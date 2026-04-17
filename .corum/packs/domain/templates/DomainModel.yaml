@@ -3,17 +3,58 @@ version: "1.0.0"
 core: false
 abstract: false
 description: |
-  A domain entity or aggregate root expressed as a named model with
-  fields, enums, invariants, and operations owned in its cluster file.
+  A domain entity or aggregate root expressed as a named model with fields,
+  enums, schemas, invariants, and operations owned in its cluster file.
 
-edges:
+  Fields in the fields block become Field nodes at {node-id}.fields.{field-name}.
+  Enums in the enums block become EnumDefinition nodes at
+  {node-id}.enums.{local-name} with EnumValue nodes at
+  {node-id}.enums.{local-name}.values.{value-key}.
+  Complex object types for fields are defined in the schemas block; each becomes
+  a Schema node at {node-id}.schemas.{local-name} with Field nodes at
+  {node-id}.schemas.{local-name}.fields.{field-name}.
+  Invariants become Invariant nodes at {node-id}.invariants.{key}.
+  Operations become DomainOperation nodes at {node-id}.operations.{key}.
+
+  Reference resolution order for objectRef values in the fields or schemas blocks:
+    1. Local schemas block — resolved to {node-id}.schemas.{local-name}
+    2. Local enums block  — resolved to {node-id}.enums.{local-name}
+    3. Global node ID     — resolved against the graph; generates a reads edge
+
+properties:
+  type: object
+  additionalProperties: false
+  properties:
+    description:
+      type: string
+      description: "Human-readable description of what this model represents"
+
+invariants:
+  item-template: Invariant
+  description: |
+    Business rules that must always hold for this model. Each entry becomes
+    an Invariant node with ID {node-id}.invariants.{key}.
+
+operations:
+  item-template: DomainOperation
+  description: |
+    Named behaviours this model exposes. Each entry becomes a DomainOperation
+    node with ID {node-id}.operations.{key}.
+
+# schemas: and enums: inherited from base (_base.yaml)
+
+edge-types:
+  outgoing:
+    - has-field
+    - has-value
+    - produces
   supports:
     - reads
     - derived-from
-  outgoing:
-    - produces
 
 ui:
   icon: domain-model
   colour: "#2E8B57"
-  displayProperties: []
+  displayProperties:
+    - description
+    - aggregate

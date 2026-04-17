@@ -4,9 +4,21 @@ core: false
 abstract: false
 description: |
   A named unit of behaviour within a domain model. Behavioural flow is
-  expressed through graph edges rather than embedded execution logic.
+  expressed through graph edges rather than embedded execution logic — what
+  this operation reads, what events it produces, and what it calls or triggers
+  are all edges on the node rather than inline properties.
 
-edges:
+properties:
+  type: object
+  additionalProperties: false
+  required:
+    - description
+  properties:
+    description:
+      type: string
+      description: "What this operation does within the model"
+
+edge-types:
   supports:
     - reads
   outgoing:
@@ -20,4 +32,5 @@ edges:
 ui:
   icon: domain-operation
   colour: "#5B8C5A"
-  displayProperties: []
+  displayProperties:
+    - description

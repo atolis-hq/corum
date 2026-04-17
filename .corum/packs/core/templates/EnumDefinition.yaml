@@ -6,28 +6,35 @@ description: |
   A named set of discrete values. EnumDefinition is the boundary node for an
   enumerated type; the actual constants are represented as owned EnumValue nodes
   rather than inline strings. This preserves independent addressability for each
-  value — every value can carry its own state, stability, deprecation reason,
-  and threads.
-
-  EnumDefinition carries no properties of its own beyond the universal node
-  properties. Its shape is entirely expressed through the EnumValue nodes it
-  owns via has-value edges.
+  value — every value can carry its own state, stability, and deprecation reason.
 
   When an EnumDefinition is defined inline within a cluster file (in the enums
-  block of an APIEndpoint, or within a DomainModel or ValueObject cluster), the
-  has-value edges to its values are implied by structure and extracted
-  automatically. Standalone EnumDefinition cluster files are used for enum types
-  shared across multiple nodes.
+  block of an APIEndpoint or DomainModel), has-value edges are implied by
+  position and extracted automatically. Standalone EnumDefinition cluster files
+  are used for enum types shared across multiple nodes.
 
 properties:
   type: object
   additionalProperties: false
+  properties:
+    description:
+      type: string
+      description: "Human-readable description of what this enum represents"
 
-edges:
+values:
+  item-template: EnumValue
+  description: |
+    Owned EnumValue nodes for this definition. Each entry becomes an EnumValue
+    node with ID {node-id}.values.{value-key}. has-value edges are implied by
+    position. The map key is the local addressing name; the name property is
+    the actual string constant in the contract (e.g. PENDING, CONFIRMED).
+
+edge-types:
   outgoing:
     - has-value
 
 ui:
   icon: enum-definition
   colour: "#8B6A9A"
-  displayProperties: []
+  displayProperties:
+    - description

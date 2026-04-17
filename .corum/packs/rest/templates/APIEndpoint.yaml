@@ -46,9 +46,6 @@ properties:
         - PATCH
         - TRACE
       description: "HTTP method for this operation"
-      examples:
-        - GET
-        - POST
 
     path:
       type: string
@@ -84,139 +81,15 @@ properties:
         - "201": order-created-response
           "404": problem-detail
 
-schemas:
-  description: |
-    Locally scoped Schema definitions owned by this endpoint. Each entry
-    becomes a Schema node with ID {node-id}.schemas.{local-name} and
-    owned Field nodes with IDs {node-id}.schemas.{local-name}.fields.{field-name}.
+# schemas: and enums: inherited from base (_base.yaml)
 
-    Schemas can reference each other and local enums via objectRef using
-    their local name, enabling arbitrary nesting depth within a single file.
-    Schemas shared across multiple endpoints should be standalone Schema
-    node files referenced by global node ID.
-
-  type: object
-  additionalProperties:
-    type: object
-    additionalProperties: false
-    required:
-      - fields
-    properties:
-      description:
-        type: string
-      fields:
-        type: object
-        minProperties: 1
-        description: |
-          Flat map of field name to field definition. Use objectRef to
-          reference another local schema or enum by name, or a global node
-          by ID. This is how nesting beyond one level is expressed.
-        additionalProperties:
-          type: object
-          additionalProperties: false
-          required:
-            - nullable
-            - cardinality
-          properties:
-            scalarType:
-              type: string
-              enum:
-                - uuid
-                - string
-                - integer
-                - decimal
-                - boolean
-                - datetime
-                - date
-                - time
-              description: "Primitive scalar type. Mutually exclusive with objectRef."
-            objectRef:
-              type: string
-              description: |
-                Local schema name, local enum name, or global node ID
-                (Schema, EnumDefinition, ValueObject, DomainModel) that
-                defines the type of this field. Resolved local-first.
-                Mutually exclusive with scalarType.
-            nullable:
-              type: boolean
-            cardinality:
-              type: string
-              enum:
-                - one
-                - many
-          oneOf:
-            - required: [scalarType]
-              not:
-                required: [objectRef]
-            - required: [objectRef]
-              not:
-                required: [scalarType]
-
-enums:
-  description: |
-    Locally scoped EnumDefinition nodes owned by this endpoint. Each entry
-    becomes an EnumDefinition node with ID {node-id}.enums.{local-name}.
-    Each value within it becomes an EnumValue node with ID
-    {node-id}.enums.{local-name}.values.{value-key}, independently
-    addressable for state, stability, and threads.
-
-    Enums shared across multiple endpoints should be standalone
-    EnumDefinition cluster files referenced by global node ID.
-
-  type: object
-  additionalProperties:
-    type: object
-    additionalProperties: false
-    required:
-      - values
-    properties:
-      description:
-        type: string
-        description: "Optional description of this enum's purpose"
-      values:
-        type: object
-        minProperties: 1
-        description: |
-          Map of value key to EnumValue definition. The key is the local
-          addressing name used in objectRef references within this file.
-          The name property is the actual string constant in the contract.
-        additionalProperties:
-          type: object
-          additionalProperties: false
-          required:
-            - name
-          properties:
-            name:
-              type: string
-              description: |
-                The string constant as it appears in the contract
-                (e.g. PENDING, CONFIRMED). Convention is SCREAMING_SNAKE_CASE.
-            description:
-              type: string
-              description: "Human-readable description of what this value means"
-            state:
-              type: string
-              enum:
-                - draft
-                - proposed
-                - agreed
-                - future
-                - removed
-                - implemented
-              description: "Lifecycle state of this value. Defaults to proposed."
-            stability:
-              type: string
-              enum:
-                - unstable
-                - stable
-                - deprecated
-              description: "Stability of this value. Defaults to unstable."
-
-edges:
+edge-types:
   outgoing:
     - reads
     - calls
     - produces
+  incoming:
+    - triggers
 
 ui:
   icon: api-endpoint

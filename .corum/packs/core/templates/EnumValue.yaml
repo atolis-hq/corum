@@ -33,7 +33,7 @@ properties:
         SCREAMING_SNAKE_CASE for domain constants; follow the format used
         by the owning system if extracting from existing code.
 
-edges:
+edge-types:
   incoming:
     - has-value
 
