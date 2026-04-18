@@ -1,0 +1,7 @@
+name: rest
+version: "1.0.0"
+description: "Templates for HTTP and REST services. Adapter: OpenAPI"
+requires:
+  - core
+templates:
+  - APIEndpoint

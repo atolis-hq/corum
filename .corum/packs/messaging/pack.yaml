@@ -1,0 +1,9 @@
+name: messaging
+version: "1.0.0"
+description: "Templates for event-driven services. Adapter: AsyncAPI"
+requires:
+  - core
+templates:
+  - Event
+  - DomainEvent
+  - IntegrationEvent

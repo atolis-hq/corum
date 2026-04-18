@@ -1,0 +1,10 @@
+schemaVersion: "1"
+description: "Sample graph for core loading proof — orders bounded context"
+
+templatePacks:
+  - name: core
+    path: ../../.corum/packs/core
+  - name: rest
+    path: ../../.corum/packs/rest
+  - name: domain
+    path: ../../.corum/packs/domain

@@ -32,21 +32,21 @@ This ADR does not define SQL schemas, TypeScript types, or JSON shapes. Those ar
 
 ### Universal node properties
 
-Every node in the graph — regardless of template type — carries the following properties. These are not overridable by the template pack; they are structural invariants of the model.
+Every node in the graph — regardless of template type — carries the following properties. These are validated by `node.schema.yaml` in the core pack.
 
-| Property | Type | Required | Description |
+| Property | Type | Required on root | Description |
 |---|---|---|---|
-| `id` | string | yes | Globally unique, fully qualified. Format: `{component}.{node-type}.{name}[.{path}]` |
+| `id` | string | yes | Globally unique, fully qualified. Format: `{component}.{TemplateName}.{name}[.{section}.{key}...]` |
 | `template` | string | yes | Template type name from the active template pack (e.g. `APIEndpoint`, `DomainModel`) |
-| `component` | string | yes | Derived from directory structure; the bounded context this node belongs to |
+| `component` | string | yes | The bounded context this node belongs to; must match the first segment of `id` |
 | `state` | enum | yes | `draft` \| `proposed` \| `agreed` \| `future` \| `removed` \| `implemented` |
 | `stability` | enum | yes | `unstable` \| `stable` \| `deprecated` |
-| `name` | string | yes | Human-readable display name |
-| `description` | string | no | Free text description of design intent |
-| `extractedFrom` | string | no | Source file path if this node was extracted from code — omitted for human-authored nodes |
-| `lastModifiedAt` | datetime | yes | ISO 8601 timestamp of last change |
 | `schemaVersion` | string | yes | File format version this node was written against |
+| `lastModifiedAt` | date | yes | ISO 8601 date of last change |
+| `extractedFrom` | string | no | Source file path if extracted from code; omitted for human-authored nodes |
 | `properties` | map | no | Template-defined additional properties; validated against the template's property schema |
+
+**Root-default-with-child-override:** In cluster files, `state` and `stability` are declared on the root node and inherited by all owned child nodes (fields, enum values, invariants, operations). A child node may declare its own `state` or `stability` to override the root's value — for example, a single enum value marked `stability: deprecated` while the rest of the enum remains `stable`. All other universal properties (`id`, `template`, `component`, `schemaVersion`, `lastModifiedAt`) are derived for child nodes and must not be declared inline. The full universal property schema is defined in `.corum/packs/core/node.schema.yaml`.
 
 **State semantics:**
 
@@ -77,7 +77,7 @@ Template types specialise the universal node with additional required or optiona
 |---|---|---|---|
 | `Event` | true | Abstract base for all event types | owns `payload` schema with `fields` |
 | `APIEndpoint` | false | HTTP contract boundary | `method`, `path`, `auth`; owns `request` and `response` schema clusters |
-| `DomainModel` | false | Domain entity | owns `fields`, `enums`, `invariants`, `operations` |
+| `DomainModel` | false | Domain entity or aggregate root | `schema` reference; owns `schemas`, `enums`, `invariants`, `operations` |
 | `DomainEvent` | false | Fact that something happened; extends Event | inherits payload schema; internal or publishable depending on architecture |
 | `DomainOperation` | false | Named unit of behaviour | `description`; behaviour declared via edges |
 | `IntegrationEvent` | false | Cross-service published event; extends Event | inherits payload schema; cross-boundary contract |
@@ -100,12 +100,12 @@ Fields are the most granular node type and the primary unit of field-level linea
 
 | Property | Type | Required | Description |
 |---|---|---|---|
-| `type` | string | yes | Scalar type (`uuid`, `string`, `integer`, `decimal`, `boolean`, `datetime`) or a node ID referencing a `DomainModel`, `EnumDefinition`, or `ValueObject` |
+| `scalarType` | string | oneOf | Primitive scalar: `uuid` \| `string` \| `integer` \| `decimal` \| `boolean` \| `datetime` \| `date` \| `time`. Mutually exclusive with `objectRef`. |
+| `objectRef` | string | oneOf | Local schema name, local enum name, or global node ID defining the field's type. Resolved local-first. Mutually exclusive with `scalarType`. |
 | `nullable` | boolean | yes | Whether this field may be absent or null |
 | `cardinality` | enum | yes | `one` \| `many` |
-| `ownedBy` | node ID | yes | The root node whose cluster file contains this field's definition |
 
-Field IDs extend their owner's ID: `orders.domain-models.order.fields.customer-id`, `orders.api-endpoints.post-orders.request.fields.customer-id`.
+Field IDs extend their owner's ID via the section path: `orders.DomainModel.order.schemas.order.fields.customerId`, `orders.APIEndpoint.create-order.schemas.create-order-request.fields.customerId`.
 
 ---
 
@@ -115,14 +115,15 @@ Edges are first-class entities. An edge is not a property of either endpoint —
 
 | Property | Type | Required | Description |
 |---|---|---|---|
-| `id` | string | yes | Globally unique. Convention: `{from-id}--{type}--{to-id}` |
+| `id` | string | derived | Computed by loader as `{from}__{type}__{to}`. Never declared in edge files. |
 | `from` | node ID | yes | Source node — any node, including field nodes |
 | `to` | node ID | yes | Target node — any node, including field nodes; may be in a different component or repo |
 | `type` | enum | yes | See edge type vocabulary below |
-| `state` | enum | yes | Same state enum as nodes |
-| `stability` | enum | yes | Same stability enum as nodes |
-| `description` | string | no | Human-readable description of the relationship |
+| `state` | enum | no | Defaults to `proposed`. An edge may be in-flight while its endpoint nodes are `agreed`. |
+| `stability` | enum | no | Defaults to `unstable`. |
 | `notes` | string | no | Annotation on this specific edge instance |
+
+The full edge schema is defined in `.corum/packs/core/edge.schema.yaml`.
 
 The graph model makes no distinction between edges connecting root nodes and edges connecting field nodes. Both are edges with the same structure. Field-level lineage — "the `customerId` field in `post-orders.request` maps to the `customerId` field in `order`" — is represented as a `maps-to` edge between two field nodes, not as a sub-entity on a root-to-root edge.
 
@@ -133,11 +134,13 @@ The graph model makes no distinction between edges connecting root nodes and edg
 | `triggers` | root nodes | Source node's occurrence causes the target to happen |
 | `produces` | root nodes | Source operation produces the target event or schema |
 | `reads` | root nodes | Source node reads from the target |
-| `maps-to` | **field nodes only** | Source field corresponds to target field across a schema boundary — the primary field-level lineage type; hard error if used between non-Field nodes |
-| `derived-from` | any nodes | Source is computed from the target — valid at root level (ReadModel derived-from DomainModel) and field level (projected field derived-from source field) |
 | `calls` | root nodes | Source operation invokes the target contract boundary |
 | `implements` | root nodes | Source is a concrete realisation of the target contract |
+| `maps-to` | field nodes | Source field corresponds to target field across a schema boundary; hard error if used between non-Field nodes |
+| `derived-from` | any nodes | Source is computed from the target — root level (ReadModel derived-from DomainModel) or field level |
 | `renamed-from` | any nodes | Source node was previously known as the target identity (PDR-005) |
+| `has-field` | schema → field | Structural ownership: source schema owns target field. Implied by cluster file structure; never authored explicitly. |
+| `has-value` | enum → value | Structural ownership: source enum owns target enum value. Implied by cluster file structure; never authored explicitly. |
 
 ---
 
@@ -160,8 +163,7 @@ The graph is the top-level container. It is represented by `graph.yaml` in the r
 | Property | Type | Required | Description |
 |---|---|---|---|
 | `name` | string | yes | Human-readable name of this graph |
-| `templatePack` | string | yes | Active template pack name |
-| `templatePackVersion` | string | yes | Semver version of the active template pack |
+| `templatePacks` | list | yes | Active template packs loaded for this graph |
 | `components` | list | yes | All components declared in this graph repo |
 
 ---
@@ -232,3 +234,4 @@ These are constraints that any implementation of this model must maintain, regar
 - PDR-001: Tool scope and node taxonomy — establishes the state and stability semantics formalised here
 - PDR-003: Template packs and plugin architecture — establishes that all node types are templates, including Field
 - PDR-005: Deletions, renames, and collisions — establishes the soft-delete and rename-as-edge semantics reflected in this model
+

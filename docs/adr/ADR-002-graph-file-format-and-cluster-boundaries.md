@@ -106,20 +106,20 @@ graph-repo/
   graph.yaml                              # Repo-level metadata, template pack declaration
   components/
     orders/                               # One directory per component
-      api-endpoints/                      # One subdirectory per node type (from template pack)
-        POST-orders.yaml                  # Cluster: endpoint + request/response schemas + fields
-        GET-orders-{id}.yaml
-      domain-models/
+      APIEndpoints/                       # Folder named after the template (PascalCase, plural)
+        create-order.yaml                 # Cluster: endpoint + request/response schemas + fields
+        get-order.yaml
+      DomainModels/
         order.yaml                        # Cluster: model + fields + enums + invariants + operations
         order-item.yaml
-      domain-events/
+      DomainEvents/
         order-placed.yaml                 # Cluster: event + payload schema + fields
-      shared-types/
+      ValueObjects/
         money.yaml                        # Cluster: shared value object used across models
       edges/
-        api-endpoints--domain-models.yaml # Within-component edges between these node types
-        api-endpoints--operations.yaml
-        operations--domain-events.yaml
+        APIEndpoints--DomainModels.yaml   # Within-component edges between these node types
+        APIEndpoints--DomainOperations.yaml
+        DomainOperations--DomainEvents.yaml
     payments/
       ...
   edges/
@@ -132,18 +132,20 @@ graph-repo/
 
 Node IDs are **fully qualified and declared explicitly in each file**. The folder structure is for human navigation only — it does not contribute to ID resolution.
 
-**Format:** `{component}.{node-type}.{node-name}`
+**Format:** `{component}.{TemplateName}.{node-name}`
+
+The template name segment matches the template name exactly (PascalCase singular), corresponding to the plural folder that contains the file.
 
 Examples:
-- `orders.api-endpoints.post-orders`
-- `orders.domain-models.order`
-- `payments.domain-models.payment`
+- `orders.APIEndpoint.create-order`
+- `orders.DomainModel.order`
+- `payments.DomainModel.payment`
 
 **Owned node IDs** extend the root node ID:
-- `orders.domain-models.order.fields.customer-id`
-- `orders.domain-models.order.enums.status`
-- `orders.domain-models.order.enums.status.values.cancelled`
-- `orders.api-endpoints.post-orders.request.fields.customer-id`
+- `orders.DomainModel.order.schemas.order.fields.customerId`
+- `orders.DomainModel.order.enums.order-status`
+- `orders.DomainModel.order.enums.order-status.values.cancelled`
+- `orders.APIEndpoint.create-order.schemas.create-order-request.fields.customerId`
 
 **Rationale for explicit over folder-derived IDs:** If IDs were derived from folder paths, reorganising the directory structure would silently break all edge references and field mappings. With explicit IDs in the file, a directory move is immediately caught by the linter — the declared ID no longer matches the expected path. Renames have the same blast radius either way; explicit IDs make that blast radius visible.
 
@@ -221,100 +223,83 @@ metadata:
 ### Domain Model cluster
 
 ```yaml
-# components/orders/domain-models/order.yaml
+# components/orders/DomainModels/order.yaml
 
-schema-version: "1.0"
-id: orders.domain-models.order
+id: orders.DomainModel.order
 template: DomainModel
+component: orders
 state: agreed
 stability: stable
-name: Order
-description: |
-  Represents a customer purchase order throughout its lifecycle.
 
-fields:
-  - id: orders.domain-models.order.fields.order-id
-    name: orderId
-    type: uuid
-    nullable: false
-    cardinality: one
-    state: agreed
-    stability: stable
-    description: "Unique order identifier"
+properties:
+  description: A placed customer order; aggregate root for the orders bounded context
+  aggregate: true
+  schema: order   # resolves local-first to orders.DomainModel.order.schemas.order
 
-  - id: orders.domain-models.order.fields.customer-id
-    name: customerId
-    type: uuid
-    nullable: false
-    cardinality: one
-    state: agreed
-    stability: stable
-    description: "Reference to the placing customer"
+schemas:
+  order:
+    description: Structure of the order aggregate
+    fields:
+      id:
+        scalarType: uuid
+        nullable: false
+        cardinality: one
+      customerId:
+        scalarType: uuid
+        nullable: false
+        cardinality: one
+      status:
+        objectRef: order-status   # resolves to local enum
+        nullable: false
+        cardinality: one
+      totalAmount:
+        scalarType: decimal
+        nullable: false
+        cardinality: one
 
-  - id: orders.domain-models.order.fields.status
-    name: status
-    type: orders.domain-models.order.enums.status   # Reference to owned enum by ID
-    nullable: false
-    cardinality: one
-    state: agreed
-    stability: stable
-    description: "Current lifecycle state"
-
-  - id: orders.domain-models.order.fields.items
-    name: items
-    type: orders.domain-models.order-item           # Reference to sibling model by ID
-    nullable: false
-    cardinality: many
-    description: "Line items within this order"
+  order-line-item:
+    description: A single line item within the order
+    fields:
+      productId:
+        scalarType: uuid
+        nullable: false
+        cardinality: one
+      quantity:
+        scalarType: integer
+        nullable: false
+        cardinality: one
+      unitPrice:
+        scalarType: decimal
+        nullable: false
+        cardinality: one
 
 enums:
-  - id: orders.domain-models.order.enums.status
-    name: OrderStatus
-    state: agreed
-    stability: stable
-    description: "Lifecycle states for an order"
+  order-status:
+    description: Lifecycle states for an order
     values:
-      - id: orders.domain-models.order.enums.status.values.pending
+      pending:
         name: PENDING
-        state: agreed
-        stability: stable
-        description: "Order received, not yet processed"
-
-      - id: orders.domain-models.order.enums.status.values.confirmed
+        description: Order received, not yet processed
+      confirmed:
         name: CONFIRMED
-        state: agreed
-        stability: stable
-        description: "Order confirmed, payment captured"
-
-      - id: orders.domain-models.order.enums.status.values.cancelled
+        description: Order confirmed, payment captured
+      cancelled:
         name: CANCELLED
-        state: agreed
-        stability: deprecated
-        description: "Order cancelled by customer or system"
+        description: Order cancelled by customer or system
 
 invariants:
-  - id: orders.domain-models.order.invariants.items-not-empty
-    name: OrderMustHaveItems
-    state: agreed
-    description: "An order must always contain at least one line item"
-
-  - id: orders.domain-models.order.invariants.confirmed-requires-payment
-    name: ConfirmedOrderRequiresPayment
-    state: proposed
-    description: "An order cannot be CONFIRMED without a corresponding payment record"
+  must-have-items:
+    description: An order must always contain at least one line item
+  confirmed-requires-payment:
+    description: An order cannot be CONFIRMED without a corresponding payment record
 
 operations:
-  - id: orders.domain-models.order.operations.place-order
-    name: PlaceOrder
-    state: agreed
-    stability: stable
-    description: "Creates and confirms a new order"
-    # Behaviour, state modifications, and emitted events are declared via edges
-    # to keep the cluster file focused on structure rather than flow.
-    # See: components/orders/edges/operations--domain-events.yaml
-
-metadata:
-  lastModifiedAt: "2026-04-12T10:00:00Z"
+  place:
+    description: Creates and confirms a new order
+  confirm:
+    description: Mark the order as confirmed by the fulfilment system
+  cancel:
+    description: Cancel an in-progress order, returning reserved stock
 ```
 
 ---
@@ -397,33 +382,28 @@ fields:
 Edge files declare typed, directional relationships between root nodes. Directionality is inside the file; the filename is alphabetical and carries no directional meaning.
 
 ```yaml
-# components/orders/edges/api-endpoints--domain-models.yaml
-
-schema-version: "1.0"
+# components/orders/edges/APIEndpoints--DomainModels.yaml
 
 edges:
-  - id: orders.api-endpoints.post-orders--reads--orders.domain-models.order
-    from: orders.api-endpoints.post-orders
-    to: orders.domain-models.order
+  - from: orders.APIEndpoint.create-order
+    to: orders.DomainModel.order
     type: reads
-    state: proposed
-    stability: unstable
-    description: "POST /orders reads from the Order domain model"
-    fieldMappings:
-      - fromField: orders.api-endpoints.post-orders.request.fields.customer-id
-        toField: orders.domain-models.order.fields.customer-id
-        notes: "Direct pass-through"
+    notes: POST /orders creates and returns an Order aggregate
 
-      - fromField: orders.api-endpoints.post-orders.response.201.fields.order-id
-        toField: orders.domain-models.order.fields.order-id
-        notes: "Direct pass-through"
+  - from: orders.APIEndpoint.create-order.schemas.create-order-response.fields.orderId
+    to: orders.DomainModel.order.fields.id
+    type: maps-to
+
+  - from: orders.APIEndpoint.create-order.schemas.create-order-request.fields.customerId
+    to: orders.DomainModel.order.fields.customerId
+    type: maps-to
 ```
 
-**Edge file naming:** alphabetical by the two node-type directory names being connected. Enforced by the linter. `api-endpoints--domain-models.yaml` not `domain-models--api-endpoints.yaml`.
+**Edge IDs are derived, not declared.** The loader computes each edge's ID as `{from}__{type}__{to}` at load time. Authors never write edge IDs — they are always derivable from the three required fields and cannot drift out of sync.
+
+**Edge file naming:** alphabetical by the two template folder names being connected. Enforced by the linter. `APIEndpoints--DomainModels.yaml` not `DomainModels--APIEndpoints.yaml`.
 
 **Cross-component edge file naming:** alphabetical by the two component directory names. Lives in the top-level `edges/` directory. `orders--payments.yaml` not `payments--orders.yaml`.
-
-**`fieldMappings` is serialisation shorthand.** In the logical model (ADR-003b), field-level lineage is represented as `maps-to` edges between field nodes — structurally identical to any other edge. In the file format, embedding field mappings inline on a root-to-root edge is a practical convenience that avoids generating large numbers of individual field-to-field edge files. When the MCP server loads the graph, each `fieldMappings` entry is materialised as a first-class `maps-to` edge between the two field nodes. The linter validates `fromField` and `toField` as valid field node IDs declared in their respective cluster files.
 
 ---
 
@@ -432,8 +412,15 @@ edges:
 ```yaml
 schema-version: "1.0"
 name: "Acme Corp Design Graph"
-templatePack: default
-templatePackVersion: "1.0.0"
+templatePacks:  
+  - name: core
+    version: "1.0.0"
+  - name: rest
+    version: "1.0.0"
+  - name: messaging
+    version: "1.0.0"
+  - name: domain
+    version: "1.0.0"
 
 components:
   - id: orders
@@ -474,9 +461,9 @@ From this ADR, the linter must enforce:
 - All owned node IDs are prefixed with their root node ID
 - All edge files are named in alphabetical node-type order
 - All cross-component edge files are named in alphabetical component order
-- All `from`, `to`, `fromField`, and `toField` references resolve to a declared ID in the graph repo
+- All `from` and `to` references resolve to a declared node ID in the graph repo
 - No cross-node relationships declared inline in cluster files — they must be in edge files
-- All node-type directory names match a type declared in the active template pack
+- All template folder names are the plural PascalCase form of a template name declared in the active template pack
 - All `state` and `stability` values are valid members of their respective enumerations
 
 ---
@@ -519,3 +506,5 @@ From this ADR, the linter must enforce:
 - ADR-006: Linter and validator — enforces the naming and referential integrity rules defined here
 - PDR-001: Tool scope and node taxonomy — state model (`draft`, `proposed`, `agreed`, `future`, `removed`, `implemented`) and stability levels (`unstable`, `stable`, `deprecated`)
 - PDR-003: Template packs and plugin architecture — establishes that `Field` is a core template and that all node types are templates
+
+

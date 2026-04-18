@@ -1,0 +1,64 @@
+name: DomainModel
+version: "1.0.0"
+core: false
+abstract: false
+description: |
+  A domain entity or aggregate root. Its structure is defined by a Schema node
+  referenced via the schema property — fields always belong to schemas, never
+  directly to the model. The primary schema is typically declared inline in the
+  schemas block and referenced by local name.
+
+  Schemas become Schema nodes at {node-id}.schemas.{local-name} with Field nodes
+  at {node-id}.schemas.{local-name}.fields.{field-name}.
+  Enums become EnumDefinition nodes at {node-id}.enums.{local-name} with
+  EnumValue nodes at {node-id}.enums.{local-name}.values.{value-key}.
+  Invariants become Invariant nodes at {node-id}.invariants.{key}.
+  Operations become DomainOperation nodes at {node-id}.operations.{key}.
+
+  Reference resolution order for objectRef and schema values:
+    1. Local schemas block — resolved to {node-id}.schemas.{local-name}
+    2. Local enums block  — resolved to {node-id}.enums.{local-name}
+    3. Global node ID     — resolved against the graph; generates a reads edge
+
+properties:
+  type: object
+  additionalProperties: false
+  properties:
+    description:
+      type: string
+      description: "Human-readable description of what this model represents"
+    schema:
+      type: string
+      description: |
+        Local schema name or global Schema node ID defining the structure of
+        this model. Resolved local-first against the schemas block.
+
+invariants:
+  item-template: Invariant
+  description: |
+    Business rules that must always hold for this model. Each entry becomes
+    an Invariant node with ID {node-id}.invariants.{key}.
+
+operations:
+  item-template: DomainOperation
+  description: |
+    Named behaviours this model exposes. Each entry becomes a DomainOperation
+    node with ID {node-id}.operations.{key}.
+
+# schemas: and enums: inherited from base (_base.yaml)
+
+edge-types:
+  outgoing:
+    - has-field
+    - has-value
+    - produces
+  supports:
+    - reads
+    - derived-from
+
+ui:
+  icon: domain-model
+  colour: "#2E8B57"
+  displayProperties:
+    - description
+    - aggregate

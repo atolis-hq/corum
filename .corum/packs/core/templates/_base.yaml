@@ -1,0 +1,22 @@
+name: base
+version: "1.0.0"
+description: |
+  Base template implicitly inherited by all templates. Declares the universal
+  owned sections available on every node type — schemas and enums. These
+  sections do not need to be re-declared in individual templates.
+
+schemas:
+  item-template: Schema
+  description: |
+    Locally scoped Schema nodes owned by this node. Each entry becomes a
+    Schema node with ID {node-id}.schemas.{local-name}. Schemas shared
+    across multiple nodes should be standalone Schema cluster files
+    referenced by global node ID.
+
+enums:
+  item-template: EnumDefinition
+  description: |
+    Locally scoped EnumDefinition nodes owned by this node. Each entry
+    becomes an EnumDefinition node with ID {node-id}.enums.{local-name}.
+    Enums shared across multiple nodes should be standalone EnumDefinition
+    cluster files referenced by global node ID.

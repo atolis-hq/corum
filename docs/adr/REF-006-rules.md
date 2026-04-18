@@ -2,7 +2,8 @@
 
 **Status:** Reference — normative companion to ADR-006  
 **Date:** 2026-04-12  
-**Derives from:** ADR-002, ADR-003b, ADR-004, ADR-004b  
+**Amended:** 2026-04-14 — S-series rules added (ADR-003d); S-series extended and V-series added for enum support (ADR-004b amendment); E-001 and E-008 updated  
+**Derives from:** ADR-002, ADR-003b, ADR-003d, ADR-004, ADR-004b  
 **Governed by:** ADR-006 (severity model, deployment contexts, extensibility)
 
 Rules in this catalogue are derived directly from structural decisions in previous ADRs. No rule is invented here — each references the ADR that establishes the underlying constraint. Default severities follow the model in ADR-006: errors reflect structural invariants the tool depends on; warnings reflect quality and convention rules that teams may tighten via configuration.
@@ -13,7 +14,7 @@ Rules in this catalogue are derived directly from structural decisions in previo
 
 These rules run in the MCP server on startup. Failures prevent the server from starting. All other rules run in CI and the local CLI only.
 
-`F-005`, `F-007`, `T-001`, `T-002`, `T-006`, `T-007`, `T-008`, `T-010`, `E-001`, `E-002`, `R-001`
+`F-005`, `F-007`, `T-001`, `T-002`, `T-006`, `T-007`, `T-008`, `T-010`, `E-001`, `E-002`, `R-001`, `S-004`, `S-005`, `S-006`, `V-001`
 
 ---
 
@@ -53,7 +54,7 @@ The `schema-version` in a file must be compatible with the current tool version.
 `fromField` and `toField` values in `fieldMappings` blocks in edge files must resolve to field IDs declared in their respective cluster files. Unresolvable field references are errors.
 
 **F-012 — No inline cross-node relationships** `error`  
-Cluster files must not declare edges to other root nodes inline. All cross-node relationships must be in edge files. Type references within `properties` (e.g. a field's `fieldType` referencing a `DomainModel` node ID) are not edges and are not subject to this rule.
+Cluster files must not declare edges to other root nodes inline. All cross-node relationships must be in edge files. Type references within `properties` (e.g. a field's `objectRef` referencing a `DomainModel` node ID) are not edges and are not subject to this rule.
 
 **F-013 — Component registry completeness** `warning`  
 Every component directory under `components/` should be declared in `graph.yaml`. Undeclared component directories are loadable but flagged as unregistered.
@@ -122,7 +123,7 @@ If a node's `schemaVersion` is behind the current template version (detectable v
 ## Edge Constraint Rules (ADR-004b)
 
 **E-001 — Core edge type vocabulary** `error`  
-Every edge `type` value must be one of the eight core edge types: `triggers`, `produces`, `reads`, `calls`, `implements`, `maps-to`, `derived-from`, `renamed-from`. Any other value is rejected.
+Every edge `type` value must be one of the ten core edge types: `triggers`, `produces`, `reads`, `calls`, `implements`, `maps-to`, `derived-from`, `renamed-from`, `has-field`, `has-value`. Any other value is rejected.
 
 **E-002 — `maps-to` structural check** `error`  
 `maps-to` edges must connect two Field nodes. A `maps-to` edge where either endpoint is not a Field node is a hard error with no configurable relaxation.
@@ -131,7 +132,7 @@ Every edge `type` value must be one of the eight core edge types: `triggers`, `p
 Within a single template's `edges` declaration, a given edge type name must appear in exactly one of `supports`, `outgoing`, or `incoming`. Overlap across sections is rejected at pack load time.
 
 **E-004 — Template edge declaration vocabulary** `error`  
-All edge type names referenced in `edges.supports`, `edges.outgoing`, or `edges.incoming` in a template must be from the core vocabulary. References to unknown type names are errors.
+All edge type names referenced in `edges.supports`, `edges.outgoing`, or `edges.incoming` in a template must be from the ten-type core vocabulary. References to unknown type names are errors.
 
 **E-005 — Outgoing constraint violation** `warning`  
 If the source node's template declares `outgoing` or `supports`, the edge type must appear in one of them. Violation is a warning by default. Promotable to error via linter configuration.
@@ -141,6 +142,46 @@ If the target node's template declares `incoming` or `supports`, the edge type m
 
 **E-007 — `renamed-from` cycle** `error`  
 A `renamed-from` chain must not form a cycle. A → renamed-from → B → renamed-from → A is rejected.
+
+**E-008 — Structural ownership edge in edge file** `error`  
+`has-field` and `has-value` edges must not be declared in edge files. These edge types are structural ownership edges extracted automatically from cluster file structure. Explicit authoring of these types in edge files is always an error.
+
+---
+
+## Schema Reference Rules (ADR-003d)
+
+These rules govern the `schemas` and `enums` blocks in APIEndpoint cluster files, local reference resolution, and the `scalarType`/`objectRef` field type model. All rules apply equally to the `schemas` block and the `enums` block unless stated otherwise.
+
+**S-001 — Local name shadows global node ID** `warning`  
+A key in a node file's `schemas` or `enums` block that matches a global node ID in the graph takes precedence over the global node (local-first resolution). The shadowing is flagged so authors can verify the collision is intentional. Promotable to error.
+
+**S-002 — Unresolved schema or enum reference** `error`  
+A value in `properties.request`, any entry in `properties.responses`, or any `objectRef` within `schemas` or `enums` block field definitions that resolves to neither a local schema name, a local enum name, nor a valid global node ID is an unresolvable reference. The error message must indicate which resolution step failed to aid diagnosis.
+
+**S-003 — Local definition unused** `warning`  
+A schema or enum defined in the `schemas` or `enums` block that is not referenced anywhere within the same file is unreachable. Promotable to error.
+
+**S-004 — `objectRef` cycle in local definitions** `error`  
+A cycle in `objectRef` references among local schemas and enums within the same file is rejected. Detected at load time; prevents server startup.
+
+**S-005 — `scalarType` and `objectRef` both present on a field** `error`  
+A field definition that declares both `scalarType` and `objectRef` is structurally invalid. Detected at load time; prevents server startup.
+
+**S-006 — Field carries neither `scalarType` nor `objectRef`** `error`  
+A field definition that declares neither `scalarType` nor `objectRef` has no resolvable type. Detected at load time; prevents server startup.
+
+---
+
+## Enum Value Rules (ADR-004b amendment)
+
+**V-001 — EnumDefinition has at least one non-removed value** `error`  
+An EnumDefinition with no EnumValue nodes, or where all EnumValue nodes have `state: removed`, is an empty enum and cannot be used as a field type. Detected at load time; prevents server startup.
+
+**V-002 — EnumValue name convention** `warning`  
+The `name` property of an EnumValue should follow SCREAMING_SNAKE_CASE convention (e.g. `PENDING`, `ORDER_PLACED`). Values that do not match this pattern are flagged. Promotable to error.
+
+**V-003 — Duplicate enum value names within a definition** `error`  
+Two EnumValue nodes within the same EnumDefinition must not share the same `name` string. Duplicate wire-format constants within one enum are always an error regardless of their keys in the `values` map.
 
 ---
 
@@ -185,3 +226,13 @@ A `renamed-from` chain must not form a cycle. A → renamed-from → B → renam
 | E-005 | ADR-004b | warning | error | no |
 | E-006 | ADR-004b | warning | error | no |
 | E-007 | ADR-004b | error | — | no |
+| E-008 | ADR-004b | error | — | no |
+| S-001 | ADR-003d | warning | error | no |
+| S-002 | ADR-003d | error | — | no |
+| S-003 | ADR-003d | warning | error | no |
+| S-004 | ADR-003d | error | — | **yes** |
+| S-005 | ADR-003d | error | — | **yes** |
+| S-006 | ADR-003d | error | — | **yes** |
+| V-001 | ADR-004b | error | — | **yes** |
+| V-002 | ADR-004b | warning | error | no |
+| V-003 | ADR-004b | error | — | no |

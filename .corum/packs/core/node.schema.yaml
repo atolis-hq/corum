@@ -1,0 +1,112 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "corum/node"
+title: Node
+description: |
+  Universal properties present on every node in the graph, regardless of
+  template type. Two contexts apply this schema differently:
+
+  Root nodes (cluster file headers): all required properties must be declared.
+
+  Child nodes (inline schemas, fields, enum values, invariants, operations):
+  id, template, component, schemaVersion, and lastModifiedAt are derived from
+  the root node and must not be declared. state and stability default to the
+  root node's values and may be declared only to override them.
+
+$defs:
+
+  State:
+    type: string
+    enum:
+      - draft
+      - proposed
+      - agreed
+      - future
+      - removed
+      - implemented
+    description: |
+      draft       — Uncertain or incomplete; needs more thought.
+      proposed    — Default working state; coherent and actionable.
+      agreed      — Consciously signed off; stable design intent.
+      future      — Intentionally deferred; known but out of scope.
+      removed     — Deliberately retired; history preserved, never deleted.
+      implemented — Exists in merged code; set by extraction, never manually.
+
+  Stability:
+    type: string
+    enum:
+      - unstable
+      - stable
+      - deprecated
+    description: |
+      unstable   — Default; contract is in flux, breaking changes expected.
+      stable     — Team has declared this contract worth protecting.
+      deprecated — Being retired; changes trend toward removal.
+
+  # Properties a child node may declare to override the root node's defaults.
+  # All other universal properties are derived and must not be declared inline.
+  ChildOverride:
+    type: object
+    properties:
+      state:
+        $ref: "#/$defs/State"
+      stability:
+        $ref: "#/$defs/Stability"
+
+# Root node schema — the cluster file header
+type: object
+required:
+  - id
+  - template
+  - component
+  - state
+  - stability
+  - schemaVersion
+  - lastModifiedAt
+additionalProperties: true   # template properties block and owned sections are also present
+
+properties:
+
+  id:
+    type: string
+    pattern: "^[a-z][a-zA-Z0-9-]*\\.[A-Z][a-zA-Z0-9]*(\\.[a-zA-Z0-9][a-zA-Z0-9-]*)+"
+    description: |
+      Globally unique, fully qualified node ID.
+      Format: {component}.{TemplateName}.{node-name}
+      Owned node IDs extend the root: {root-id}.{section}.{key}
+
+  template:
+    type: string
+    pattern: "^[A-Z][a-zA-Z0-9]*$"
+    description: Template name from the active template pack (e.g. APIEndpoint, DomainModel).
+
+  component:
+    type: string
+    pattern: "^[a-z][a-zA-Z0-9-]*$"
+    description: |
+      Bounded context this node belongs to. Must match the first segment of id
+      and the component directory name.
+
+  state:
+    $ref: "#/$defs/State"
+
+  stability:
+    $ref: "#/$defs/Stability"
+
+  schemaVersion:
+    type: string
+    description: File format version this node was written against.
+
+  lastModifiedAt:
+    type: string
+    format: date
+    description: ISO 8601 date of last change (YYYY-MM-DD).
+
+  extractedFrom:
+    type: string
+    description: |
+      Source file path if this node was extracted from code.
+      Omitted for human-authored nodes.
+
+  properties:
+    type: object
+    description: Template-defined properties validated against the template's properties schema.

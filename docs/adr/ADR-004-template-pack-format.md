@@ -80,13 +80,13 @@ Packs are split along three lines — spec-aligned, domain, and methodology — 
 These packs contain templates that correspond to concepts in an external specification format. Each ships alongside its adapter (the component that imports/exports the spec format). Teams install the packs matching the spec formats their services use.
 
 **`core` pack** — always loaded; required by all other packs  
-Contains `Field` (the only `core: true` template) and the abstract `Event` base.
+Contains `Field` (the only `core: true` template).
 
 **`rest` pack** — for HTTP/REST services (adapter: OpenAPI)  
 Contains `APIEndpoint`.
 
 **`messaging` pack** — for event-driven services (adapter: AsyncAPI)  
-Contains `IntegrationEvent` (extends Event) and `DomainEvent` (extends Event).
+Contains the abstract `Event` base plus `IntegrationEvent` (extends Event) and `DomainEvent` (extends Event).
 
 **`graphql` pack** — for GraphQL services (adapter: GraphQL SDL) — *planned*  
 Will contain `GraphQLQuery`, `GraphQLMutation`, `GraphQLSubscription`, `GraphQLType`.
@@ -149,8 +149,11 @@ Each pack is a directory with the same internal structure regardless of type.
 core/
   pack.yaml
   templates/
+    _base.yaml             # Implicitly inherited by all templates — declares schemas/enums sections
     Field.yaml             # core: true — required by the tool itself
-    Event.yaml             # abstract: true — base for all event subtypes
+    Schema.yaml
+    EnumDefinition.yaml
+    EnumValue.yaml
   edge-types.yaml          # Reserved for future custom edge type extension (see ADR-004b)
   components/              # Reserved for UI components (future ADR)
 
@@ -162,8 +165,9 @@ rest/
 messaging/
   pack.yaml
   templates/
-    DomainEvent.yaml       # extends: Event (from core pack)
-    IntegrationEvent.yaml  # extends: Event (from core pack)
+    Event.yaml             # abstract: true ??? base for all event subtypes
+    DomainEvent.yaml       # extends: Event (from messaging pack)
+    IntegrationEvent.yaml  # extends: Event (from messaging pack)
 
 domain/
   pack.yaml
@@ -219,7 +223,7 @@ name: messaging
 version: "1.0.0"
 description: "Templates for event-driven services. Adapter: AsyncAPI"
 requires:
-  - core     # Event abstract base lives in core
+  - core
 templates:
   - DomainEvent
   - IntegrationEvent
@@ -245,257 +249,62 @@ The `requires` field declares pack dependencies. If a required pack is not loade
 
 ## Template File Format
 
-### Abstract base template
+### Template meta-schema
 
-A template marked `abstract: true` defines shared schema for subtypes and cannot be instantiated directly. Concrete subtypes use `extends` to inherit the schema and override or supplement as needed.
+Every template file is validated against `.corum/packs/core/template.schema.yaml` on loader startup. All sections except `name` and `version` are optional.
 
 ```yaml
-# templates/Event.yaml
+name: string          # Required. Unique within loaded packs. PascalCase by convention.
+version: string       # Required. Semver.
+core: boolean         # Default false. Only Field is core: true.
+abstract: boolean     # Default false. Abstract templates cannot be instantiated.
+extends: string       # Template name to inherit from. Resolved across loaded packs.
+description: string   # Human-readable description of what this node type represents.
 
-name: Event
-version: "1.0.0"
-core: false
-abstract: true
-description: |
-  Abstract base for all event types. Defines the shared payload schema.
-  Use DomainEvent for internal facts; IntegrationEvent for cross-service contracts.
-
-properties:
-  type: object
+properties:           # JSON Schema (Draft 7+) validating the node's properties block.
+  type: object        # Full JSON Schema is supported — $defs, oneOf, default, examples, etc.
   properties:
-    correlationId:
-      type: string
-      description: "Optional correlation ID for tracing event chains"
+    someScalar: { type: string }
+    someRef: { type: string }   # String references resolve to node IDs at load time.
+    someObject: { type: object }
+
+# Owned section declarations — any key not in the reserved set above is an owned section.
+# Each section declares which template governs its items.
+sectionName:
+  item-template: TemplateName   # Required. Loader validates each item against this template.
+  description: string           # Optional.
+
+edge-types:           # Edge type constraints from the ADR-004b vocabulary.
+  outgoing: [string]  # Edge types this node sends.
+  incoming: [string]  # Edge types this node receives.
+  supports: [string]  # Edge types in either direction.
 
 ui:
-  icon: event
-  colour: "#E8A838"
-  displayProperties: []
+  icon: string
+  colour: string          # Hex colour.
+  displayProperties: []   # Property names shown in the generic renderer.
+  badge: string           # Optional. Single property shown as a badge on the node card.
 ```
 
-```yaml
-# templates/DomainEvent.yaml
+**`properties`** is a standard JSON Schema document. The full spec is supported — `$defs`, `oneOf`, `default`, `readOnly`, `examples`, `additionalProperties`, composition operators. Universal node properties (`id`, `template`, `state`, `stability`, etc.) are always present and are not declared here.
 
-name: DomainEvent
-version: "1.0.0"
-core: false
-extends: Event
-description: |
-  A fact that something happened within a bounded context.
-  Internal to the component — whether other systems may subscribe
-  to this event is an architectural decision made independently
-  of this node type.
-```
+**Owned sections** are any top-level keys not in the reserved set (`name`, `version`, `core`, `abstract`, `extends`, `description`, `properties`, `edge-types`, `ui`). Each must declare `item-template`. The loader uses the referenced template to validate and materialise child nodes.
 
-```yaml
-# templates/IntegrationEvent.yaml
-
-name: IntegrationEvent
-version: "1.0.0"
-core: false
-extends: Event
-description: |
-  An event published for consumption by other bounded contexts
-  or external systems. Represents a cross-service contract —
-  changes to the payload schema affect consumers.
-```
-
-`DomainEvent` and `IntegrationEvent` are semantically distinct but structurally identical — both inherit the `Event` payload schema. The distinction is about bounded context boundaries, not about which spec format the event appears in. Whether a `DomainEvent` or `IntegrationEvent` is exported to AsyncAPI is a configuration decision in the adapter layer, not a property of the template.
+**`_base.yaml`** in the `core` pack is implicitly inherited by every template. It declares the universal owned sections — `schemas` (item-template: Schema) and `enums` (item-template: EnumDefinition) — so they are available on all node types without being repeated in each template.
 
 ---
 
-### Minimal valid template
+### Extension and abstract templates
 
-```yaml
-name: DomainEvent
-version: "1.0.0"
-core: false
-description: |
-  A fact that something happened within a bounded context.
-  Internal to the component — not part of the external contract surface.
-  Published when an operation completes successfully.
-```
+`extends` inherits a parent template's `properties` schema via `allOf` — both parent and child must be satisfied. `description`, `ui`, `edge-types`, and owned sections in the child override the parent's. A child may add properties but may not remove or narrow parent required properties.
 
-A node can exist with just `name` and `version`. All other sections add schema enforcement and display configuration progressively.
-
----
-
-### Full template structure
-
-```yaml
-name: APIEndpoint
-version: "1.0.0"
-core: false
-description: |
-  An HTTP operation exposed to external consumers. The authoritative
-  definition of what callers may invoke, what they must provide, and
-  what they will receive in return.
-
-# The `properties` value is a standard JSON Schema document (written in YAML).
-# The full JSON Schema specification is supported — $defs, default, readOnly,
-# examples, additionalProperties, allOf, oneOf, and all other standard keywords.
-#
-# This schema validates the `properties` block in node cluster files of this type.
-# Universal node properties (id, template, state, stability, etc.) are always
-# present on every node and are not declared here.
-#
-# Owned child structures (request schema, response schemas, and their fields)
-# are governed by the cluster file format in ADR-002 and the Field core template,
-# not by this schema. Only flat, scalar-valued properties belong here.
-properties:
-  $defs:
-    HttpMethod:
-      type: string
-      enum: [GET, POST, PUT, PATCH, DELETE]
-
-  type: object
-  additionalProperties: false
-  required:
-    - method
-    - path
-  properties:
-    method:
-      $ref: "#/properties/$defs/HttpMethod"
-      description: "HTTP method"
-      examples: [GET, POST]
-    path:
-      type: string
-      pattern: "^/"
-      description: "URL path pattern — e.g. /orders/{orderId}"
-      examples: ["/orders", "/orders/{orderId}"]
-    auth:
-      type: string
-      default: "bearer-token"
-      description: "Authentication mechanism"
-      examples: ["bearer-token", "api-key", "none"]
-    basePath:
-      type: string
-      description: "Optional base path prefix applied to all routes in this service"
-      examples: ["/api/v1", "/internal"]
-
-# Edge declarations: which edge types this node may send and receive.
-# References names from the core edge type vocabulary defined in ADR-003b.
-# supports — participates in either direction (common case)
-# outgoing — sends only; incoming — receives only
-# See ADR-004b for the full declaration model and validation rules.
-edges:
-  outgoing: [calls, produces]
-  supports: [reads]
-
-# UI section: display hints used by the generic renderer in v1.
-# Purpose-built UI components (bundled in components/) override these hints
-# when available. See the future UI component bundling ADR.
-ui:
-  icon: api-endpoint
-  colour: "#4A90D9"
-  displayProperties:
-    - method
-    - path
-  badge: method
-```
-
-**On `$defs`:** Use `$defs` within the `properties` schema to define reusable sub-schemas referenced by multiple properties within the same template. This is standard JSON Schema — do not use YAML anchors for this purpose as they do not survive JSON Schema validation.
-
-**On `default`:** Properties with `default` values allow extractors and agents to create valid nodes without populating every optional field. The MCP server applies defaults when loading nodes that omit defaulted properties.
-
-**On `readOnly`:** Properties marked `readOnly: true` are system-derived and should not be set manually. No enforcement is applied — it is a documentation signal to tooling and agents.
-
-**On `examples`:** Standard JSON Schema `examples` array. Used by documentation generators, tooling, and as format hints to extractors and agents. No validation impact.
-
----
-
-### Node type extension
-
-A team that wants a specialisation of an existing node type defines a new template that declares `extends`. At load time the MCP server merges parent and child into a single resolved template:
-
-- The child's `properties` JSON Schema is merged with the parent's using `allOf` — both must be satisfied
-- `description`, `ui`, and other top-level sections in the child replace the parent's equivalents
-- The child may add new optional or required properties
-- The child may not remove or narrow parent required properties
-
-```yaml
-# templates/InternalAPIEndpoint.yaml
-
-name: InternalAPIEndpoint
-version: "1.0.0"
-core: false
-extends: APIEndpoint
-description: |
-  An API endpoint for internal service-to-service communication only.
-  Not exposed to external consumers. Lower change-risk than external endpoints.
-
-# Adds properties on top of the merged APIEndpoint schema.
-# method, path, and auth are inherited and still required.
-properties:
-  type: object
-  properties:
-    rateLimit:
-      type: integer
-      description: "Requests per second limit for this endpoint"
-    callerService:
-      type: string
-      description: "The expected calling service — for documentation only"
-
-ui:
-  icon: internal-endpoint
-  colour: "#888888"
-  displayProperties:
-    - method
-    - path
-    - callerService
-```
+`abstract: true` prevents direct instantiation. Abstract templates exist only as extension bases — the linter rejects any node file that references an abstract template name directly.
 
 **Extension rules enforced by the linter:**
-- Child `properties` are merged with parent via `allOf` — child may not remove parent required properties
-- Child may override `description`, `ui`, and `edges`
 - `extends` must reference a template present in the loaded packs
+- Child may not remove or narrow parent required properties
+- Child may override `description`, `ui`, and `edge-types`
 - Circular extension chains are rejected
-
----
-
-### `Field` template (core)
-
-`Field` is the only core template. The `type`, `nullable`, and `cardinality` properties are fixed — they are the structural invariants the graph depends on for field-level lineage. Teams may extend `Field` with additional properties.
-
-```yaml
-name: Field
-version: "1.0.0"
-core: true
-description: |
-  A named property within a schema node. Fields are the atomic unit of
-  field-level lineage. Every field is independently addressable, stateful,
-  and can be connected to fields in other nodes via maps-to edges.
-
-properties:
-  type: object
-  required:
-    - fieldType
-    - nullable
-    - cardinality
-  properties:
-    fieldType:
-      type: string
-      description: |
-        Scalar type (uuid, string, integer, decimal, boolean, datetime) or
-        a node ID referencing a DomainModel, EnumDefinition, or ValueObject
-    nullable:
-      type: boolean
-      description: "Whether this field may be absent or null"
-    cardinality:
-      type: string
-      enum: [one, many]
-      description: "Whether this field holds a single value or a collection"
-
-ui:
-  icon: field
-  colour: "#888888"
-  displayProperties:
-    - fieldType
-    - nullable
-    - cardinality
-```
-
-Note: the property is named `fieldType` rather than `type` to avoid collision with JSON Schema's own `type` keyword when the template's property schema is parsed.
 
 ---
 
@@ -527,7 +336,7 @@ Note: the property is named `fieldType` rather than `type` to avoid collision wi
 
 | Template | `core` | `abstract` | Purpose |
 |---|---|---|---|
-| `DomainModel` | false | false | Domain entity with fields, enums, invariants, operations |
+| `DomainModel` | false | false | Domain entity or aggregate root; structure defined via a schema reference |
 | `DomainOperation` | false | false | Named unit of behaviour within a domain model |
 | `Command` | false | false | Explicit intent to change state; optional for REST-centric teams |
 | `ReadModel` | false | false | Derived query projection |
@@ -571,7 +380,7 @@ Event modelling nodes capture the structure of an Adam Dymitruk-style event mode
 | `GraphQLSubscription` | false | false | Real-time stream in a GraphQL schema; extends Event |
 | `GraphQLType` | false | false | Named type in a GraphQL schema; maps to DomainModel concepts |
 
-The GraphQL pack ships with a GraphQL SDL adapter. `GraphQLSubscription` extends `Event` from the core pack.
+The GraphQL pack ships with a GraphQL SDL adapter. `GraphQLSubscription` extends `Event` from the messaging pack.
 
 ---
 
@@ -640,7 +449,7 @@ From this ADR, the linter must enforce:
 - No two loaded packs define a template with the same name
 - Template `extends` references resolve to a template in the loaded packs
 - Child templates do not narrow or remove parent required properties
-- Edge type names in `edges.supports`, `edges.outgoing`, and `edges.incoming` declarations are from the core vocabulary (see ADR-004b)
+- Edge type names in `edge-types.supports`, `edge-types.outgoing`, and `edge-types.incoming` declarations are from the core vocabulary (see ADR-004b)
 
 ---
 
@@ -684,3 +493,6 @@ The `ui:` hints in each template are the v1 fallback. Generic rendering uses the
 - ADR-006: Linter and validator — enforces template compliance on all node files and validates pack integrity
 - PDR-001: Tool scope and node taxonomy — progressive enrichment philosophy; state and stability model
 - PDR-003: Template packs and plugin architecture — product decisions implemented by this ADR
+
+
+
