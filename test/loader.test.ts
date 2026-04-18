@@ -8,6 +8,7 @@ import { loadPacks } from '../src/loader/pack-loader.js'
 import { loadClusters } from '../src/loader/cluster-loader.js'
 import { loadEdges } from '../src/loader/edge-loader.js'
 import { loadGraph } from '../src/loader/index.js'
+import { VALID_EDGE_TYPE_SET } from '../src/loader/constants.js'
 import { LoadError } from '../src/schema/index.js'
 import type { Diagnostic, Node } from '../src/schema/index.js'
 
@@ -105,6 +106,12 @@ describe('cluster loader', () => {
 })
 
 describe('edge loader', () => {
+  it('shares valid explicit edge types from loader constants', () => {
+    assert.ok(VALID_EDGE_TYPE_SET.has('reads'))
+    assert.ok(VALID_EDGE_TYPE_SET.has('maps-to'))
+    assert.ok(!VALID_EDGE_TYPE_SET.has('unknown'))
+  })
+
   it('loads 8 explicit edges from orders.edges.yaml', async () => {
     const diagnostics: Diagnostic[] = []
     const clusters = await loadSampleClusters(diagnostics)

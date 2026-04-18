@@ -3,6 +3,7 @@ import path from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import type { Edge, Graph, Node } from '../schema/index.js'
 import { getOwnedSections } from '../loader/pack-loader.js'
+import { isPackRef } from '../loader/fs-utils.js'
 
 export interface SaveGraphOptions {
   sourceGraphPath: string
@@ -158,12 +159,6 @@ function getRootNodes(graph: Graph): Node[] {
   return nodes
     .filter(node => !nodes.some(other => other.id !== node.id && node.id.startsWith(`${other.id}.`)))
     .sort((a, b) => a.id.localeCompare(b.id))
-}
-
-function isPackRef(value: unknown): value is { path: string } {
-  return typeof value === 'object' &&
-    value !== null &&
-    typeof (value as Record<string, unknown>).path === 'string'
 }
 
 function normalizeYamlPath(value: string): string {

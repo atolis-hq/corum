@@ -1,13 +1,10 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
-import type { Diagnostic, Edge, EdgeType, Node, Stability, State, Template } from '../schema/index.js'
+import type { Diagnostic, Edge, Node, Stability, State, Template } from '../schema/index.js'
 import { getOwnedSections } from './pack-loader.js'
-
-const STRUCTURAL_EDGE_BY_ITEM_TEMPLATE: Partial<Record<string, EdgeType>> = {
-  Field: 'has-field',
-  EnumValue: 'has-value',
-}
+import { walkYamlFiles } from './fs-utils.js'
+import { STRUCTURAL_EDGE_BY_ITEM_TEMPLATE, VALID_STABILITY_SET, VALID_STATE_SET } from './constants.js'
 
 type ClusterResult = {
   nodes: Map<string, Node>
@@ -26,11 +23,11 @@ type RootRecord = Record<string, unknown> & {
   properties?: unknown
 }
 
-export async function loadClusters(
+export function loadClusters(
   graphPath: string,
   templates: Map<string, Template>,
   diagnostics: Diagnostic[],
-): Promise<ClusterResult> {
+): ClusterResult {
   const result: ClusterResult = { nodes: new Map(), edgesByFrom: new Map(), edgesByTo: new Map() }
   const componentsDir = path.join(graphPath, 'components')
   if (!existsSync(componentsDir)) return result
@@ -143,19 +140,6 @@ function stripOwnedSections(
   return Object.fromEntries(Object.entries(value).filter(([key]) => !ownedSections.has(key)))
 }
 
-function walkYamlFiles(dir: string): string[] {
-  const result: string[] = []
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const fullPath = path.join(dir, entry.name)
-    if (entry.isDirectory()) {
-      result.push(...walkYamlFiles(fullPath))
-    } else if (entry.isFile() && entry.name.endsWith('.yaml')) {
-      result.push(fullPath)
-    }
-  }
-  return result
-}
-
 function addNode(result: ClusterResult, node: Node, file: string, diagnostics: Diagnostic[]): void {
   if (result.nodes.has(node.id)) {
     diagnostics.push({ severity: 'error', file, nodeId: node.id, message: `duplicate node id: ${node.id}` })
@@ -179,9 +163,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function asState(value: unknown, fallback: State): State {
-  return typeof value === 'string' ? value as State : fallback
+  return typeof value === 'string' && VALID_STATE_SET.has(value) ? value as State : fallback
 }
 
 function asStability(value: unknown, fallback: Stability): Stability {
-  return typeof value === 'string' ? value as Stability : fallback
+  return typeof value === 'string' && VALID_STABILITY_SET.has(value) ? value as Stability : fallback
 }

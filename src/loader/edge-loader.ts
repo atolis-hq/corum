@@ -1,23 +1,20 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import type { Diagnostic, Edge, EdgeType, Node, Stability, State } from '../schema/index.js'
-
-const VALID_EDGE_TYPES = new Set<string>([
-  'triggers', 'produces', 'reads', 'calls', 'implements',
-  'maps-to', 'derived-from', 'renamed-from', 'has-field', 'has-value',
-])
+import { VALID_EDGE_TYPE_SET } from './constants.js'
+import { walkYamlFiles } from './fs-utils.js'
 
 type EdgeResult = {
   edgesByFrom: Map<string, Edge[]>
   edgesByTo: Map<string, Edge[]>
 }
 
-export async function loadEdges(
+export function loadEdges(
   graphPath: string,
   nodes: Map<string, Node>,
   diagnostics: Diagnostic[],
-): Promise<EdgeResult> {
+): EdgeResult {
   const result: EdgeResult = { edgesByFrom: new Map(), edgesByTo: new Map() }
   const edgesDir = path.join(graphPath, 'edges')
   if (!existsSync(edgesDir)) return result
@@ -42,17 +39,21 @@ export async function loadEdges(
         diagnostics.push({ severity: 'error', file: filePath, message: 'edge missing required from, to, or type' })
         continue
       }
-      if (!VALID_EDGE_TYPES.has(edgeRecord.type)) {
+      if (!VALID_EDGE_TYPE_SET.has(edgeRecord.type)) {
         diagnostics.push({ severity: 'error', file: filePath, message: `invalid edge type: ${edgeRecord.type}` })
         continue
       }
 
+      let unresolvedEndpoint = false
       if (!nodes.has(edgeRecord.from)) {
         diagnostics.push({ severity: 'error', file: filePath, message: `edge from unresolved node: ${edgeRecord.from}` })
+        unresolvedEndpoint = true
       }
       if (!nodes.has(edgeRecord.to)) {
         diagnostics.push({ severity: 'error', file: filePath, message: `edge to unresolved node: ${edgeRecord.to}` })
+        unresolvedEndpoint = true
       }
+      if (unresolvedEndpoint) continue
 
       addEdge(result, {
         id: `${edgeRecord.from}__${edgeRecord.type}__${edgeRecord.to}`,
@@ -66,19 +67,6 @@ export async function loadEdges(
     }
   }
 
-  return result
-}
-
-function walkYamlFiles(dir: string): string[] {
-  const result: string[] = []
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const fullPath = path.join(dir, entry.name)
-    if (entry.isDirectory()) {
-      result.push(...walkYamlFiles(fullPath))
-    } else if (entry.isFile() && entry.name.endsWith('.yaml')) {
-      result.push(fullPath)
-    }
-  }
   return result
 }
 

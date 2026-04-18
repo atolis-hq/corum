@@ -6,6 +6,7 @@ import { LoadError } from '../schema/index.js'
 import { loadClusters } from './cluster-loader.js'
 import { loadEdges } from './edge-loader.js'
 import { loadPacks } from './pack-loader.js'
+import { isPackRef } from './fs-utils.js'
 
 const DEFAULT_PACKS_PATH = '.corum/packs'
 
@@ -37,9 +38,9 @@ export async function loadGraph(options: LoadOptions): Promise<Graph> {
     packDirs.push(packsRoot)
   }
 
-  const templates = await loadPacks(packDirs, diagnostics)
-  const clusterResult = await loadClusters(graphPath, templates, diagnostics)
-  const edgeResult = await loadEdges(graphPath, clusterResult.nodes, diagnostics)
+  const templates = loadPacks(packDirs, diagnostics)
+  const clusterResult = loadClusters(graphPath, templates, diagnostics)
+  const edgeResult = loadEdges(graphPath, clusterResult.nodes, diagnostics)
 
   const edgesByFrom = cloneEdgeMap(clusterResult.edgesByFrom)
   const edgesByTo = cloneEdgeMap(clusterResult.edgesByTo)
@@ -59,12 +60,6 @@ export async function loadGraph(options: LoadOptions): Promise<Graph> {
   }
 
   return graph
-}
-
-function isPackRef(value: unknown): value is { path: string } {
-  return typeof value === 'object' &&
-    value !== null &&
-    typeof (value as Record<string, unknown>).path === 'string'
 }
 
 function cloneEdgeMap(source: Map<string, Edge[]>): Map<string, Edge[]> {

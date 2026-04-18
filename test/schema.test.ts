@@ -1,52 +1,29 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import type { Node, Edge, Graph, LoadOptions } from '../src/schema/index.js'
+import { LoadError, QueryError } from '../src/schema/index.js'
 
-describe('schema types', () => {
-  it('Node has required fields', () => {
-    const node: Node = {
-      id: 'orders.DomainModel.order',
-      template: 'DomainModel',
-      component: 'orders',
-      state: 'agreed',
-      stability: 'stable',
-      schemaVersion: '1',
-      lastModifiedAt: '2026-04-17',
-      properties: {},
-    }
-    assert.equal(node.id, 'orders.DomainModel.order')
-  })
-
-  it('Edge has required fields', () => {
-    const edge: Edge = {
-      id: 'orders.APIEndpoint.create-order__reads__orders.DomainModel.order',
-      from: 'orders.APIEndpoint.create-order',
-      to: 'orders.DomainModel.order',
-      type: 'reads',
-      state: 'proposed',
-      stability: 'unstable',
-    }
-    assert.equal(edge.type, 'reads')
-  })
-
-  it('Graph and LoadOptions carry graph loading state', () => {
-    const graph: Graph = {
-      nodesById: new Map(),
-      edgesByFrom: new Map(),
-      edgesByTo: new Map(),
-      templates: new Map(),
-      diagnostics: [],
-    }
-    const options: LoadOptions = { graphPath: 'fixtures/sample-graph' }
-
-    assert.equal(graph.nodesById.size, 0)
-    assert.equal(options.graphPath, 'fixtures/sample-graph')
-  })
-
-  it('LoadError carries diagnostics', async () => {
-    const { LoadError } = await import('../src/schema/index.js')
-    const err = new LoadError([{ severity: 'error', file: 'x.yaml', message: 'bad' }])
-    assert.equal(err.diagnostics.length, 1)
+describe('schema error classes', () => {
+  it('LoadError.message includes error count', () => {
+    const err = new LoadError([
+      { severity: 'error', file: 'a.yaml', message: 'bad' },
+      { severity: 'error', file: 'b.yaml', message: 'also bad' },
+      { severity: 'warning', file: 'c.yaml', message: 'minor' },
+    ])
     assert.ok(err instanceof Error)
+    assert.ok(err.message.includes('2 error'))
+    assert.equal(err.diagnostics.length, 3)
+    assert.equal(err.name, 'LoadError')
+  })
+
+  it('LoadError with zero errors still constructs', () => {
+    const err = new LoadError([{ severity: 'warning', file: 'x.yaml', message: 'warn' }])
+    assert.ok(err.message.includes('0 error'))
+  })
+
+  it('QueryError is an Error with correct name', () => {
+    const err = new QueryError('Node not found: foo.Bar.baz')
+    assert.ok(err instanceof Error)
+    assert.equal(err.name, 'QueryError')
+    assert.equal(err.message, 'Node not found: foo.Bar.baz')
   })
 })

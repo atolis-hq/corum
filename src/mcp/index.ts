@@ -2,6 +2,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { getCluster, getLinkedFields, listNodes, type ListNodesFilter } from '../graph/index.js'
 import { loadGraph } from '../loader/index.js'
 import type { Graph } from '../schema/index.js'
@@ -75,7 +76,7 @@ function errorResult(err: unknown): ToolResult {
 }
 
 function isEntrypoint(): boolean {
-  return process.argv[1] !== undefined && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'))
+  return process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href
 }
 
 if (isEntrypoint()) {
@@ -88,13 +89,13 @@ if (isEntrypoint()) {
     graph = await loadGraph({ graphPath, strict: true })
   } catch (err) {
     loadError = String(err)
-    graph = await loadGraph({ graphPath, strict: false }).catch(() => ({
+    graph = {
       nodesById: new Map(),
       edgesByFrom: new Map(),
       edgesByTo: new Map(),
       templates: new Map(),
       diagnostics: [],
-    }))
+    }
   }
 
   const handlers = createMcpHandlers(graph)

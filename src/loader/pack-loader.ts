@@ -3,6 +3,21 @@ import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import type { Diagnostic, Template } from '../schema/index.js'
 
+function topoSortTemplates(templates: Map<string, Template>): Template[] {
+  const sorted: Template[] = []
+  const visited = new Set<string>()
+  function visit(name: string): void {
+    if (visited.has(name)) return
+    visited.add(name)
+    const t = templates.get(name)
+    if (!t) return
+    if (t.extends) visit(t.extends)
+    sorted.push(t)
+  }
+  for (const name of templates.keys()) visit(name)
+  return sorted
+}
+
 const RESERVED_TEMPLATE_KEYS = new Set([
   'name', 'version', 'core', 'abstract', 'extends',
   'description', 'properties', 'edge-types', 'ui',
@@ -24,10 +39,10 @@ export function getOwnedSections(template: Template): Record<string, string> {
   return result
 }
 
-export async function loadPacks(
+export function loadPacks(
   packDirs: string[],
   diagnostics: Diagnostic[],
-): Promise<Map<string, Template>> {
+): Map<string, Template> {
   const templates = new Map<string, Template>()
   let base: Template | undefined
 
@@ -74,7 +89,7 @@ export async function loadPacks(
     }
   }
 
-  for (const template of templates.values()) {
+  for (const template of topoSortTemplates(templates)) {
     if (!template.extends) continue
 
     const parent = templates.get(template.extends)
