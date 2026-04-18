@@ -135,7 +135,7 @@ if (isEntrypoint()) {
   const handlers = createMcpHandlers(graph)
   const noWeb = process.argv.includes('--no-web')
   if (!noWeb) {
-    await startWebServer(graph)
+    await startWebServer(graph, { graphPath })
   }
 
   const server = new Server(

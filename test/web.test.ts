@@ -96,8 +96,17 @@ describe('web server', () => {
   })
 
   describe('GET /api/nodes', () => {
-    it('returns all nodes with no filter', async () => {
+    it('returns non-core template nodes with no filter', async () => {
       const res = await fetch(`http://localhost:${handle.port}/api/nodes`)
+      assert.equal(res.status, 200)
+      const body = await res.json() as Array<{ id: string; template: string }>
+      assert.equal(body.length, 1)
+      const ids = body.map(n => n.id).sort()
+      assert.deepEqual(ids, ['orders.Order'])
+    })
+
+    it('includes core template nodes when ?includeCore=true', async () => {
+      const res = await fetch(`http://localhost:${handle.port}/api/nodes?includeCore=true`)
       assert.equal(res.status, 200)
       const body = await res.json() as Array<{ id: string; template: string }>
       assert.equal(body.length, 2)
@@ -115,7 +124,7 @@ describe('web server', () => {
     it('filters by component', async () => {
       const res = await fetch(`http://localhost:${handle.port}/api/nodes?component=orders`)
       const body = await res.json() as Array<{ id: string }>
-      assert.equal(body.length, 2)
+      assert.equal(body.length, 1)
     })
 
     it('returns id, template, component, state, stability only', async () => {

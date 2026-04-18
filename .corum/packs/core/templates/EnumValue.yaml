@@ -1,6 +1,6 @@
 name: EnumValue
 version: "1.0.0"
-core: false
+core: true
 abstract: false
 description: |
   A single constant within an EnumDefinition. EnumValue is a first-class node

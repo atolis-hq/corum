@@ -13,7 +13,7 @@
   --accent-2: #fde6e0;
   --accent-ink: #b3422e;
   --ok: #3b9a66;
-  --warn: #c94242;
+  --warn: var(--accent);
   --radius: 6px;
   color-scheme: light;
 }
@@ -32,7 +32,7 @@ body[data-theme="dark"] {
   --accent-2: #3a221c;
   --accent-ink: #ffa796;
   --ok: #5bbd85;
-  --warn: #e76b6b;
+  --warn: var(--accent);
   color-scheme: dark;
 }
 
@@ -82,7 +82,7 @@ button {
   gap: 10px;
   height: 44px;
   padding: 0 16px;
-  background: var(--ink);
+  background: var(--accent);
   color: var(--paper);
   flex-shrink: 0;
 }

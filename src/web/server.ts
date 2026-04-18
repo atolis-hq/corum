@@ -14,6 +14,8 @@ const WEB_DIR = path.join(__dirname, '..', '..', '..', 'web')
 
 export type WebServerOptions = {
   port?: number
+  graphPath?: string
+  logger?: (message: string) => void
 }
 
 export type WebServerHandle = {
@@ -56,19 +58,22 @@ export function createApp(graph: Graph): express.Application {
 
   app.get('/api/nodes', (req, res) => {
     const { template, component, state, stability } = req.query
+    const includeCore = req.query.includeCore === 'true'
     const filter: ListNodesFilter = {
       template: typeof template === 'string' ? template : undefined,
       component: typeof component === 'string' ? component : undefined,
       state: typeof state === 'string' ? state as ListNodesFilter['state'] : undefined,
       stability: typeof stability === 'string' ? stability as ListNodesFilter['stability'] : undefined,
     }
-    const nodes = listNodes(graph, filter).map(node => ({
-      id: node.id,
-      template: node.template,
-      component: node.component,
-      state: node.state,
-      stability: node.stability,
-    }))
+    const nodes = listNodes(graph, filter)
+      .filter(node => includeCore || !graph.templates.get(node.template)?.core)
+      .map(node => ({
+        id: node.id,
+        template: node.template,
+        component: node.component,
+        state: node.state,
+        stability: node.stability,
+      }))
     res.json(nodes)
   })
 
@@ -104,13 +109,28 @@ export function createApp(graph: Graph): express.Application {
 }
 
 export function startWebServer(graph: Graph, options: WebServerOptions = {}): Promise<WebServerHandle> {
+  const portSource = options.port !== undefined
+    ? 'options.port'
+    : process.env.CORUM_WEB_PORT !== undefined
+      ? 'CORUM_WEB_PORT'
+      : 'default'
+  const graphPathSource = options.graphPath !== undefined
+    ? 'options.graphPath'
+    : process.env.CORUM_GRAPH_PATH !== undefined
+      ? 'CORUM_GRAPH_PATH'
+      : 'default'
   const port = options.port ?? parseInt(process.env.CORUM_WEB_PORT ?? '3000', 10)
+  const graphPath = options.graphPath ?? process.env.CORUM_GRAPH_PATH ?? path.join(process.cwd(), '.corum/graph')
+  const logger = options.logger ?? console.error
   const app = createApp(graph)
   return new Promise((resolve, reject) => {
     const server = app.listen(port, () => {
       const addr = server.address() as AddressInfo
       if (options.port !== 0) {
-        console.error(`[corum web] http://localhost:${addr.port}`)
+        logger(`[corum web] config graphPath=${graphPath} (${graphPathSource})`)
+        logger(`[corum web] config port=${addr.port} (${portSource})`)
+        logger(`[corum web] config webDir=${WEB_DIR}`)
+        logger(`[corum web] http://localhost:${addr.port}`)
       }
       resolve({
         port: addr.port,
@@ -128,5 +148,5 @@ function isEntrypoint(): boolean {
 if (isEntrypoint()) {
   const graphPath = process.env.CORUM_GRAPH_PATH ?? path.join(process.cwd(), '.corum/graph')
   const graph = await loadGraph({ graphPath, strict: true })
-  await startWebServer(graph)
+  await startWebServer(graph, { graphPath })
 }

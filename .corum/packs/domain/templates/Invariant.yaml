@@ -1,6 +1,6 @@
 name: Invariant
 version: "1.0.0"
-core: false
+core: true
 abstract: false
 description: |
   A business rule that must always hold for the owning model or process.

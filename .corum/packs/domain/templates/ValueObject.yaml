@@ -1,6 +1,6 @@
 name: ValueObject
 version: "1.0.0"
-core: false
+core: true
 abstract: false
 description: |
   A shared type with no independent identity. Value objects are often

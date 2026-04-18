@@ -1,6 +1,6 @@
 name: EnumDefinition
 version: "1.0.0"
-core: false
+core: true
 abstract: false
 description: |
   A named set of discrete values. EnumDefinition is the boundary node for an
