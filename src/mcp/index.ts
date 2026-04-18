@@ -7,6 +7,7 @@ import { getCluster, getLinkedFields, listNodes, type ListNodesFilter } from '..
 import { loadGraph } from '../loader/index.js'
 import type { Graph } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
+import { startWebServer } from '../web/server.js'
 import { compactKeys, getSerializer } from './serializers.js'
 
 type ToolContent = { type: 'text'; text: string }
@@ -132,6 +133,11 @@ if (isEntrypoint()) {
   }
 
   const handlers = createMcpHandlers(graph)
+  const noWeb = process.argv.includes('--no-web')
+  if (!noWeb) {
+    await startWebServer(graph)
+  }
+
   const server = new Server(
     { name: 'corum', version: '0.1.0' },
     { capabilities: { tools: {} } },
