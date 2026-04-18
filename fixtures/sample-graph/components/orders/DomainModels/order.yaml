@@ -8,7 +8,6 @@ lastModifiedAt: "2026-04-17"
 
 properties:
   description: A placed customer order; aggregate root for the orders bounded context
-  aggregate: true
   schema: order   # resolves to orders.DomainModel.order.schemas.order
 
 # --- Inline schemas ------------------------------------------------------

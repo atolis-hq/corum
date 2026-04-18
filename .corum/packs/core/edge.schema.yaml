@@ -1,0 +1,94 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "corum/edge"
+title: Edge
+description: |
+  Universal properties present on every edge in the graph. Edge IDs are
+  derived by the loader as {from}__{type}__{to} and are never declared
+  in edge files.
+
+  state and stability are optional — edges that omit them default to
+  proposed / unstable at load time.
+
+type: object
+required:
+  - from
+  - to
+  - type
+additionalProperties: false
+
+properties:
+
+  from:
+    type: string
+    description: |
+      Source node ID. Any node, including field nodes.
+      Must resolve to a declared node ID in the graph.
+
+  to:
+    type: string
+    description: |
+      Target node ID. Any node, including field nodes.
+      Must resolve to a declared node ID in the graph.
+      May reference a node in a different component or repo.
+
+  type:
+    $ref: "#/$defs/EdgeType"
+
+  state:
+    $ref: "#/$defs/State"
+    description: |
+      Lifecycle state of this relationship. Defaults to proposed.
+      An edge may be proposed while both of its endpoint nodes are agreed —
+      the relationship is in-flight independently of the nodes.
+
+  stability:
+    $ref: "#/$defs/Stability"
+    description: Stability of this relationship. Defaults to unstable.
+
+  notes:
+    type: string
+    description: Free-text annotation on this specific edge instance.
+
+$defs:
+
+  EdgeType:
+    type: string
+    enum:
+      - triggers
+      - produces
+      - reads
+      - calls
+      - implements
+      - maps-to
+      - derived-from
+      - renamed-from
+      - has-field
+      - has-value
+    description: |
+      triggers     — Source node's occurrence causes the target to happen.
+      produces     — Source operation produces the target event or schema.
+      reads        — Source node reads from the target.
+      calls        — Source operation invokes the target contract boundary.
+      implements   — Source is a concrete realisation of the target contract.
+      maps-to      — Source field corresponds to target field across a schema boundary.
+      derived-from — Source is computed from the target.
+      renamed-from — Source was previously known as the target identity.
+      has-field    — Structural ownership: source schema/model owns target field.
+      has-value    — Structural ownership: source enum owns target enum value.
+
+  State:
+    type: string
+    enum:
+      - draft
+      - proposed
+      - agreed
+      - future
+      - removed
+      - implemented
+
+  Stability:
+    type: string
+    enum:
+      - unstable
+      - stable
+      - deprecated

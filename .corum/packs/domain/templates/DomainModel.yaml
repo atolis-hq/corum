@@ -3,20 +3,19 @@ version: "1.0.0"
 core: false
 abstract: false
 description: |
-  A domain entity or aggregate root expressed as a named model with fields,
-  enums, schemas, invariants, and operations owned in its cluster file.
+  A domain entity or aggregate root. Its structure is defined by a Schema node
+  referenced via the schema property — fields always belong to schemas, never
+  directly to the model. The primary schema is typically declared inline in the
+  schemas block and referenced by local name.
 
-  Fields in the fields block become Field nodes at {node-id}.fields.{field-name}.
-  Enums in the enums block become EnumDefinition nodes at
-  {node-id}.enums.{local-name} with EnumValue nodes at
-  {node-id}.enums.{local-name}.values.{value-key}.
-  Complex object types for fields are defined in the schemas block; each becomes
-  a Schema node at {node-id}.schemas.{local-name} with Field nodes at
-  {node-id}.schemas.{local-name}.fields.{field-name}.
+  Schemas become Schema nodes at {node-id}.schemas.{local-name} with Field nodes
+  at {node-id}.schemas.{local-name}.fields.{field-name}.
+  Enums become EnumDefinition nodes at {node-id}.enums.{local-name} with
+  EnumValue nodes at {node-id}.enums.{local-name}.values.{value-key}.
   Invariants become Invariant nodes at {node-id}.invariants.{key}.
   Operations become DomainOperation nodes at {node-id}.operations.{key}.
 
-  Reference resolution order for objectRef values in the fields or schemas blocks:
+  Reference resolution order for objectRef and schema values:
     1. Local schemas block — resolved to {node-id}.schemas.{local-name}
     2. Local enums block  — resolved to {node-id}.enums.{local-name}
     3. Global node ID     — resolved against the graph; generates a reads edge
@@ -28,6 +27,11 @@ properties:
     description:
       type: string
       description: "Human-readable description of what this model represents"
+    schema:
+      type: string
+      description: |
+        Local schema name or global Schema node ID defining the structure of
+        this model. Resolved local-first against the schemas block.
 
 invariants:
   item-template: Invariant

@@ -142,7 +142,7 @@ Examples:
 - `payments.DomainModel.payment`
 
 **Owned node IDs** extend the root node ID:
-- `orders.DomainModel.order.fields.customerId`
+- `orders.DomainModel.order.schemas.order.fields.customerId`
 - `orders.DomainModel.order.enums.order-status`
 - `orders.DomainModel.order.enums.order-status.values.cancelled`
 - `orders.APIEndpoint.create-order.schemas.create-order-request.fields.customerId`
@@ -223,100 +223,83 @@ metadata:
 ### Domain Model cluster
 
 ```yaml
-# components/orders/domain-models/order.yaml
+# components/orders/DomainModels/order.yaml
 
-schema-version: "1.0"
-id: orders.domain-models.order
+id: orders.DomainModel.order
 template: DomainModel
+component: orders
 state: agreed
 stability: stable
-name: Order
-description: |
-  Represents a customer purchase order throughout its lifecycle.
 
-fields:
-  - id: orders.domain-models.order.fields.order-id
-    name: orderId
-    type: uuid
-    nullable: false
-    cardinality: one
-    state: agreed
-    stability: stable
-    description: "Unique order identifier"
+properties:
+  description: A placed customer order; aggregate root for the orders bounded context
+  aggregate: true
+  schema: order   # resolves local-first to orders.DomainModel.order.schemas.order
 
-  - id: orders.domain-models.order.fields.customer-id
-    name: customerId
-    type: uuid
-    nullable: false
-    cardinality: one
-    state: agreed
-    stability: stable
-    description: "Reference to the placing customer"
+schemas:
+  order:
+    description: Structure of the order aggregate
+    fields:
+      id:
+        scalarType: uuid
+        nullable: false
+        cardinality: one
+      customerId:
+        scalarType: uuid
+        nullable: false
+        cardinality: one
+      status:
+        objectRef: order-status   # resolves to local enum
+        nullable: false
+        cardinality: one
+      totalAmount:
+        scalarType: decimal
+        nullable: false
+        cardinality: one
 
-  - id: orders.domain-models.order.fields.status
-    name: status
-    type: orders.domain-models.order.enums.status   # Reference to owned enum by ID
-    nullable: false
-    cardinality: one
-    state: agreed
-    stability: stable
-    description: "Current lifecycle state"
-
-  - id: orders.domain-models.order.fields.items
-    name: items
-    type: orders.domain-models.order-item           # Reference to sibling model by ID
-    nullable: false
-    cardinality: many
-    description: "Line items within this order"
+  order-line-item:
+    description: A single line item within the order
+    fields:
+      productId:
+        scalarType: uuid
+        nullable: false
+        cardinality: one
+      quantity:
+        scalarType: integer
+        nullable: false
+        cardinality: one
+      unitPrice:
+        scalarType: decimal
+        nullable: false
+        cardinality: one
 
 enums:
-  - id: orders.domain-models.order.enums.status
-    name: OrderStatus
-    state: agreed
-    stability: stable
-    description: "Lifecycle states for an order"
+  order-status:
+    description: Lifecycle states for an order
     values:
-      - id: orders.domain-models.order.enums.status.values.pending
+      pending:
         name: PENDING
-        state: agreed
-        stability: stable
-        description: "Order received, not yet processed"
-
-      - id: orders.domain-models.order.enums.status.values.confirmed
+        description: Order received, not yet processed
+      confirmed:
         name: CONFIRMED
-        state: agreed
-        stability: stable
-        description: "Order confirmed, payment captured"
-
-      - id: orders.domain-models.order.enums.status.values.cancelled
+        description: Order confirmed, payment captured
+      cancelled:
         name: CANCELLED
-        state: agreed
-        stability: deprecated
-        description: "Order cancelled by customer or system"
+        description: Order cancelled by customer or system
 
 invariants:
-  - id: orders.domain-models.order.invariants.items-not-empty
-    name: OrderMustHaveItems
-    state: agreed
-    description: "An order must always contain at least one line item"
-
-  - id: orders.domain-models.order.invariants.confirmed-requires-payment
-    name: ConfirmedOrderRequiresPayment
-    state: proposed
-    description: "An order cannot be CONFIRMED without a corresponding payment record"
+  must-have-items:
+    description: An order must always contain at least one line item
+  confirmed-requires-payment:
+    description: An order cannot be CONFIRMED without a corresponding payment record
 
 operations:
-  - id: orders.domain-models.order.operations.place-order
-    name: PlaceOrder
-    state: agreed
-    stability: stable
-    description: "Creates and confirms a new order"
-    # Behaviour, state modifications, and emitted events are declared via edges
-    # to keep the cluster file focused on structure rather than flow.
-    # See: components/orders/edges/operations--domain-events.yaml
-
-metadata:
-  lastModifiedAt: "2026-04-12T10:00:00Z"
+  place:
+    description: Creates and confirms a new order
+  confirm:
+    description: Mark the order as confirmed by the fulfilment system
+  cancel:
+    description: Cancel an in-progress order, returning reserved stock
 ```
 
 ---

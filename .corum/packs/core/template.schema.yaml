@@ -1,0 +1,153 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "corum/template"
+title: Template
+description: |
+  Meta-schema for Corum template files. Every template in every pack is
+  validated against this schema on loader startup. An invalid template
+  prevents its pack from loading.
+
+type: object
+required:
+  - name
+  - version
+
+properties:
+
+  name:
+    type: string
+    pattern: "^[A-Z][a-zA-Z0-9]*$"
+    description: |
+      Unique template name within loaded packs. PascalCase by convention.
+      Must not collide with a template name in any other loaded pack.
+
+  version:
+    type: string
+    pattern: "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    description: Semver version string.
+
+  core:
+    type: boolean
+    default: false
+    description: |
+      Only Field is core: true. Core templates are required by the loader
+      itself and cannot be removed or substituted.
+
+  abstract:
+    type: boolean
+    default: false
+    description: |
+      Abstract templates cannot be instantiated directly — no node file may
+      declare this template as its type. Abstract templates exist only as
+      extension bases for concrete subtypes via extends.
+
+  extends:
+    type: string
+    pattern: "^[A-Z][a-zA-Z0-9]*$"
+    description: |
+      Name of a parent template to inherit from. Resolved across all loaded
+      packs after all packs are loaded. The child's properties schema is
+      merged with the parent's via allOf. description, ui, edge-types, and
+      owned sections in the child override the parent's equivalents.
+
+  description:
+    type: string
+    description: Human-readable description of what this node type represents.
+
+  properties:
+    type: object
+    description: |
+      JSON Schema (Draft 7+) validating the properties block in cluster files
+      of this type. The full JSON Schema spec is supported — $defs, oneOf,
+      default, readOnly, examples, additionalProperties, and all composition
+      operators. Universal node properties (id, template, component, state,
+      stability, schemaVersion, lastModifiedAt) are always present on every
+      node and must not be declared here.
+
+  edge-types:
+    type: object
+    additionalProperties: false
+    description: |
+      Declares which edge types from the ADR-004b vocabulary this node type
+      may participate in. The linter uses these declarations to flag edges
+      that violate the declared constraints.
+    properties:
+      outgoing:
+        type: array
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/EdgeType"
+        description: Edge types this node sends (source end).
+      incoming:
+        type: array
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/EdgeType"
+        description: Edge types this node receives (target end).
+      supports:
+        type: array
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/EdgeType"
+        description: Edge types this node may participate in at either end.
+
+  ui:
+    type: object
+    additionalProperties: false
+    description: Display hints used by the generic renderer.
+    properties:
+      icon:
+        type: string
+        description: Icon identifier for the node card.
+      colour:
+        type: string
+        pattern: "^#[0-9A-Fa-f]{6}$"
+        description: Hex colour for the node card background.
+      displayProperties:
+        type: array
+        items:
+          type: string
+        description: |
+          Names of properties to display in the generic node card, in order.
+          Must reference property names declared in this template's properties
+          schema.
+      badge:
+        type: string
+        description: |
+          Single property name shown as a badge on the node card (e.g. method
+          on APIEndpoint). Must be a property name declared in this template.
+
+# Any key beyond the reserved set above is an owned section declaration.
+# Owned sections declare child nodes of a specific template type that are
+# authored inline in the cluster file. The loader materialises each item
+# as a first-class node validated against the referenced item-template.
+additionalProperties:
+  type: object
+  required:
+    - item-template
+  additionalProperties: false
+  properties:
+    item-template:
+      type: string
+      pattern: "^[A-Z][a-zA-Z0-9]*$"
+      description: |
+        Name of the template governing items in this section. The loader
+        validates each item's properties against this template's properties
+        schema and materialises it as a child node.
+    description:
+      type: string
+      description: Human-readable description of this section's purpose.
+
+$defs:
+  EdgeType:
+    type: string
+    enum:
+      - triggers
+      - produces
+      - reads
+      - calls
+      - implements
+      - maps-to
+      - derived-from
+      - renamed-from
+      - has-field
+      - has-value
