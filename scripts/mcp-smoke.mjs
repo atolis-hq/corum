@@ -27,7 +27,7 @@ function textContent(result) {
 }
 
 async function callJson(name, args = {}) {
-  const result = await client.callTool({ name, arguments: args })
+  const result = await client.callTool({ name, arguments: { ...args, format: 'json' } })
   if (result.isError) {
     throw new Error(`${name} failed: ${textContent(result)}`)
   }

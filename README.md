@@ -44,6 +44,8 @@ This compiles the project and runs the Node test runner against:
 - `test/loader.test.ts`
 - `test/graph.test.ts`
 - `test/mcp.test.ts`
+- `test/writer.test.ts`
+- `test/serializer.test.ts`
 
 The fixture graph used by the tests is in `fixtures/sample-graph`. The tests verify that it loads as `45` nodes and `38` edges.
 
@@ -79,6 +81,34 @@ The MCP server exposes these tools:
 - `list_nodes`: lists graph nodes, optionally filtered by `template`, `component`, `state`, or `stability`
 - `get_cluster`: returns a root node, owned child nodes, and edges inside that cluster
 - `get_linked_fields`: returns `maps-to` edges touching fields owned by a root node
+
+Each tool accepts an optional `format` argument:
+
+- `yaml`: default, human-readable YAML
+- `json`: pretty JSON
+- `toon`: TOON output via the official `@toon-format/toon` encoder for lower token use
+
+Each tool also accepts `compact_keys: true` to shorten common graph keys before serialization. This works with all formats:
+
+```text
+id -> i
+template -> t
+component -> cp
+state -> s
+stability -> st
+schemaVersion -> sv
+lastModifiedAt -> lm
+extractedFrom -> xf
+properties -> p
+root -> r
+children -> ch
+edges -> e
+nodes -> n
+from -> fr
+to -> to
+type -> ty
+notes -> nt
+```
 
 ## MCP Client Configuration
 

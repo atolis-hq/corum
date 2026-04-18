@@ -6,6 +6,7 @@ import { getCluster, getLinkedFields, listNodes, type ListNodesFilter } from '..
 import { loadGraph } from '../loader/index.js'
 import type { Graph } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
+import { compactKeys, getSerializer } from './serializers.js'
 
 type ToolContent = { type: 'text'; text: string }
 
@@ -21,25 +22,29 @@ export function createMcpHandlers(graph: Graph): {
 } {
   return {
     list_nodes(args) {
-      const filter: ListNodesFilter = {
-        template: typeof args.template === 'string' ? args.template : undefined,
-        component: typeof args.component === 'string' ? args.component : undefined,
-        state: typeof args.state === 'string' ? args.state as ListNodesFilter['state'] : undefined,
-        stability: typeof args.stability === 'string' ? args.stability as ListNodesFilter['stability'] : undefined,
+      try {
+        const filter: ListNodesFilter = {
+          template: typeof args.template === 'string' ? args.template : undefined,
+          component: typeof args.component === 'string' ? args.component : undefined,
+          state: typeof args.state === 'string' ? args.state as ListNodesFilter['state'] : undefined,
+          stability: typeof args.stability === 'string' ? args.stability as ListNodesFilter['stability'] : undefined,
+        }
+        const summaries = listNodes(graph, filter).map(node => ({
+          id: node.id,
+          template: node.template,
+          component: node.component,
+          state: node.state,
+          stability: node.stability,
+        }))
+        return formatResult(summaries, args.format, getCompactKeys(args))
+      } catch (err) {
+        return errorResult(err)
       }
-      const summaries = listNodes(graph, filter).map(node => ({
-        id: node.id,
-        template: node.template,
-        component: node.component,
-        state: node.state,
-        stability: node.stability,
-      }))
-      return jsonResult(summaries)
     },
 
     get_cluster(args) {
       try {
-        return jsonResult(getCluster(graph, String(args.node_id)))
+        return formatResult(getCluster(graph, String(args.node_id)), args.format, getCompactKeys(args))
       } catch (err) {
         return errorResult(err)
       }
@@ -47,7 +52,7 @@ export function createMcpHandlers(graph: Graph): {
 
     get_linked_fields(args) {
       try {
-        return jsonResult(getLinkedFields(graph, String(args.node_id)))
+        return formatResult(getLinkedFields(graph, String(args.node_id)), args.format, getCompactKeys(args))
       } catch (err) {
         return errorResult(err)
       }
@@ -55,8 +60,13 @@ export function createMcpHandlers(graph: Graph): {
   }
 }
 
-function jsonResult(value: unknown): ToolResult {
-  return { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] }
+function formatResult(value: unknown, format: unknown, compact: unknown = false): ToolResult {
+  const payload = compact === true ? compactKeys(value) : value
+  return { content: [{ type: 'text', text: getSerializer(format).serialize(payload) }] }
+}
+
+function getCompactKeys(args: Record<string, unknown>): boolean {
+  return args.compact_keys === true || args.compactKeys === true
 }
 
 function errorResult(err: unknown): ToolResult {
@@ -105,6 +115,8 @@ if (isEntrypoint()) {
             component: { type: 'string', description: 'Filter by component name' },
             state: { type: 'string', description: 'Filter by lifecycle state' },
             stability: { type: 'string', description: 'Filter by stability' },
+            format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+            compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
           },
         },
       },
@@ -116,6 +128,8 @@ if (isEntrypoint()) {
           required: ['node_id'],
           properties: {
             node_id: { type: 'string', description: 'Fully qualified node ID' },
+            format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+            compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
           },
         },
       },
@@ -127,6 +141,8 @@ if (isEntrypoint()) {
           required: ['node_id'],
           properties: {
             node_id: { type: 'string', description: 'Fully qualified root node ID' },
+            format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+            compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
           },
         },
       },
