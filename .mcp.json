@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "corum": {
+      "command": "node",
+      "args": ["dist/src/mcp/index.js"],
+      "env": {
+        "CORUM_GRAPH_PATH": "fixtures/sample-graph"
+      }
+    }
+  }
+}

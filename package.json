@@ -1,0 +1,21 @@
+{
+  "name": "corum",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "test": "tsc && node --test dist/test/schema.test.js dist/test/loader.test.js dist/test/graph.test.js dist/test/mcp.test.js dist/test/writer.test.js dist/test/serializer.test.js",
+    "mcp": "node dist/src/mcp/index.js",
+    "mcp:smoke": "npm run build && node scripts/mcp-smoke.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@toon-format/toon": "^2.1.0",
+    "yaml": "^2.3.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}
