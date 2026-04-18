@@ -18,6 +18,8 @@ type ToolResult = {
 
 export function createMcpHandlers(graph: Graph): {
   list_nodes: (args: Record<string, unknown>) => ToolResult
+  list_templates: (args: Record<string, unknown>) => ToolResult
+  get_template: (args: Record<string, unknown>) => ToolResult
   get_cluster: (args: Record<string, unknown>) => ToolResult
   get_linked_fields: (args: Record<string, unknown>) => ToolResult
 } {
@@ -38,6 +40,37 @@ export function createMcpHandlers(graph: Graph): {
           stability: node.stability,
         }))
         return formatResult(summaries, args.format, getCompactKeys(args))
+      } catch (err) {
+        return errorResult(err)
+      }
+    },
+
+    list_templates(args) {
+      try {
+        const summaries = [...graph.templates.values()]
+          .map(template => ({
+            name: template.name,
+            version: template.version,
+            core: template.core ?? false,
+            abstract: template.abstract ?? false,
+            extends: template.extends,
+            description: template.description,
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name))
+        return formatResult(summaries, args.format, getCompactKeys(args))
+      } catch (err) {
+        return errorResult(err)
+      }
+    },
+
+    get_template(args) {
+      try {
+        const name = String(args.name)
+        const template = graph.templates.get(name)
+        if (!template) {
+          throw new QueryError(`Template not found: ${name}`)
+        }
+        return formatResult(template, args.format, getCompactKeys(args))
       } catch (err) {
         return errorResult(err)
       }
@@ -122,6 +155,30 @@ if (isEntrypoint()) {
         },
       },
       {
+        name: 'list_templates',
+        description: 'List loaded graph templates. Returns name, version, core, abstract, extends, and description for each template.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+            compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          },
+        },
+      },
+      {
+        name: 'get_template',
+        description: 'Get full details for a loaded graph template.',
+        inputSchema: {
+          type: 'object',
+          required: ['name'],
+          properties: {
+            name: { type: 'string', description: 'Template name' },
+            format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+            compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          },
+        },
+      },
+      {
         name: 'get_cluster',
         description: 'Get the full cluster for a root node.',
         inputSchema: {
@@ -159,6 +216,10 @@ if (isEntrypoint()) {
     switch (request.params.name) {
       case 'list_nodes':
         return handlers.list_nodes(args)
+      case 'list_templates':
+        return handlers.list_templates(args)
+      case 'get_template':
+        return handlers.get_template(args)
       case 'get_cluster':
         return handlers.get_cluster(args)
       case 'get_linked_fields':

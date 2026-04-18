@@ -64,6 +64,10 @@ const COMPACT_KEY_MAP: Record<string, string> = {
   to: 'to',
   type: 'ty',
   notes: 'nt',
+  version: 'v',
+  core: 'c',
+  abstract: 'a',
+  extends: 'ex',
 }
 
 export function compactKeys(value: unknown): unknown {

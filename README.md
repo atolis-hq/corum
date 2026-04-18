@@ -79,6 +79,8 @@ npm run mcp
 The MCP server exposes these tools:
 
 - `list_nodes`: lists graph nodes, optionally filtered by `template`, `component`, `state`, or `stability`
+- `list_templates`: lists loaded graph templates with summary metadata
+- `get_template`: returns full details for a loaded graph template
 - `get_cluster`: returns a root node, owned child nodes, and edges inside that cluster
 - `get_linked_fields`: returns `maps-to` edges touching fields owned by a root node
 

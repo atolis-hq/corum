@@ -112,6 +112,82 @@ describe('MCP handlers', () => {
     })
   })
 
+  describe('list_templates', () => {
+    it('returns template summaries with no filter', () => {
+      const handlers = createMcpHandlers(graph)
+      const result = handlers.list_templates({ format: 'json' })
+      const templates = JSON.parse(result.content[0].text)
+      const domainModel = templates.find((template: Record<string, unknown>) => template.name === 'DomainModel')
+
+      assert.ok(templates.length > 0)
+      assert.equal(domainModel.name, 'DomainModel')
+      assert.equal(domainModel.version, '1.0.0')
+      assert.equal(domainModel.abstract, false)
+      assert.equal(domainModel.core, false)
+      assert.ok(typeof domainModel.description === 'string')
+      assert.ok(!('properties' in domainModel))
+    })
+
+    it('returns YAML by default', () => {
+      const handlers = createMcpHandlers(graph)
+      const result = handlers.list_templates({})
+      const templates = parseYaml(result.content[0].text) as Array<Record<string, unknown>>
+
+      assert.ok(templates.some(template => template.name === 'DomainModel'))
+    })
+
+    it('applies compact keys to JSON output when requested', () => {
+      const handlers = createMcpHandlers(graph)
+      const result = handlers.list_templates({ format: 'json', compact_keys: true })
+      const templates = JSON.parse(result.content[0].text)
+      const domainModel = templates.find((template: Record<string, unknown>) => template.name === 'DomainModel')
+
+      assert.equal(domainModel.name, 'DomainModel')
+      assert.equal(domainModel.v, '1.0.0')
+      assert.equal(domainModel.a, false)
+      assert.equal(domainModel.c, false)
+      assert.ok(!('version' in domainModel))
+      assert.ok(!('abstract' in domainModel))
+      assert.ok(!('core' in domainModel))
+    })
+  })
+
+  describe('get_template', () => {
+    it('returns full template details by name', () => {
+      const handlers = createMcpHandlers(graph)
+      const result = handlers.get_template({ name: 'DomainModel', format: 'json' })
+      const template = JSON.parse(result.content[0].text)
+
+      assert.equal(template.name, 'DomainModel')
+      assert.equal(template.version, '1.0.0')
+      assert.equal(template.abstract, false)
+      assert.ok('properties' in template)
+      assert.ok('schemas' in template)
+      assert.ok('edge-types' in template)
+    })
+
+    it('applies compact keys to JSON output when requested', () => {
+      const handlers = createMcpHandlers(graph)
+      const result = handlers.get_template({ name: 'DomainModel', format: 'json', compact_keys: true })
+      const template = JSON.parse(result.content[0].text)
+
+      assert.equal(template.name, 'DomainModel')
+      assert.equal(template.v, '1.0.0')
+      assert.equal(template.a, false)
+      assert.ok(!('version' in template))
+      assert.ok(!('abstract' in template))
+    })
+
+    it('returns error message for unknown template', () => {
+      const handlers = createMcpHandlers(graph)
+      const result = handlers.get_template({ name: 'MissingTemplate' })
+
+      assert.ok(result.isError)
+      assert.ok(result.content[0].text.includes('Template not found'))
+      assert.ok(result.content[0].text.includes('MissingTemplate'))
+    })
+  })
+
   describe('get_cluster', () => {
     it('returns full cluster for DomainModel', () => {
       const handlers = createMcpHandlers(graph)
