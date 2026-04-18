@@ -61,7 +61,7 @@ body {
     radial-gradient(circle at 92% 86%, rgba(0,0,0,0.02) 0, transparent 45%);
 }
 
-.hand { font-family: 'Caveat', cursive; font-weight: 500; letter-spacing: 0.2px; }
+.hand { font-family: 'Inter', system-ui, sans-serif; font-weight: 500; letter-spacing: 0.2px; }
 .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
 
 /* sketchy box primitives */
@@ -77,7 +77,7 @@ body {
 /* labels */
 .label-xs { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
 .label-sm { font-size: 11px; color: var(--ink-3); }
-.marg { font-family: 'Caveat', cursive; color: var(--accent); font-size: 18px; line-height: 1.1; }
+.marg { font-family: 'Inter', system-ui, sans-serif; color: var(--accent); font-size: 18px; line-height: 1.1; }
 
 /* shell */
 .topbar {
@@ -113,7 +113,7 @@ body {
   position: sticky; top: 44px; z-index: 9;
 }
 .tab {
-  font-family: 'Caveat', cursive; font-size: 20px; color: var(--ink-3);
+  font-family: 'Inter', system-ui, sans-serif; font-size: 20px; color: var(--ink-3);
   padding: 8px 14px 6px; cursor: pointer;
   border-bottom: 2px solid transparent;
   background: transparent; border-top: none; border-left: none; border-right: none;
@@ -180,13 +180,13 @@ body {
   display: flex; align-items: flex-end; justify-content: space-between;
   margin-bottom: 18px;
 }
-.pagehead h1 { font-family: 'Caveat', cursive; font-weight: 700; font-size: 36px; margin: 0; }
+.pagehead h1 { font-family: 'Inter', system-ui, sans-serif; font-weight: 700; font-size: 36px; margin: 0; }
 .pagehead .sub { color: var(--ink-3); font-size: 13px; max-width: 520px; }
 
 /* annotation callouts */
 .callout {
   position: absolute;
-  font-family: 'Caveat', cursive;
+  font-family: 'Inter', system-ui, sans-serif;
   color: var(--accent);
   font-size: 18px; line-height: 1.15;
   pointer-events: none;
@@ -283,7 +283,7 @@ body {
   padding: 14px 16px;
 }
 .card h3 { margin: 0 0 8px; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); font-weight: 700; }
-.card .big { font-family: 'Caveat', cursive; font-size: 32px; color: var(--ink); line-height: 1; }
+.card .big { font-family: 'Inter', system-ui, sans-serif; font-size: 32px; color: var(--ink); line-height: 1; }
 
 /* placeholder strip */
 .placeholder {
@@ -306,7 +306,7 @@ body {
   box-shadow: 0 12px 40px rgba(0,0,0,0.12);
   font-size: 12px;
 }
-.tweaks h4 { margin: 0; padding: 10px 14px; border-bottom: 1px solid var(--rule); font-family: 'Caveat', cursive; font-size: 20px; font-weight: 700; }
+.tweaks h4 { margin: 0; padding: 10px 14px; border-bottom: 1px solid var(--rule); font-family: 'Inter', system-ui, sans-serif; font-size: 20px; font-weight: 700; }
 .tweaks .row-t { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; border-bottom: 1px dashed var(--rule); gap: 10px; }
 .tweaks .row-t:last-child { border-bottom: none; }
 .tweaks label { color: var(--ink-3); font-size: 11px; flex: 1; }
@@ -348,7 +348,7 @@ body.sketchy .card {
 .lane .lcol { border-right: 1px dashed var(--rule); padding: 8px; min-height: 92px; position: relative; }
 .lane .lcol:last-child { border-right: none; }
 .lane .lhead { background: var(--paper-2); font-weight: 600; font-size: 11.5px; }
-.lane .lrow-label { background: var(--paper-2); font-family: 'Caveat', cursive; font-size: 20px; padding: 10px 14px; border-right: 1px solid var(--rule); display: flex; align-items: center; }
+.lane .lrow-label { background: var(--paper-2); font-family: 'Inter', system-ui, sans-serif; font-size: 20px; padding: 10px 14px; border-right: 1px solid var(--rule); display: flex; align-items: center; }
 
 /* branching overlay variants */
 .overlay-ghost { opacity: 0.5; }
@@ -373,7 +373,7 @@ body.sketchy .card {
   border-bottom: 1px solid var(--rule);
   background: var(--paper-2);
 }
-.panel-h h2 { margin: 0; font-family: 'Caveat', cursive; font-size: 22px; font-weight: 700; }
+.panel-h h2 { margin: 0; font-family: 'Inter', system-ui, sans-serif; font-size: 22px; font-weight: 700; }
 
 /* subtle separators */
 .dotrule { border: none; border-top: 1.5px dotted var(--rule-2); margin: 14px 0; }

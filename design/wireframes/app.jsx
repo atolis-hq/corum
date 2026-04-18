@@ -4,7 +4,7 @@ const { useState, useEffect } = React;
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "fidelity": "clean",
-  "nav": "tree",
+  "nav": "twopane",
   "overlay": "ghost",
   "lineage": "inline",
   "signals": "gutter"

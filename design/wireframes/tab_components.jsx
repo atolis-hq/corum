@@ -19,7 +19,7 @@ function TabComponents({ tweaks }) {
 
         {/* Template summary strip */}
         <div className="box-fill" style={{ padding: '12px 16px', display: 'flex', gap: 18, alignItems: 'center', marginBottom: 18 }}>
-          <div style={{ fontFamily: "'Caveat', cursive", fontSize: 28, lineHeight: 1 }}>APIEndpoint</div>
+          <div style={{ fontFamily: "'Inter', system-ui, sans-serif", fontSize: 28, lineHeight: 1 }}>APIEndpoint</div>
           <div className="label-sm" style={{ maxWidth: 420 }}>
             HTTP contract boundary. Has <span className="mono">method</span>, <span className="mono">path</span>, <span className="mono">auth</span>, and owns <span className="mono">request</span> / <span className="mono">response</span> schema clusters.
           </div>

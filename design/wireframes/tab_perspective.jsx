@@ -251,7 +251,7 @@ function MiniLineageGraph() {
             <path d="M490 100 C 560 100, 580 103, 640 103" markerEnd="url(#ah)"/>
             <path d="M490 115 C 560 135, 580 162, 640 162" markerEnd="url(#ah)"/>
           </g>
-          <g fontSize="9" fill="var(--accent)" fontFamily="Caveat, cursive" fontWeight="600">
+          <g fontSize="9" fill="var(--accent)" fontFamily="Inter, system-ui, sans-serif" fontWeight="600">
             <text x="215" y="78">reads</text>
             <text x="215" y="130">reads</text>
             <text x="555" y="65">triggers</text>
