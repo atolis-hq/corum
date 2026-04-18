@@ -80,6 +80,47 @@ The MCP server exposes these tools:
 - `get_cluster`: returns a root node, owned child nodes, and edges inside that cluster
 - `get_linked_fields`: returns `maps-to` edges touching fields owned by a root node
 
+## MCP Client Configuration
+
+This repo includes a project-level `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "corum": {
+      "command": "node",
+      "args": ["dist/src/mcp/index.js"],
+      "env": {
+        "CORUM_GRAPH_PATH": "fixtures/sample-graph"
+      }
+    }
+  }
+}
+```
+
+Build the project before using this config from an MCP client:
+
+```powershell
+npm run build
+```
+
+The checked-in config points at `fixtures/sample-graph` so the tools return sample nodes immediately. Change `CORUM_GRAPH_PATH` to `.corum/graph` when you have graph component files there.
+
+## MCP Smoke Test
+
+Run a local MCP client against the configured server and print graph data:
+
+```powershell
+npm run mcp:smoke
+```
+
+The smoke test starts the MCP server over stdio and calls:
+
+- `list_nodes`
+- `list_nodes` filtered to `APIEndpoint`
+- `get_cluster` for `orders.DomainModel.order`
+- `get_linked_fields` for `orders.DomainModel.order`
+
 ## Useful Development Commands
 
 Type-check without emitting files:

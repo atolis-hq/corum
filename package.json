@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc",
     "test": "tsc && node --test dist/test/schema.test.js dist/test/loader.test.js dist/test/graph.test.js dist/test/mcp.test.js",
-    "mcp": "node dist/src/mcp/index.js"
+    "mcp": "node dist/src/mcp/index.js",
+    "mcp:smoke": "npm run build && node scripts/mcp-smoke.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
