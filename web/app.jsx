@@ -137,7 +137,10 @@ function NavTree({ navTree, templates, activeNodeId, onNode }) {
             return (
               <div key={templateName}>
                 <div className="nav-template-head">
-                  <div className="nav-template-accent" style={{ background: colour }} />
+                  <i
+                    className={`fa-solid fa-${template?.ui?.icon ?? 'circle'}`}
+                    style={{ color: colour, fontSize: 12, width: 14, textAlign: 'center', flexShrink: 0 }}
+                  />
                   <span>{templateName}</span>
                 </div>
                 {nodes.map(node => {

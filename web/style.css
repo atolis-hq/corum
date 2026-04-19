@@ -179,12 +179,6 @@ button {
   text-transform: uppercase;
 }
 
-.nav-template-accent {
-  width: 7px;
-  height: 7px;
-  border-radius: 2px;
-}
-
 .nav-node-item {
   margin: 1px 0;
   padding: 6px 8px 6px 30px;
