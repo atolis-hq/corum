@@ -44,13 +44,52 @@ function TemplateBadge({ name, colour }) {
   return <span className="template-badge" style={style}>{name}</span>;
 }
 
-function formatValue(value) {
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'object') return JSON.stringify(value, null, 2);
-  return String(value);
+function PropertyValue({ value, onNavigate }) {
+  if (value === null || value === undefined) return <span className="prop-empty">-</span>;
+
+  if (typeof value === 'object' && 'display' in value && 'nodeId' in value) {
+    return (
+      <a className="node-ref-link" onClick={() => onNavigate && onNavigate(value.nodeId)}>
+        {value.display}
+      </a>
+    );
+  }
+
+  if (typeof value === 'object' && 'display' in value) {
+    return <span>{value.display}</span>;
+  }
+
+  if (Array.isArray(value)) {
+    return (
+      <div className="prop-array">
+        {value.map((item, i) => (
+          <div key={i} className="prop-array-item">
+            <PropertyValue value={item} onNavigate={onNavigate} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (typeof value === 'object') {
+    return (
+      <table className="prop-table prop-table-nested">
+        <tbody>
+          {Object.entries(value).map(([k, v]) => (
+            <tr key={k}>
+              <td className="mono">{k}</td>
+              <td><PropertyValue value={v} onNavigate={onNavigate} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  }
+
+  return <span>{String(value)}</span>;
 }
 
-function PropertiesTable({ properties }) {
+function PropertiesTable({ properties, onNavigate }) {
   const entries = Object.entries(properties ?? {});
   if (entries.length === 0) {
     return <p className="label-sm" style={{ padding: '10px 14px' }}>No properties.</p>;
@@ -62,7 +101,7 @@ function PropertiesTable({ properties }) {
         {entries.map(([key, value]) => (
           <tr key={key}>
             <td className="mono">{key}</td>
-            <td>{typeof value === 'object' ? <pre>{formatValue(value)}</pre> : formatValue(value)}</td>
+            <td><PropertyValue value={value} onNavigate={onNavigate} /></td>
           </tr>
         ))}
       </tbody>
@@ -333,6 +372,7 @@ window.CorumPrimitives = {
   StabilityTag,
   Chip,
   TemplateBadge,
+  PropertyValue,
   PropertiesTable,
   SchemaCard,
 };

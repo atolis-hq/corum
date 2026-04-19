@@ -324,6 +324,30 @@ button {
   word-break: break-word;
 }
 
+.prop-table-nested {
+  width: 100%;
+  margin: 2px 0;
+  border-left: 2px solid var(--rule);
+  padding-left: 8px;
+}
+
+.prop-table-nested td:first-child {
+  color: var(--ink-3);
+  font-size: 11px;
+  padding: 2px 8px 2px 0;
+}
+
+.prop-array-item { padding: 1px 0; }
+
+.node-ref-link {
+  cursor: pointer;
+  color: var(--accent);
+  text-decoration: underline;
+  font-size: inherit;
+}
+
+.prop-empty { color: var(--ink-4); }
+
 .schema-card .card-body {
   padding: 0;
 }

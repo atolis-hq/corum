@@ -196,7 +196,7 @@ function ComponentsPage() {
   return <div className="content"><h1>Components</h1></div>;
 }
 
-function NodePage({ nodeId, templates }) {
+function NodePage({ nodeId, templates, onNavigate }) {
   const [cluster, setCluster] = useState(null);
   const [error, setError] = useState(null);
 
@@ -259,7 +259,7 @@ function NodePage({ nodeId, templates }) {
         <div className="card">
           <div className="card-head">Properties</div>
           <div className="card-body">
-            <PropertiesTable properties={root.properties} />
+            <PropertiesTable properties={root.properties} onNavigate={onNavigate} />
           </div>
         </div>
       )}
@@ -325,7 +325,7 @@ function App() {
   } else if (route.pathname === '/components') {
     page = <ComponentsPage />;
   } else if (route.pathname === '/node') {
-    page = <NodePage nodeId={activeNodeId} templates={templates} />;
+    page = <NodePage nodeId={activeNodeId} templates={templates} onNavigate={handleNode} />;
   } else {
     page = <div className="content"><p className="label-sm">Page not found.</p></div>;
   }
