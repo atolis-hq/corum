@@ -9,9 +9,9 @@ info:
     fields in other nodes via maps-to edges. The field name is the node
     label; it is not a property on this node.
 
-    A field's type is either a primitive scalar (scalarType) or a reference
-    to another node that defines the type's shape (objectRef). These are
-    mutually exclusive. objectRef covers all structured types: Schema,
+    A field's type is either a primitive scalar (type) or a reference
+    to another node that defines the type's shape ($ref). These are
+    mutually exclusive. $ref covers all structured types: Schema,
     EnumDefinition, ValueObject, and DomainModel.
 
     When a Field is defined inline within a Schema, EnumDefinition, or
@@ -26,7 +26,7 @@ properties:
     - nullable
     - cardinality
   properties:
-    scalarType:
+    type:
       type: string
       enum:
         - uuid
@@ -37,15 +37,16 @@ properties:
         - datetime
         - date
         - time
-      description: "Primitive scalar type. Mutually exclusive with objectRef."
-    objectRef:
+      description: "Primitive scalar type. Mutually exclusive with $ref."
+    $ref:
       type: string
+      format: node-ref
       description: |
-        Node ID of a Schema, EnumDefinition, ValueObject, or DomainModel that
-        defines the shape of this field. In APIEndpoint and other cluster files
-        that support inline definitions, this may also be a local name from the
-        schemas or enums block, resolved local-first before global lookup.
-        Mutually exclusive with scalarType.
+        Reference to the node defining this field's type.
+        Local schema: '#/schemas/<name>'
+        Local enum:   '#/enums/<name>'
+        Global node:  bare node ID (e.g. orders.DomainModel.order)
+        Mutually exclusive with type.
     nullable:
       type: boolean
       description: "Whether this field may be absent or null"
@@ -57,15 +58,15 @@ properties:
       description: "Whether this field holds a single value or a collection"
   oneOf:
     - required:
-        - scalarType
+        - type
       not:
         required:
-          - objectRef
+          - $ref
     - required:
-        - objectRef
+        - $ref
       not:
         required:
-          - scalarType
+          - type
 
 edge-types:
   incoming:
@@ -78,7 +79,7 @@ ui:
   icon: minus
   colour: "#888888"
   displayProperties:
-    - scalarType
-    - objectRef
+    - type
+    - $ref
     - nullable
     - cardinality
