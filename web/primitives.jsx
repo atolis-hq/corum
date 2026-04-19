@@ -99,8 +99,244 @@ function PropertiesTable({ properties }) {
   );
 }
 
-function SchemaCard({ title, nodes }) {
+function localSchemaName(nodeId) {
+  const marker = '.schemas.';
+  const idx = nodeId.indexOf(marker);
+  if (idx < 0) return nodeId.split('.').pop();
+  return nodeId.slice(idx + marker.length).split('.')[0];
+}
+
+function fieldSchemaName(nodeId) {
+  const schemaMarker = '.schemas.';
+  const fieldMarker = '.fields.';
+  const schemaIdx = nodeId.indexOf(schemaMarker);
+  const fieldIdx = nodeId.indexOf(fieldMarker);
+  if (schemaIdx < 0 || fieldIdx < 0) return null;
+  return nodeId.slice(schemaIdx + schemaMarker.length, fieldIdx);
+}
+
+function fieldLocalName(nodeId) {
+  const marker = '.fields.';
+  const idx = nodeId.indexOf(marker);
+  return idx < 0 ? nodeId.split('.').pop() : nodeId.slice(idx + marker.length);
+}
+
+function fieldType(properties) {
+  const cardinality = properties?.cardinality === 'many' ? '[]' : '';
+  if (properties?.scalarType) return `${properties.scalarType}${cardinality}`;
+  if (properties?.objectRef) return `${properties.objectRef}${cardinality}`;
+  return cardinality ? `object${cardinality}` : 'object';
+}
+
+function fieldRequirement(properties) {
+  if (properties?.nullable === false) return 'required';
+  if (properties?.nullable === true) return 'optional';
+  return '-';
+}
+
+function fieldCardinality(properties) {
+  return properties?.cardinality ?? '-';
+}
+
+function fieldDetails(properties) {
+  const parts = [];
+  if (properties?.objectRef) parts.push(`ref ${properties.objectRef}`);
+  if (properties?.description) parts.push(properties.description);
+  return parts.length > 0 ? parts.join(' · ') : '-';
+}
+
+function localEnumName(nodeId) {
+  const marker = '.enums.';
+  const idx = nodeId.indexOf(marker);
+  if (idx < 0) return nodeId.split('.').pop();
+  return nodeId.slice(idx + marker.length).split('.')[0];
+}
+
+function enumValueEnumName(nodeId) {
+  const enumMarker = '.enums.';
+  const valueMarker = '.values.';
+  const enumIdx = nodeId.indexOf(enumMarker);
+  const valueIdx = nodeId.indexOf(valueMarker);
+  if (enumIdx < 0 || valueIdx < 0) return null;
+  return nodeId.slice(enumIdx + enumMarker.length, valueIdx);
+}
+
+function enumValueDisplayName(node) {
+  return node.properties?.name ?? node.id.split('.').pop();
+}
+
+function enumValueDescription(node) {
+  return node.properties?.description ?? '-';
+}
+
+function buildSchemaModel(schemaNodes, allNodes) {
+  const schemasByName = new Map(schemaNodes.map(node => [localSchemaName(node.id), node]));
+  const fieldsBySchema = new Map();
+  const referencedSchemas = new Set();
+
+  for (const node of allNodes ?? []) {
+    if (node.template !== 'Field') continue;
+    const schemaName = fieldSchemaName(node.id);
+    if (!schemaName) continue;
+    if (!fieldsBySchema.has(schemaName)) fieldsBySchema.set(schemaName, []);
+    fieldsBySchema.get(schemaName).push(node);
+
+    const objectRef = node.properties?.objectRef;
+    if (typeof objectRef === 'string' && schemasByName.has(objectRef)) {
+      referencedSchemas.add(objectRef);
+    }
+  }
+
+  const topSchemas = schemaNodes.filter(node => !referencedSchemas.has(localSchemaName(node.id)));
+  return {
+    schemasByName,
+    fieldsBySchema,
+    topSchemas: topSchemas.length > 0 ? topSchemas : schemaNodes,
+  };
+}
+
+function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = new Set() }) {
+  const fields = model.fieldsBySchema.get(schemaName) ?? [];
+  if (fields.length === 0) {
+    return (
+      <div className="field-row">
+        <div />
+        <div className="label-sm">No fields.</div>
+        <div />
+        <div />
+        <div />
+        <div />
+        <div />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {fields.map(field => {
+        const name = fieldLocalName(field.id);
+        const objectRef = field.properties?.objectRef;
+        const canExpand = typeof objectRef === 'string' && model.schemasByName.has(objectRef) && !visited.has(objectRef);
+        const childPrefix = `${prefix}${name}${field.properties?.cardinality === 'many' ? '[].' : '.'}`;
+        const nextVisited = new Set(visited);
+        nextVisited.add(schemaName);
+
+        return (
+          <React.Fragment key={field.id}>
+            <div className={`field-row${depth > 0 ? ' nested' : ''}`} style={{ '--field-depth': depth }}>
+              <div className="gutter">{canExpand && <Icon name="caret-down" size={11} />}</div>
+              <div className="name">{prefix}{name}</div>
+              <div className="type">{fieldType(field.properties)}</div>
+              <div className="cardinality">{fieldCardinality(field.properties)}</div>
+              <div className="req">{fieldRequirement(field.properties)}</div>
+              <div className="state"><StateTag state={field.state} /></div>
+              <div className="lineage">{fieldDetails(field.properties)}</div>
+            </div>
+            {canExpand && (
+              <SchemaFieldRows
+                schemaName={objectRef}
+                model={model}
+                prefix={childPrefix}
+                depth={depth + 1}
+                visited={nextVisited}
+              />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </>
+  );
+}
+
+function SchemaCard({ title, nodes, allNodes }) {
   if (!nodes || nodes.length === 0) return null;
+
+  if (title === 'EnumDefinition') {
+    const valuesByEnum = new Map();
+    for (const node of allNodes ?? []) {
+      if (node.template !== 'EnumValue') continue;
+      const enumName = enumValueEnumName(node.id);
+      if (!enumName) continue;
+      if (!valuesByEnum.has(enumName)) valuesByEnum.set(enumName, []);
+      valuesByEnum.get(enumName).push(node);
+    }
+
+    return (
+      <div className="card enum-card">
+        <div className="card-head">Enums</div>
+        <div className="card-body">
+          {nodes.map(enumNode => {
+            const enumName = localEnumName(enumNode.id);
+            const values = valuesByEnum.get(enumName) ?? [];
+            return (
+              <div key={enumNode.id} className="enum-section">
+                <div className="schema-section-head">
+                  <div>
+                    <div className="schema-title">{enumName}</div>
+                    {enumNode.properties?.description && <div className="label-sm">{enumNode.properties.description}</div>}
+                  </div>
+                  <div className="label-sm mono">{enumNode.id}</div>
+                </div>
+                <div className="enum-row enum-row-head">
+                  <div className="label-xs">Name</div>
+                  <div className="label-xs">Description</div>
+                  <div className="label-xs">Status</div>
+                </div>
+                {values.length === 0 ? (
+                  <div className="enum-row">
+                    <div className="label-sm">No values.</div>
+                    <div />
+                    <div />
+                  </div>
+                ) : values.map(value => (
+                  <div key={value.id} className="enum-row">
+                    <div className="name">{enumValueDisplayName(value)}</div>
+                    <div className="description">{enumValueDescription(value)}</div>
+                    <div className="state"><StateTag state={value.state} /></div>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  if (title === 'Schema') {
+    const model = buildSchemaModel(nodes, allNodes ?? nodes);
+    return (
+      <div className="card schema-card">
+        <div className="card-head">Schemas</div>
+        <div className="card-body">
+          {model.topSchemas.map(schema => {
+            const schemaName = localSchemaName(schema.id);
+            return (
+              <div key={schema.id} className="schema-section">
+                <div className="schema-section-head">
+                  <div>
+                    <div className="schema-title">{schemaName}</div>
+                    {schema.properties?.description && <div className="label-sm">{schema.properties.description}</div>}
+                  </div>
+                  <div className="label-sm mono">{schema.id}</div>
+                </div>
+                <div className="field-row field-row-head">
+                  <div />
+                  <div className="label-xs">Name</div>
+                  <div className="label-xs">Type</div>
+                  <div className="label-xs">Cardinality</div>
+                  <div className="label-xs">Req</div>
+                  <div className="label-xs">State</div>
+                  <div className="label-xs">Links</div>
+                </div>
+                <SchemaFieldRows schemaName={schemaName} model={model} visited={new Set()} />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="card">

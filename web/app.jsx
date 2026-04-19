@@ -56,7 +56,7 @@ function TopBar() {
 function NavRail({ activeSection, onSection }) {
   const items = [
     { id: 'dashboard', icon: 'grid', label: 'Dashboard' },
-    { id: 'components', icon: 'cube', label: 'Components' },
+    { id: 'components', icon: 'cube', label: 'Models' },
   ];
 
   return (
@@ -110,16 +110,20 @@ function NavTree({ navTree, templates, activeNodeId, onNode }) {
                   <div className="nav-template-accent" style={{ background: colour }} />
                   <span>{templateName}</span>
                 </div>
-                {nodes.map(node => (
-                  <div
-                    key={node.id}
-                    className={`nav-node-item${node.id === activeNodeId ? ' active' : ''}`}
-                    onClick={() => onNode(node.id)}
-                    title={node.id}
-                  >
-                    {displayName(node.id)}
-                  </div>
-                ))}
+                {nodes.map(node => {
+                  const isActive = node.id === activeNodeId;
+                  return (
+                    <div
+                      key={node.id}
+                      className={`nav-node-item${isActive ? ' active' : ''}`}
+                      onClick={() => onNode(node.id)}
+                      title={node.id}
+                      style={isActive ? { '--nav-node-active-bg': colour } : undefined}
+                    >
+                      {displayName(node.id)}
+                    </div>
+                  );
+                })}
               </div>
             );
           })}
@@ -203,9 +207,11 @@ function NodePage({ nodeId, templates }) {
         </div>
       )}
 
-      {[...displayChildren.entries()].map(([templateName, groupNodes]) => (
-        <SchemaCard key={templateName} title={templateName} nodes={groupNodes} />
-      ))}
+      {[...displayChildren.entries()]
+        .filter(([templateName]) => templateName !== 'Field' && templateName !== 'EnumValue')
+        .map(([templateName, groupNodes]) => (
+          <SchemaCard key={templateName} title={templateName} nodes={groupNodes} allNodes={children} />
+        ))}
     </div>
   );
 }

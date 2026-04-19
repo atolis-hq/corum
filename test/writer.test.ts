@@ -62,6 +62,32 @@ describe('graph writer', () => {
     }
   })
 
+  it('preserves child node state overrides when writing graph files', async () => {
+    const outputGraphDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-write-back-'))
+
+    try {
+      const graph = await loadGraph({ graphPath: fixtureGraphDir })
+      const field = graph.nodesById.get('orders.DomainModel.order.schemas.order-line-item.fields.unitPrice')
+      assert.ok(field)
+      assert.equal(field.state, 'proposed')
+
+      await saveGraph(graph, {
+        sourceGraphPath: fixtureGraphDir,
+        outputGraphPath: outputGraphDir,
+      })
+
+      const writtenGraph = await loadGraph({ graphPath: outputGraphDir })
+      const writtenField = writtenGraph.nodesById.get('orders.DomainModel.order.schemas.order-line-item.fields.unitPrice')
+      const siblingField = writtenGraph.nodesById.get('orders.DomainModel.order.schemas.order-line-item.fields.quantity')
+      assert.ok(writtenField)
+      assert.ok(siblingField)
+      assert.equal(writtenField.state, 'proposed')
+      assert.equal(siblingField.state, 'agreed')
+    } finally {
+      fs.rmSync(outputGraphDir, { recursive: true, force: true })
+    }
+  })
+
   it('refuses to replace an existing folder when replace is false', async () => {
     const outputGraphDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-write-back-'))
 

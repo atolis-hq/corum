@@ -92,6 +92,18 @@ describe('cluster loader', () => {
     assert.equal(field.stability, 'stable', 'inherits stability from root')
   })
 
+  it('owned field state overrides inherited parent state when specified', async () => {
+    const diagnostics: Diagnostic[] = []
+    const result = await loadSampleClusters(diagnostics)
+
+    const overridden = result.nodes.get('orders.DomainModel.order.schemas.order-line-item.fields.unitPrice')
+    const inherited = result.nodes.get('orders.DomainModel.order.schemas.order-line-item.fields.quantity')
+    assert.ok(overridden, 'overridden field exists')
+    assert.ok(inherited, 'inherited field exists')
+    assert.equal(overridden.state, 'proposed')
+    assert.equal(inherited.state, 'agreed')
+  })
+
   it('materialises correct Field node properties', async () => {
     const diagnostics: Diagnostic[] = []
     const result = await loadSampleClusters(diagnostics)

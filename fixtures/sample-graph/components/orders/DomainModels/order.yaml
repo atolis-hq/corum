@@ -55,6 +55,7 @@ schemas:
         nullable: false
         cardinality: one
       unitPrice:
+        state: proposed
         scalarType: decimal
         nullable: false
         cardinality: one
@@ -95,4 +96,5 @@ operations:
   confirm:
     description: Mark the order as confirmed by the fulfilment system
   cancel:
+    state: proposed
     description: Cancel an in-progress order, returning reserved stock

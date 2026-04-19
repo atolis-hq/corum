@@ -142,7 +142,7 @@ button {
 }
 
 .nav-rail-item.active {
-  background: var(--ink);
+  background: var(--accent);
   color: var(--paper);
 }
 
@@ -202,7 +202,7 @@ button {
 }
 
 .nav-node-item.active {
-  background: var(--ink);
+  background: var(--nav-node-active-bg, var(--ink));
   color: var(--paper);
 }
 
@@ -312,6 +312,145 @@ button {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.schema-card .card-body {
+  padding: 0;
+}
+
+.schema-section {
+  border-bottom: 1px solid var(--rule-2);
+}
+
+.schema-section:last-child {
+  border-bottom: none;
+}
+
+.enum-card .card-body {
+  padding: 0;
+}
+
+.enum-section {
+  border-bottom: 1px solid var(--rule-2);
+}
+
+.enum-section:last-child {
+  border-bottom: none;
+}
+
+.enum-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.8fr) minmax(220px, 1.6fr) 100px;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 14px;
+  border-bottom: 1px dashed var(--rule);
+  font-size: 12px;
+}
+
+.enum-row:last-child {
+  border-bottom: none;
+}
+
+.enum-row-head {
+  background: var(--paper-2);
+  font-weight: 600;
+}
+
+.enum-row .name {
+  color: var(--ink);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.enum-row .description {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink-2);
+}
+
+.schema-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  background: var(--paper);
+}
+
+.schema-title {
+  margin-bottom: 2px;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 18px minmax(180px, 1.3fr) minmax(90px, 0.8fr) 96px 80px 100px minmax(160px, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 8px 14px;
+  border-bottom: 1px dashed var(--rule);
+  font-size: 12px;
+}
+
+.field-row:last-child {
+  border-bottom: none;
+}
+
+.field-row-head {
+  background: var(--paper-2);
+  font-weight: 600;
+}
+
+.field-row.nested {
+  background: color-mix(in oklch, var(--accent) 3%, var(--paper));
+}
+
+.field-row .gutter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-4);
+}
+
+.field-row .name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.field-row.nested .name {
+  padding-left: calc(var(--field-depth, 1) * 24px);
+}
+
+.field-row .type {
+  overflow-wrap: anywhere;
+  color: var(--ink-3);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+}
+
+.field-row .cardinality,
+.field-row .req {
+  color: var(--ink-3);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+}
+
+.field-row .state {
+  min-width: 0;
+}
+
+.field-row .lineage {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink-3);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
 }
 
 .meta-strip {

@@ -95,6 +95,8 @@ function appendOwnedSections(graph: Graph, parent: Node, target: Record<string, 
     const section: Record<string, unknown> = {}
     for (const child of children) {
       const childDoc: Record<string, unknown> = { ...child.properties }
+      if (child.state !== parent.state) childDoc.state = child.state
+      if (child.stability !== parent.stability) childDoc.stability = child.stability
       appendOwnedSections(graph, child, childDoc)
       section[getLocalName(child.id, parent.id, sectionName)] = childDoc
     }
