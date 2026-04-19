@@ -699,25 +699,24 @@ In the `properties.properties` block, update `request` and `responses`:
       type: string
       format: node-ref
       description: |
-        Local schema name or global Schema node ID describing the request body.
-        Resolved local-first (schemas block, then enums block, then global).
-        Omit for operations with no body (e.g. GET, DELETE).
+        Local schema ref ('#/schemas/<name>') or global node ID describing
+        the request body. Omit for operations with no body (e.g. GET, DELETE).
       examples:
-        - create-order-request
+        - "'#/schemas/create-order-request'"
 
     responses:
       type: object
       minProperties: 1
       description: |
-        Map of HTTP status code (or 'default') to a local schema name or
-        global Schema node ID describing the response body.
+        Map of HTTP status code (or 'default') to a local schema ref
+        ('#/schemas/<name>') or global node ID describing the response body.
       propertyNames:
         pattern: "^(default|[1-5][0-9]{2})$"
       additionalProperties:
         type: string
         format: node-ref
       examples:
-        - "200": order-response
+        - "200": "'#/schemas/order-response'"
 ```
 
 - [ ] **Step 2: Update DomainModel.yaml**
@@ -772,14 +771,19 @@ it('round-trips field $ref values with correct YAML quoting', async () => {
       path.join(outputGraphDir, 'components', 'orders', 'DomainModels', 'order.yaml'),
       'utf-8'
     )
-    assert.match(orderYaml, /\$ref: '#\/enums\/order-status'/, '$ref value is quoted in output YAML')
-    assert.doesNotMatch(orderYaml, /\$ref: #\//, 'unquoted $ref values must not appear')
+    // Field $ref values
+    assert.match(orderYaml, /\$ref: '#\/enums\/order-status'/, 'field $ref is quoted')
+    assert.doesNotMatch(orderYaml, /\$ref: #\//, 'no unquoted $ref values')
+    // Root property node-ref values
+    assert.match(orderYaml, /schema: '#\/schemas\/order'/, 'schema property is quoted')
 
-    // Verify the written file can be loaded without errors
+    // Verify round-trip loads correctly
     const reloadedGraph = await loadGraph({ graphPath: outputGraphDir })
     const reloadedField = reloadedGraph.nodesById.get('orders.DomainModel.order.schemas.order.fields.status')
     assert.ok(reloadedField, 'status field survives round-trip')
     assert.equal(reloadedField.properties['$ref'], '#/enums/order-status')
+    const reloadedRoot = reloadedGraph.nodesById.get('orders.DomainModel.order')
+    assert.equal(reloadedRoot?.properties.schema, '#/schemas/order', 'schema property survives round-trip')
   } finally {
     fs.rmSync(outputGraphDir, { recursive: true, force: true })
   }
@@ -794,9 +798,13 @@ Expected: The new test fails because `order.yaml` still uses `objectRef: order-s
 
 - [ ] **Step 3: Migrate order.yaml**
 
-Update `fixtures/sample-graph/components/orders/DomainModels/order.yaml`. Change every field entry:
+Update `fixtures/sample-graph/components/orders/DomainModels/order.yaml`. Update the root `properties` block AND every field entry:
 
 ```yaml
+properties:
+  description: A placed customer order; aggregate root for the orders bounded context
+  schema: '#/schemas/order'
+
 schemas:
   order:
     description: Structure of the order aggregate
@@ -846,9 +854,18 @@ schemas:
 
 - [ ] **Step 4: Migrate create-order.yaml**
 
-Update `fixtures/sample-graph/components/orders/APIEndpoints/create-order.yaml`. Change every field entry using the same pattern:
+Update `fixtures/sample-graph/components/orders/APIEndpoints/create-order.yaml`. Update the root `properties` block AND every field entry:
 
 ```yaml
+properties:
+  method: POST
+  path: /orders
+  request: '#/schemas/create-order-request'
+  responses:
+    "201": '#/schemas/create-order-response'
+    "400": '#/schemas/problem-detail'
+    "409": '#/schemas/problem-detail'
+
 schemas:
   create-order-request:
     description: Request body for creating an order
@@ -1059,10 +1076,17 @@ git commit -m "feat: update field rendering for \$ref/type field syntax"
 type NodeRefValue = { display: string; nodeId: string } | { display: string }
 
 function resolveNodeRef(graph: Graph, node: Node, rawValue: string): NodeRefValue {
-  const schemaId = `${node.id}.schemas.${rawValue}`
-  if (graph.nodesById.has(schemaId)) return { display: rawValue, nodeId: schemaId }
-  const enumId = `${node.id}.enums.${rawValue}`
-  if (graph.nodesById.has(enumId)) return { display: rawValue, nodeId: enumId }
+  if (rawValue.startsWith('#/schemas/')) {
+    const name = rawValue.slice(10)
+    const id = `${node.id}.schemas.${name}`
+    return graph.nodesById.has(id) ? { display: name, nodeId: id } : { display: name }
+  }
+  if (rawValue.startsWith('#/enums/')) {
+    const name = rawValue.slice(8)
+    const id = `${node.id}.enums.${name}`
+    return graph.nodesById.has(id) ? { display: name, nodeId: id } : { display: name }
+  }
+  // bare string = global node ID
   if (graph.nodesById.has(rawValue)) return { display: rawValue, nodeId: rawValue }
   return { display: rawValue }
 }

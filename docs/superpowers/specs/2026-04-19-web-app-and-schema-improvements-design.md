@@ -202,7 +202,36 @@ responses:
     format: node-ref
 ```
 
-No change to node data files — authors continue writing plain strings. The server walks template property definitions, finds `format: node-ref`, resolves the value to a node ID, and returns both `display` and `nodeId` in the API response so the UI can render links.
+Node data files use the same `'#/schemas/<name>'` / `'#/enums/<name>'` prefix convention as field `$ref` values, making references immediately obvious. Global node IDs remain bare strings. The `#/` prefix must be single-quoted in YAML (same quoting rule as field `$ref` values).
+
+```yaml
+# node data — APIEndpoint properties
+properties:
+  method: POST
+  path: /orders
+  request: '#/schemas/create-order-request'
+  responses:
+    "201": '#/schemas/create-order-response'
+    "400": '#/schemas/problem-detail'
+```
+
+The server walks template property definitions, finds `format: node-ref`, strips the `#/schemas/` or `#/enums/` prefix to determine the local name, resolves to a node ID, and returns `{ display, nodeId }` so the UI can render links. Resolution is explicit — no ambiguous 3-tier lookup:
+
+```typescript
+function resolveNodeRef(graph, node, rawValue) {
+  if (rawValue.startsWith('#/schemas/')) {
+    const name = rawValue.slice(10)
+    const id = `${node.id}.schemas.${name}`
+    return graph.nodesById.has(id) ? { display: name, nodeId: id } : { display: name }
+  }
+  if (rawValue.startsWith('#/enums/')) {
+    const name = rawValue.slice(8)
+    const id = `${node.id}.enums.${name}`
+    return graph.nodesById.has(id) ? { display: name, nodeId: id } : { display: name }
+  }
+  if (graph.nodesById.has(rawValue)) return { display: rawValue, nodeId: rawValue }
+  return { display: rawValue }
+}
 
 ---
 
@@ -243,7 +272,7 @@ mapsTo.map(e => {
 
 ## 7. Migration — Existing Node YAML Files
 
-All field definitions in existing cluster YAML files must be updated from `scalarType`/`objectRef` to `type`/`$ref` syntax. This affects the fixture graph and any real graph data.
+All field definitions in existing cluster YAML files must be updated from `scalarType`/`objectRef` to `type`/`$ref` syntax. Root `properties` blocks that contain `format: node-ref` values must also be updated to use `'#/schemas/<name>'` / `'#/enums/<name>'` prefix format. This affects the fixture graph and any real graph data.
 
 **Before:**
 ```yaml
