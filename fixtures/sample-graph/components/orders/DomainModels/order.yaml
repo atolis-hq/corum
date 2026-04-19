@@ -8,7 +8,7 @@ lastModifiedAt: "2026-04-17"
 
 properties:
   description: A placed customer order; aggregate root for the orders bounded context
-  schema: order   # resolves to orders.DomainModel.order.schemas.order
+  schema: '#/schemas/order'
 
 # --- Inline schemas ------------------------------------------------------
 # Become Schema nodes: orders.DomainModel.order.schemas.{key}
@@ -19,27 +19,27 @@ schemas:
     description: Structure of the order aggregate
     fields:
       id:
-        scalarType: uuid
+        type: uuid
         nullable: false
         cardinality: one
       customerId:
-        scalarType: uuid
+        type: uuid
         nullable: false
         cardinality: one
       status:
-        objectRef: order-status   # resolves to local enum below
+        $ref: '#/enums/order-status'
         nullable: false
         cardinality: one
       items:
-        objectRef: order-line-item   # resolves to local schema below
+        $ref: '#/schemas/order-line-item'
         nullable: false
         cardinality: many
       totalAmount:
-        scalarType: decimal
+        type: decimal
         nullable: false
         cardinality: one
       notes:
-        scalarType: string
+        type: string
         nullable: true
         cardinality: one
 
@@ -47,16 +47,16 @@ schemas:
     description: A single line item within the order
     fields:
       productId:
-        scalarType: uuid
+        type: uuid
         nullable: false
         cardinality: one
       quantity:
-        scalarType: integer
+        type: integer
         nullable: false
         cardinality: one
       unitPrice:
         state: proposed
-        scalarType: decimal
+        type: decimal
         nullable: false
         cardinality: one
 

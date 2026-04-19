@@ -111,7 +111,7 @@ describe('cluster loader', () => {
     const field = result.nodes.get('orders.DomainModel.order.schemas.order.fields.id')!
     assert.equal(field.template, 'Field')
     assert.equal(field.component, 'orders')
-    assert.equal(field.properties.scalarType, 'uuid')
+    assert.equal(field.properties.type, 'uuid')
     assert.equal(field.properties.nullable, false)
     assert.equal(field.properties.cardinality, 'one')
   })

@@ -106,4 +106,33 @@ describe('graph writer', () => {
       fs.rmSync(outputGraphDir, { recursive: true, force: true })
     }
   })
+
+  it('round-trips field $ref values with correct YAML quoting', async () => {
+    const outputGraphDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-ref-roundtrip-'))
+    try {
+      const graph = await loadGraph({ graphPath: fixtureGraphDir })
+
+      const statusField = graph.nodesById.get('orders.DomainModel.order.schemas.order.fields.status')
+      assert.ok(statusField, 'status field exists')
+
+      await saveGraph(graph, { sourceGraphPath: fixtureGraphDir, outputGraphPath: outputGraphDir })
+
+      const orderYaml = fs.readFileSync(
+        path.join(outputGraphDir, 'components', 'orders', 'DomainModels', 'order.yaml'),
+        'utf-8',
+      )
+      assert.match(orderYaml, /\$ref: '#\/enums\/order-status'/, 'field $ref is quoted')
+      assert.doesNotMatch(orderYaml, /\$ref: #\//, 'no unquoted $ref values')
+      assert.match(orderYaml, /schema: '#\/schemas\/order'/, 'schema property is quoted')
+
+      const reloadedGraph = await loadGraph({ graphPath: outputGraphDir })
+      const reloadedField = reloadedGraph.nodesById.get('orders.DomainModel.order.schemas.order.fields.status')
+      assert.ok(reloadedField, 'status field survives round-trip')
+      assert.equal(reloadedField.properties['$ref'], '#/enums/order-status')
+      const reloadedRoot = reloadedGraph.nodesById.get('orders.DomainModel.order')
+      assert.equal(reloadedRoot?.properties.schema, '#/schemas/order', 'schema property survives round-trip')
+    } finally {
+      fs.rmSync(outputGraphDir, { recursive: true, force: true })
+    }
+  })
 })
