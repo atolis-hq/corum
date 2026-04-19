@@ -62,3 +62,7 @@ ui:
   displayProperties:
     - description
     - aggregate
+  nav:
+    nestOwned:
+      - section: operations
+        label: Operations

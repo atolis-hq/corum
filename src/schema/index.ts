@@ -44,6 +44,12 @@ export interface Template {
     colour?: string
     displayProperties?: string[]
     badge?: string
+    nav?: {
+      nestOwned?: Array<{
+        section: string
+        label?: string
+      }>
+    }
   }
   [section: string]: unknown
 }

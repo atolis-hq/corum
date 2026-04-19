@@ -10,7 +10,23 @@ function makeTestGraph(): Graph {
     version: '1',
     core: false,
     description: 'A domain model',
-    ui: { colour: '#4a90e2', icon: 'model' },
+    operations: { 'item-template': 'DomainOperation' },
+    ui: {
+      colour: '#4a90e2',
+      icon: 'model',
+      nav: {
+        nestOwned: [
+          { section: 'operations', label: 'Operations' },
+        ],
+      },
+    },
+  })
+  templates.set('DomainOperation', {
+    name: 'DomainOperation',
+    version: '1',
+    core: false,
+    description: 'A domain operation',
+    ui: { colour: '#5B8C5A', icon: 'operation' },
   })
   templates.set('Field', {
     name: 'Field',
@@ -38,10 +54,32 @@ function makeTestGraph(): Graph {
     lastModifiedAt: '2026-04-18',
     properties: { scalarType: 'uuid' },
   }
+  const operationNode = {
+    id: 'orders.Order.operations.cancel',
+    template: 'DomainOperation',
+    component: 'orders',
+    state: 'proposed' as const,
+    stability: 'stable' as const,
+    schemaVersion: '1',
+    lastModifiedAt: '2026-04-18',
+    properties: { description: 'Cancel an order' },
+  }
+  const orphanOperationNode = {
+    id: 'orders.CancelOrder',
+    template: 'DomainOperation',
+    component: 'orders',
+    state: 'draft' as const,
+    stability: 'unstable' as const,
+    schemaVersion: '1',
+    lastModifiedAt: '2026-04-18',
+    properties: { description: 'Standalone operation' },
+  }
 
   const nodesById = new Map()
   nodesById.set('orders.Order', orderNode)
   nodesById.set('orders.Order.id', fieldNode)
+  nodesById.set('orders.Order.operations.cancel', operationNode)
+  nodesById.set('orders.CancelOrder', orphanOperationNode)
 
   const edgesByFrom = new Map()
   const edgesByTo = new Map()
@@ -74,24 +112,25 @@ describe('web server', () => {
       const res = await fetch(`http://localhost:${handle.port}/api/templates`)
       assert.equal(res.status, 200)
       const body = await res.json() as Array<{ name: string; core: boolean }>
-      assert.equal(body.length, 1)
-      assert.equal(body[0].name, 'DomainModel')
+      assert.equal(body.length, 2)
+      assert.deepEqual(body.map(t => t.name).sort(), ['DomainModel', 'DomainOperation'])
       assert.equal(body[0].core, false)
     })
 
     it('includes core templates when ?includeCore=true', async () => {
       const res = await fetch(`http://localhost:${handle.port}/api/templates?includeCore=true`)
       const body = await res.json() as Array<{ name: string }>
-      assert.equal(body.length, 2)
+      assert.equal(body.length, 3)
       const names = body.map(t => t.name).sort()
-      assert.deepEqual(names, ['DomainModel', 'Field'])
+      assert.deepEqual(names, ['DomainModel', 'DomainOperation', 'Field'])
     })
 
     it('includes ui config in response', async () => {
       const res = await fetch(`http://localhost:${handle.port}/api/templates`)
-      const body = await res.json() as Array<{ name: string; ui?: { colour?: string } }>
+      const body = await res.json() as Array<{ name: string; ui?: { colour?: string; nav?: { nestOwned?: unknown[] } } }>
       const dm = body.find(t => t.name === 'DomainModel')
       assert.equal(dm?.ui?.colour, '#4a90e2')
+      assert.deepEqual(dm?.ui?.nav?.nestOwned, [{ section: 'operations', label: 'Operations' }])
     })
   })
 
@@ -100,18 +139,18 @@ describe('web server', () => {
       const res = await fetch(`http://localhost:${handle.port}/api/nodes`)
       assert.equal(res.status, 200)
       const body = await res.json() as Array<{ id: string; template: string }>
-      assert.equal(body.length, 1)
+      assert.equal(body.length, 3)
       const ids = body.map(n => n.id).sort()
-      assert.deepEqual(ids, ['orders.Order'])
+      assert.deepEqual(ids, ['orders.CancelOrder', 'orders.Order', 'orders.Order.operations.cancel'])
     })
 
     it('includes core template nodes when ?includeCore=true', async () => {
       const res = await fetch(`http://localhost:${handle.port}/api/nodes?includeCore=true`)
       assert.equal(res.status, 200)
       const body = await res.json() as Array<{ id: string; template: string }>
-      assert.equal(body.length, 2)
+      assert.equal(body.length, 4)
       const ids = body.map(n => n.id).sort()
-      assert.deepEqual(ids, ['orders.Order', 'orders.Order.id'])
+      assert.deepEqual(ids, ['orders.CancelOrder', 'orders.Order', 'orders.Order.id', 'orders.Order.operations.cancel'])
     })
 
     it('filters by template', async () => {
@@ -124,10 +163,10 @@ describe('web server', () => {
     it('filters by component', async () => {
       const res = await fetch(`http://localhost:${handle.port}/api/nodes?component=orders`)
       const body = await res.json() as Array<{ id: string }>
-      assert.equal(body.length, 1)
+      assert.equal(body.length, 3)
     })
 
-    it('returns id, template, component, state, stability only', async () => {
+    it('returns id, template, component, state, stability, and navigation ownership only', async () => {
       const res = await fetch(`http://localhost:${handle.port}/api/nodes`)
       const body = await res.json() as Array<Record<string, unknown>>
       const node = body[0]
@@ -137,6 +176,18 @@ describe('web server', () => {
       assert.ok('state' in node)
       assert.ok('stability' in node)
       assert.ok(!('properties' in node))
+    })
+
+    it('includes parentId and ownedSection for owned nodes but not orphans', async () => {
+      const res = await fetch(`http://localhost:${handle.port}/api/nodes`)
+      const body = await res.json() as Array<Record<string, unknown>>
+      const operation = body.find(node => node.id === 'orders.Order.operations.cancel')
+      const orphan = body.find(node => node.id === 'orders.CancelOrder')
+
+      assert.equal(operation?.parentId, 'orders.Order')
+      assert.equal(operation?.ownedSection, 'operations')
+      assert.equal(orphan?.parentId, undefined)
+      assert.equal(orphan?.ownedSection, undefined)
     })
   })
 
@@ -150,6 +201,18 @@ describe('web server', () => {
       assert.equal(body.root.id, 'orders.Order')
       assert.ok(Array.isArray(body.children))
       assert.ok(Array.isArray(body.edges))
+    })
+
+    it('includes navigation ownership metadata on cluster children', async () => {
+      const res = await fetch(
+        `http://localhost:${handle.port}/api/cluster?nodeId=${encodeURIComponent('orders.Order')}`,
+      )
+      assert.equal(res.status, 200)
+      const body = await res.json() as { children: Array<Record<string, unknown>> }
+      const operation = body.children.find(child => child.id === 'orders.Order.operations.cancel')
+
+      assert.equal(operation?.parentId, 'orders.Order')
+      assert.equal(operation?.ownedSection, 'operations')
     })
 
     it('returns 404 for unknown nodeId', async () => {

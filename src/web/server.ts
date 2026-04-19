@@ -5,7 +5,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { AddressInfo } from 'node:net'
 import { getCluster, listNodes, type ListNodesFilter } from '../graph/index.js'
 import { loadGraph } from '../loader/index.js'
+import { getOwnedSections } from '../loader/pack-loader.js'
 import type { Graph } from '../schema/index.js'
+import type { Node } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -29,6 +31,34 @@ async function getPluginFiles(): Promise<string[]> {
     return files.filter(file => file.endsWith('.jsx'))
   } catch {
     return []
+  }
+}
+
+function getNavigationOwnership(graph: Graph, node: Node): { parentId: string; ownedSection: string } | undefined {
+  let match: { parentId: string; ownedSection: string } | undefined
+
+  for (const parent of graph.nodesById.values()) {
+    if (parent.id === node.id) continue
+    const parentTemplate = graph.templates.get(parent.template)
+    if (!parentTemplate) continue
+
+    for (const [section, childTemplate] of Object.entries(getOwnedSections(parentTemplate))) {
+      if (childTemplate !== node.template) continue
+      if (!node.id.startsWith(`${parent.id}.${section}.`)) continue
+      if (!match || parent.id.length > match.parentId.length) {
+        match = { parentId: parent.id, ownedSection: section }
+      }
+    }
+  }
+
+  return match
+}
+
+function summarizeNodeForNavigation(graph: Graph, node: Node): Node & { parentId?: string; ownedSection?: string } {
+  const ownership = getNavigationOwnership(graph, node)
+  return {
+    ...node,
+    ...(ownership ?? {}),
   }
 }
 
@@ -67,13 +97,18 @@ export function createApp(graph: Graph): express.Application {
     }
     const nodes = listNodes(graph, filter)
       .filter(node => includeCore || !graph.templates.get(node.template)?.core)
-      .map(node => ({
-        id: node.id,
-        template: node.template,
-        component: node.component,
-        state: node.state,
-        stability: node.stability,
-      }))
+      .map(node => {
+        const ownership = summarizeNodeForNavigation(graph, node)
+        return {
+          id: ownership.id,
+          template: ownership.template,
+          component: ownership.component,
+          state: ownership.state,
+          stability: ownership.stability,
+          parentId: ownership.parentId,
+          ownedSection: ownership.ownedSection,
+        }
+      })
     res.json(nodes)
   })
 
@@ -85,7 +120,12 @@ export function createApp(graph: Graph): express.Application {
     }
 
     try {
-      res.json(getCluster(graph, nodeId))
+      const cluster = getCluster(graph, nodeId)
+      res.json({
+        root: summarizeNodeForNavigation(graph, cluster.root),
+        children: cluster.children.map(child => summarizeNodeForNavigation(graph, child)),
+        edges: cluster.edges,
+      })
     } catch (err) {
       const message = err instanceof QueryError ? err.message : String(err)
       res.status(404).json({ error: message })

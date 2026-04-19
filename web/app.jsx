@@ -26,13 +26,43 @@ function displayName(id) {
   return parts[parts.length - 1];
 }
 
-function buildNavTree(nodes) {
+function buildNavTree(nodes, templates) {
+  const nodeMap = new Map(nodes.map(node => [node.id, node]));
+  const templateMap = new Map(templates.map(template => [template.name, template]));
+  const nestedByParent = new Map();
+  const nestedNodeIds = new Set();
+
+  for (const node of nodes) {
+    if (!node.parentId || !node.ownedSection) continue;
+    const parent = nodeMap.get(node.parentId);
+    if (!parent) continue;
+    const parentTemplate = templateMap.get(parent.template);
+    const rule = parentTemplate?.ui?.nav?.nestOwned?.find(item => item.section === node.ownedSection);
+    if (!rule) continue;
+
+    if (!nestedByParent.has(parent.id)) nestedByParent.set(parent.id, new Map());
+    const groups = nestedByParent.get(parent.id);
+    if (!groups.has(node.ownedSection)) {
+      groups.set(node.ownedSection, {
+        label: rule.label ?? node.ownedSection,
+        nodes: [],
+      });
+    }
+    groups.get(node.ownedSection).nodes.push(node);
+    nestedNodeIds.add(node.id);
+  }
+
   const tree = new Map();
   for (const node of nodes) {
+    if (nestedNodeIds.has(node.id)) continue;
     if (!tree.has(node.component)) tree.set(node.component, new Map());
     const component = tree.get(node.component);
     if (!component.has(node.template)) component.set(node.template, []);
-    component.get(node.template).push(node);
+    const navChildren = [...(nestedByParent.get(node.id)?.values() ?? [])].map(group => ({
+      label: group.label,
+      nodes: group.nodes.sort((a, b) => a.id.localeCompare(b.id)),
+    }));
+    component.get(node.template).push({ ...node, navChildren });
   }
   for (const groups of tree.values()) {
     for (const groupNodes of groups.values()) {
@@ -113,14 +143,36 @@ function NavTree({ navTree, templates, activeNodeId, onNode }) {
                 {nodes.map(node => {
                   const isActive = node.id === activeNodeId;
                   return (
-                    <div
-                      key={node.id}
-                      className={`nav-node-item${isActive ? ' active' : ''}`}
-                      onClick={() => onNode(node.id)}
-                      title={node.id}
-                      style={isActive ? { '--nav-node-active-bg': colour } : undefined}
-                    >
-                      {displayName(node.id)}
+                    <div key={node.id}>
+                      <div
+                        className={`nav-node-item${isActive ? ' active' : ''}`}
+                        onClick={() => onNode(node.id)}
+                        title={node.id}
+                        style={isActive ? { '--nav-node-active-bg': colour } : undefined}
+                      >
+                        {displayName(node.id)}
+                      </div>
+                      {(node.navChildren ?? []).map(group => (
+                        <div className="nav-child-group" key={group.label}>
+                          <div className="nav-child-head">{group.label}</div>
+                          {group.nodes.map(child => {
+                            const childTemplate = templateMap.get(child.template);
+                            const childColour = childTemplate?.ui?.colour ?? colour;
+                            const childIsActive = child.id === activeNodeId;
+                            return (
+                              <div
+                                key={child.id}
+                                className={`nav-node-item nav-node-child${childIsActive ? ' active' : ''}`}
+                                onClick={() => onNode(child.id)}
+                                title={child.id}
+                                style={childIsActive ? { '--nav-node-active-bg': childColour } : undefined}
+                              >
+                                {displayName(child.id)}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ))}
                     </div>
                   );
                 })}
@@ -162,11 +214,13 @@ function NodePage({ nodeId, templates }) {
   const { root, children } = cluster;
   const template = templates.find(item => item.name === root.template);
   const colour = template?.ui?.colour ?? null;
+  const nestedSections = new Set((template?.ui?.nav?.nestOwned ?? []).map(item => item.section));
   const Plugin = window.CorumPlugins?.[root.template];
   if (Plugin) return <Plugin node={root} cluster={cluster} template={template} />;
 
   const displayChildren = new Map();
   for (const child of children) {
+    if (child.parentId === root.id && nestedSections.has(child.ownedSection)) continue;
     if (!displayChildren.has(child.template)) displayChildren.set(child.template, []);
     displayChildren.get(child.template).push(child);
   }
@@ -247,7 +301,7 @@ function App() {
 
   const activeNodeId = route.pathname === '/node' ? route.params.get('id') : null;
   const activeSection = activeNodeId ? 'components' : (route.pathname.slice(1) || 'dashboard');
-  const navTree = buildNavTree(nodes);
+  const navTree = buildNavTree(nodes, templates);
   const showTree = activeSection === 'components' || activeNodeId;
 
   function handleSection(section) {

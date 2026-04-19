@@ -48,6 +48,7 @@ schemas:
         nullable: false
         cardinality: one
       unitPrice:
+        state: draft
         scalarType: decimal
         nullable: false
         cardinality: one
