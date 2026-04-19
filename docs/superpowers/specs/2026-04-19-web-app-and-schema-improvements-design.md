@@ -277,7 +277,11 @@ sharedSchema:
 
 ## 8. `$ref` as a YAML Property Key — Loader & Writer Concerns
 
-`$ref` is a reserved keyword in JSON Schema, but these files are Corum domain files — not JSON Schema documents. The loader reads them as plain YAML; `$ref` is just another string key.
+`$ref` is used as a data property key in node files for familiarity with OpenAPI. JSON Schema validators (ajv, etc.) correctly handle `$ref` as a property name under a `properties:` schema without treating it as a schema composition directive — it is only interpreted as a keyword when it appears at schema level, not in data being validated. This is safe for future linter use.
+
+**Constraint:** Template schema files should avoid using JSON Schema `$ref` for internal schema composition (e.g. `$ref: '#/$defs/BaseField'`) while `$ref` is also defined as a valid data property name in the same file. Doing so would create two meanings of `$ref` in one document. If template schemas grow complex enough to need DRY reuse, revisit this.
+
+**Node identity:** Node files use `id:` (not `$id:`). `$id` in JSON Schema sets a base URI for schema reference resolution — node files are data instances, not schema documents, and their IDs are dot-notation graph addresses, not URIs. `id:` is unambiguous and universally understood.
 
 **Critical YAML quoting rule:** `#` begins a YAML comment when unquoted, so `$ref: #/schemas/order-status` would silently discard the value. Local ref values starting with `#/` MUST always be quoted:
 
@@ -292,10 +296,7 @@ $ref: '#/schemas/order-status'
 **Round-trip fidelity:** The loader and any file writer must both handle this correctly:
 
 - **Loader (read):** YAML library (e.g. `js-yaml`) reads `$ref` as a plain key and the quoted string value normally. No special handling needed.
-- **File writer (write):** When serializing field definitions back to YAML, values that start with `#/` must be emitted as single-quoted strings. Most YAML serializers will quote `#`-prefixed strings automatically (since they contain a comment character), but this must be verified and enforced — do not rely on default serializer behaviour silently getting it right.
-- **Global node ID refs** (bare strings, no `#/`) do not contain special characters and round-trip cleanly without quoting.
-
-If a future JSON Schema validator is added for node files, the use of `$ref` as a data property key would need revisiting.
+- **File writer (write):** When serializing field definitions back to YAML, values that start with `#/` must be emitted as single-quoted strings. Most YAML serializers will quote `#`-prefixed strings automatically (since they contain a comment character), but this must be verified and enforced — do not rely on default serialiser behaviour.
 
 ---
 
