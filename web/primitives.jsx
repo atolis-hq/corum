@@ -22,38 +22,9 @@ function BrandMark({ size = 24, color = 'currentColor' }) {
   );
 }
 
-function Icon({ name, size = 14 }) {
-  const c = {
-    width: size,
-    height: size,
-    viewBox: '0 0 16 16',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 1.3,
-    strokeLinecap: 'round',
-    strokeLinejoin: 'round',
-    'aria-hidden': true,
-  };
-  switch (name) {
-    case 'grid':
-      return <svg {...c}><rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" /></svg>;
-    case 'cube':
-      return <svg {...c}><path d="M8 1.5L14 5v6L8 14.5 2 11V5z" /><path d="M2 5l6 3 6-3M8 8v6.5" /></svg>;
-    case 'caret':
-      return <svg {...c}><path d="M5 4l4 4-4 4" /></svg>;
-    case 'caret-down':
-      return <svg {...c}><path d="M4 6l4 4 4-4" /></svg>;
-    case 'model':
-      return <svg {...c}><ellipse cx="8" cy="4" rx="5" ry="2" /><path d="M3 4v4c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8v4c0 1.1 2.2 2 5 2s5-.9 5-2V8" /></svg>;
-    case 'api':
-      return <svg {...c}><rect x="2" y="3" width="12" height="10" rx="1.5" /><path d="M5 6h3M5 9h6M5 11.5h4" /></svg>;
-    case 'event':
-      return <svg {...c}><path d="M3 4h10v8H5l-2 2z" /></svg>;
-    case 'graph':
-      return <svg {...c}><circle cx="4" cy="4" r="1.5" /><circle cx="12" cy="4" r="1.5" /><circle cx="8" cy="12" r="1.5" /><path d="M5 5l2 6M11 5l-2 6" /></svg>;
-    default:
-      return <svg {...c}><rect x="3" y="3" width="10" height="10" /></svg>;
-  }
+function Icon({ name, size }) {
+  const style = size ? { fontSize: size } : undefined;
+  return <i className={`fa-solid fa-${name}`} style={style} aria-hidden="true" />;
 }
 
 function StateTag({ state }) {

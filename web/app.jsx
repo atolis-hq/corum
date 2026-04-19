@@ -85,7 +85,7 @@ function TopBar() {
 
 function NavRail({ activeSection, onSection }) {
   const items = [
-    { id: 'dashboard', icon: 'grid', label: 'Dashboard' },
+    { id: 'dashboard', icon: 'table-cells', label: 'Dashboard' },
     { id: 'components', icon: 'cube', label: 'Models' },
   ];
 
@@ -129,7 +129,7 @@ function NavTree({ navTree, templates, activeNodeId, onNode }) {
         <div key={component}>
           <div className="nav-section-head" onClick={() => toggleComponent(component)}>
             <span>{component}</span>
-            <Icon name={openComponents[component] ? 'caret-down' : 'caret'} size={12} />
+            <Icon name={openComponents[component] ? 'chevron-down' : 'chevron-right'} size={12} />
           </div>
           {openComponents[component] && [...templateGroups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([templateName, nodes]) => {
             const template = templateMap.get(templateName);
