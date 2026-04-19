@@ -30,9 +30,10 @@ properties:
       description: "Human-readable description of what this model represents"
     schema:
       type: string
+      format: node-ref
       description: |
         Local schema name or global Schema node ID defining the structure of
-        this model. Resolved local-first against the schemas block.
+        this model.
 
 invariants:
   item-template: Invariant

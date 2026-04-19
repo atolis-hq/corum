@@ -58,29 +58,26 @@ properties:
 
     request:
       type: string
+      format: node-ref
       description: |
-        Local schema name or global Schema node ID describing the request body.
-        Resolved local-first (schemas block, then enums block, then global).
-        Omit for operations with no body (e.g. GET, DELETE).
+        Local schema ref ('#/schemas/<name>') or global node ID describing
+        the request body. Omit for operations with no body (e.g. GET, DELETE).
       examples:
-        - create-order-request
+        - "'#/schemas/create-order-request'"
 
     responses:
       type: object
       minProperties: 1
       description: |
-        Map of HTTP status code (or 'default') to a local schema name or
-        global Schema node ID describing the response body. Each value is
-        resolved local-first.
+        Map of HTTP status code (or 'default') to a local schema ref
+        ('#/schemas/<name>') or global node ID describing the response body.
       propertyNames:
         pattern: "^(default|[1-5][0-9]{2})$"
       additionalProperties:
         type: string
-        description: "Local schema name or global Schema node ID"
+        format: node-ref
       examples:
-        - "200": order-response
-        - "201": order-created-response
-          "404": problem-detail
+        - "200": "'#/schemas/order-response'"
 
 # schemas: and enums: inherited from base (_base.yaml)
 
