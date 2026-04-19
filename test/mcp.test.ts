@@ -159,8 +159,8 @@ describe('MCP handlers', () => {
       const template = JSON.parse(result.content[0].text)
 
       assert.equal(template.name, 'DomainModel')
-      assert.equal(template.version, '1.0.0')
-      assert.equal(template.abstract, false)
+      assert.equal(template.info.version, '1.0.0')
+      assert.equal(template.info.abstract, false)
       assert.ok('properties' in template)
       assert.ok('schemas' in template)
       assert.ok('edge-types' in template)
@@ -172,8 +172,8 @@ describe('MCP handlers', () => {
       const template = JSON.parse(result.content[0].text)
 
       assert.equal(template.name, 'DomainModel')
-      assert.equal(template.v, '1.0.0')
-      assert.equal(template.a, false)
+      assert.equal(template.info.v, '1.0.0')
+      assert.equal(template.info.a, false)
       assert.ok(!('version' in template))
       assert.ok(!('abstract' in template))
     })

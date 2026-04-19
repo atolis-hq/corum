@@ -51,11 +51,11 @@ export function createMcpHandlers(graph: Graph): {
         const summaries = [...graph.templates.values()]
           .map(template => ({
             name: template.name,
-            version: template.version,
-            core: template.core ?? false,
-            abstract: template.abstract ?? false,
+            version: template.info?.version,
+            core: template.info?.core ?? false,
+            abstract: template.info?.abstract ?? false,
             extends: template.extends,
-            description: template.description,
+            description: template.info?.description,
           }))
           .sort((a, b) => a.name.localeCompare(b.name))
         return formatResult(summaries, args.format, getCompactKeys(args))

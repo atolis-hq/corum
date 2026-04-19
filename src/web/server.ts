@@ -72,15 +72,15 @@ export function createApp(graph: Graph): express.Application {
   app.get('/api/templates', (req, res) => {
     const includeCore = req.query.includeCore === 'true'
     const templates = [...graph.templates.values()]
-      .filter(template => includeCore || !template.core)
+      .filter(template => includeCore || !template.info?.core)
       .sort((a, b) => a.name.localeCompare(b.name))
       .map(template => ({
         name: template.name,
-        version: template.version,
-        core: template.core ?? false,
-        abstract: template.abstract ?? false,
+        version: template.info?.version,
+        core: template.info?.core ?? false,
+        abstract: template.info?.abstract ?? false,
         extends: template.extends,
-        description: template.description,
+        description: template.info?.description,
         ui: template.ui,
       }))
     res.json(templates)
@@ -96,7 +96,7 @@ export function createApp(graph: Graph): express.Application {
       stability: typeof stability === 'string' ? stability as ListNodesFilter['stability'] : undefined,
     }
     const nodes = listNodes(graph, filter)
-      .filter(node => includeCore || !graph.templates.get(node.template)?.core)
+      .filter(node => includeCore || !graph.templates.get(node.template)?.info?.core)
       .map(node => {
         const ownership = summarizeNodeForNavigation(graph, node)
         return {

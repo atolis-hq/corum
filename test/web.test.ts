@@ -7,13 +7,11 @@ function makeTestGraph(): Graph {
   const templates = new Map()
   templates.set('DomainModel', {
     name: 'DomainModel',
-    version: '1',
-    core: false,
-    description: 'A domain model',
+    info: { version: '1', core: false, description: 'A domain model' },
     operations: { 'item-template': 'DomainOperation' },
     ui: {
       colour: '#4a90e2',
-      icon: 'model',
+      icon: 'sitemap',
       nav: {
         nestOwned: [
           { section: 'operations', label: 'Operations' },
@@ -23,15 +21,12 @@ function makeTestGraph(): Graph {
   })
   templates.set('DomainOperation', {
     name: 'DomainOperation',
-    version: '1',
-    core: false,
-    description: 'A domain operation',
-    ui: { colour: '#5B8C5A', icon: 'operation' },
+    info: { version: '1', core: false, description: 'A domain operation' },
+    ui: { colour: '#5B8C5A', icon: 'gear' },
   })
   templates.set('Field', {
     name: 'Field',
-    version: '1',
-    core: true,
+    info: { version: '1', core: true },
   })
 
   const orderNode = {
