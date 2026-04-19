@@ -19,8 +19,7 @@ function topoSortTemplates(templates: Map<string, Template>): Template[] {
 }
 
 const RESERVED_TEMPLATE_KEYS = new Set([
-  'name', 'version', 'core', 'abstract', 'extends',
-  'description', 'properties', 'edge-types', 'ui',
+  'name', 'info', 'extends', 'properties', 'edge-types', 'ui',
 ])
 
 export function getOwnedSections(template: Template): Record<string, string> {
@@ -69,8 +68,12 @@ export function loadPacks(
       }
 
       const templateRecord = raw as Record<string, unknown>
-      if (typeof templateRecord.name !== 'string' || typeof templateRecord.version !== 'string') {
-        diagnostics.push({ severity: 'error', file: filePath, message: 'template missing required name or version' })
+      const info = typeof templateRecord.info === 'object' && templateRecord.info !== null
+        ? templateRecord.info as Record<string, unknown>
+        : null
+
+      if (typeof templateRecord.name !== 'string' || typeof info?.version !== 'string') {
+        diagnostics.push({ severity: 'error', file: filePath, message: 'template missing required name or info.version' })
         continue
       }
 

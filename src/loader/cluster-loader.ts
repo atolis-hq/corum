@@ -136,7 +136,9 @@ function stripOwnedSections(
   templateName: string,
   templates: Map<string, Template>,
 ): Record<string, unknown> {
-  const ownedSections = new Set(Object.keys(getOwnedSections(templates.get(templateName) ?? ({ name: templateName, version: 'unknown' }))))
+  const ownedSections = new Set(Object.keys(getOwnedSections(
+    templates.get(templateName) ?? ({ name: templateName, info: { version: 'unknown' } }),
+  )))
   const nodeMetadata = new Set(['state', 'stability'])
   return Object.fromEntries(Object.entries(value).filter(([key]) => !ownedSections.has(key) && !nodeMetadata.has(key)))
 }
