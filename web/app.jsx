@@ -214,7 +214,7 @@ function NodePage({ nodeId, templates, onNavigate }) {
   if (error) return <div className="content"><p style={{ color: 'var(--warn)' }}>Error loading node: {error}</p></div>;
   if (!cluster) return <div className="content"><p className="label-sm">Loading...</p></div>;
 
-  const { root, children } = cluster;
+  const { root, children, edges } = cluster;
   const template = templates.find(item => item.name === root.template);
   const colour = template?.ui?.colour ?? null;
   const nestedSections = new Set((template?.ui?.nav?.nestOwned ?? []).map(item => item.section));
@@ -267,7 +267,13 @@ function NodePage({ nodeId, templates, onNavigate }) {
       {[...displayChildren.entries()]
         .filter(([templateName]) => templateName !== 'Field' && templateName !== 'EnumValue')
         .map(([templateName, groupNodes]) => (
-          <SchemaCard key={templateName} title={templateName} nodes={groupNodes} allNodes={children} />
+          <SchemaCard
+            key={templateName}
+            title={templateName}
+            nodes={groupNodes}
+            allNodes={children}
+            edges={edges}
+          />
         ))}
     </div>
   );

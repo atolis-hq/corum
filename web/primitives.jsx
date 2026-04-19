@@ -205,7 +205,7 @@ function buildSchemaModel(schemaNodes, allNodes) {
   };
 }
 
-function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = new Set() }) {
+function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = new Set(), edges = [] }) {
   const fields = model.fieldsBySchema.get(schemaName) ?? [];
   if (fields.length === 0) {
     return (
@@ -230,6 +230,7 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
         const childPrefix = `${prefix}${name}${field.properties?.cardinality === 'many' ? '[].' : '.'}`;
         const nextVisited = new Set(visited);
         nextVisited.add(schemaName);
+        const mapsTo = edges.filter(e => e.from === field.id && e.type === 'maps-to');
 
         return (
           <React.Fragment key={field.id}>
@@ -240,7 +241,24 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
               <div className="cardinality">{fieldCardinality(field.properties)}</div>
               <div className="req">{fieldRequirement(field.properties)}</div>
               <div className="state"><StateTag state={field.state} /></div>
-              <div className="lineage">{fieldDetails(field.properties)}</div>
+              <div className="lineage">
+                {mapsTo.length > 0
+                  ? mapsTo.map(e => {
+                      const targetNodeId = e.to.replace(/\.fields\.[^.]+$/, '');
+                      const targetFieldName = e.to.split('.').pop();
+                      return (
+                        <a
+                          key={e.to}
+                          className="node-ref-link"
+                          onClick={() => window.location.hash = `#/node?id=${encodeURIComponent(targetNodeId)}`}
+                          title={e.to}
+                        >
+                          {'->'} {targetFieldName}
+                        </a>
+                      );
+                    })
+                  : fieldDetails(field.properties)}
+              </div>
             </div>
             {canExpand && (
               <SchemaFieldRows
@@ -249,6 +267,7 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
                 prefix={childPrefix}
                 depth={depth + 1}
                 visited={nextVisited}
+                edges={edges}
               />
             )}
           </React.Fragment>
@@ -258,7 +277,7 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
   );
 }
 
-function SchemaCard({ title, nodes, allNodes }) {
+function SchemaCard({ title, nodes, allNodes, edges }) {
   if (!nodes || nodes.length === 0) return null;
 
   if (title === 'EnumDefinition') {
@@ -339,7 +358,7 @@ function SchemaCard({ title, nodes, allNodes }) {
                   <div className="label-xs">State</div>
                   <div className="label-xs">Links</div>
                 </div>
-                <SchemaFieldRows schemaName={schemaName} model={model} visited={new Set()} />
+                <SchemaFieldRows schemaName={schemaName} model={model} visited={new Set()} edges={edges ?? []} />
               </div>
             );
           })}
