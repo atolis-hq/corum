@@ -6,8 +6,7 @@ import type { AddressInfo } from 'node:net'
 import { getCluster, listNodes, type ListNodesFilter } from '../graph/index.js'
 import { loadGraph } from '../loader/index.js'
 import { getOwnedSections } from '../loader/pack-loader.js'
-import type { Graph } from '../schema/index.js'
-import type { Node } from '../schema/index.js'
+import type { Graph, Node, Template } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -60,6 +59,67 @@ function summarizeNodeForNavigation(graph: Graph, node: Node): Node & { parentId
     ...node,
     ...(ownership ?? {}),
   }
+}
+
+type NodeRefValue = { display: string; nodeId: string } | { display: string }
+
+function resolveNodeRef(graph: Graph, node: Node, rawValue: string): NodeRefValue {
+  if (rawValue.startsWith('#/schemas/')) {
+    const name = rawValue.slice(10)
+    const id = `${node.id}.schemas.${name}`
+    return graph.nodesById.has(id) ? { display: name, nodeId: id } : { display: name }
+  }
+  if (rawValue.startsWith('#/enums/')) {
+    const name = rawValue.slice(8)
+    const id = `${node.id}.enums.${name}`
+    return graph.nodesById.has(id) ? { display: name, nodeId: id } : { display: name }
+  }
+  if (graph.nodesById.has(rawValue)) return { display: rawValue, nodeId: rawValue }
+  return { display: rawValue }
+}
+
+function getPropertySchemas(templateProperties: Record<string, unknown>): Record<string, Record<string, unknown>> {
+  if (Array.isArray(templateProperties.allOf)) {
+    const merged: Record<string, Record<string, unknown>> = {}
+    for (const schema of templateProperties.allOf) {
+      Object.assign(merged, getPropertySchemas(schema as Record<string, unknown>))
+    }
+    return merged
+  }
+  if (typeof templateProperties.properties === 'object' && templateProperties.properties !== null) {
+    return templateProperties.properties as Record<string, Record<string, unknown>>
+  }
+  return {}
+}
+
+function annotateNodeRefProperties(graph: Graph, node: Node, template: Template): Record<string, unknown> {
+  if (!template.properties) return node.properties
+  const propSchemas = getPropertySchemas(template.properties as Record<string, unknown>)
+  const result: Record<string, unknown> = { ...node.properties }
+
+  for (const [key, schema] of Object.entries(propSchemas)) {
+    const value = result[key]
+    if (value === undefined) continue
+
+    if (schema.format === 'node-ref' && typeof value === 'string') {
+      result[key] = resolveNodeRef(graph, node, value)
+    } else if (
+      schema.type === 'object' &&
+      typeof schema.additionalProperties === 'object' &&
+      schema.additionalProperties !== null &&
+      (schema.additionalProperties as Record<string, unknown>).format === 'node-ref' &&
+      typeof value === 'object' &&
+      value !== null &&
+      !Array.isArray(value)
+    ) {
+      result[key] = Object.fromEntries(
+        Object.entries(value as Record<string, unknown>).map(([k, v]) =>
+          typeof v === 'string' ? [k, resolveNodeRef(graph, node, v)] : [k, v],
+        ),
+      )
+    }
+  }
+  return result
 }
 
 export function createApp(graph: Graph): express.Application {
@@ -121,8 +181,12 @@ export function createApp(graph: Graph): express.Application {
 
     try {
       const cluster = getCluster(graph, nodeId)
+      const rootTemplate = graph.templates.get(cluster.root.template)
+      const annotatedRoot = rootTemplate
+        ? { ...cluster.root, properties: annotateNodeRefProperties(graph, cluster.root, rootTemplate) }
+        : cluster.root
       res.json({
-        root: summarizeNodeForNavigation(graph, cluster.root),
+        root: summarizeNodeForNavigation(graph, annotatedRoot),
         children: cluster.children.map(child => summarizeNodeForNavigation(graph, child)),
         edges: cluster.edges,
       })

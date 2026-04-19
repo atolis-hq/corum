@@ -8,6 +8,12 @@ function makeTestGraph(): Graph {
   templates.set('DomainModel', {
     name: 'DomainModel',
     info: { version: '1', core: false, description: 'A domain model' },
+    properties: {
+      type: 'object',
+      properties: {
+        schema: { type: 'string', format: 'node-ref' },
+      },
+    },
     operations: { 'item-template': 'DomainOperation' },
     ui: {
       colour: '#4a90e2',
@@ -28,6 +34,10 @@ function makeTestGraph(): Graph {
     name: 'Field',
     info: { version: '1', core: true },
   })
+  templates.set('Schema', {
+    name: 'Schema',
+    info: { version: '1', core: true },
+  })
 
   const orderNode = {
     id: 'orders.Order',
@@ -37,7 +47,17 @@ function makeTestGraph(): Graph {
     stability: 'stable' as const,
     schemaVersion: '1',
     lastModifiedAt: '2026-04-18',
-    properties: { description: 'An order' },
+    properties: { description: 'An order', schema: '#/schemas/order' },
+  }
+  const schemaNode = {
+    id: 'orders.Order.schemas.order',
+    template: 'Schema',
+    component: 'orders',
+    state: 'agreed' as const,
+    stability: 'stable' as const,
+    schemaVersion: '1',
+    lastModifiedAt: '2026-04-18',
+    properties: { description: 'Order schema' },
   }
   const fieldNode = {
     id: 'orders.Order.id',
@@ -72,6 +92,7 @@ function makeTestGraph(): Graph {
 
   const nodesById = new Map()
   nodesById.set('orders.Order', orderNode)
+  nodesById.set('orders.Order.schemas.order', schemaNode)
   nodesById.set('orders.Order.id', fieldNode)
   nodesById.set('orders.Order.operations.cancel', operationNode)
   nodesById.set('orders.CancelOrder', orphanOperationNode)
@@ -115,9 +136,9 @@ describe('web server', () => {
     it('includes core templates when ?includeCore=true', async () => {
       const res = await fetch(`http://localhost:${handle.port}/api/templates?includeCore=true`)
       const body = await res.json() as Array<{ name: string }>
-      assert.equal(body.length, 3)
+      assert.equal(body.length, 4)
       const names = body.map(t => t.name).sort()
-      assert.deepEqual(names, ['DomainModel', 'DomainOperation', 'Field'])
+      assert.deepEqual(names, ['DomainModel', 'DomainOperation', 'Field', 'Schema'])
     })
 
     it('includes ui config in response', async () => {
@@ -143,9 +164,15 @@ describe('web server', () => {
       const res = await fetch(`http://localhost:${handle.port}/api/nodes?includeCore=true`)
       assert.equal(res.status, 200)
       const body = await res.json() as Array<{ id: string; template: string }>
-      assert.equal(body.length, 4)
+      assert.equal(body.length, 5)
       const ids = body.map(n => n.id).sort()
-      assert.deepEqual(ids, ['orders.CancelOrder', 'orders.Order', 'orders.Order.id', 'orders.Order.operations.cancel'])
+      assert.deepEqual(ids, [
+        'orders.CancelOrder',
+        'orders.Order',
+        'orders.Order.id',
+        'orders.Order.operations.cancel',
+        'orders.Order.schemas.order',
+      ])
     })
 
     it('filters by template', async () => {
@@ -208,6 +235,19 @@ describe('web server', () => {
 
       assert.equal(operation?.parentId, 'orders.Order')
       assert.equal(operation?.ownedSection, 'operations')
+    })
+
+    it('resolves root node-ref properties to display metadata', async () => {
+      const res = await fetch(
+        `http://localhost:${handle.port}/api/cluster?nodeId=${encodeURIComponent('orders.Order')}`,
+      )
+      assert.equal(res.status, 200)
+      const body = await res.json() as { root: { properties: Record<string, unknown> } }
+
+      assert.deepEqual(body.root.properties.schema, {
+        display: 'order',
+        nodeId: 'orders.Order.schemas.order',
+      })
     })
 
     it('returns 404 for unknown nodeId', async () => {
