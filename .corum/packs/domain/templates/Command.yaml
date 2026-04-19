@@ -13,6 +13,6 @@ edges:
     - produces
 
 ui:
-  icon: command
+  icon: terminal
   colour: "#B56576"
   displayProperties: []

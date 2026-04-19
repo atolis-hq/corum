@@ -10,6 +10,6 @@ description: |
   of this node type.
 
 ui:
-  icon: domain-event
+  icon: bolt
   colour: "#E8A838"
   displayProperties: []

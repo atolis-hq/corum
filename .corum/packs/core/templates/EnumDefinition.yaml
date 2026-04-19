@@ -34,7 +34,7 @@ edge-types:
     - has-value
 
 ui:
-  icon: enum-definition
+  icon: list
   colour: "#8B6A9A"
   displayProperties:
     - description

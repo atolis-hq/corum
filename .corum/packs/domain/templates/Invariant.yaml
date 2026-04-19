@@ -19,7 +19,7 @@ properties:
       description: "The rule stated affirmatively (e.g. 'An order must have at least one item')"
 
 ui:
-  icon: invariant
+  icon: shield-halved
   colour: "#C26D3A"
   displayProperties:
     - description

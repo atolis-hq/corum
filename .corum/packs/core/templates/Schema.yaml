@@ -32,7 +32,7 @@ edge-types:
     - reads
 
 ui:
-  icon: schema
+  icon: layer-group
   colour: "#5D7A8C"
   displayProperties:
     - description

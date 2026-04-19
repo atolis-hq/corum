@@ -7,6 +7,6 @@ description: |
   reused across models and endpoints through field type references.
 
 ui:
-  icon: value-object
+  icon: cube
   colour: "#7A6F9B"
   displayProperties: []

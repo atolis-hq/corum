@@ -21,6 +21,6 @@ edges:
     - produces
 
 ui:
-  icon: event
+  icon: bolt
   colour: "#E8A838"
   displayProperties: []

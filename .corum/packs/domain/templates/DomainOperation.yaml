@@ -30,7 +30,7 @@ edge-types:
     - calls
 
 ui:
-  icon: domain-operation
+  icon: gear
   colour: "#5B8C5A"
   displayProperties:
     - description

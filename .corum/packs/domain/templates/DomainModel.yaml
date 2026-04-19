@@ -57,7 +57,7 @@ edge-types:
     - derived-from
 
 ui:
-  icon: domain-model
+  icon: sitemap
   colour: "#2E8B57"
   displayProperties:
     - description

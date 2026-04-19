@@ -9,6 +9,6 @@ description: |
   changes to the payload schema affect consumers.
 
 ui:
-  icon: integration-event
+  icon: share-nodes
   colour: "#D96C4A"
   displayProperties: []

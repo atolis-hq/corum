@@ -92,7 +92,7 @@ edge-types:
     - triggers
 
 ui:
-  icon: api-endpoint
+  icon: plug
   colour: "#4A90D9"
   displayProperties:
     - method

@@ -12,6 +12,6 @@ edges:
     - derived-from
 
 ui:
-  icon: read-model
+  icon: table-list
   colour: "#6C91BF"
   displayProperties: []

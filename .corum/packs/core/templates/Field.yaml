@@ -74,7 +74,7 @@ edge-types:
     - derived-from
 
 ui:
-  icon: field
+  icon: minus
   colour: "#888888"
   displayProperties:
     - scalarType
