@@ -133,9 +133,13 @@ function fieldLocalName(nodeId) {
 
 function fieldType(properties) {
   const cardinality = properties?.cardinality === 'many' ? '[]' : '';
-  if (properties?.scalarType) return `${properties.scalarType}${cardinality}`;
-  if (properties?.objectRef) return `${properties.objectRef}${cardinality}`;
-  return cardinality ? `object${cardinality}` : 'object';
+  if (properties?.type) return `${properties.type}${cardinality}`;
+  const ref = properties?.['$ref'];
+  if (ref) {
+    const name = typeof ref === 'string' ? ref.replace(/^#\/(schemas|enums)\//, '') : ref;
+    return `${name}${cardinality}`;
+  }
+  return cardinality ? `unknown${cardinality}` : 'unknown';
 }
 
 function fieldRequirement(properties) {
@@ -150,7 +154,8 @@ function fieldCardinality(properties) {
 
 function fieldDetails(properties) {
   const parts = [];
-  if (properties?.objectRef) parts.push(`ref ${properties.objectRef}`);
+  const ref = properties?.['$ref'];
+  if (ref) parts.push(`ref ${typeof ref === 'string' ? ref.replace(/^#\/(schemas|enums)\//, '') : ref}`);
   if (properties?.description) parts.push(properties.description);
   return parts.length > 0 ? parts.join(' · ') : '-';
 }
@@ -191,9 +196,10 @@ function buildSchemaModel(schemaNodes, allNodes) {
     if (!fieldsBySchema.has(schemaName)) fieldsBySchema.set(schemaName, []);
     fieldsBySchema.get(schemaName).push(node);
 
-    const objectRef = node.properties?.objectRef;
-    if (typeof objectRef === 'string' && schemasByName.has(objectRef)) {
-      referencedSchemas.add(objectRef);
+    const ref = node.properties?.['$ref'];
+    const localName = typeof ref === 'string' ? ref.replace(/^#\/schemas\//, '') : null;
+    if (localName && schemasByName.has(localName)) {
+      referencedSchemas.add(localName);
     }
   }
 
@@ -225,8 +231,9 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
     <>
       {fields.map(field => {
         const name = fieldLocalName(field.id);
-        const objectRef = field.properties?.objectRef;
-        const canExpand = typeof objectRef === 'string' && model.schemasByName.has(objectRef) && !visited.has(objectRef);
+        const ref = field.properties?.['$ref'];
+        const localRef = typeof ref === 'string' ? ref.replace(/^#\/schemas\//, '') : null;
+        const canExpand = localRef !== null && model.schemasByName.has(localRef) && !visited.has(localRef);
         const childPrefix = `${prefix}${name}${field.properties?.cardinality === 'many' ? '[].' : '.'}`;
         const nextVisited = new Set(visited);
         nextVisited.add(schemaName);
@@ -262,7 +269,7 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
             </div>
             {canExpand && (
               <SchemaFieldRows
-                schemaName={objectRef}
+                schemaName={localRef}
                 model={model}
                 prefix={childPrefix}
                 depth={depth + 1}
