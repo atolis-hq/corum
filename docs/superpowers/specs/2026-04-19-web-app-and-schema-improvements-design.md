@@ -1,0 +1,289 @@
+# Web App & Schema Improvements Design
+
+Date: 2026-04-19
+
+## Scope
+
+Six improvement areas: UI polish (icons, nav, properties card), template YAML restructure (`info:` block), field type system overhaul (`$ref` syntax, `format: node-ref`), and schema view link bug fix.
+
+---
+
+## 1. Font Awesome Icons
+
+Replace hand-crafted inline SVGs with Font Awesome 6 Free via CDN (CSS variant).
+
+**`web/index.html`** — add before app scripts:
+```html
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" />
+```
+
+**`web/primitives.jsx`** — replace the `Icon` component:
+```jsx
+function Icon({ name, size }) {
+  return <i className={`fa-solid fa-${name}`} style={size ? { fontSize: size } : undefined} />;
+}
+```
+
+**Template YAMLs** — update `ui.icon` values to valid FA 6 Free Solid icon names:
+
+| Current value       | FA icon name         |
+|---------------------|----------------------|
+| `domain-model`      | `sitemap`            |
+| `api-endpoint`      | `plug`               |
+| `domain-event`      | `bolt`               |
+| `event`             | `bolt`               |
+| `integration-event` | `share-nodes`        |
+| `command`           | `terminal`           |
+| `domain-operation`  | `gear`               |
+| `read-model`        | `table-list`         |
+| `value-object`      | `cube`               |
+| `invariant`         | `shield-halved`      |
+| `schema`            | `layer-group`        |
+| `enum-definition`   | `list`               |
+| `enum-value`        | `tag`                |
+| `field`             | `minus`              |
+
+New templates added by pack authors must use a valid FA 6 Free Solid icon name.
+
+---
+
+## 2. Secondary Nav Icons
+
+Currently the nav renders a coloured square box next to template group names. Replace with the template's FA icon, tinted with `template.ui.colour`.
+
+In `app.jsx`, where template group headings are rendered, change from the coloured box to:
+```jsx
+<i className={`fa-solid fa-${template.ui.icon}`} style={{ color: template.ui.colour }} />
+```
+
+---
+
+## 3. Properties Card — Nested Structures
+
+Currently `formatValue()` JSON-stringifies objects and arrays, producing unreadable blobs. Replace with recursive nested indentation.
+
+**Approach:** if a property value is a plain object, render a sub-table indented beneath the key. If a value is an array, render each item as a sub-row (indexed or anonymous). Depth is tracked via CSS `padding-left` per level.
+
+```
+method        POST
+path          /orders
+responses
+  200         → create-order-response  [link]
+  422         → validation-error       [link]
+request       → create-order-request  [link]
+```
+
+Node-ref values (see §5) render as clickable links rather than plain text.
+
+---
+
+## 4. Template YAML — `info:` Block
+
+Restructure top-level metadata in all template YAML files to nest under `info:`, aligning with OpenAPI/AsyncAPI conventions.
+
+**Before:**
+```yaml
+name: APIEndpoint
+version: "1.0.0"
+core: false
+abstract: false
+description: |
+  ...
+```
+
+**After:**
+```yaml
+name: APIEndpoint
+info:
+  version: "1.0.0"
+  core: false
+  abstract: false
+  description: |
+    ...
+```
+
+All template YAMLs in all packs must be updated. The loader and any code reading these fields must be updated to read from `info.*`.
+
+---
+
+## 5. Field Type System — `$ref` Syntax
+
+### 5a. Field property definitions (`Field.yaml`)
+
+Replace the mutually-exclusive `scalarType` / `objectRef` pair with a single `type` (for primitives) XOR `$ref` (for node references). This mirrors OpenAPI's pattern exactly.
+
+**Before:**
+```yaml
+fields:
+  id:
+    scalarType: uuid
+    nullable: false
+    cardinality: one
+  status:
+    objectRef: order-status
+    nullable: false
+    cardinality: one
+```
+
+**After:**
+```yaml
+fields:
+  id:
+    type: uuid
+    nullable: false
+    cardinality: one
+  status:
+    $ref: '#/enums/order-status'
+    nullable: false
+    cardinality: one
+  items:
+    $ref: '#/schemas/order-item'
+    nullable: false
+    cardinality: many
+```
+
+**Reference resolution:**
+- `#/schemas/<name>` — local schema in this node's `schemas:` block
+- `#/enums/<name>` — local enum in this node's `enums:` block
+- bare string (no `#/`) — global node ID; generates an implicit `reads` edge
+
+**Discriminator:** presence of `$ref` vs `type`. Mutually exclusive.
+
+**`cardinality`** stays as `one | many` — not replaced with `type: array`. It is a domain concept, enables meaningful semantic diffs over time, and supports future richness (e.g., `zero-or-one`).
+
+### 5b. Scalar type closed set
+
+Valid `type` values for primitives: `uuid`, `string`, `integer`, `decimal`, `boolean`, `datetime`, `date`, `time`.
+
+### 5c. `Field.yaml` template definition update
+
+```yaml
+properties:
+  type: object
+  properties:
+    type:
+      type: string
+      enum: [uuid, string, integer, decimal, boolean, datetime, date, time]
+      description: "Primitive scalar type. Mutually exclusive with $ref."
+    $ref:
+      type: string
+      format: node-ref
+      description: |
+        Local or global reference to the node defining this field's type.
+        Local: '#/schemas/<name>' or '#/enums/<name>'.
+        Global: bare node ID (e.g. orders.DomainModel.order).
+        Mutually exclusive with type.
+    nullable:
+      type: boolean
+    cardinality:
+      type: string
+      enum: [one, many]
+  oneOf:
+    - required: [type]
+      not: { required: [$ref] }
+    - required: [$ref]
+      not: { required: [type] }
+```
+
+### 5d. `format: node-ref` in template property definitions
+
+Wherever a template property accepts a local name or global node ID as its value, annotate with `format: node-ref`. This allows the server to identify which properties to resolve and annotate in API responses.
+
+**Example (`APIEndpoint.yaml`):**
+```yaml
+request:
+  type: string
+  format: node-ref
+
+responses:
+  type: object
+  additionalProperties:
+    type: string
+    format: node-ref
+```
+
+No change to node data files — authors continue writing plain strings. The server walks template property definitions, finds `format: node-ref`, resolves the value to a node ID, and returns both `display` and `nodeId` in the API response so the UI can render links.
+
+---
+
+## 6. Schema View — `maps-to` Links
+
+**Bug:** `edges` from the cluster API response are never passed to `SchemaCard`. The "Links" column renders `fieldDetails(field.properties)` which only reads properties and is blind to edges.
+
+**Fix:**
+
+1. In `app.jsx`, pass `edges` from the cluster response to `SchemaCard`:
+   ```jsx
+   <SchemaCard
+     key={templateName}
+     title={templateName}
+     nodes={groupNodes}
+     allNodes={children}
+     edges={edges}
+   />
+   ```
+
+2. Thread `edges` through `SchemaCard` → `SchemaFieldRows`.
+
+3. In `SchemaFieldRows`, for each field, filter edges for `maps-to` entries where `from === field.id`. Render each as a clickable link:
+   - Display text: the local field name from the `to` node ID (last segment)
+   - Navigate to: the owning node ID (strip `.fields.<name>` from `to`)
+
+```jsx
+const mapsTo = (edges ?? []).filter(e => e.from === field.id && e.type === 'maps-to');
+// render in the links column:
+mapsTo.map(e => {
+  const targetNodeId = e.to.replace(/\.fields\.[^.]+$/, '');
+  const targetFieldName = e.to.split('.').pop();
+  return <a key={e.to} onClick={() => navigate(targetNodeId)}>{targetFieldName}</a>;
+})
+```
+
+---
+
+## 7. Migration — Existing Node YAML Files
+
+All field definitions in existing cluster YAML files must be updated from `scalarType`/`objectRef` to `type`/`$ref` syntax. This affects the fixture graph and any real graph data.
+
+**Before:**
+```yaml
+id:
+  scalarType: uuid
+status:
+  objectRef: order-status
+items:
+  objectRef: order-line-item
+  cardinality: many
+```
+
+**After:**
+```yaml
+id:
+  type: uuid
+status:
+  $ref: '#/enums/order-status'
+items:
+  $ref: '#/schemas/order-line-item'
+  cardinality: many
+```
+
+Global node ID refs (no local block match) become bare strings without `#/`:
+```yaml
+sharedSchema:
+  $ref: shared.component.Schema.name
+```
+
+---
+
+## 8. `$ref` as a YAML Property Key
+
+`$ref` is a reserved keyword in JSON Schema, but these files are Corum domain files — not JSON Schema documents. The loader reads them as plain YAML; there is no JSON Schema validator processing them. Using `$ref` as a property key is valid YAML and unambiguous in this context. If a future JSON Schema validator is added for node files, this would need revisiting.
+
+---
+
+## What Does Not Change
+
+- Node cluster YAML files (`schemas:`, `enums:`, `properties` blocks) — structure unchanged except field `type`/`$ref` syntax (covered in §7)
+- Edge files — `maps-to` at field level is correct; `reads` at node level is correct
+- Resolution logic — same three-tier lookup; `$ref` syntax makes the local/global distinction explicit in the data
+- `cardinality` property — retained as domain concept
