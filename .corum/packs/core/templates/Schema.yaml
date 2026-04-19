@@ -1,16 +1,17 @@
 name: Schema
-version: "1.0.0"
-core: true
-abstract: false
-description: |
-  A reusable object-shaped contract that owns Field nodes. Schema is the
-  boundary for a structured payload or type; all actual properties are
-  represented as Field nodes rather than inline objects.
+info:
+  version: "1.0.0"
+  core: true
+  abstract: false
+  description: |
+    A reusable object-shaped contract that owns Field nodes. Schema is the
+    boundary for a structured payload or type; all actual properties are
+    represented as Field nodes rather than inline objects.
 
-  When fields are defined inline within a Schema cluster file, has-field edges
-  are implied by structure and extracted automatically. Standalone Schema nodes
-  referenced by node ID from another node (e.g. an APIEndpoint via objectRef)
-  generate an explicit reads edge.
+    When fields are defined inline within a Schema cluster file, has-field edges
+    are implied by structure and extracted automatically. Standalone Schema nodes
+    referenced by node ID from another node (e.g. an APIEndpoint via objectRef)
+    generate an explicit reads edge.
 
 properties:
   type: object

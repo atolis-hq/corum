@@ -1,10 +1,11 @@
 name: ReadModel
-version: "1.0.0"
-core: false
-abstract: false
-description: |
-  A derived query projection optimised for reads. It captures a view of
-  domain data shaped for consumption rather than mutation.
+info:
+  version: "1.0.0"
+  core: false
+  abstract: false
+  description: |
+    A derived query projection optimised for reads. It captures a view of
+    domain data shaped for consumption rather than mutation.
 
 edges:
   incoming:

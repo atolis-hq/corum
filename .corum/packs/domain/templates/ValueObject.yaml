@@ -1,10 +1,11 @@
 name: ValueObject
-version: "1.0.0"
-core: true
-abstract: false
-description: |
-  A shared type with no independent identity. Value objects are often
-  reused across models and endpoints through field type references.
+info:
+  version: "1.0.0"
+  core: true
+  abstract: false
+  description: |
+    A shared type with no independent identity. Value objects are often
+    reused across models and endpoints through field type references.
 
 ui:
   icon: cube

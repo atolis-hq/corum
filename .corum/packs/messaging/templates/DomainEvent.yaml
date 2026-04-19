@@ -1,14 +1,15 @@
 name: DomainEvent
-version: "1.0.0"
-core: false
-abstract: false
-extends: Event
-description: |
-  A fact that something happened within a bounded context.
-  Internal to the component; whether other systems may subscribe
-  to this event is an architectural decision made independently
-  of this node type.
+info:
+  version: "1.0.0"
+  core: false
+  abstract: false
+  description: |
+    A fact that something happened within a bounded context.
+    Internal to the component; whether other systems may subscribe
+    to this event is an architectural decision made independently
+    of this node type.
 
+extends: Event
 ui:
   icon: bolt
   colour: "#E8A838"

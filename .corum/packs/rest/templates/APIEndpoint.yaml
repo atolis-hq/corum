@@ -1,29 +1,30 @@
 name: APIEndpoint
-version: "1.0.0"
-core: false
-abstract: false
-description: |
-  An HTTP operation exposed to external consumers. The authoritative
-  definition of what callers may invoke, what they must provide, and
-  what they will receive in return.
+info:
+  version: "1.0.0"
+  core: false
+  abstract: false
+  description: |
+    An HTTP operation exposed to external consumers. The authoritative
+    definition of what callers may invoke, what they must provide, and
+    what they will receive in return.
 
-  Schemas may be defined in a schemas block within the node file (for
-  schemas specific to this endpoint) or as standalone Schema node files
-  (for schemas shared across multiple endpoints or nodes). Enums follow
-  the same pattern via the enums block.
+    Schemas may be defined in a schemas block within the node file (for
+    schemas specific to this endpoint) or as standalone Schema node files
+    (for schemas shared across multiple endpoints or nodes). Enums follow
+    the same pattern via the enums block.
 
-  Inline schemas and enums are intentionally flat at the field level.
-  Nested object types are expressed through objectRef references to another
-  local schema by name, a local enum by name, or a global node ID.
+    Inline schemas and enums are intentionally flat at the field level.
+    Nested object types are expressed through objectRef references to another
+    local schema by name, a local enum by name, or a global node ID.
 
-  Reference resolution order for objectRef, request, and responses values:
-    1. Local schemas block — resolved to {node-id}.schemas.{local-name}
-    2. Local enums block  — resolved to {node-id}.enums.{local-name}
-    3. Global node ID     — resolved against the graph; generates a reads edge
+    Reference resolution order for objectRef, request, and responses values:
+      1. Local schemas block — resolved to {node-id}.schemas.{local-name}
+      2. Local enums block  — resolved to {node-id}.enums.{local-name}
+      3. Global node ID     — resolved against the graph; generates a reads edge
 
-  has-field and has-value edges to locally-defined schemas and enums are
-  implied by structure and extracted automatically. Maps-to edges connecting
-  fields across node boundaries are always declared explicitly in edge files.
+    has-field and has-value edges to locally-defined schemas and enums are
+    implied by structure and extracted automatically. Maps-to edges connecting
+    fields across node boundaries are always declared explicitly in edge files.
 
 properties:
   type: object
