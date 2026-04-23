@@ -212,7 +212,7 @@ function NodePage({ nodeId, templates, onNavigate }) {
     if (!nodeId) return;
     setCluster(null);
     setError(null);
-    fetch(`/api/cluster?nodeId=${encodeURIComponent(nodeId)}`)
+    fetch(`/api/cluster?nodeId=${encodeURIComponent(nodeId)}&includeEdges=maps-to`)
       .then(response => response.ok ? response.json() : Promise.reject(response.status))
       .then(setCluster)
       .catch(err => setError(String(err)));
@@ -222,7 +222,7 @@ function NodePage({ nodeId, templates, onNavigate }) {
   if (error) return <div className="content"><p style={{ color: 'var(--warn)' }}>Error loading node: {error}</p></div>;
   if (!cluster) return <div className="content"><p className="label-sm">Loading...</p></div>;
 
-  const { root, children, edges } = cluster;
+  const { root, descendants, includedNodes, edges } = cluster;
   const template = templates.find(item => item.name === root.template);
   const colour = template?.ui?.colour ?? null;
   const nestedSections = new Set((template?.ui?.nav?.nestOwned ?? []).map(item => item.section));
@@ -230,7 +230,7 @@ function NodePage({ nodeId, templates, onNavigate }) {
   if (Plugin) return <Plugin node={root} cluster={cluster} template={template} />;
 
   const displayChildren = new Map();
-  for (const child of children) {
+  for (const child of descendants) {
     if (child.parentId === root.id && nestedSections.has(child.ownedSection)) continue;
     if (!displayChildren.has(child.template)) displayChildren.set(child.template, []);
     displayChildren.get(child.template).push(child);
@@ -294,7 +294,7 @@ function NodePage({ nodeId, templates, onNavigate }) {
             key={templateName}
             title={templateName}
             nodes={groupNodes}
-            allNodes={[root, ...children]}
+            allNodes={[root, ...descendants, ...includedNodes]}
             edges={edges}
             anchorIdForNode={anchorIdForNode}
           />

@@ -3,10 +3,11 @@ import path from 'node:path'
 import { readdir } from 'node:fs/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { AddressInfo } from 'node:net'
-import { getCluster, listNodes, type ListNodesFilter } from '../graph/index.js'
+import { getClusterView, listNodes, type ListNodesFilter } from '../graph/index.js'
 import { loadGraph } from '../loader/index.js'
+import { VALID_EDGE_TYPE_SET } from '../loader/constants.js'
 import { getOwnedSections } from '../loader/pack-loader.js'
-import type { Graph, Node, Template } from '../schema/index.js'
+import type { EdgeType, Graph, Node, Template } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -122,6 +123,15 @@ function annotateNodeRefProperties(graph: Graph, node: Node, template: Template)
   return result
 }
 
+function parseIncludeEdges(value: unknown): EdgeType[] {
+  if (typeof value !== 'string' || value.trim() === '') return []
+  const types = value
+    .split(',')
+    .map(item => item.trim())
+    .filter((item): item is EdgeType => VALID_EDGE_TYPE_SET.has(item))
+  return [...new Set(types)]
+}
+
 export function createApp(graph: Graph): express.Application {
   const app = express()
 
@@ -180,14 +190,15 @@ export function createApp(graph: Graph): express.Application {
     }
 
     try {
-      const cluster = getCluster(graph, nodeId)
+      const cluster = getClusterView(graph, nodeId, parseIncludeEdges(req.query.includeEdges))
       const rootTemplate = graph.templates.get(cluster.root.template)
       const annotatedRoot = rootTemplate
         ? { ...cluster.root, properties: annotateNodeRefProperties(graph, cluster.root, rootTemplate) }
         : cluster.root
       res.json({
         root: summarizeNodeForNavigation(graph, annotatedRoot),
-        children: cluster.children.map(child => summarizeNodeForNavigation(graph, child)),
+        descendants: cluster.descendants.map(child => summarizeNodeForNavigation(graph, child)),
+        includedNodes: cluster.includedNodes.map(node => summarizeNodeForNavigation(graph, node)),
         edges: cluster.edges,
       })
     } catch (err) {

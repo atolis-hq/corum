@@ -174,6 +174,14 @@ function fieldLocalName(nodeId) {
   return idx < 0 ? nodeId.split('.').pop() : nodeId.slice(idx + marker.length);
 }
 
+function clusterNodeId(nodeId) {
+  const sectionMatch = nodeId.match(/\.(schemas|enums|operations)\./);
+  if (sectionMatch && sectionMatch.index !== undefined) {
+    return nodeId.slice(0, sectionMatch.index);
+  }
+  return nodeId.replace(/\.(fields|values)\.[^.]+$/, '');
+}
+
 function fieldType(properties) {
   const cardinality = properties?.cardinality === 'many' ? '[]' : '';
   if (properties?.type) return `${properties.type}${cardinality}`;
@@ -201,6 +209,19 @@ function fieldDetails(properties) {
   if (ref) parts.push(`ref ${typeof ref === 'string' ? ref.replace(/^#\/(schemas|enums)\//, '') : ref}`);
   if (properties?.description) parts.push(properties.description);
   return parts.length > 0 ? parts.join(' · ') : '-';
+}
+
+function linkSummary(edge, fieldId) {
+  const outgoing = edge.from === fieldId;
+  const otherNodeId = outgoing ? edge.to : edge.from;
+  const direction = outgoing ? '->' : '<-';
+  const relation = edge.type === 'maps-to' ? '' : `${edge.type} `;
+  return {
+    direction,
+    label: `${relation}${fieldLocalName(otherNodeId)}`,
+    targetNodeId: clusterNodeId(otherNodeId),
+    title: otherNodeId,
+  };
 }
 
 function localEnumName(nodeId) {
@@ -280,7 +301,11 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
         const childPrefix = `${prefix}${name}${field.properties?.cardinality === 'many' ? '[].' : '.'}`;
         const nextVisited = new Set(visited);
         nextVisited.add(schemaName);
-        const mapsTo = edges.filter(e => e.from === field.id && e.type === 'maps-to');
+        const links = edges.filter(e =>
+          (e.from === field.id || e.to === field.id)
+          && e.type !== 'has-field'
+          && e.type !== 'has-value',
+        );
 
         return (
           <React.Fragment key={field.id}>
@@ -292,19 +317,20 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
               <div className="req">{fieldRequirement(field.properties)}</div>
               <div className="state"><StateTag state={field.state} /></div>
               <div className="lineage">
-                {mapsTo.length > 0
-                  ? mapsTo.map(e => {
-                      const targetNodeId = e.to.replace(/\.fields\.[^.]+$/, '');
-                      const targetFieldName = e.to.split('.').pop();
+                {links.length > 0
+                  ? links.map((edge, index) => {
+                      const link = linkSummary(edge, field.id);
                       return (
-                        <a
-                          key={e.to}
-                          className="node-ref-link"
-                          onClick={() => window.location.hash = `#/node?id=${encodeURIComponent(targetNodeId)}`}
-                          title={e.to}
-                        >
-                          {'->'} {targetFieldName}
-                        </a>
+                        <React.Fragment key={edge.id}>
+                          {index > 0 && <span key={`sep-${edge.id}`}>{' '}</span>}
+                          <a
+                            className="node-ref-link"
+                            onClick={() => window.location.hash = `#/node?id=${encodeURIComponent(link.targetNodeId)}`}
+                            title={link.title}
+                          >
+                            {link.direction} {link.label}
+                          </a>
+                        </React.Fragment>
                       );
                     })
                   : fieldDetails(field.properties)}

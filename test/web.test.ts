@@ -63,14 +63,34 @@ function makeTestGraph(): Graph {
     properties: { description: 'Order schema' },
   }
   const fieldNode = {
-    id: 'orders.Order.id',
+    id: 'orders.Order.schemas.order.fields.id',
     template: 'Field',
     component: 'orders',
     state: 'agreed' as const,
     stability: 'stable' as const,
     schemaVersion: '1',
     lastModifiedAt: '2026-04-18',
-    properties: { scalarType: 'uuid' },
+    properties: { type: 'uuid' },
+  }
+  const externalSchemaNode = {
+    id: 'billing.Invoice.schemas.order',
+    template: 'Schema',
+    component: 'billing',
+    state: 'agreed' as const,
+    stability: 'stable' as const,
+    schemaVersion: '1',
+    lastModifiedAt: '2026-04-18',
+    properties: { description: 'Billing order schema' },
+  }
+  const externalFieldNode = {
+    id: 'billing.Invoice.schemas.order.fields.id',
+    template: 'Field',
+    component: 'billing',
+    state: 'agreed' as const,
+    stability: 'stable' as const,
+    schemaVersion: '1',
+    lastModifiedAt: '2026-04-18',
+    properties: { type: 'uuid' },
   }
   const operationNode = {
     id: 'orders.Order.operations.cancel',
@@ -96,12 +116,26 @@ function makeTestGraph(): Graph {
   const nodesById = new Map()
   nodesById.set('orders.Order', orderNode)
   nodesById.set('orders.Order.schemas.order', schemaNode)
-  nodesById.set('orders.Order.id', fieldNode)
+  nodesById.set('orders.Order.schemas.order.fields.id', fieldNode)
   nodesById.set('orders.Order.operations.cancel', operationNode)
   nodesById.set('orders.CancelOrder', orphanOperationNode)
+  nodesById.set('billing.Invoice.schemas.order', externalSchemaNode)
+  nodesById.set('billing.Invoice.schemas.order.fields.id', externalFieldNode)
 
-  const edgesByFrom = new Map()
-  const edgesByTo = new Map()
+  const mapsToEdge = {
+    id: 'orders.Order.schemas.order.fields.id__maps-to__billing.Invoice.schemas.order.fields.id',
+    from: 'orders.Order.schemas.order.fields.id',
+    to: 'billing.Invoice.schemas.order.fields.id',
+    type: 'maps-to' as const,
+    state: 'agreed' as const,
+    stability: 'stable' as const,
+  }
+  const edgesByFrom = new Map([
+    [mapsToEdge.from, [mapsToEdge]],
+  ])
+  const edgesByTo = new Map([
+    [mapsToEdge.to, [mapsToEdge]],
+  ])
 
   return { nodesById, edgesByFrom, edgesByTo, templates, diagnostics: [] }
 }
@@ -168,14 +202,16 @@ describe('web server', () => {
       const res = await fetch(`http://localhost:${handle.port}/api/nodes?includeCore=true`)
       assert.equal(res.status, 200)
       const body = await res.json() as Array<{ id: string; template: string }>
-      assert.equal(body.length, 5)
+      assert.equal(body.length, 7)
       const ids = body.map(n => n.id).sort()
       assert.deepEqual(ids, [
+        'billing.Invoice.schemas.order',
+        'billing.Invoice.schemas.order.fields.id',
         'orders.CancelOrder',
         'orders.Order',
-        'orders.Order.id',
         'orders.Order.operations.cancel',
         'orders.Order.schemas.order',
+        'orders.Order.schemas.order.fields.id',
       ])
     })
 
@@ -223,22 +259,64 @@ describe('web server', () => {
         `http://localhost:${handle.port}/api/cluster?nodeId=${encodeURIComponent('orders.Order')}`,
       )
       assert.equal(res.status, 200)
-      const body = await res.json() as { root: { id: string }; children: unknown[]; edges: unknown[] }
+      const body = await res.json() as {
+        root: { id: string }
+        descendants: unknown[]
+        includedNodes: unknown[]
+        edges: unknown[]
+      }
       assert.equal(body.root.id, 'orders.Order')
-      assert.ok(Array.isArray(body.children))
+      assert.ok(Array.isArray(body.descendants))
+      assert.ok(Array.isArray(body.includedNodes))
       assert.ok(Array.isArray(body.edges))
     })
 
-    it('includes navigation ownership metadata on cluster children', async () => {
+    it('includes navigation ownership metadata on cluster descendants', async () => {
       const res = await fetch(
         `http://localhost:${handle.port}/api/cluster?nodeId=${encodeURIComponent('orders.Order')}`,
       )
       assert.equal(res.status, 200)
-      const body = await res.json() as { children: Array<Record<string, unknown>> }
-      const operation = body.children.find(child => child.id === 'orders.Order.operations.cancel')
+      const body = await res.json() as { descendants: Array<Record<string, unknown>> }
+      const operation = body.descendants.find(child => child.id === 'orders.Order.operations.cancel')
 
       assert.equal(operation?.parentId, 'orders.Order')
       assert.equal(operation?.ownedSection, 'operations')
+    })
+
+    it('keeps external linked field nodes out of the default cluster payload', async () => {
+      const res = await fetch(
+        `http://localhost:${handle.port}/api/cluster?nodeId=${encodeURIComponent('orders.Order')}`,
+      )
+      assert.equal(res.status, 200)
+      const body = await res.json() as {
+        descendants: Array<{ id: string }>
+        includedNodes: Array<{ id: string }>
+        edges: Array<{ type: string }>
+      }
+
+      assert.equal(body.includedNodes.length, 0)
+      assert.ok(!body.descendants.some(node => node.id === 'billing.Invoice.schemas.order.fields.id'))
+      assert.ok(!body.edges.some(edge => edge.type === 'maps-to'))
+    })
+
+    it('includes requested external field edges and nodes when includeEdges=maps-to', async () => {
+      const res = await fetch(
+        `http://localhost:${handle.port}/api/cluster?nodeId=${encodeURIComponent('orders.Order')}&includeEdges=maps-to`,
+      )
+      assert.equal(res.status, 200)
+      const body = await res.json() as {
+        descendants: Array<{ id: string }>
+        includedNodes: Array<{ id: string }>
+        edges: Array<{ from: string; to: string; type: string }>
+      }
+
+      assert.ok(body.descendants.some(node => node.id === 'orders.Order.schemas.order.fields.id'))
+      assert.ok(body.includedNodes.some(node => node.id === 'billing.Invoice.schemas.order.fields.id'))
+      assert.ok(body.edges.some(edge =>
+        edge.type === 'maps-to'
+        && edge.from === 'orders.Order.schemas.order.fields.id'
+        && edge.to === 'billing.Invoice.schemas.order.fields.id',
+      ))
     })
 
     it('resolves root node-ref properties to display metadata', async () => {
@@ -338,7 +416,35 @@ describe('web server', () => {
       )
       assert.match(
         app,
+        /const \{ root, descendants, includedNodes, edges \} = cluster;/,
+      )
+      assert.match(
+        app,
+        /for \(const child of descendants\) \{/,
+      )
+      assert.match(
+        app,
         /const childDisplayEntries = \[\.\.\.displayChildren\.entries\(\)\]/,
+      )
+      assert.match(
+        app,
+        /allNodes=\{\[root, \.\.\.descendants, \.\.\.includedNodes\]\}/,
+      )
+      assert.match(
+        primitives,
+        /function clusterNodeId\(nodeId\)/,
+      )
+      assert.match(
+        primitives,
+        /targetNodeId: clusterNodeId\(otherNodeId\)/,
+      )
+      assert.match(
+        primitives,
+        /links\.map\(\(edge, index\) => \{/,
+      )
+      assert.match(
+        primitives,
+        /index > 0 && <span key=\{`sep-\$\{edge\.id\}`\}>\{' '\}<\/span>/,
       )
       assert.match(
         app,
