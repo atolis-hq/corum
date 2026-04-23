@@ -29,6 +29,12 @@ function makeTestGraph(): Graph {
   templates.set('DomainOperation', {
     name: 'DomainOperation',
     info: { version: '1', core: false, description: 'A domain operation' },
+    properties: {
+      type: 'object',
+      properties: {
+        linkedSchema: { type: 'string', format: 'node-ref' },
+      },
+    },
     ui: { colour: '#5B8C5A', displayName: 'Domain Operation', icon: 'gear' },
   })
   templates.set('Field', {
@@ -100,7 +106,7 @@ function makeTestGraph(): Graph {
     stability: 'stable' as const,
     schemaVersion: '1',
     lastModifiedAt: '2026-04-18',
-    properties: { description: 'Cancel an order' },
+    properties: { description: 'Cancel an order', linkedSchema: 'orders.Order.schemas.order' },
   }
   const orphanOperationNode = {
     id: 'orders.CancelOrder',
@@ -332,6 +338,20 @@ describe('web server', () => {
       })
     })
 
+    it('resolves descendant node-ref properties to display metadata', async () => {
+      const res = await fetch(
+        `http://localhost:${handle.port}/api/cluster?nodeId=${encodeURIComponent('orders.Order')}`,
+      )
+      assert.equal(res.status, 200)
+      const body = await res.json() as { descendants: Array<{ id: string; properties: Record<string, unknown> }> }
+      const operation = body.descendants.find(d => d.id === 'orders.Order.operations.cancel')
+
+      assert.deepEqual(operation?.properties.linkedSchema, {
+        display: 'orders.Order.schemas.order',
+        nodeId: 'orders.Order.schemas.order',
+      })
+    })
+
     it('returns 404 for unknown nodeId', async () => {
       const res = await fetch(
         `http://localhost:${handle.port}/api/cluster?nodeId=nonexistent`,
@@ -355,125 +375,83 @@ describe('web server', () => {
   })
 
   describe('web assets', () => {
-    it('renders nested property objects as flattened rows in the main table', async () => {
+    let primitives = ''
+    let app = ''
+    let styles = ''
+    let statusCodes = { primitives: 0, app: 0, styles: 0 }
+
+    before(async () => {
       const [primitivesRes, appRes, styleRes] = await Promise.all([
         fetch(`http://localhost:${handle.port}/primitives.jsx`),
         fetch(`http://localhost:${handle.port}/app.jsx`),
         fetch(`http://localhost:${handle.port}/style.css`),
       ])
+      statusCodes = { primitives: primitivesRes.status, app: appRes.status, styles: styleRes.status }
+      primitives = await primitivesRes.text()
+      app = await appRes.text()
+      styles = await styleRes.text()
+    })
 
-      assert.equal(primitivesRes.status, 200)
-      assert.equal(appRes.status, 200)
-      assert.equal(styleRes.status, 200)
+    it('serves static files with 200', () => {
+      assert.equal(statusCodes.primitives, 200)
+      assert.equal(statusCodes.app, 200)
+      assert.equal(statusCodes.styles, 200)
+    })
 
-      const primitives = await primitivesRes.text()
-      const app = await appRes.text()
-      const styles = await styleRes.text()
+    it('primitives: buildPropertyRows uses depth for nested row indentation', () => {
+      assert.match(primitives, /function buildPropertyRows\(entries, onNavigate, depth = 0/)
+      assert.match(primitives, /const rows = buildPropertyRows\(entries, onNavigate\);/)
+      assert.match(primitives, /className=\{`prop-row\$\{row\.depth > 0 \? ' nested' : ''\}`\}/)
+      assert.match(primitives, /className="mono prop-key-cell">/)
+      assert.match(primitives, /<span className="prop-key-label" style=\{\{ '--prop-depth': row\.depth \}\}>/)
+    })
 
-      assert.match(
-        primitives,
-        /function buildPropertyRows\(entries, onNavigate, depth = 0/,
-      )
-      assert.match(
-        primitives,
-        /const rows = buildPropertyRows\(entries, onNavigate\);/,
-      )
-      assert.match(
-        primitives,
-        /className=\{`prop-row\$\{row\.depth > 0 \? ' nested' : ''\}`\}/,
-      )
-      assert.match(
-        primitives,
-        /className="mono prop-key-cell">/,
-      )
-      assert.match(
-        primitives,
-        /<span className="prop-key-label" style=\{\{ '--prop-depth': row\.depth \}\}>/,
-      )
-      assert.doesNotMatch(
-        primitives,
-        /prop-table-nested/,
-      )
-      assert.match(
-        app,
-        /function templateDisplayName\(template\) \{\s*return template\?\.ui\?\.displayName \?\? template\?\.name \?\? '';\s*\}/,
-      )
-      assert.match(
-        app,
-        /<TemplateBadge name=\{templateDisplayName\(template\)\} colour=\{colour\} \/>/,
-      )
-      assert.match(
-        app,
-        /<span>\{templateDisplayName\(template\)\}<\/span>/,
-      )
-      assert.match(
-        app,
-        /const rootSpecializedTemplates = new Set\(\['Schema', 'EnumDefinition'\]\);/,
-      )
-      assert.match(
-        app,
-        /const rootSpecializedNodes = rootSpecializedTemplates\.has\(root\.template\) \? \[\[root\.template, \[root\]\]\] : \[\];/,
-      )
-      assert.match(
-        app,
-        /const \{ root, descendants, includedNodes, edges \} = cluster;/,
-      )
-      assert.match(
-        app,
-        /for \(const child of descendants\) \{/,
-      )
-      assert.match(
-        app,
-        /const childDisplayEntries = \[\.\.\.displayChildren\.entries\(\)\]/,
-      )
-      assert.match(
-        app,
-        /allNodes=\{\[root, \.\.\.descendants, \.\.\.includedNodes\]\}/,
-      )
-      assert.match(
-        primitives,
-        /function clusterNodeId\(nodeId\)/,
-      )
-      assert.match(
-        primitives,
-        /targetNodeId: clusterNodeId\(otherNodeId\)/,
-      )
-      assert.match(
-        primitives,
-        /links\.map\(\(edge, index\) => \{/,
-      )
-      assert.match(
-        primitives,
-        /index > 0 && <span key=\{`sep-\$\{edge\.id\}`\}>\{' '\}<\/span>/,
-      )
-      assert.match(
-        app,
-        /const displayEntries = \[\.\.\.rootSpecializedNodes, .*childDisplayEntries/,
-      )
-      assert.match(
-        app,
-        /function anchorIdForNode\(nodeId\)/,
-      )
-      assert.match(
-        app,
-        /const displayedNodeIds = new Set\(\[\s*root\.id,\s*\.\.\.Array\.from\(displayChildren\.values\(\)\)\.reduce\(\(all, group\) => all\.concat\(group\), \[\]\)\.map\(child => child\.id\),\s*\]\);/,
-      )
-      assert.match(
-        app,
-        /document\.getElementById\(anchorIdForNode\(targetNodeId\)\)\?\.scrollIntoView\(\{ behavior: 'smooth', block: 'start' }\);/,
-      )
-      assert.match(
-        app,
-        /anchorIdForNode=\{anchorIdForNode\}/,
-      )
-      assert.match(
-        styles,
-        /\.prop-row\.nested\s*\{[\s\S]*\}/,
-      )
-      assert.match(
-        styles,
-        /\.prop-key-label\s*\{[\s\S]*padding-left:\s*calc\(var\(--prop-depth,\s*0\)\s*\*\s*24px\);/,
-      )
+    it('primitives: no legacy prop-table-nested class', () => {
+      assert.doesNotMatch(primitives, /prop-table-nested/)
+    })
+
+    it('primitives: clusterNodeId resolves field links to cluster root', () => {
+      assert.match(primitives, /function clusterNodeId\(nodeId\)/)
+      assert.match(primitives, /targetNodeId: clusterNodeId\(otherNodeId\)/)
+    })
+
+    it('primitives: edge links rendered with separators between multiple links', () => {
+      assert.match(primitives, /links\.map\(\(edge, index\) => \{/)
+      assert.match(primitives, /index > 0 && <span key=\{`sep-\$\{edge\.id\}`\}>\{' '\}<\/span>/)
+    })
+
+    it('app: templateDisplayName resolves ui.displayName and is used for labels', () => {
+      assert.match(app, /function templateDisplayName\(template\) \{\s*return template\?\.ui\?\.displayName \?\? template\?\.name \?\? '';\s*\}/)
+      assert.match(app, /<TemplateBadge name=\{templateDisplayName\(template\)\} colour=\{colour\} \/>/)
+      assert.match(app, /<span>\{templateDisplayName\(template\)\}<\/span>/)
+    })
+
+    it('app: cluster data destructures descendants and includedNodes', () => {
+      assert.match(app, /const \{ root, descendants, includedNodes, edges \} = cluster;/)
+      assert.match(app, /for \(const child of descendants\) \{/)
+      assert.match(app, /const childDisplayEntries = \[\.\.\.displayChildren\.entries\(\)\]/)
+    })
+
+    it('app: SchemaCard receives allNodes including includedNodes', () => {
+      assert.match(app, /allNodes=\{\[root, \.\.\.descendants, \.\.\.includedNodes\]\}/)
+    })
+
+    it('app: rootSpecializedTemplates handles Schema and EnumDefinition nodes', () => {
+      assert.match(app, /const rootSpecializedTemplates = new Set\(\['Schema', 'EnumDefinition'\]\);/)
+      assert.match(app, /const rootSpecializedNodes = rootSpecializedTemplates\.has\(root\.template\) \? \[\[root\.template, \[root\]\]\] : \[\];/)
+      assert.match(app, /const displayEntries = \[\.\.\.rootSpecializedNodes, .*childDisplayEntries/)
+    })
+
+    it('app: anchorIdForNode enables scroll-to navigation within the page', () => {
+      assert.match(app, /function anchorIdForNode\(nodeId\)/)
+      assert.match(app, /const displayedNodeIds = new Set\(\[\s*root\.id,\s*\.\.\.Array\.from\(displayChildren\.values\(\)\)\.reduce\(\(all, group\) => all\.concat\(group\), \[\]\)\.map\(child => child\.id\),\s*\]\);/)
+      assert.match(app, /document\.getElementById\(anchorIdForNode\(targetNodeId\)\)\?\.scrollIntoView\(\{ behavior: 'smooth', block: 'start' }\);/)
+      assert.match(app, /anchorIdForNode=\{anchorIdForNode\}/)
+    })
+
+    it('style: nested property row depth indentation via CSS variable', () => {
+      assert.match(styles, /\.prop-row\.nested\s*\{[\s\S]*\}/)
+      assert.match(styles, /\.prop-key-label\s*\{[\s\S]*padding-left:\s*calc\(var\(--prop-depth,\s*0\)\s*\*\s*24px\);/)
     })
   })
 })

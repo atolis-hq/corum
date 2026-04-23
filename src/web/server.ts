@@ -123,6 +123,11 @@ function annotateNodeRefProperties(graph: Graph, node: Node, template: Template)
   return result
 }
 
+function annotateNode(graph: Graph, node: Node): Node {
+  const template = graph.templates.get(node.template)
+  return template ? { ...node, properties: annotateNodeRefProperties(graph, node, template) } : node
+}
+
 function parseIncludeEdges(value: unknown): EdgeType[] {
   if (typeof value !== 'string' || value.trim() === '') return []
   const types = value
@@ -191,25 +196,25 @@ export function createApp(graph: Graph): express.Application {
 
     try {
       const cluster = getClusterView(graph, nodeId, parseIncludeEdges(req.query.includeEdges))
-      const rootTemplate = graph.templates.get(cluster.root.template)
-      const annotatedRoot = rootTemplate
-        ? { ...cluster.root, properties: annotateNodeRefProperties(graph, cluster.root, rootTemplate) }
-        : cluster.root
       res.json({
-        root: summarizeNodeForNavigation(graph, annotatedRoot),
-        descendants: cluster.descendants.map(child => summarizeNodeForNavigation(graph, child)),
-        includedNodes: cluster.includedNodes.map(node => summarizeNodeForNavigation(graph, node)),
+        root: summarizeNodeForNavigation(graph, annotateNode(graph, cluster.root)),
+        descendants: cluster.descendants.map(child => summarizeNodeForNavigation(graph, annotateNode(graph, child))),
+        includedNodes: cluster.includedNodes.map(node => summarizeNodeForNavigation(graph, annotateNode(graph, node))),
         edges: cluster.edges,
       })
     } catch (err) {
-      const message = err instanceof QueryError ? err.message : String(err)
-      res.status(404).json({ error: message })
+      if (err instanceof QueryError) {
+        res.status(404).json({ error: err.message })
+      } else {
+        res.status(500).json({ error: 'Internal server error' })
+      }
     }
   })
 
-  app.get('/api/plugins', async (_req, res) => {
-    const files = await getPluginFiles()
-    res.json(files)
+  app.get('/api/plugins', (_req, res) => {
+    getPluginFiles()
+      .then(files => res.json(files))
+      .catch(() => res.json([]))
   })
 
   app.use(express.static(WEB_DIR, {
@@ -242,6 +247,7 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
     const server = app.listen(port, () => {
       const addr = server.address() as AddressInfo
       if (options.port !== 0) {
+        // graphPath is informational only — the graph object was already loaded by the caller
         logger(`[corum web] config graphPath=${graphPath} (${graphPathSource})`)
         logger(`[corum web] config port=${addr.port} (${portSource})`)
         logger(`[corum web] config webDir=${WEB_DIR}`)

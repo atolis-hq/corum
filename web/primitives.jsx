@@ -1,5 +1,9 @@
 /* Shared UI primitives for the browser app. */
 
+function navigate(path) {
+  window.location.hash = path;
+}
+
 function BrandMark({ size = 24, color = 'currentColor' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 110 110" aria-hidden="true">
@@ -325,7 +329,7 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
                           {index > 0 && <span key={`sep-${edge.id}`}>{' '}</span>}
                           <a
                             className="node-ref-link"
-                            onClick={() => window.location.hash = `#/node?id=${encodeURIComponent(link.targetNodeId)}`}
+                            onClick={() => navigate(`/node?id=${encodeURIComponent(link.targetNodeId)}`)}
                             title={link.title}
                           >
                             {link.direction} {link.label}
@@ -461,6 +465,7 @@ function SchemaCard({ title, nodes, allNodes, edges, anchorIdForNode }) {
 }
 
 window.CorumPrimitives = {
+  navigate,
   BrandMark,
   Icon,
   StateTag,
