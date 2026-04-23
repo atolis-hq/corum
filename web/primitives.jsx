@@ -60,37 +60,76 @@ function PropertyValue({ value, onNavigate }) {
   }
 
   if (Array.isArray(value)) {
-    return (
-      <div className="prop-array">
-        {value.map((item, i) => (
-          <div key={i} className="prop-array-item">
-            <PropertyValue value={item} onNavigate={onNavigate} />
-          </div>
-        ))}
-      </div>
-    );
+    return <span>{value.length === 1 ? '1 item' : `${value.length} items`}</span>;
   }
 
   if (typeof value === 'object') {
-    return (
-      <table className="prop-table prop-table-nested">
-        <tbody>
-          {Object.entries(value).map(([k, v]) => (
-            <tr key={k}>
-              <td className="mono">{k}</td>
-              <td><PropertyValue value={v} onNavigate={onNavigate} /></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    );
+    return <span className="prop-empty">-</span>;
   }
 
   return <span>{String(value)}</span>;
 }
 
+function buildPropertyRows(entries, onNavigate, depth = 0, parentPath = '') {
+  return entries.flatMap(([key, value], index) => {
+    const rowPath = parentPath ? `${parentPath}.${key}` : key;
+    const rowKey = `${rowPath}:${index}`;
+
+    if (Array.isArray(value)) {
+      const rows = [{
+        key: rowKey,
+        label: key,
+        depth,
+        value: <PropertyValue value={value} onNavigate={onNavigate} />,
+      }];
+
+      value.forEach((item, itemIndex) => {
+        const itemPath = `${rowPath}[${itemIndex}]`;
+        if (item && typeof item === 'object' && !('display' in item) && !Array.isArray(item)) {
+          rows.push({
+            key: `${itemPath}:group`,
+            label: `[${itemIndex}]`,
+            depth: depth + 1,
+            value: <span className="prop-empty">-</span>,
+          });
+          rows.push(...buildPropertyRows(Object.entries(item), onNavigate, depth + 2, itemPath));
+        } else {
+          rows.push({
+            key: `${itemPath}:value`,
+            label: `[${itemIndex}]`,
+            depth: depth + 1,
+            value: <PropertyValue value={item} onNavigate={onNavigate} />,
+          });
+        }
+      });
+
+      return rows;
+    }
+
+    if (value && typeof value === 'object' && !('display' in value)) {
+      return [
+        {
+          key: rowKey,
+          label: key,
+          depth,
+          value: <span className="prop-empty">-</span>,
+        },
+        ...buildPropertyRows(Object.entries(value), onNavigate, depth + 1, rowPath),
+      ];
+    }
+
+    return [{
+      key: rowKey,
+      label: key,
+      depth,
+      value: <PropertyValue value={value} onNavigate={onNavigate} />,
+    }];
+  });
+}
+
 function PropertiesTable({ properties, onNavigate }) {
   const entries = Object.entries(properties ?? {});
+  const rows = buildPropertyRows(entries, onNavigate);
   if (entries.length === 0) {
     return <p className="label-sm" style={{ padding: '10px 14px' }}>No properties.</p>;
   }
@@ -98,10 +137,14 @@ function PropertiesTable({ properties, onNavigate }) {
   return (
     <table className="prop-table">
       <tbody>
-        {entries.map(([key, value]) => (
-          <tr key={key}>
-            <td className="mono">{key}</td>
-            <td><PropertyValue value={value} onNavigate={onNavigate} /></td>
+        {rows.map(row => (
+          <tr key={row.key} className={`prop-row${row.depth > 0 ? ' nested' : ''}`}>
+            <td className="mono prop-key-cell">
+              <span className="prop-key-label" style={{ '--prop-depth': row.depth }}>
+                {row.label}
+              </span>
+            </td>
+            <td>{row.value}</td>
           </tr>
         ))}
       </tbody>
@@ -284,7 +327,7 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
   );
 }
 
-function SchemaCard({ title, nodes, allNodes, edges }) {
+function SchemaCard({ title, nodes, allNodes, edges, anchorIdForNode }) {
   if (!nodes || nodes.length === 0) return null;
 
   if (title === 'EnumDefinition') {
@@ -305,7 +348,7 @@ function SchemaCard({ title, nodes, allNodes, edges }) {
             const enumName = localEnumName(enumNode.id);
             const values = valuesByEnum.get(enumName) ?? [];
             return (
-              <div key={enumNode.id} className="enum-section">
+              <div key={enumNode.id} className="enum-section" id={anchorIdForNode ? anchorIdForNode(enumNode.id) : undefined}>
                 <div className="schema-section-head">
                   <div>
                     <div className="schema-title">{enumName}</div>
@@ -348,7 +391,7 @@ function SchemaCard({ title, nodes, allNodes, edges }) {
           {model.topSchemas.map(schema => {
             const schemaName = localSchemaName(schema.id);
             return (
-              <div key={schema.id} className="schema-section">
+              <div key={schema.id} className="schema-section" id={anchorIdForNode ? anchorIdForNode(schema.id) : undefined}>
                 <div className="schema-section-head">
                   <div>
                     <div className="schema-title">{schemaName}</div>
@@ -379,7 +422,7 @@ function SchemaCard({ title, nodes, allNodes, edges }) {
       <div className="card-head">{title}</div>
       <div className="card-body">
         {nodes.map(node => (
-          <div key={node.id} style={{ borderBottom: '1px dashed var(--rule)' }}>
+          <div key={node.id} id={anchorIdForNode ? anchorIdForNode(node.id) : undefined} style={{ borderBottom: '1px dashed var(--rule)' }}>
             <div className="mono" style={{ padding: '8px 14px 0', color: 'var(--ink-3)', fontSize: 11, fontWeight: 600 }}>
               {node.id.split('.').pop()}
             </div>

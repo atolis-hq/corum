@@ -324,20 +324,18 @@ button {
   word-break: break-word;
 }
 
-.prop-table-nested {
-  width: 100%;
-  margin: 2px 0;
-  border-left: 2px solid var(--rule);
-  padding-left: 8px;
+.prop-row.nested {
+  background: color-mix(in oklch, var(--accent) 2%, var(--paper));
 }
 
-.prop-table-nested td:first-child {
-  color: var(--ink-3);
-  font-size: 11px;
-  padding: 2px 8px 2px 0;
+.prop-key-cell {
+  padding-left: 14px;
 }
 
-.prop-array-item { padding: 1px 0; }
+.prop-key-label {
+  display: block;
+  padding-left: calc(var(--prop-depth, 0) * 24px);
+}
 
 .node-ref-link {
   cursor: pointer;

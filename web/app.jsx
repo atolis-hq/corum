@@ -26,6 +26,10 @@ function displayName(id) {
   return parts[parts.length - 1];
 }
 
+function anchorIdForNode(nodeId) {
+  return `node-anchor-${encodeURIComponent(nodeId)}`;
+}
+
 function buildNavTree(nodes, templates) {
   const nodeMap = new Map(nodes.map(node => [node.id, node]));
   const templateMap = new Map(templates.map(template => [template.name, template]));
@@ -227,10 +231,22 @@ function NodePage({ nodeId, templates, onNavigate }) {
     if (!displayChildren.has(child.template)) displayChildren.set(child.template, []);
     displayChildren.get(child.template).push(child);
   }
+  const displayedNodeIds = new Set([
+    root.id,
+    ...Array.from(displayChildren.values()).reduce((all, group) => all.concat(group), []).map(child => child.id),
+  ]);
+
+  function handlePropertyNavigate(targetNodeId) {
+    if (displayedNodeIds.has(targetNodeId)) {
+      document.getElementById(anchorIdForNode(targetNodeId))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    onNavigate(targetNodeId);
+  }
 
   return (
     <div className="content">
-      <div style={{ marginBottom: 18 }}>
+      <div id={anchorIdForNode(root.id)} style={{ marginBottom: 18 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
           <h1 style={{ margin: 0 }}>{displayName(root.id)}</h1>
           <TemplateBadge name={root.template} colour={colour} />
@@ -259,7 +275,7 @@ function NodePage({ nodeId, templates, onNavigate }) {
         <div className="card">
           <div className="card-head">Properties</div>
           <div className="card-body">
-            <PropertiesTable properties={root.properties} onNavigate={onNavigate} />
+            <PropertiesTable properties={root.properties} onNavigate={handlePropertyNavigate} />
           </div>
         </div>
       )}
@@ -273,6 +289,7 @@ function NodePage({ nodeId, templates, onNavigate }) {
             nodes={groupNodes}
             allNodes={children}
             edges={edges}
+            anchorIdForNode={anchorIdForNode}
           />
         ))}
     </div>

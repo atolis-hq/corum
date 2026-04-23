@@ -271,4 +271,67 @@ describe('web server', () => {
       assert.ok(Array.isArray(body))
     })
   })
+
+  describe('web assets', () => {
+    it('renders nested property objects as flattened rows in the main table', async () => {
+      const [primitivesRes, appRes, styleRes] = await Promise.all([
+        fetch(`http://localhost:${handle.port}/primitives.jsx`),
+        fetch(`http://localhost:${handle.port}/app.jsx`),
+        fetch(`http://localhost:${handle.port}/style.css`),
+      ])
+
+      assert.equal(primitivesRes.status, 200)
+      assert.equal(appRes.status, 200)
+      assert.equal(styleRes.status, 200)
+
+      const primitives = await primitivesRes.text()
+      const app = await appRes.text()
+      const styles = await styleRes.text()
+
+      assert.match(
+        primitives,
+        /function buildPropertyRows\(entries, onNavigate, depth = 0/,
+      )
+      assert.match(
+        primitives,
+        /const rows = buildPropertyRows\(entries, onNavigate\);/,
+      )
+      assert.match(
+        primitives,
+        /className=\{`prop-row\$\{row\.depth > 0 \? ' nested' : ''\}`\}/,
+      )
+      assert.match(
+        primitives,
+        /className="mono prop-key-cell">/,
+      )
+      assert.match(
+        primitives,
+        /<span className="prop-key-label" style=\{\{ '--prop-depth': row\.depth \}\}>/,
+      )
+      assert.doesNotMatch(
+        primitives,
+        /prop-table-nested/,
+      )
+      assert.match(
+        app,
+        /function anchorIdForNode\(nodeId\)/,
+      )
+      assert.match(
+        app,
+        /const displayedNodeIds = new Set\(\[\s*root\.id,\s*\.\.\.Array\.from\(displayChildren\.values\(\)\)\.reduce\(\(all, group\) => all\.concat\(group\), \[\]\)\.map\(child => child\.id\),\s*\]\);/,
+      )
+      assert.match(
+        app,
+        /document\.getElementById\(anchorIdForNode\(targetNodeId\)\)\?\.scrollIntoView\(\{ behavior: 'smooth', block: 'start' }\);/,
+      )
+      assert.match(
+        styles,
+        /\.prop-row\.nested\s*\{[\s\S]*\}/,
+      )
+      assert.match(
+        styles,
+        /\.prop-key-label\s*\{[\s\S]*padding-left:\s*calc\(var\(--prop-depth,\s*0\)\s*\*\s*24px\);/,
+      )
+    })
+  })
 })
