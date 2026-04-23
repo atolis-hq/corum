@@ -1,0 +1,28 @@
+id: shared.Schema.problem-detail
+template: Schema
+component: shared
+state: agreed
+stability: stable
+schemaVersion: "1"
+lastModifiedAt: "2026-04-23"
+
+properties:
+  description: RFC 7807 problem details error response
+
+fields:
+  type:
+    type: string
+    nullable: false
+    cardinality: one
+  title:
+    type: string
+    nullable: false
+    cardinality: one
+  status:
+    type: integer
+    nullable: false
+    cardinality: one
+  detail:
+    type: string
+    nullable: true
+    cardinality: one

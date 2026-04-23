@@ -33,8 +33,8 @@ describe('graph writer', () => {
       const writtenEndpoint = writtenGraph.nodesById.get('orders.APIEndpoint.create-order')
       assert.ok(writtenEndpoint)
       assert.equal(writtenEndpoint.properties.path, '/v2/orders')
-      assert.equal(writtenGraph.nodesById.size, 45)
-      assert.equal([...writtenGraph.edgesByFrom.values()].flat().length, 38)
+      assert.equal(writtenGraph.nodesById.size, 147)
+      assert.equal([...writtenGraph.edgesByFrom.values()].flat().length, 164)
     } finally {
       fs.rmSync(outputGraphDir, { recursive: true, force: true })
     }

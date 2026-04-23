@@ -8,3 +8,5 @@ templatePacks:
     path: ../../.corum/packs/rest
   - name: domain
     path: ../../.corum/packs/domain
+  - name: messaging
+    path: ../../.corum/packs/messaging

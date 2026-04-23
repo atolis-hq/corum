@@ -19,6 +19,7 @@ const samplePackDirs = [
   path.join(repoRoot, '.corum/packs/core'),
   path.join(repoRoot, '.corum/packs/rest'),
   path.join(repoRoot, '.corum/packs/domain'),
+  path.join(repoRoot, '.corum/packs/messaging'),
 ]
 
 async function loadSampleClusters(diagnostics: Diagnostic[] = []) {
@@ -27,7 +28,7 @@ async function loadSampleClusters(diagnostics: Diagnostic[] = []) {
 }
 
 describe('pack loader', () => {
-  it('loads core, rest, and domain packs from fixture graph.yaml', async () => {
+  it('loads core, rest, domain, and messaging packs from fixture graph.yaml', async () => {
     const diagnostics: Diagnostic[] = []
     const templates = await loadPacks(samplePackDirs, diagnostics)
 
@@ -38,14 +39,16 @@ describe('pack loader', () => {
     assert.ok(templates.has('Schema'), 'Schema template loaded')
     assert.ok(templates.has('EnumDefinition'), 'EnumDefinition template loaded')
     assert.ok(templates.has('EnumValue'), 'EnumValue template loaded')
+    assert.ok(templates.has('DomainEvent'), 'DomainEvent template loaded')
+    assert.ok(templates.has('IntegrationEvent'), 'IntegrationEvent template loaded')
   })
 
   it('applies _base owned sections to all templates', async () => {
     const diagnostics: Diagnostic[] = []
-    const templates = await loadPacks([
-      path.join(repoRoot, '.corum/packs/core'),
-      path.join(repoRoot, '.corum/packs/domain'),
-    ], diagnostics)
+    const templates = await loadPacks(
+      [path.join(repoRoot, '.corum/packs/core'), path.join(repoRoot, '.corum/packs/domain')],
+      diagnostics,
+    )
     const domainModel = templates.get('DomainModel')!
 
     assert.ok('schemas' in domainModel, 'schemas section inherited from _base')
@@ -71,12 +74,16 @@ describe('pack loader', () => {
 })
 
 describe('cluster loader', () => {
-  it('materialises 45 nodes from sample-graph fixtures', async () => {
+  it('materialises 147 nodes from sample-graph fixtures', async () => {
     const diagnostics: Diagnostic[] = []
     const result = await loadSampleClusters(diagnostics)
 
-    assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0, `unexpected errors: ${JSON.stringify(diagnostics)}`)
-    assert.equal(result.nodes.size, 45, `expected 45 nodes, got ${result.nodes.size}`)
+    assert.equal(
+      diagnostics.filter(d => d.severity === 'error').length,
+      0,
+      `unexpected errors: ${JSON.stringify(diagnostics)}`,
+    )
+    assert.equal(result.nodes.size, 147, `expected 147 nodes, got ${result.nodes.size}`)
   })
 
   it('materialises structural has-field and has-value edges', async () => {
@@ -87,8 +94,125 @@ describe('cluster loader', () => {
     const hasFieldEdges = allEdges.filter(e => e.type === 'has-field')
     const hasValueEdges = allEdges.filter(e => e.type === 'has-value')
 
-    assert.equal(hasFieldEdges.length, 24, `expected 24 has-field edges, got ${hasFieldEdges.length}`)
-    assert.equal(hasValueEdges.length, 6, `expected 6 has-value edges, got ${hasValueEdges.length}`)
+    assert.equal(hasFieldEdges.length, 89, `expected 89 has-field edges, got ${hasFieldEdges.length}`)
+    assert.equal(hasValueEdges.length, 10, `expected 10 has-value edges, got ${hasValueEdges.length}`)
+  })
+
+  it('uses API-local order-line-item schemas for endpoint item collections', async () => {
+    const diagnostics: Diagnostic[] = []
+    const result = await loadSampleClusters(diagnostics)
+    assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0)
+
+    const createItems = result.nodes.get('orders.APIEndpoint.create-order.schemas.create-order-request.fields.items')
+    const getItems = result.nodes.get('orders.APIEndpoint.get-order.schemas.order-response.fields.items')
+    const completeItems = result.nodes.get('orders.APIEndpoint.complete-order.schemas.order-response.fields.items')
+
+    assert.equal(createItems?.properties['$ref'], '#/schemas/order-line-item')
+    assert.equal(getItems?.properties['$ref'], '#/schemas/order-line-item')
+    assert.equal(completeItems?.properties['$ref'], '#/schemas/order-line-item')
+  })
+
+  it('materialises shared.Schema.problem-detail node', async () => {
+    const diagnostics: Diagnostic[] = []
+    const result = await loadSampleClusters(diagnostics)
+    assert.ok(result.nodes.has('shared.Schema.problem-detail'), 'shared problem-detail schema node exists')
+    assert.ok(result.nodes.has('shared.Schema.problem-detail.fields.type'), 'type field exists')
+    assert.ok(result.nodes.has('shared.Schema.problem-detail.fields.detail'), 'detail field exists')
+  })
+
+  it('materialises orders.DomainModel.order.operations.complete node', async () => {
+    const diagnostics: Diagnostic[] = []
+    const result = await loadSampleClusters(diagnostics)
+    assert.ok(result.nodes.has('orders.DomainModel.order.operations.complete'), 'complete operation node exists')
+    assert.ok(
+      result.nodes.has('orders.DomainModel.order.enums.order-status.values.completed'),
+      'completed enum value exists',
+    )
+  })
+
+  it('materialises orders read model nodes', async () => {
+    const diagnostics: Diagnostic[] = []
+    const result = await loadSampleClusters(diagnostics)
+
+    assert.equal(
+      diagnostics.filter(d => d.severity === 'error').length,
+      0,
+      `errors: ${JSON.stringify(diagnostics)}`,
+    )
+    assert.ok(result.nodes.has('orders.ReadModel.order-detail'), 'order-detail read model exists')
+    assert.ok(result.nodes.has('orders.ReadModel.order-detail.schemas.order-detail.fields.id'), 'order-detail id field')
+    assert.ok(
+      result.nodes.has('orders.ReadModel.order-detail.schemas.order-detail.fields.createdAt'),
+      'order-detail createdAt field',
+    )
+    assert.ok(result.nodes.has('orders.ReadModel.order-summary'), 'order-summary read model exists')
+    assert.ok(
+      result.nodes.has('orders.ReadModel.order-summary.schemas.order-summary.fields.totalAmount'),
+      'order-summary totalAmount field',
+    )
+  })
+
+  it('materialises new orders endpoint nodes', async () => {
+    const diagnostics: Diagnostic[] = []
+    const result = await loadSampleClusters(diagnostics)
+
+    assert.equal(
+      diagnostics.filter(d => d.severity === 'error').length,
+      0,
+      `errors: ${JSON.stringify(diagnostics)}`,
+    )
+    assert.ok(result.nodes.has('orders.APIEndpoint.get-order'), 'get-order endpoint exists')
+    assert.ok(
+      result.nodes.has('orders.APIEndpoint.get-order.schemas.order-response.fields.createdAt'),
+      'createdAt field on get-order response',
+    )
+    assert.ok(result.nodes.has('orders.APIEndpoint.list-orders'), 'list-orders endpoint exists')
+    assert.ok(
+      result.nodes.has('orders.APIEndpoint.list-orders.schemas.order-summary-response.fields.totalAmount'),
+      'totalAmount on list-orders response',
+    )
+    assert.ok(result.nodes.has('orders.APIEndpoint.complete-order'), 'complete-order endpoint exists')
+  })
+
+  it('materialises orders domain and integration event nodes', async () => {
+    const diagnostics: Diagnostic[] = []
+    const result = await loadSampleClusters(diagnostics)
+
+    assert.equal(
+      diagnostics.filter(d => d.severity === 'error').length,
+      0,
+      `errors: ${JSON.stringify(diagnostics)}`,
+    )
+    assert.ok(result.nodes.has('orders.DomainEvent.order-placed'), 'order-placed domain event')
+    assert.ok(
+      result.nodes.has('orders.DomainEvent.order-placed.schemas.order-placed-payload.fields.orderId'),
+      'orderId field on order-placed payload',
+    )
+    assert.ok(result.nodes.has('orders.DomainEvent.order-completed'), 'order-completed domain event')
+    assert.ok(result.nodes.has('orders.IntegrationEvent.order-placed'), 'order-placed integration event')
+    assert.ok(result.nodes.has('orders.IntegrationEvent.order-completed'), 'order-completed integration event')
+  })
+
+  it('materialises payments component nodes', async () => {
+    const diagnostics: Diagnostic[] = []
+    const result = await loadSampleClusters(diagnostics)
+
+    assert.equal(
+      diagnostics.filter(d => d.severity === 'error').length,
+      0,
+      `errors: ${JSON.stringify(diagnostics)}`,
+    )
+    assert.ok(result.nodes.has('payments.DomainModel.payment'), 'payment domain model')
+    assert.ok(result.nodes.has('payments.DomainModel.payment.schemas.payment.fields.capturedAt'), 'capturedAt field')
+    assert.ok(result.nodes.has('payments.DomainModel.payment.enums.payment-status'), 'payment-status enum')
+    assert.ok(result.nodes.has('payments.DomainModel.payment.operations.capture'), 'capture operation')
+    assert.ok(result.nodes.has('payments.APIEndpoint.complete-payment'), 'complete-payment endpoint')
+    assert.ok(result.nodes.has('payments.DomainEvent.payment-captured'), 'payment-captured domain event')
+    assert.ok(result.nodes.has('payments.IntegrationEvent.payment-captured'), 'payment-captured integration event')
+    assert.ok(
+      result.nodes.has('payments.IntegrationEvent.payment-captured.schemas.payment-captured-payload.fields.paymentId'),
+      'paymentId in integration event payload',
+    )
   })
 
   it('root node inherits state and stability to child nodes', async () => {
@@ -133,14 +257,18 @@ describe('edge loader', () => {
     assert.ok(!VALID_EDGE_TYPE_SET.has('unknown'))
   })
 
-  it('loads 8 explicit edges from orders.edges.yaml', async () => {
+  it('loads 65 explicit edges from edge files', async () => {
     const diagnostics: Diagnostic[] = []
     const clusters = await loadSampleClusters(diagnostics)
     const edgeResult = await loadEdges(fixtureGraphDir, clusters.nodes, diagnostics)
 
-    assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0, `unexpected errors: ${JSON.stringify(diagnostics)}`)
+    assert.equal(
+      diagnostics.filter(d => d.severity === 'error').length,
+      0,
+      `unexpected errors: ${JSON.stringify(diagnostics)}`,
+    )
     const allExplicitEdges = [...edgeResult.edgesByFrom.values()].flat()
-    assert.equal(allExplicitEdges.length, 8, `expected 8 explicit edges, got ${allExplicitEdges.length}`)
+    assert.equal(allExplicitEdges.length, 65, `expected 65 explicit edges, got ${allExplicitEdges.length}`)
   })
 
   it('derives edge ID as {from}__{type}__{to}', async () => {
@@ -175,12 +303,12 @@ describe('edge loader', () => {
 })
 
 describe('loadGraph', () => {
-  it('loads full sample-graph with 45 nodes and 38 edges', async () => {
+  it('loads full sample-graph with 147 nodes and 164 edges', async () => {
     const graph = await loadGraph({ graphPath: fixtureGraphDir })
 
-    assert.equal(graph.nodesById.size, 45, `expected 45 nodes, got ${graph.nodesById.size}`)
+    assert.equal(graph.nodesById.size, 147, `expected 147 nodes, got ${graph.nodesById.size}`)
     const allEdges = [...graph.edgesByFrom.values()].flat()
-    assert.equal(allEdges.length, 38, `expected 38 edges, got ${allEdges.length}`)
+    assert.equal(allEdges.length, 164, `expected 164 edges, got ${allEdges.length}`)
   })
 
   it('does not throw in strict mode for the valid fixture', async () => {

@@ -4,15 +4,11 @@ component: orders
 state: agreed
 stability: stable
 schemaVersion: "1"
-lastModifiedAt: "2026-04-17"
+lastModifiedAt: "2026-04-23"
 
 properties:
   description: A placed customer order; aggregate root for the orders bounded context
   schema: '#/schemas/order'
-
-# --- Inline schemas ------------------------------------------------------
-# Become Schema nodes: orders.DomainModel.order.schemas.{key}
-# Fields within: ...schemas.{key}.fields.{field-name}
 
 schemas:
   order:
@@ -60,10 +56,6 @@ schemas:
         nullable: false
         cardinality: one
 
-# --- Inline enums --------------------------------------------------------
-# Become EnumDefinition nodes: orders.DomainModel.order.enums.{key}
-# Values: ...enums.{key}.values.{value-key}
-
 enums:
   order-status:
     description: Lifecycle state of an order within the domain
@@ -74,27 +66,26 @@ enums:
       confirmed:
         name: CONFIRMED
         description: Order accepted and confirmed
+      completed:
+        name: COMPLETED
+        description: Order fulfilled following successful payment capture
       cancelled:
         name: CANCELLED
         description: Order cancelled before fulfilment
-
-# --- Invariants ----------------------------------------------------------
-# Become Invariant nodes: orders.DomainModel.order.invariants.{key}
 
 invariants:
   must-have-items:
     description: An order must contain at least one line item at all times
   total-matches-items:
-    description: totalAmount must equal the sum of (quantity × unitPrice) across all items
-
-# --- Operations ----------------------------------------------------------
-# Become DomainOperation nodes: orders.DomainModel.order.operations.{key}
+    description: totalAmount must equal the sum of (quantity Ã— unitPrice) across all items
 
 operations:
   place:
     description: Create a new order from validated customer intent
   confirm:
     description: Mark the order as confirmed by the fulfilment system
+  complete:
+    description: Mark the order as fully completed following successful payment capture
   cancel:
     state: proposed
     description: Cancel an in-progress order, returning reserved stock

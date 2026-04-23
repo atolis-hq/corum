@@ -1,0 +1,40 @@
+id: orders.ReadModel.order-detail
+template: ReadModel
+component: orders
+state: agreed
+stability: stable
+schemaVersion: "1"
+lastModifiedAt: "2026-04-23"
+
+schemas:
+  order-detail:
+    description: Full order view for single-order queries
+    fields:
+      id:
+        type: uuid
+        nullable: false
+        cardinality: one
+      customerId:
+        type: uuid
+        nullable: false
+        cardinality: one
+      status:
+        $ref: orders.DomainModel.order.enums.order-status
+        nullable: false
+        cardinality: one
+      items:
+        $ref: orders.DomainModel.order.schemas.order-line-item
+        nullable: false
+        cardinality: many
+      totalAmount:
+        type: decimal
+        nullable: false
+        cardinality: one
+      notes:
+        type: string
+        nullable: true
+        cardinality: one
+      createdAt:
+        type: datetime
+        nullable: false
+        cardinality: one

@@ -1,0 +1,65 @@
+id: orders.APIEndpoint.complete-order
+template: APIEndpoint
+component: orders
+state: agreed
+stability: stable
+schemaVersion: "1"
+lastModifiedAt: "2026-04-23"
+
+properties:
+  method: POST
+  path: /orders/{orderId}/complete
+  responses:
+    "200": '#/schemas/order-response'
+    "400": shared.Schema.problem-detail
+    "404": shared.Schema.problem-detail
+    "409": shared.Schema.problem-detail
+
+schemas:
+  order-response:
+    description: Updated order details after completion
+    fields:
+      orderId:
+        type: uuid
+        nullable: false
+        cardinality: one
+      customerId:
+        type: uuid
+        nullable: false
+        cardinality: one
+      status:
+        $ref: orders.DomainModel.order.enums.order-status
+        nullable: false
+        cardinality: one
+      items:
+        $ref: '#/schemas/order-line-item'
+        nullable: false
+        cardinality: many
+      totalAmount:
+        type: decimal
+        nullable: false
+        cardinality: one
+      notes:
+        type: string
+        nullable: true
+        cardinality: one
+      createdAt:
+        type: datetime
+        nullable: false
+        cardinality: one
+
+  order-line-item:
+    description: A single line item within the order
+    fields:
+      productId:
+        type: uuid
+        nullable: false
+        cardinality: one
+      quantity:
+        type: integer
+        nullable: false
+        cardinality: one
+      unitPrice:
+        type: decimal
+        nullable: false
+        cardinality: one

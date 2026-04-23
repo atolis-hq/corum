@@ -1,0 +1,24 @@
+id: orders.IntegrationEvent.order-placed
+template: IntegrationEvent
+component: orders
+state: agreed
+stability: stable
+schemaVersion: "1"
+lastModifiedAt: "2026-04-23"
+
+schemas:
+  order-placed-payload:
+    description: Cross-context payload for the order-placed integration event
+    fields:
+      orderId:
+        type: uuid
+        nullable: false
+        cardinality: one
+      customerId:
+        type: uuid
+        nullable: false
+        cardinality: one
+      totalAmount:
+        type: decimal
+        nullable: false
+        cardinality: one
