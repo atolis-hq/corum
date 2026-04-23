@@ -1,9 +1,10 @@
 name: base
-version: "1.0.0"
-description: |
-  Base template implicitly inherited by all templates. Declares the universal
-  owned sections available on every node type — schemas and enums. These
-  sections do not need to be re-declared in individual templates.
+info:
+  version: "1.0.0"
+  description: |
+    Base template implicitly inherited by all templates. Declares the universal
+    owned sections available on every node type — schemas and enums. These
+    sections do not need to be re-declared in individual templates.
 
 schemas:
   item-template: Schema

@@ -1,14 +1,16 @@
 name: IntegrationEvent
-version: "1.0.0"
-core: false
-abstract: false
-extends: Event
-description: |
-  An event published for consumption by other bounded contexts
-  or external systems. Represents a cross-service contract;
-  changes to the payload schema affect consumers.
+info:
+  version: "1.0.0"
+  core: false
+  abstract: false
+  description: |
+    An event published for consumption by other bounded contexts
+    or external systems. Represents a cross-service contract;
+    changes to the payload schema affect consumers.
 
+extends: Event
 ui:
-  icon: integration-event
+  icon: share-nodes
   colour: "#D96C4A"
+  displayName: Integration Event
   displayProperties: []

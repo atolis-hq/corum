@@ -1,23 +1,24 @@
 name: EnumValue
-version: "1.0.0"
-core: false
-abstract: false
-description: |
-  A single constant within an EnumDefinition. EnumValue is a first-class node
-  so that each constant can carry its own lifecycle state, stability level,
-  and threads independently of its siblings.
+info:
+  version: "1.0.0"
+  core: true
+  abstract: false
+  description: |
+    A single constant within an EnumDefinition. EnumValue is a first-class node
+    so that each constant can carry its own lifecycle state, stability level,
+    and threads independently of its siblings.
 
-  This means a single value within an enum can be deprecated while the rest
-  of the enum remains stable — the granularity matches how enum values
-  actually evolve in practice.
+    This means a single value within an enum can be deprecated while the rest
+    of the enum remains stable — the granularity matches how enum values
+    actually evolve in practice.
 
-  The value key in the parent enums block is the local addressing name. The
-  name property is the actual string constant exposed in the contract (e.g.
-  PENDING, CONFIRMED). These may differ if local naming conventions diverge
-  from wire format conventions.
+    The value key in the parent enums block is the local addressing name. The
+    name property is the actual string constant exposed in the contract (e.g.
+    PENDING, CONFIRMED). These may differ if local naming conventions diverge
+    from wire format conventions.
 
-  When stability is set to deprecated, the universal deprecationReason
-  property should be populated to explain the migration path for consumers.
+    When stability is set to deprecated, the universal deprecationReason
+    property should be populated to explain the migration path for consumers.
 
 properties:
   type: object
@@ -38,7 +39,8 @@ edge-types:
     - has-value
 
 ui:
-  icon: enum-value
+  icon: tag
   colour: "#7A5F8A"
+  displayName: Enum Value
   displayProperties:
     - name

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Corum</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" />
+  <script>
+    window.CorumPlugins = {};
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+  <script src="nav.js"></script>
+  <script type="text/babel" src="primitives.jsx"></script>
+  <script type="text/babel">
+    fetch('/api/plugins')
+      .then(response => response.ok ? response.json() : [])
+      .then(files => {
+        for (const file of files) {
+          const script = document.createElement('script');
+          script.type = 'text/babel';
+          script.src = `/plugins/${file}`;
+          document.body.appendChild(script);
+        }
+      })
+      .catch(() => {});
+  </script>
+  <script type="text/babel" src="app.jsx"></script>
+</body>
+</html>

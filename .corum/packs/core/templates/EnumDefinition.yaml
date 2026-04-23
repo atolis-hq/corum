@@ -1,17 +1,18 @@
 name: EnumDefinition
-version: "1.0.0"
-core: false
-abstract: false
-description: |
-  A named set of discrete values. EnumDefinition is the boundary node for an
-  enumerated type; the actual constants are represented as owned EnumValue nodes
-  rather than inline strings. This preserves independent addressability for each
-  value — every value can carry its own state, stability, and deprecation reason.
+info:
+  version: "1.0.0"
+  core: true
+  abstract: false
+  description: |
+    A named set of discrete values. EnumDefinition is the boundary node for an
+    enumerated type; the actual constants are represented as owned EnumValue nodes
+    rather than inline strings. This preserves independent addressability for each
+    value — every value can carry its own state, stability, and deprecation reason.
 
-  When an EnumDefinition is defined inline within a cluster file (in the enums
-  block of an APIEndpoint or DomainModel), has-value edges are implied by
-  position and extracted automatically. Standalone EnumDefinition cluster files
-  are used for enum types shared across multiple nodes.
+    When an EnumDefinition is defined inline within a cluster file (in the enums
+    block of an APIEndpoint or DomainModel), has-value edges are implied by
+    position and extracted automatically. Standalone EnumDefinition cluster files
+    are used for enum types shared across multiple nodes.
 
 properties:
   type: object
@@ -34,7 +35,8 @@ edge-types:
     - has-value
 
 ui:
-  icon: enum-definition
+  icon: list
   colour: "#8B6A9A"
+  displayName: Enum
   displayProperties:
     - description

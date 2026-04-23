@@ -5,16 +5,20 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "test": "tsc && node --test dist/test/schema.test.js dist/test/loader.test.js dist/test/graph.test.js dist/test/mcp.test.js dist/test/writer.test.js dist/test/serializer.test.js",
+    "test": "tsc && node --test dist/test/schema.test.js dist/test/loader.test.js dist/test/graph.test.js dist/test/mcp.test.js dist/test/writer.test.js dist/test/serializer.test.js dist/test/web.test.js dist/test/nav.test.js",
+    "wireframes": "node design/wireframes/server.mjs",
     "mcp": "node dist/src/mcp/index.js",
-    "mcp:smoke": "npm run build && node scripts/mcp-smoke.mjs"
+    "mcp:smoke": "npm run build && node scripts/mcp-smoke.mjs",
+    "web": "node dist/src/web/server.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@toon-format/toon": "^2.1.0",
+    "express": "^4.22.1",
     "yaml": "^2.3.4"
   },
   "devDependencies": {
+    "@types/express": "^4.17.25",
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0"
   }

@@ -1,12 +1,13 @@
 name: Invariant
-version: "1.0.0"
-core: false
-abstract: false
-description: |
-  A business rule that must always hold for the owning model or process.
-  Invariants are first-class nodes so they can carry independent lifecycle
-  state, stability, and threads. A rule that is being phased out can be
-  marked deprecated without touching the model it belongs to.
+info:
+  version: "1.0.0"
+  core: true
+  abstract: false
+  description: |
+    A business rule that must always hold for the owning model or process.
+    Invariants are first-class nodes so they can carry independent lifecycle
+    state, stability, and threads. A rule that is being phased out can be
+    marked deprecated without touching the model it belongs to.
 
 properties:
   type: object
@@ -19,7 +20,8 @@ properties:
       description: "The rule stated affirmatively (e.g. 'An order must have at least one item')"
 
 ui:
-  icon: invariant
+  icon: shield-halved
   colour: "#C26D3A"
+  displayName: Invariant
   displayProperties:
     - description

@@ -12,6 +12,7 @@ export interface SaveGraphOptions {
 }
 
 const STRUCTURAL_EDGE_TYPES = new Set(['has-field', 'has-value'])
+const YAML_STRINGIFY_OPTIONS = { singleQuote: true }
 
 export async function saveGraph(graph: Graph, options: SaveGraphOptions): Promise<void> {
   const { sourceGraphPath, outputGraphPath, replace = true } = options
@@ -34,7 +35,7 @@ function writeGraphYaml(sourceGraphPath: string, outputGraphPath: string): void 
   const outputGraphYamlPath = path.join(outputGraphPath, 'graph.yaml')
 
   if (!fs.existsSync(sourceGraphYamlPath)) {
-    fs.writeFileSync(outputGraphYamlPath, stringifyYaml({ templatePacks: [] }))
+    fs.writeFileSync(outputGraphYamlPath, stringifyGraphYaml({ templatePacks: [] }))
     return
   }
 
@@ -49,7 +50,7 @@ function writeGraphYaml(sourceGraphPath: string, outputGraphPath: string): void 
     }
   })
 
-  fs.writeFileSync(outputGraphYamlPath, stringifyYaml(doc))
+  fs.writeFileSync(outputGraphYamlPath, stringifyGraphYaml(doc))
 }
 
 function writeClusterFiles(graph: Graph, sourceGraphPath: string, outputGraphPath: string): void {
@@ -61,7 +62,7 @@ function writeClusterFiles(graph: Graph, sourceGraphPath: string, outputGraphPat
     const relativeFilePath = path.relative(sourceGraphPath, root.extractedFrom)
     const outputFilePath = path.join(outputGraphPath, relativeFilePath)
     fs.mkdirSync(path.dirname(outputFilePath), { recursive: true })
-    fs.writeFileSync(outputFilePath, stringifyYaml(toClusterDocument(graph, root)))
+    fs.writeFileSync(outputFilePath, stringifyGraphYaml(toClusterDocument(graph, root)))
   }
 }
 
@@ -95,6 +96,8 @@ function appendOwnedSections(graph: Graph, parent: Node, target: Record<string, 
     const section: Record<string, unknown> = {}
     for (const child of children) {
       const childDoc: Record<string, unknown> = { ...child.properties }
+      if (child.state !== parent.state) childDoc.state = child.state
+      if (child.stability !== parent.stability) childDoc.stability = child.stability
       appendOwnedSections(graph, child, childDoc)
       section[getLocalName(child.id, parent.id, sectionName)] = childDoc
     }
@@ -128,8 +131,12 @@ function writeExplicitEdges(graph: Graph, outputGraphPath: string): void {
   fs.mkdirSync(edgesDir, { recursive: true })
   fs.writeFileSync(
     path.join(edgesDir, 'corum.edges.yaml'),
-    stringifyYaml({ edges: explicitEdges.map(toEdgeDocument) }),
+    stringifyGraphYaml({ edges: explicitEdges.map(toEdgeDocument) }),
   )
+}
+
+function stringifyGraphYaml(value: unknown): string {
+  return stringifyYaml(value, YAML_STRINGIFY_OPTIONS)
 }
 
 function toEdgeDocument(edge: Edge): Record<string, unknown> {

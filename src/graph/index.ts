@@ -1,4 +1,4 @@
-import type { Edge, Graph, Node, Stability, State } from '../schema/index.js'
+import type { Edge, EdgeType, Graph, Node, Stability, State } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
 
 export type ListNodesFilter = {
@@ -11,6 +11,13 @@ export type ListNodesFilter = {
 export type ClusterResult = {
   root: Node
   children: Node[]
+  edges: Edge[]
+}
+
+export type ClusterViewResult = {
+  root: Node
+  descendants: Node[]
+  includedNodes: Node[]
   edges: Edge[]
 }
 
@@ -51,6 +58,42 @@ export function getCluster(graph: Graph, nodeId: string): ClusterResult {
   return { root, children, edges }
 }
 
+export function getClusterView(graph: Graph, nodeId: string, includeEdgeTypes: EdgeType[] = []): ClusterViewResult {
+  const cluster = getCluster(graph, nodeId)
+  if (includeEdgeTypes.length === 0) {
+    return {
+      root: cluster.root,
+      descendants: cluster.children,
+      includedNodes: [],
+      edges: cluster.edges,
+    }
+  }
+
+  const clusterIds = new Set([cluster.root.id, ...cluster.children.map(node => node.id)])
+  const requestedTypes = new Set(includeEdgeTypes)
+  const includedNodeIds = new Set<string>()
+  const edges = [...cluster.edges]
+  const seen = new Set(cluster.edges.map(edge => edge.id))
+
+  for (const id of clusterIds) {
+    for (const edge of graph.edgesByFrom.get(id) ?? []) {
+      collectIncludedEdge(edge, requestedTypes, clusterIds, includedNodeIds, edges, seen)
+    }
+    for (const edge of graph.edgesByTo.get(id) ?? []) {
+      collectIncludedEdge(edge, requestedTypes, clusterIds, includedNodeIds, edges, seen)
+    }
+  }
+
+  return {
+    root: cluster.root,
+    descendants: cluster.children,
+    includedNodes: [...includedNodeIds]
+      .map(id => graph.nodesById.get(id))
+      .filter((node): node is Node => node !== undefined),
+    edges,
+  }
+}
+
 export function getLinkedFields(graph: Graph, nodeId: string): LinkedFieldsResult {
   const root = graph.nodesById.get(nodeId)
   if (!root) throw new QueryError(`Node not found: ${nodeId}`)
@@ -89,4 +132,19 @@ function collectMapsTo(edge: Edge, edges: Edge[], nodeIds: Set<string>, seen: Se
   nodeIds.add(edge.from)
   nodeIds.add(edge.to)
   seen.add(edge.id)
+}
+
+function collectIncludedEdge(
+  edge: Edge,
+  requestedTypes: Set<EdgeType>,
+  clusterIds: Set<string>,
+  includedNodeIds: Set<string>,
+  edges: Edge[],
+  seen: Set<string>,
+): void {
+  if (!requestedTypes.has(edge.type) || seen.has(edge.id)) return
+  edges.push(edge)
+  seen.add(edge.id)
+  if (!clusterIds.has(edge.from)) includedNodeIds.add(edge.from)
+  if (!clusterIds.has(edge.to)) includedNodeIds.add(edge.to)
 }

@@ -54,6 +54,15 @@ describe('pack loader', () => {
     assert.equal(schemas['item-template'], 'Schema')
   })
 
+  it('loads optional ui.displayName from template yaml', async () => {
+    const diagnostics: Diagnostic[] = []
+    const templates = await loadPacks(samplePackDirs, diagnostics)
+    const domainModel = templates.get('DomainModel')!
+
+    assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0)
+    assert.equal(domainModel.ui?.displayName, 'Domain Model')
+  })
+
   it('reports warning for missing pack template directory without crashing', async () => {
     const diagnostics: Diagnostic[] = []
     await loadPacks([path.join(repoRoot, 'nonexistent-pack')], diagnostics)
@@ -92,6 +101,18 @@ describe('cluster loader', () => {
     assert.equal(field.stability, 'stable', 'inherits stability from root')
   })
 
+  it('owned field state overrides inherited parent state when specified', async () => {
+    const diagnostics: Diagnostic[] = []
+    const result = await loadSampleClusters(diagnostics)
+
+    const overridden = result.nodes.get('orders.DomainModel.order.schemas.order-line-item.fields.unitPrice')
+    const inherited = result.nodes.get('orders.DomainModel.order.schemas.order-line-item.fields.quantity')
+    assert.ok(overridden, 'overridden field exists')
+    assert.ok(inherited, 'inherited field exists')
+    assert.equal(overridden.state, 'proposed')
+    assert.equal(inherited.state, 'agreed')
+  })
+
   it('materialises correct Field node properties', async () => {
     const diagnostics: Diagnostic[] = []
     const result = await loadSampleClusters(diagnostics)
@@ -99,7 +120,7 @@ describe('cluster loader', () => {
     const field = result.nodes.get('orders.DomainModel.order.schemas.order.fields.id')!
     assert.equal(field.template, 'Field')
     assert.equal(field.component, 'orders')
-    assert.equal(field.properties.scalarType, 'uuid')
+    assert.equal(field.properties.type, 'uuid')
     assert.equal(field.properties.nullable, false)
     assert.equal(field.properties.cardinality, 'one')
   })

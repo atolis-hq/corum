@@ -28,11 +28,13 @@ export interface Edge {
 
 export interface Template {
   name: string
-  version: string
-  core?: boolean
-  abstract?: boolean
+  info: {
+    version: string
+    core?: boolean
+    abstract?: boolean
+    description?: string
+  }
   extends?: string
-  description?: string
   properties?: Record<string, unknown>
   'edge-types'?: {
     outgoing?: EdgeType[]
@@ -42,8 +44,15 @@ export interface Template {
   ui?: {
     icon?: string
     colour?: string
+    displayName?: string
     displayProperties?: string[]
     badge?: string
+    nav?: {
+      nestOwned?: Array<{
+        section: string
+        label?: string
+      }>
+    }
   }
   [section: string]: unknown
 }

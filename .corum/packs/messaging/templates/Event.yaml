@@ -1,10 +1,11 @@
 name: Event
-version: "1.0.0"
-core: false
-abstract: true
-description: |
-  Abstract base for all event types. Defines the shared payload schema.
-  Use DomainEvent for internal facts; IntegrationEvent for cross-service contracts.
+info:
+  version: "1.0.0"
+  core: false
+  abstract: true
+  description: |
+    Abstract base for all event types. Defines the shared payload schema.
+    Use DomainEvent for internal facts; IntegrationEvent for cross-service contracts.
 
 properties:
   type: object
@@ -21,6 +22,7 @@ edges:
     - produces
 
 ui:
-  icon: event
+  icon: bolt
   colour: "#E8A838"
+  displayName: Event
   displayProperties: []

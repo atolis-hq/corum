@@ -7,6 +7,7 @@ import { getCluster, getLinkedFields, listNodes, type ListNodesFilter } from '..
 import { loadGraph } from '../loader/index.js'
 import type { Graph } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
+import { startWebServer } from '../web/server.js'
 import { compactKeys, getSerializer } from './serializers.js'
 
 type ToolContent = { type: 'text'; text: string }
@@ -50,11 +51,11 @@ export function createMcpHandlers(graph: Graph): {
         const summaries = [...graph.templates.values()]
           .map(template => ({
             name: template.name,
-            version: template.version,
-            core: template.core ?? false,
-            abstract: template.abstract ?? false,
+            version: template.info?.version,
+            core: template.info?.core ?? false,
+            abstract: template.info?.abstract ?? false,
             extends: template.extends,
-            description: template.description,
+            description: template.info?.description,
           }))
           .sort((a, b) => a.name.localeCompare(b.name))
         return formatResult(summaries, args.format, getCompactKeys(args))
@@ -132,6 +133,11 @@ if (isEntrypoint()) {
   }
 
   const handlers = createMcpHandlers(graph)
+  const noWeb = process.argv.includes('--no-web')
+  if (!noWeb) {
+    await startWebServer(graph, { graphPath })
+  }
+
   const server = new Server(
     { name: 'corum', version: '0.1.0' },
     { capabilities: { tools: {} } },

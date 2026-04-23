@@ -9,11 +9,11 @@ lastModifiedAt: "2026-04-17"
 properties:
   method: POST
   path: /orders
-  request: create-order-request
+  request: '#/schemas/create-order-request'
   responses:
-    "201": create-order-response
-    "400": problem-detail
-    "409": problem-detail
+    "201": '#/schemas/create-order-response'
+    "400": '#/schemas/problem-detail'
+    "409": '#/schemas/problem-detail'
 
 # --- Inline schemas ------------------------------------------------------
 # Each entry becomes a Schema node: orders.APIEndpoint.create-order.schemas.{key}
@@ -24,15 +24,15 @@ schemas:
     description: Request body for creating an order
     fields:
       customerId:
-        scalarType: uuid
+        type: uuid
         nullable: false
         cardinality: one
       items:
-        objectRef: order-line-item   # resolves to local schema below
+        $ref: '#/schemas/order-line-item'
         nullable: false
         cardinality: many
       notes:
-        scalarType: string
+        type: string
         nullable: true
         cardinality: one
 
@@ -40,15 +40,16 @@ schemas:
     description: A single line item within the order
     fields:
       productId:
-        scalarType: uuid
+        type: uuid
         nullable: false
         cardinality: one
       quantity:
-        scalarType: integer
+        type: integer
         nullable: false
         cardinality: one
       unitPrice:
-        scalarType: decimal
+        state: draft
+        type: decimal
         nullable: false
         cardinality: one
 
@@ -56,23 +57,23 @@ schemas:
     description: Confirmed order details returned on successful creation
     fields:
       orderId:
-        scalarType: uuid
+        type: uuid
         nullable: false
         cardinality: one
       status:
-        objectRef: order-status   # resolves to local enum below
+        $ref: '#/enums/order-status'
         nullable: false
         cardinality: one
       customerId:
-        scalarType: uuid
+        type: uuid
         nullable: false
         cardinality: one
       items:
-        objectRef: order-line-item
+        $ref: '#/schemas/order-line-item'
         nullable: false
         cardinality: many
       totalAmount:
-        scalarType: decimal
+        type: decimal
         nullable: false
         cardinality: one
 
@@ -80,19 +81,19 @@ schemas:
     description: RFC 7807 error response body
     fields:
       type:
-        scalarType: string
+        type: string
         nullable: false
         cardinality: one
       title:
-        scalarType: string
+        type: string
         nullable: false
         cardinality: one
       status:
-        scalarType: integer
+        type: integer
         nullable: false
         cardinality: one
       detail:
-        scalarType: string
+        type: string
         nullable: true
         cardinality: one
 
