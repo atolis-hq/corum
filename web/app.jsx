@@ -68,15 +68,22 @@ function NavRail({ activeSection, onSection }) {
 }
 
 function NavTree({ navTree, templates, activeNodeId, onNode }) {
-  const [openComponents, setOpenComponents] = useState(() => {
-    const initial = {};
-    for (const component of navTree.keys()) initial[component] = true;
-    return initial;
-  });
+  const sortedComponents = [...navTree.keys()].sort((a, b) => a.localeCompare(b));
+  const [openComponent, setOpenComponent] = useState();
   const templateMap = new Map(templates.map(template => [template.name, template]));
 
+  useEffect(() => {
+    if (openComponent === undefined) {
+      setOpenComponent(sortedComponents[0] ?? null);
+      return;
+    }
+    if (openComponent !== null && !navTree.has(openComponent)) {
+      setOpenComponent(sortedComponents[0] ?? null);
+    }
+  }, [navTree, openComponent, sortedComponents]);
+
   function toggleComponent(component) {
-    setOpenComponents(prev => ({ ...prev, [component]: !prev[component] }));
+    setOpenComponent(prev => prev === component ? null : component);
   }
 
   if (navTree.size === 0) {
@@ -85,13 +92,15 @@ function NavTree({ navTree, templates, activeNodeId, onNode }) {
 
   return (
     <div className="nav-tree">
-      {[...navTree.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([component, templateGroups]) => (
+      {sortedComponents.map(component => {
+        const templateGroups = navTree.get(component);
+        return (
         <div key={component}>
           <div className="nav-section-head" onClick={() => toggleComponent(component)}>
             <span>{component}</span>
-            <Icon name={openComponents[component] ? 'chevron-down' : 'chevron-right'} size={12} />
+            <Icon name={openComponent === component ? 'chevron-down' : 'chevron-right'} size={12} />
           </div>
-          {openComponents[component] && [...templateGroups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([templateName, nodes]) => {
+          {openComponent === component && [...templateGroups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([templateName, nodes]) => {
             const template = templateMap.get(templateName);
             const colour = template?.ui?.colour ?? 'var(--ink-4)';
             return (
@@ -143,7 +152,7 @@ function NavTree({ navTree, templates, activeNodeId, onNode }) {
             );
           })}
         </div>
-      ))}
+      )})}
     </div>
   );
 }
