@@ -24,4 +24,5 @@ edges:
 ui:
   icon: bolt
   colour: "#E8A838"
+  displayName: Event
   displayProperties: []

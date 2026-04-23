@@ -102,6 +102,9 @@ properties:
         type: string
         pattern: "^#[0-9A-Fa-f]{6}$"
         description: Hex colour for the node card background.
+      displayName:
+        type: string
+        description: Human-friendly label for this template in the UI.
       displayProperties:
         type: array
         items:

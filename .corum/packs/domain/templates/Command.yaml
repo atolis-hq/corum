@@ -16,4 +16,5 @@ edges:
 ui:
   icon: terminal
   colour: "#B56576"
+  displayName: Command
   displayProperties: []

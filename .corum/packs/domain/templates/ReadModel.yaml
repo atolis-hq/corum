@@ -15,4 +15,5 @@ edges:
 ui:
   icon: table-list
   colour: "#6C91BF"
+  displayName: Read Model
   displayProperties: []

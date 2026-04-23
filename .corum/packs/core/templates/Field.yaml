@@ -78,6 +78,7 @@ edge-types:
 ui:
   icon: minus
   colour: "#888888"
+  displayName: Field
   displayProperties:
     - type
     - $ref

@@ -44,6 +44,7 @@ export interface Template {
   ui?: {
     icon?: string
     colour?: string
+    displayName?: string
     displayProperties?: string[]
     badge?: string
     nav?: {

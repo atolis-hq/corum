@@ -41,5 +41,6 @@ edge-types:
 ui:
   icon: tag
   colour: "#7A5F8A"
+  displayName: Enum Value
   displayProperties:
     - name

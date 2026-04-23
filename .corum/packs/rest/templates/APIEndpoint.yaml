@@ -92,6 +92,7 @@ edge-types:
 ui:
   icon: plug
   colour: "#4A90D9"
+  displayName: API Endpoint
   displayProperties:
     - method
     - path

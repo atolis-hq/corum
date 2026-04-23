@@ -54,6 +54,15 @@ describe('pack loader', () => {
     assert.equal(schemas['item-template'], 'Schema')
   })
 
+  it('loads optional ui.displayName from template yaml', async () => {
+    const diagnostics: Diagnostic[] = []
+    const templates = await loadPacks(samplePackDirs, diagnostics)
+    const domainModel = templates.get('DomainModel')!
+
+    assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0)
+    assert.equal(domainModel.ui?.displayName, 'Domain Model')
+  })
+
   it('reports warning for missing pack template directory without crashing', async () => {
     const diagnostics: Diagnostic[] = []
     await loadPacks([path.join(repoRoot, 'nonexistent-pack')], diagnostics)

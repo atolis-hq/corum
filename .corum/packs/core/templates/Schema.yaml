@@ -35,5 +35,6 @@ edge-types:
 ui:
   icon: layer-group
   colour: "#5D7A8C"
+  displayName: Schema
   displayProperties:
     - description

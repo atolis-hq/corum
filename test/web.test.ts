@@ -17,6 +17,7 @@ function makeTestGraph(): Graph {
     operations: { 'item-template': 'DomainOperation' },
     ui: {
       colour: '#4a90e2',
+      displayName: 'Domain Model',
       icon: 'sitemap',
       nav: {
         nestOwned: [
@@ -28,15 +29,17 @@ function makeTestGraph(): Graph {
   templates.set('DomainOperation', {
     name: 'DomainOperation',
     info: { version: '1', core: false, description: 'A domain operation' },
-    ui: { colour: '#5B8C5A', icon: 'gear' },
+    ui: { colour: '#5B8C5A', displayName: 'Domain Operation', icon: 'gear' },
   })
   templates.set('Field', {
     name: 'Field',
     info: { version: '1', core: true },
+    ui: { displayName: 'Field' },
   })
   templates.set('Schema', {
     name: 'Schema',
     info: { version: '1', core: true },
+    ui: { displayName: 'Schema' },
   })
 
   const orderNode = {
@@ -143,9 +146,10 @@ describe('web server', () => {
 
     it('includes ui config in response', async () => {
       const res = await fetch(`http://localhost:${handle.port}/api/templates`)
-      const body = await res.json() as Array<{ name: string; ui?: { colour?: string; nav?: { nestOwned?: unknown[] } } }>
+      const body = await res.json() as Array<{ name: string; ui?: { colour?: string; displayName?: string; nav?: { nestOwned?: unknown[] } } }>
       const dm = body.find(t => t.name === 'DomainModel')
       assert.equal(dm?.ui?.colour, '#4a90e2')
+      assert.equal(dm?.ui?.displayName, 'Domain Model')
       assert.deepEqual(dm?.ui?.nav?.nestOwned, [{ section: 'operations', label: 'Operations' }])
     })
   })
@@ -314,6 +318,34 @@ describe('web server', () => {
       )
       assert.match(
         app,
+        /function templateDisplayName\(template\) \{\s*return template\?\.ui\?\.displayName \?\? template\?\.name \?\? '';\s*\}/,
+      )
+      assert.match(
+        app,
+        /<TemplateBadge name=\{templateDisplayName\(template\)\} colour=\{colour\} \/>/,
+      )
+      assert.match(
+        app,
+        /<span>\{templateDisplayName\(template\)\}<\/span>/,
+      )
+      assert.match(
+        app,
+        /const rootSpecializedTemplates = new Set\(\['Schema', 'EnumDefinition'\]\);/,
+      )
+      assert.match(
+        app,
+        /const rootSpecializedNodes = rootSpecializedTemplates\.has\(root\.template\) \? \[\[root\.template, \[root\]\]\] : \[\];/,
+      )
+      assert.match(
+        app,
+        /const childDisplayEntries = \[\.\.\.displayChildren\.entries\(\)\]/,
+      )
+      assert.match(
+        app,
+        /const displayEntries = \[\.\.\.rootSpecializedNodes, .*childDisplayEntries/,
+      )
+      assert.match(
+        app,
         /function anchorIdForNode\(nodeId\)/,
       )
       assert.match(
@@ -323,6 +355,10 @@ describe('web server', () => {
       assert.match(
         app,
         /document\.getElementById\(anchorIdForNode\(targetNodeId\)\)\?\.scrollIntoView\(\{ behavior: 'smooth', block: 'start' }\);/,
+      )
+      assert.match(
+        app,
+        /anchorIdForNode=\{anchorIdForNode\}/,
       )
       assert.match(
         styles,

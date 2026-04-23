@@ -33,5 +33,6 @@ edge-types:
 ui:
   icon: gear
   colour: "#5B8C5A"
+  displayName: Domain Operation
   displayProperties:
     - description

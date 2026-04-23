@@ -10,4 +10,5 @@ info:
 ui:
   icon: cube
   colour: "#7A6F9B"
+  displayName: Value Object
   displayProperties: []

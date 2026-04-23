@@ -61,6 +61,7 @@ edge-types:
 ui:
   icon: sitemap
   colour: "#2E8B57"
+  displayName: Domain Model
   displayProperties:
     - description
     - aggregate

@@ -30,6 +30,10 @@ function anchorIdForNode(nodeId) {
   return `node-anchor-${encodeURIComponent(nodeId)}`;
 }
 
+function templateDisplayName(template) {
+  return template?.ui?.displayName ?? template?.name ?? '';
+}
+
 function buildNavTree(nodes, templates) {
   const nodeMap = new Map(nodes.map(node => [node.id, node]));
   const templateMap = new Map(templates.map(template => [template.name, template]));
@@ -145,7 +149,7 @@ function NavTree({ navTree, templates, activeNodeId, onNode }) {
                     className={`fa-solid fa-${template?.ui?.icon ?? 'circle'}`}
                     style={{ color: colour, fontSize: 12, width: 14, textAlign: 'center', flexShrink: 0 }}
                   />
-                  <span>{templateName}</span>
+                  <span>{templateDisplayName(template)}</span>
                 </div>
                 {nodes.map(node => {
                   const isActive = node.id === activeNodeId;
@@ -235,6 +239,11 @@ function NodePage({ nodeId, templates, onNavigate }) {
     root.id,
     ...Array.from(displayChildren.values()).reduce((all, group) => all.concat(group), []).map(child => child.id),
   ]);
+  const rootSpecializedTemplates = new Set(['Schema', 'EnumDefinition']);
+  const rootSpecializedNodes = rootSpecializedTemplates.has(root.template) ? [[root.template, [root]]] : [];
+  const childDisplayEntries = [...displayChildren.entries()]
+    .filter(([templateName]) => templateName !== 'Field' && templateName !== 'EnumValue');
+  const displayEntries = [...rootSpecializedNodes, ...childDisplayEntries];
 
   function handlePropertyNavigate(targetNodeId) {
     if (displayedNodeIds.has(targetNodeId)) {
@@ -249,7 +258,7 @@ function NodePage({ nodeId, templates, onNavigate }) {
       <div id={anchorIdForNode(root.id)} style={{ marginBottom: 18 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
           <h1 style={{ margin: 0 }}>{displayName(root.id)}</h1>
-          <TemplateBadge name={root.template} colour={colour} />
+          <TemplateBadge name={templateDisplayName(template)} colour={colour} />
           <StateTag state={root.state} />
           <StabilityTag stability={root.stability} />
         </div>
@@ -280,14 +289,12 @@ function NodePage({ nodeId, templates, onNavigate }) {
         </div>
       )}
 
-      {[...displayChildren.entries()]
-        .filter(([templateName]) => templateName !== 'Field' && templateName !== 'EnumValue')
-        .map(([templateName, groupNodes]) => (
+      {displayEntries.map(([templateName, groupNodes]) => (
           <SchemaCard
             key={templateName}
             title={templateName}
             nodes={groupNodes}
-            allNodes={children}
+            allNodes={[root, ...children]}
             edges={edges}
             anchorIdForNode={anchorIdForNode}
           />

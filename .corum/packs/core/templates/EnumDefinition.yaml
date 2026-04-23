@@ -37,5 +37,6 @@ edge-types:
 ui:
   icon: list
   colour: "#8B6A9A"
+  displayName: Enum
   displayProperties:
     - description

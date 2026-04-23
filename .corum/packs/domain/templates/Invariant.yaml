@@ -22,5 +22,6 @@ properties:
 ui:
   icon: shield-halved
   colour: "#C26D3A"
+  displayName: Invariant
   displayProperties:
     - description
