@@ -108,7 +108,7 @@ function NavTree({ navTree, templates, activeNodeId, onNode }) {
                       {entry.icon && (
                         <i
                           className={`fa-solid fa-${entry.icon}`}
-                          style={{ color: entry.colour, fontSize: 12, width: 14, textAlign: 'center', flexShrink: 0 }}
+                          style={{ fontSize: 12, width: 14, textAlign: 'center', flexShrink: 0 }}
                         />
                       )}
                       <span>{entry.label}</span>
@@ -119,7 +119,7 @@ function NavTree({ navTree, templates, activeNodeId, onNode }) {
                           {child.icon && (
                             <i
                               className={`fa-solid fa-${child.icon}`}
-                              style={{ color: child.colour, fontSize: 11, width: 14, textAlign: 'center', flexShrink: 0 }}
+                              style={{ fontSize: 11, width: 14, textAlign: 'center', flexShrink: 0 }}
                             />
                           )}
                           <span>{child.label}</span>
@@ -151,7 +151,7 @@ function NavTree({ navTree, templates, activeNodeId, onNode }) {
                   <div className="nav-template-head">
                     <i
                       className={`fa-solid fa-${template?.ui?.icon ?? 'circle'}`}
-                      style={{ color: colour, fontSize: 12, width: 14, textAlign: 'center', flexShrink: 0 }}
+                      style={{ fontSize: 12, width: 14, textAlign: 'center', flexShrink: 0 }}
                     />
                     <span>{templateDisplayName(template)}</span>
                   </div>
