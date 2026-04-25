@@ -23,7 +23,7 @@ schemas:
         nullable: false
         cardinality: one
       items:
-        $ref: orders.DomainModel.order.schemas.order-line-item
+        $ref: '#/schemas/order-line-item'
         nullable: false
         cardinality: many
       totalAmount:
@@ -36,5 +36,22 @@ schemas:
         cardinality: one
       createdAt:
         type: datetime
+        nullable: false
+        cardinality: one
+
+  order-line-item:
+    description: A single line item within the order
+    fields:
+      productId:
+        type: uuid
+        nullable: false
+        cardinality: one
+      quantity:
+        type: integer
+        nullable: false
+        cardinality: one
+      unitPrice:
+        state: proposed
+        type: decimal
         nullable: false
         cardinality: one

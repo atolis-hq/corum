@@ -80,8 +80,8 @@ button {
   display: flex;
   align-items: center;
   gap: 10px;
-  height: 44px;
-  padding: 0 16px;
+  height: 48px;
+  padding: 10px 16px;
   background: var(--accent);
   color: var(--paper);
   flex-shrink: 0;
@@ -92,7 +92,8 @@ button {
   align-items: center;
   gap: 8px;
   color: #fff;
-  font-size: 14px;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-size: 18px;
   font-weight: 600;
 }
 
