@@ -1,6 +1,10 @@
 import { describe, it, before, after } from 'node:test'
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { startWebServer, type WebServerHandle } from '../src/web/server.js'
+import { loadGraph } from '../src/loader/index.js'
 import type { Graph } from '../src/schema/index.js'
 
 function makeTestGraph(): Graph {
@@ -144,6 +148,71 @@ function makeTestGraph(): Graph {
   ])
 
   return { nodesById, edgesByFrom, edgesByTo, templates, diagnostics: [] }
+}
+
+function writeWatcherFixture(root: string): { graphPath: string; nodePath: string; templatePath: string } {
+  const graphPath = path.join(root, 'graph')
+  const packPath = path.join(root, 'pack')
+  const templatesPath = path.join(packPath, 'templates')
+  const componentPath = path.join(graphPath, 'components', 'orders')
+  fs.mkdirSync(templatesPath, { recursive: true })
+  fs.mkdirSync(componentPath, { recursive: true })
+  fs.mkdirSync(path.join(graphPath, 'edges'), { recursive: true })
+
+  fs.writeFileSync(
+    path.join(graphPath, 'graph.yaml'),
+    [
+      'schemaVersion: "1"',
+      'templatePacks:',
+      '  - name: test',
+      '    path: ../pack',
+      '',
+    ].join('\n'),
+  )
+
+  const templatePath = path.join(templatesPath, 'Thing.yaml')
+  fs.writeFileSync(
+    templatePath,
+    [
+      'name: Thing',
+      'info:',
+      '  version: "1"',
+      'ui:',
+      '  displayName: Thing',
+      '',
+    ].join('\n'),
+  )
+
+  const nodePath = path.join(componentPath, 'thing.yaml')
+  fs.writeFileSync(
+    nodePath,
+    [
+      'id: orders.Thing.first',
+      'template: Thing',
+      'schemaVersion: "1"',
+      'metadata:',
+      '  component: orders',
+      '  state: draft',
+      '  stability: unstable',
+      '  lastModifiedAt: "2026-04-25"',
+      'properties:',
+      '  description: First version',
+      '',
+    ].join('\n'),
+  )
+
+  return { graphPath, nodePath, templatePath }
+}
+
+async function eventually<T>(read: () => Promise<T>, predicate: (value: T) => boolean): Promise<T> {
+  const deadline = Date.now() + 5000
+  let last: T
+  do {
+    last = await read()
+    if (predicate(last)) return last
+    await new Promise(resolve => setTimeout(resolve, 50))
+  } while (Date.now() < deadline)
+  assert.fail(`condition was not met; last value: ${JSON.stringify(last)}`)
 }
 
 describe('web server', () => {
@@ -374,6 +443,68 @@ describe('web server', () => {
     })
   })
 
+  describe('file watcher', () => {
+    it('reloads graph files and template files when enabled', async () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-watch-'))
+      let watchedHandle: WebServerHandle | undefined
+      try {
+        const { graphPath, nodePath, templatePath } = writeWatcherFixture(tmp)
+        const watchedGraph = await loadGraph({ graphPath })
+        watchedHandle = await startWebServer(watchedGraph, {
+          port: 0,
+          graphPath,
+          fileWatcher: true,
+          fileWatcherDebounceMs: 25,
+          logger: () => {},
+        })
+
+        fs.writeFileSync(
+          nodePath,
+          [
+            'id: orders.Thing.first',
+            'template: Thing',
+            'schemaVersion: "1"',
+            'metadata:',
+            '  component: orders',
+            '  state: agreed',
+            '  stability: stable',
+            '  lastModifiedAt: "2026-04-25"',
+            'properties:',
+            '  description: Second version',
+            '',
+          ].join('\n'),
+        )
+
+        const nodes = await eventually(
+          async () => fetch(`http://localhost:${watchedHandle!.port}/api/nodes`).then(res => res.json()) as Promise<Array<{ id: string; state: string }>>,
+          body => body.some(node => node.id === 'orders.Thing.first' && node.state === 'agreed'),
+        )
+        assert.ok(nodes.some(node => node.id === 'orders.Thing.first' && node.state === 'agreed'))
+
+        fs.writeFileSync(
+          templatePath,
+          [
+            'name: Thing',
+            'info:',
+            '  version: "1"',
+            'ui:',
+            '  displayName: Renamed Thing',
+            '',
+          ].join('\n'),
+        )
+
+        const templates = await eventually(
+          async () => fetch(`http://localhost:${watchedHandle!.port}/api/templates`).then(res => res.json()) as Promise<Array<{ name: string; ui?: { displayName?: string } }>>,
+          body => body.some(template => template.name === 'Thing' && template.ui?.displayName === 'Renamed Thing'),
+        )
+        assert.ok(templates.some(template => template.name === 'Thing' && template.ui?.displayName === 'Renamed Thing'))
+      } finally {
+        if (watchedHandle) await watchedHandle.close()
+        fs.rmSync(tmp, { recursive: true, force: true })
+      }
+    })
+  })
+
   describe('web assets', () => {
     let primitives = ''
     let app = ''
@@ -430,6 +561,13 @@ describe('web server', () => {
       assert.match(app, /const \{ root, descendants, includedNodes, edges \} = cluster;/)
       assert.match(app, /for \(const child of descendants\) \{/)
       assert.match(app, /const childDisplayEntries = \[\.\.\.displayChildren\.entries\(\)\]/)
+    })
+
+    it('app: reload events refetch graph lists and visible cluster data', () => {
+      assert.match(app, /new EventSource\('\/api\/events'\)/)
+      assert.match(app, /eventSource\.addEventListener\('graph-reloaded', refreshGraphData\)/)
+      assert.match(app, /refreshToken/)
+      assert.match(app, /fetch\(`\/api\/cluster\?nodeId=\$\{encodeURIComponent\(nodeId\)\}&includeEdges=maps-to`\)/)
     })
 
     it('app: SchemaCard receives allNodes including includedNodes', () => {

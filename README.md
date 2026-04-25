@@ -76,6 +76,22 @@ $env:CORUM_GRAPH_PATH = "fixtures/sample-graph"
 npm run mcp
 ```
 
+To reload the in-memory graph when graph YAML or template YAML files change, pass `--watch` to the built server:
+
+```powershell
+node dist/src/mcp/index.js --watch
+```
+
+The same watcher can be enabled for the web server with `node dist/src/web/server.js --watch`, or for either server by setting `CORUM_FILE_WATCHER=true`.
+
+Starting with powershell
+```
+ $env:CORUM_GRAPH_PATH = "fixtures/sample-graph";
+ $env:CORUM_WEB_PORT = 3001;
+ $env:CORUM_FILE_WATCHER="true";
+ npm run web
+```
+
 The MCP server exposes these tools:
 
 - `list_nodes`: lists graph nodes, optionally filtered by `template`, `component`, `state`, or `stability`

@@ -1,8 +1,11 @@
 import express from 'express'
 import path from 'node:path'
+import { existsSync, readFileSync, readdirSync, watch, type FSWatcher } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { AddressInfo } from 'node:net'
+import type { Response } from 'express'
+import { parse as parseYaml } from 'yaml'
 import { getClusterView, listNodes, type ListNodesFilter } from '../graph/index.js'
 import { loadGraph } from '../loader/index.js'
 import { VALID_EDGE_TYPE_SET } from '../loader/constants.js'
@@ -17,12 +20,26 @@ const WEB_DIR = path.join(__dirname, '..', '..', '..', 'web')
 export type WebServerOptions = {
   port?: number
   graphPath?: string
+  fileWatcher?: boolean
+  fileWatcherDebounceMs?: number
   logger?: (message: string) => void
 }
 
 export type WebServerHandle = {
   port: number
   close(): Promise<void>
+}
+
+export type GraphFileWatcherOptions = {
+  graphPath: string
+  debounceMs?: number
+  logger?: (message: string) => void
+  onReload?: () => void
+}
+
+type ReloadEvents = {
+  subscribe(res: Response): void
+  notify(): void
 }
 
 async function getPluginFiles(): Promise<string[]> {
@@ -137,11 +154,154 @@ function parseIncludeEdges(value: unknown): EdgeType[] {
   return [...new Set(types)]
 }
 
-export function createApp(graph: Graph): express.Application {
+function createReloadEvents(): ReloadEvents {
+  const clients = new Set<Response>()
+  let version = 0
+  return {
+    subscribe(res) {
+      clients.add(res)
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      })
+      res.write(`event: connected\ndata: ${JSON.stringify({ version })}\n\n`)
+      res.on('close', () => clients.delete(res))
+    },
+    notify() {
+      version += 1
+      const payload = `event: graph-reloaded\ndata: ${JSON.stringify({ version })}\n\n`
+      for (const client of clients) {
+        client.write(payload)
+      }
+    },
+  }
+}
+
+function replaceGraph(target: Graph, source: Graph): void {
+  target.nodesById = source.nodesById
+  target.edgesByFrom = source.edgesByFrom
+  target.edgesByTo = source.edgesByTo
+  target.templates = source.templates
+  target.diagnostics = source.diagnostics
+}
+
+function isFileWatcherEnabled(options: WebServerOptions): boolean {
+  if (options.fileWatcher !== undefined) return options.fileWatcher
+  const value = process.env.CORUM_FILE_WATCHER ?? process.env.CORUM_WATCH
+  return value === '1' || value === 'true' || value === 'yes'
+}
+
+function resolvePackDirs(graphPath: string): string[] {
+  const graphYamlPath = path.join(graphPath, 'graph.yaml')
+  if (!existsSync(graphYamlPath)) {
+    return [path.resolve(graphPath, '.corum/packs')]
+  }
+
+  try {
+    const doc = parseYaml(readFileSync(graphYamlPath, 'utf-8')) as Record<string, unknown>
+    const packs = Array.isArray(doc.templatePacks) ? doc.templatePacks : []
+    return packs
+      .filter((pack): pack is { path: string } =>
+        typeof pack === 'object' && pack !== null && typeof (pack as Record<string, unknown>).path === 'string',
+      )
+      .map(pack => path.resolve(graphPath, pack.path))
+  } catch {
+    return []
+  }
+}
+
+function listDirectories(root: string): string[] {
+  if (!existsSync(root)) return []
+  const dirs = [root]
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      dirs.push(...listDirectories(path.join(root, entry.name)))
+    }
+  }
+  return dirs
+}
+
+function watchRoot(root: string, onChange: (filename?: string | Buffer | null) => void): FSWatcher[] {
+  if (!existsSync(root)) return []
+  try {
+    return [watch(root, { recursive: true }, (_eventType, filename) => onChange(filename))]
+  } catch {
+    return listDirectories(root).map(dir => watch(dir, (_eventType, filename) => onChange(filename)))
+  }
+}
+
+function isRelevantWatchEvent(filename: string | Buffer | null | undefined): boolean {
+  if (!filename) return true
+  const name = String(filename).replace(/\\/g, '/')
+  return name.endsWith('.yaml') || name.endsWith('.yml')
+}
+
+export function startGraphFileWatcher(
+  graph: Graph,
+  options: GraphFileWatcherOptions,
+): () => void {
+  const { graphPath, onReload } = options
+  const logger = options.logger ?? console.error
+  const debounceMs = options.debounceMs ?? 150
+  let watchers: FSWatcher[] = []
+  let timer: NodeJS.Timeout | undefined
+  let reloading = false
+
+  function closeWatchers(): void {
+    for (const watcher of watchers) watcher.close()
+    watchers = []
+  }
+
+  function refreshWatchers(): void {
+    closeWatchers()
+    const roots = [...new Set([path.resolve(graphPath), ...resolvePackDirs(graphPath)])]
+    watchers = roots.flatMap(root => watchRoot(root, scheduleReload))
+  }
+
+  async function reload(): Promise<void> {
+    if (reloading) return
+    reloading = true
+    try {
+      const nextGraph = await loadGraph({ graphPath, strict: true })
+      replaceGraph(graph, nextGraph)
+      refreshWatchers()
+      onReload?.()
+      logger(`[corum] graph reloaded after file change`)
+    } catch (err) {
+      logger(`[corum] graph reload failed: ${err}`)
+    } finally {
+      reloading = false
+    }
+  }
+
+  function scheduleReload(filename?: string | Buffer | null): void {
+    if (!isRelevantWatchEvent(filename)) return
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(() => {
+      timer = undefined
+      void reload()
+    }, debounceMs)
+  }
+
+  refreshWatchers()
+  logger(`[corum] file watcher enabled`)
+
+  return () => {
+    if (timer) clearTimeout(timer)
+    closeWatchers()
+  }
+}
+
+export function createApp(graph: Graph, reloadEvents: ReloadEvents = createReloadEvents()): express.Application {
   const app = express()
 
   app.get('/health', (_req, res) => {
     res.json({ ok: true })
+  })
+
+  app.get('/api/events', (_req, res) => {
+    reloadEvents.subscribe(res)
   })
 
   app.get('/api/templates', (req, res) => {
@@ -242,7 +402,16 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
   const port = options.port ?? parseInt(process.env.CORUM_WEB_PORT ?? '3000', 10)
   const graphPath = options.graphPath ?? process.env.CORUM_GRAPH_PATH ?? path.join(process.cwd(), '.corum/graph')
   const logger = options.logger ?? console.error
-  const app = createApp(graph)
+  const reloadEvents = createReloadEvents()
+  const app = createApp(graph, reloadEvents)
+  const stopWatcher = isFileWatcherEnabled(options)
+    ? startGraphFileWatcher(graph, {
+      graphPath,
+      debounceMs: options.fileWatcherDebounceMs,
+      logger,
+      onReload: () => reloadEvents.notify(),
+    })
+    : undefined
   return new Promise((resolve, reject) => {
     const server = app.listen(port, () => {
       const addr = server.address() as AddressInfo
@@ -255,7 +424,10 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
       }
       resolve({
         port: addr.port,
-        close: () => new Promise<void>((res, rej) => server.close(err => (err ? rej(err) : res()))),
+        close: () => new Promise<void>((res, rej) => {
+          stopWatcher?.()
+          server.close(err => (err ? rej(err) : res()))
+        }),
       })
     })
     server.on('error', reject)
@@ -269,5 +441,5 @@ function isEntrypoint(): boolean {
 if (isEntrypoint()) {
   const graphPath = process.env.CORUM_GRAPH_PATH ?? path.join(process.cwd(), '.corum/graph')
   const graph = await loadGraph({ graphPath, strict: true })
-  await startWebServer(graph, { graphPath })
+  await startWebServer(graph, { graphPath, fileWatcher: process.argv.includes('--watch') ? true : undefined })
 }

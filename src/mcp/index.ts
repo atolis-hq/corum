@@ -7,7 +7,7 @@ import { getCluster, getLinkedFields, listNodes, type ListNodesFilter } from '..
 import { loadGraph } from '../loader/index.js'
 import type { Graph } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
-import { startWebServer } from '../web/server.js'
+import { startGraphFileWatcher, startWebServer } from '../web/server.js'
 import { compactKeys, getSerializer } from './serializers.js'
 
 type ToolContent = { type: 'text'; text: string }
@@ -134,8 +134,11 @@ if (isEntrypoint()) {
 
   const handlers = createMcpHandlers(graph)
   const noWeb = process.argv.includes('--no-web')
+  const watchFiles = process.argv.includes('--watch')
   if (!noWeb) {
-    await startWebServer(graph, { graphPath })
+    await startWebServer(graph, { graphPath, fileWatcher: watchFiles ? true : undefined })
+  } else if (watchFiles) {
+    startGraphFileWatcher(graph, { graphPath })
   }
 
   const server = new Server(

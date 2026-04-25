@@ -1,6 +1,6 @@
 /* Main app: router, nav shell, data loading, and node pages. */
 
-const { useState, useEffect } = React;
+const { useState, useEffect, useCallback } = React;
 const {
   navigate,
   BrandMark,
@@ -209,7 +209,7 @@ function ComponentsPage() {
   return <div className="content"><h1>Components</h1></div>;
 }
 
-function NodePage({ nodeId, templates, onNavigate }) {
+function NodePage({ nodeId, templates, onNavigate, refreshToken }) {
   const [cluster, setCluster] = useState(null);
   const [error, setError] = useState(null);
 
@@ -221,7 +221,7 @@ function NodePage({ nodeId, templates, onNavigate }) {
       .then(response => response.ok ? response.json() : Promise.reject(response.status))
       .then(setCluster)
       .catch(err => setError(String(err)));
-  }, [nodeId]);
+  }, [nodeId, refreshToken]);
 
   if (!nodeId) return <div className="content"><p className="label-sm">No node selected.</p></div>;
   if (error) return <div className="content"><p style={{ color: 'var(--warn)' }}>Error loading node: {error}</p></div>;
@@ -327,15 +327,18 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [route, setRoute] = useState(parseRoute);
+  const [refreshToken, setRefreshToken] = useState(0);
 
-  useEffect(() => {
-    Promise.all([
-      fetch('/api/templates').then(response => response.json()),
-      fetch('/api/nodes').then(response => response.json()),
+  const refreshGraphData = useCallback(() => {
+    setError(null);
+    return Promise.all([
+      fetch('/api/templates').then(response => response.ok ? response.json() : Promise.reject(response.status)),
+      fetch('/api/nodes').then(response => response.ok ? response.json() : Promise.reject(response.status)),
     ])
       .then(([templateData, nodeData]) => {
         setTemplates(resolveTemplates(templateData));
         setNodes(nodeData);
+        setRefreshToken(token => token + 1);
         setLoading(false);
       })
       .catch(err => {
@@ -343,6 +346,20 @@ function App() {
         setLoading(false);
       });
   }, []);
+
+  useEffect(() => {
+    refreshGraphData();
+  }, [refreshGraphData]);
+
+  useEffect(() => {
+    if (!window.EventSource) return;
+    const eventSource = new EventSource('/api/events');
+    eventSource.addEventListener('graph-reloaded', refreshGraphData);
+    return () => {
+      eventSource.removeEventListener('graph-reloaded', refreshGraphData);
+      eventSource.close();
+    };
+  }, [refreshGraphData]);
 
   useEffect(() => {
     const handler = () => setRoute(parseRoute());
@@ -373,7 +390,7 @@ function App() {
   } else if (route.pathname === '/components') {
     page = <ComponentsPage />;
   } else if (route.pathname === '/node') {
-    page = <NodePage nodeId={activeNodeId} templates={templates} onNavigate={handleNode} />;
+    page = <NodePage nodeId={activeNodeId} templates={templates} onNavigate={handleNode} refreshToken={refreshToken} />;
   } else {
     page = <div className="content"><p className="label-sm">Page not found.</p></div>;
   }
