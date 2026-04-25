@@ -93,66 +93,110 @@ function NavTree({ navTree, templates, activeNodeId, onNode }) {
   return (
     <div className="nav-tree">
       {sortedComponents.map(component => {
-        const templateGroups = navTree.get(component);
+        const entries = navTree.get(component);
         return (
-        <div key={component}>
-          <div className="nav-section-head" onClick={() => toggleComponent(component)}>
-            <span>{component}</span>
-            <Icon name={openComponent === component ? 'chevron-down' : 'chevron-right'} size={12} />
-          </div>
-          {openComponent === component && [...templateGroups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([templateName, nodes]) => {
-            const template = templateMap.get(templateName);
-            const colour = template?.ui?.colour ?? 'var(--ink-4)';
-            return (
-              <div key={templateName}>
-                <div className="nav-template-head">
-                  <i
-                    className={`fa-solid fa-${template?.ui?.icon ?? 'circle'}`}
-                    style={{ color: colour, fontSize: 12, width: 14, textAlign: 'center', flexShrink: 0 }}
-                  />
-                  <span>{templateDisplayName(template)}</span>
-                </div>
-                {nodes.map(node => {
-                  const isActive = node.id === activeNodeId;
-                  return (
-                    <div key={node.id}>
-                      <div
-                        className={`nav-node-item${isActive ? ' active' : ''}`}
-                        onClick={() => onNode(node.id)}
-                        title={node.id}
-                        style={isActive ? { '--nav-node-active-bg': colour } : undefined}
-                      >
-                        {displayName(node.id)}
-                      </div>
-                      {(node.navChildren ?? []).map(group => (
-                        <div className="nav-child-group" key={group.label}>
-                          <div className="nav-child-head">{group.label}</div>
-                          {group.nodes.map(child => {
-                            const childTemplate = templateMap.get(child.template);
-                            const childColour = childTemplate?.ui?.colour ?? colour;
-                            const childIsActive = child.id === activeNodeId;
-                            return (
-                              <div
-                                key={child.id}
-                                className={`nav-node-item nav-node-child${childIsActive ? ' active' : ''}`}
-                                onClick={() => onNode(child.id)}
-                                title={child.id}
-                                style={childIsActive ? { '--nav-node-active-bg': childColour } : undefined}
-                              >
-                                {displayName(child.id)}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ))}
+          <div key={component}>
+            <div className="nav-section-head" onClick={() => toggleComponent(component)}>
+              <span>{component}</span>
+              <Icon name={openComponent === component ? 'chevron-down' : 'chevron-right'} size={12} />
+            </div>
+            {openComponent === component && entries.map(entry => {
+              if (entry.kind === 'group') {
+                return (
+                  <div key={entry.groupTemplateName}>
+                    <div className="nav-template-head">
+                      {entry.icon && (
+                        <i
+                          className={`fa-solid fa-${entry.icon}`}
+                          style={{ color: entry.colour, fontSize: 12, width: 14, textAlign: 'center', flexShrink: 0 }}
+                        />
+                      )}
+                      <span>{entry.label}</span>
                     </div>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </div>
-      )})}
+                    {entry.children.map(child => (
+                      <div key={child.templateName}>
+                        <div className="nav-subtype-head">
+                          {child.icon && (
+                            <i
+                              className={`fa-solid fa-${child.icon}`}
+                              style={{ color: child.colour, fontSize: 11, width: 14, textAlign: 'center', flexShrink: 0 }}
+                            />
+                          )}
+                          <span>{child.label}</span>
+                        </div>
+                        {child.nodes.map(node => {
+                          const isActive = node.id === activeNodeId;
+                          return (
+                            <div
+                              key={node.id}
+                              className={`nav-node-item${isActive ? ' active' : ''}`}
+                              onClick={() => onNode(node.id)}
+                              title={node.id}
+                              style={isActive ? { '--nav-node-active-bg': child.colour } : undefined}
+                            >
+                              {displayName(node.id)}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                );
+              }
+
+              const template = templateMap.get(entry.templateName);
+              const colour = template?.ui?.colour ?? 'var(--ink-4)';
+              return (
+                <div key={entry.templateName}>
+                  <div className="nav-template-head">
+                    <i
+                      className={`fa-solid fa-${template?.ui?.icon ?? 'circle'}`}
+                      style={{ color: colour, fontSize: 12, width: 14, textAlign: 'center', flexShrink: 0 }}
+                    />
+                    <span>{templateDisplayName(template)}</span>
+                  </div>
+                  {entry.nodes.map(node => {
+                    const isActive = node.id === activeNodeId;
+                    return (
+                      <div key={node.id}>
+                        <div
+                          className={`nav-node-item${isActive ? ' active' : ''}`}
+                          onClick={() => onNode(node.id)}
+                          title={node.id}
+                          style={isActive ? { '--nav-node-active-bg': colour } : undefined}
+                        >
+                          {displayName(node.id)}
+                        </div>
+                        {(node.navChildren ?? []).map(group => (
+                          <div className="nav-child-group" key={group.label}>
+                            <div className="nav-child-head">{group.label}</div>
+                            {group.nodes.map(child => {
+                              const childTemplate = templateMap.get(child.template);
+                              const childColour = childTemplate?.ui?.colour ?? colour;
+                              const childIsActive = child.id === activeNodeId;
+                              return (
+                                <div
+                                  key={child.id}
+                                  className={`nav-node-item nav-node-child${childIsActive ? ' active' : ''}`}
+                                  onClick={() => onNode(child.id)}
+                                  title={child.id}
+                                  style={childIsActive ? { '--nav-node-active-bg': childColour } : undefined}
+                                >
+                                  {displayName(child.id)}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -264,6 +308,19 @@ function NodePage({ nodeId, templates, onNavigate }) {
   );
 }
 
+function resolveTemplates(templates) {
+  const map = new Map(templates.map(t => [t.name, t]));
+  for (const t of templates) {
+    const groupName = t.ui?.nav?.navGroup;
+    if (!groupName || t.ui?.colour) continue;
+    const groupColour = map.get(groupName)?.ui?.colour;
+    if (groupColour) {
+      t.ui = { ...t.ui, colour: groupColour };
+    }
+  }
+  return templates;
+}
+
 function App() {
   const [templates, setTemplates] = useState([]);
   const [nodes, setNodes] = useState([]);
@@ -277,7 +334,7 @@ function App() {
       fetch('/api/nodes').then(response => response.json()),
     ])
       .then(([templateData, nodeData]) => {
-        setTemplates(templateData);
+        setTemplates(resolveTemplates(templateData));
         setNodes(nodeData);
         setLoading(false);
       })

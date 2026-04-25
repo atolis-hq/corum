@@ -10,7 +10,8 @@ info:
 
 extends: Event
 ui:
-  icon: share-nodes
   colour: "#D96C4A"
   displayName: Integration Event
   displayProperties: []
+  nav:
+    navGroup: Event
