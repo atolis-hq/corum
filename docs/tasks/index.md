@@ -12,16 +12,18 @@
 | 6 | BDD Pack | [bdd.md](bdd.md) | Feature/scenario/Given-When-Then nodes linked to graph nodes |
 | 7 | Edit Mode | [editmode.md](editmode.md) | UI for creating, editing, and deleting nodes |
 | 8 | Search | [search.md](search.md) | Text search across nodes in MCP, API, and UI |
-| 9 | Graph Visualiser | [graphvisualiser.md](graphvisualiser.md) | Visual navigation: lineage, component map, relationship views |
-| 10 | Unmapped Fields & Unlinked Nodes | [unmappedfields.md](unmappedfields.md) | Report fields with no maps-to edges and nodes with no relationships; highlights lineage gaps |
-| 11 | Node Review Workflow | [nodereviewworkflow.md](nodereviewworkflow.md) | Review queue for agent-proposed nodes; state transitions; bulk approve/reject |
-| 12 | Agent Skills | [agentskills.md](agentskills.md) | Installable skill making MCP usage highly effective; process guidance |
-| 13 | GitHub Actions Template | [githubactionstemplate.md](githubactionstemplate.md) | CI step to lint graph and template YAML on PR |
-| 14 | Importers | [importers.md](importers.md) | Import from OpenAPI, AsyncAPI, JSON Schema to bootstrap graph |
-| 15 | Dashboard | [dashboard.md](dashboard.md) | Branch diff vs main; pending nodes; open discussions |
-| 16 | Semantic Matching | [semanticmatching.md](semanticmatching.md) | Identify semantically similar fields across branches and services |
-| 17 | Delivery View | [deliveryview.md](deliveryview.md) | Annotate nodes with epics/stories/milestones; Jira sync |
-| 18 | Collaboration | [collaboration.md](collaboration.md) | Hosted comment threads on nodes; notifications; paid tier |
+| 9 | Components Page | [componentspage.md](componentspage.md) | List components grouped by type; table or card layout |
+| 10 | Graph Visualiser | [graphvisualiser.md](graphvisualiser.md) | Visual navigation: lineage, component map, relationship views |
+| 11 | Unmapped Fields & Unlinked Nodes | [unmappedfields.md](unmappedfields.md) | Report fields with no maps-to edges and nodes with no relationships; highlights lineage gaps |
+| 12 | Node Review Workflow | [nodereviewworkflow.md](nodereviewworkflow.md) | Review queue for agent-proposed nodes; state transitions; bulk approve/reject |
+| 13 | Agent Skills | [agentskills.md](agentskills.md) | Installable skill making MCP usage highly effective; process guidance |
+| 14 | GitHub Actions Template | [githubactionstemplate.md](githubactionstemplate.md) | CI step to lint graph and template YAML on PR |
+| 15 | Importers | [importers.md](importers.md) | Import from OpenAPI, AsyncAPI, JSON Schema to bootstrap graph |
+| 16 | Dashboard | [dashboard.md](dashboard.md) | Branch diff vs main; pending nodes; open discussions |
+| 17 | Custom UI | [customui.md](customui.md) | Pack-provided UI overrides for cards and pages; configured per node template |
+| 18 | Semantic Matching | [semanticmatching.md](semanticmatching.md) | Identify semantically similar fields across branches and services |
+| 19 | Delivery View | [deliveryview.md](deliveryview.md) | Annotate nodes with epics/stories/milestones; Jira sync |
+| 20 | Collaboration | [collaboration.md](collaboration.md) | Hosted comment threads on nodes; notifications; paid tier |
 
 ---
 

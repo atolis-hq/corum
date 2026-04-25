@@ -45,8 +45,8 @@ function TopBar() {
 
 function NavRail({ activeSection, onSection }) {
   const items = [
-    { id: 'dashboard', icon: 'table-cells', label: 'Dashboard' },
-    { id: 'components', icon: 'cube', label: 'Models' },
+    { id: 'dashboard', icon: 'grip', label: 'Dashboard' },
+    { id: 'components', icon: 'circle-nodes', label: 'Models' },
   ];
 
   return (
