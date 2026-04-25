@@ -1,0 +1,1 @@
+provide an installable agent skill which makes usage of corum mcp higly effective. cover the basics of using mcp and also some guidance on processes.

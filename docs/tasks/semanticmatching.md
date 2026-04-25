@@ -1,0 +1,1 @@
+find simliar named fields based on semantics, maybe across branches. Identify if properties are being propsed in many places with similar meaning.
