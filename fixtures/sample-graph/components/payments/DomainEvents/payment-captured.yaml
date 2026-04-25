@@ -1,0 +1,28 @@
+id: payments.DomainEvent.payment-captured
+template: DomainEvent
+component: payments
+state: agreed
+stability: stable
+schemaVersion: "1"
+lastModifiedAt: "2026-04-23"
+
+schemas:
+  payment-captured-payload:
+    description: Payload carried by the payment-captured domain event
+    fields:
+      paymentId:
+        type: uuid
+        nullable: false
+        cardinality: one
+      orderId:
+        type: uuid
+        nullable: false
+        cardinality: one
+      amount:
+        type: decimal
+        nullable: false
+        cardinality: one
+      capturedAt:
+        type: datetime
+        nullable: false
+        cardinality: one

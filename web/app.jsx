@@ -68,15 +68,22 @@ function NavRail({ activeSection, onSection }) {
 }
 
 function NavTree({ navTree, templates, activeNodeId, onNode }) {
-  const [openComponents, setOpenComponents] = useState(() => {
-    const initial = {};
-    for (const component of navTree.keys()) initial[component] = true;
-    return initial;
-  });
+  const sortedComponents = [...navTree.keys()].sort((a, b) => a.localeCompare(b));
+  const [openComponent, setOpenComponent] = useState();
   const templateMap = new Map(templates.map(template => [template.name, template]));
 
+  useEffect(() => {
+    if (openComponent === undefined) {
+      setOpenComponent(sortedComponents[0] ?? null);
+      return;
+    }
+    if (openComponent !== null && !navTree.has(openComponent)) {
+      setOpenComponent(sortedComponents[0] ?? null);
+    }
+  }, [navTree, openComponent, sortedComponents]);
+
   function toggleComponent(component) {
-    setOpenComponents(prev => ({ ...prev, [component]: !prev[component] }));
+    setOpenComponent(prev => prev === component ? null : component);
   }
 
   if (navTree.size === 0) {
@@ -85,65 +92,111 @@ function NavTree({ navTree, templates, activeNodeId, onNode }) {
 
   return (
     <div className="nav-tree">
-      {[...navTree.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([component, templateGroups]) => (
-        <div key={component}>
-          <div className="nav-section-head" onClick={() => toggleComponent(component)}>
-            <span>{component}</span>
-            <Icon name={openComponents[component] ? 'chevron-down' : 'chevron-right'} size={12} />
-          </div>
-          {openComponents[component] && [...templateGroups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([templateName, nodes]) => {
-            const template = templateMap.get(templateName);
-            const colour = template?.ui?.colour ?? 'var(--ink-4)';
-            return (
-              <div key={templateName}>
-                <div className="nav-template-head">
-                  <i
-                    className={`fa-solid fa-${template?.ui?.icon ?? 'circle'}`}
-                    style={{ color: colour, fontSize: 12, width: 14, textAlign: 'center', flexShrink: 0 }}
-                  />
-                  <span>{templateDisplayName(template)}</span>
-                </div>
-                {nodes.map(node => {
-                  const isActive = node.id === activeNodeId;
-                  return (
-                    <div key={node.id}>
-                      <div
-                        className={`nav-node-item${isActive ? ' active' : ''}`}
-                        onClick={() => onNode(node.id)}
-                        title={node.id}
-                        style={isActive ? { '--nav-node-active-bg': colour } : undefined}
-                      >
-                        {displayName(node.id)}
-                      </div>
-                      {(node.navChildren ?? []).map(group => (
-                        <div className="nav-child-group" key={group.label}>
-                          <div className="nav-child-head">{group.label}</div>
-                          {group.nodes.map(child => {
-                            const childTemplate = templateMap.get(child.template);
-                            const childColour = childTemplate?.ui?.colour ?? colour;
-                            const childIsActive = child.id === activeNodeId;
-                            return (
-                              <div
-                                key={child.id}
-                                className={`nav-node-item nav-node-child${childIsActive ? ' active' : ''}`}
-                                onClick={() => onNode(child.id)}
-                                title={child.id}
-                                style={childIsActive ? { '--nav-node-active-bg': childColour } : undefined}
-                              >
-                                {displayName(child.id)}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ))}
+      {sortedComponents.map(component => {
+        const entries = navTree.get(component);
+        return (
+          <div key={component}>
+            <div className="nav-section-head" onClick={() => toggleComponent(component)}>
+              <span>{component}</span>
+              <Icon name={openComponent === component ? 'chevron-down' : 'chevron-right'} size={12} />
+            </div>
+            {openComponent === component && entries.map(entry => {
+              if (entry.kind === 'group') {
+                return (
+                  <div key={entry.groupTemplateName}>
+                    <div className="nav-template-head">
+                      {entry.icon && (
+                        <i
+                          className={`fa-solid fa-${entry.icon}`}
+                          style={{ color: entry.colour, fontSize: 12, width: 14, textAlign: 'center', flexShrink: 0 }}
+                        />
+                      )}
+                      <span>{entry.label}</span>
                     </div>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </div>
-      ))}
+                    {entry.children.map(child => (
+                      <div key={child.templateName}>
+                        <div className="nav-subtype-head">
+                          {child.icon && (
+                            <i
+                              className={`fa-solid fa-${child.icon}`}
+                              style={{ color: child.colour, fontSize: 11, width: 14, textAlign: 'center', flexShrink: 0 }}
+                            />
+                          )}
+                          <span>{child.label}</span>
+                        </div>
+                        {child.nodes.map(node => {
+                          const isActive = node.id === activeNodeId;
+                          return (
+                            <div
+                              key={node.id}
+                              className={`nav-node-item${isActive ? ' active' : ''}`}
+                              onClick={() => onNode(node.id)}
+                              title={node.id}
+                              style={isActive ? { '--nav-node-active-bg': child.colour } : undefined}
+                            >
+                              {displayName(node.id)}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                );
+              }
+
+              const template = templateMap.get(entry.templateName);
+              const colour = template?.ui?.colour ?? 'var(--ink-4)';
+              return (
+                <div key={entry.templateName}>
+                  <div className="nav-template-head">
+                    <i
+                      className={`fa-solid fa-${template?.ui?.icon ?? 'circle'}`}
+                      style={{ color: colour, fontSize: 12, width: 14, textAlign: 'center', flexShrink: 0 }}
+                    />
+                    <span>{templateDisplayName(template)}</span>
+                  </div>
+                  {entry.nodes.map(node => {
+                    const isActive = node.id === activeNodeId;
+                    return (
+                      <div key={node.id}>
+                        <div
+                          className={`nav-node-item${isActive ? ' active' : ''}`}
+                          onClick={() => onNode(node.id)}
+                          title={node.id}
+                          style={isActive ? { '--nav-node-active-bg': colour } : undefined}
+                        >
+                          {displayName(node.id)}
+                        </div>
+                        {(node.navChildren ?? []).map(group => (
+                          <div className="nav-child-group" key={group.label}>
+                            <div className="nav-child-head">{group.label}</div>
+                            {group.nodes.map(child => {
+                              const childTemplate = templateMap.get(child.template);
+                              const childColour = childTemplate?.ui?.colour ?? colour;
+                              const childIsActive = child.id === activeNodeId;
+                              return (
+                                <div
+                                  key={child.id}
+                                  className={`nav-node-item nav-node-child${childIsActive ? ' active' : ''}`}
+                                  onClick={() => onNode(child.id)}
+                                  title={child.id}
+                                  style={childIsActive ? { '--nav-node-active-bg': childColour } : undefined}
+                                >
+                                  {displayName(child.id)}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -255,6 +308,19 @@ function NodePage({ nodeId, templates, onNavigate }) {
   );
 }
 
+function resolveTemplates(templates) {
+  const map = new Map(templates.map(t => [t.name, t]));
+  for (const t of templates) {
+    const groupName = t.ui?.nav?.navGroup;
+    if (!groupName || t.ui?.colour) continue;
+    const groupColour = map.get(groupName)?.ui?.colour;
+    if (groupColour) {
+      t.ui = { ...t.ui, colour: groupColour };
+    }
+  }
+  return templates;
+}
+
 function App() {
   const [templates, setTemplates] = useState([]);
   const [nodes, setNodes] = useState([]);
@@ -268,7 +334,7 @@ function App() {
       fetch('/api/nodes').then(response => response.json()),
     ])
       .then(([templateData, nodeData]) => {
-        setTemplates(templateData);
+        setTemplates(resolveTemplates(templateData));
         setNodes(nodeData);
         setLoading(false);
       })

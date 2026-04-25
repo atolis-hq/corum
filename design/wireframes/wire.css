@@ -154,7 +154,7 @@ body {
 .navhead {
   display: flex; align-items: center; justify-content: space-between;
   padding: 4px 6px; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
-  color: var(--ink-3); font-weight: 700;
+  color: var(--ink-4); font-weight: 700;
 }
 .navitem {
   display: flex; align-items: center; gap: 8px;

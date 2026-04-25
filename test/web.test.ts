@@ -449,6 +449,14 @@ describe('web server', () => {
       assert.match(app, /anchorIdForNode=\{anchorIdForNode\}/)
     })
 
+    it('app: component nav behaves as a single-open accordion', () => {
+      assert.match(app, /const sortedComponents = \[\.\.\.navTree\.keys\(\)\]\.sort\(\(a, b\) => a\.localeCompare\(b\)\);/)
+      assert.match(app, /const \[openComponent, setOpenComponent\] = useState\(\);/)
+      assert.match(app, /if \(openComponent === undefined\) \{\s*setOpenComponent\(sortedComponents\[0\] \?\? null\);/)
+      assert.match(app, /setOpenComponent\(prev => prev === component \? null : component\);/)
+      assert.doesNotMatch(app, /for \(const component of navTree\.keys\(\)\) initial\[component\] = true;/)
+    })
+
     it('style: nested property row depth indentation via CSS variable', () => {
       assert.match(styles, /\.prop-row\.nested\s*\{[\s\S]*\}/)
       assert.match(styles, /\.prop-key-label\s*\{[\s\S]*padding-left:\s*calc\(var\(--prop-depth,\s*0\)\s*\*\s*24px\);/)

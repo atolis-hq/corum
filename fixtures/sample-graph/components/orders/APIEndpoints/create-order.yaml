@@ -12,12 +12,8 @@ properties:
   request: '#/schemas/create-order-request'
   responses:
     "201": '#/schemas/create-order-response'
-    "400": '#/schemas/problem-detail'
-    "409": '#/schemas/problem-detail'
-
-# --- Inline schemas ------------------------------------------------------
-# Each entry becomes a Schema node: orders.APIEndpoint.create-order.schemas.{key}
-# Each field within becomes a Field node: ...schemas.{key}.fields.{field-name}
+    "400": shared.Schema.problem-detail
+    "409": shared.Schema.problem-detail
 
 schemas:
   create-order-request:
@@ -76,30 +72,6 @@ schemas:
         type: decimal
         nullable: false
         cardinality: one
-
-  problem-detail:
-    description: RFC 7807 error response body
-    fields:
-      type:
-        type: string
-        nullable: false
-        cardinality: one
-      title:
-        type: string
-        nullable: false
-        cardinality: one
-      status:
-        type: integer
-        nullable: false
-        cardinality: one
-      detail:
-        type: string
-        nullable: true
-        cardinality: one
-
-# --- Inline enums --------------------------------------------------------
-# Each entry becomes: orders.APIEndpoint.create-order.enums.{key}
-# Each value becomes: ...enums.{key}.values.{value-key}
 
 enums:
   order-status:

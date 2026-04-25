@@ -52,6 +52,7 @@ export interface Template {
         section: string
         label?: string
       }>
+      navGroup?: string
     }
   }
   [section: string]: unknown

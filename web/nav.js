@@ -26,23 +26,80 @@ function buildNavTree(nodes, templates) {
     nestedNodeIds.add(node.id);
   }
 
-  const tree = new Map();
+  const plainByComponent = new Map();
+  const groupsByComponent = new Map();
+
   for (const node of nodes) {
     if (nestedNodeIds.has(node.id)) continue;
-    if (!tree.has(node.component)) tree.set(node.component, new Map());
-    const component = tree.get(node.component);
-    if (!component.has(node.template)) component.set(node.template, []);
+    const template = templateMap.get(node.template);
+    const navGroup = template?.ui?.nav?.navGroup;
     const navChildren = [...(nestedByParent.get(node.id)?.values() ?? [])].map(group => ({
       label: group.label,
       nodes: group.nodes.sort((a, b) => a.id.localeCompare(b.id)),
     }));
-    component.get(node.template).push({ ...node, navChildren });
-  }
-  for (const groups of tree.values()) {
-    for (const groupNodes of groups.values()) {
-      groupNodes.sort((a, b) => a.id.localeCompare(b.id));
+    const nodeWithChildren = { ...node, navChildren };
+
+    if (navGroup) {
+      if (!groupsByComponent.has(node.component)) groupsByComponent.set(node.component, new Map());
+      const componentGroups = groupsByComponent.get(node.component);
+      if (!componentGroups.has(navGroup)) componentGroups.set(navGroup, new Map());
+      const subtypeMap = componentGroups.get(navGroup);
+      if (!subtypeMap.has(node.template)) subtypeMap.set(node.template, []);
+      subtypeMap.get(node.template).push(nodeWithChildren);
+    } else {
+      if (!plainByComponent.has(node.component)) plainByComponent.set(node.component, new Map());
+      const componentMap = plainByComponent.get(node.component);
+      if (!componentMap.has(node.template)) componentMap.set(node.template, []);
+      componentMap.get(node.template).push(nodeWithChildren);
     }
   }
+
+  const allComponents = new Set([...plainByComponent.keys(), ...groupsByComponent.keys()]);
+  const tree = new Map();
+
+  for (const component of allComponents) {
+    const allEntries = [];
+
+    const plainMap = plainByComponent.get(component);
+    if (plainMap) {
+      for (const [templateName, nodeList] of plainMap) {
+        nodeList.sort((a, b) => a.id.localeCompare(b.id));
+        allEntries.push({ _sortKey: templateName, kind: 'template', templateName, nodes: nodeList });
+      }
+    }
+
+    const groupMap = groupsByComponent.get(component);
+    if (groupMap) {
+      for (const [groupTemplateName, subtypeMap] of groupMap) {
+        const groupTemplate = templateMap.get(groupTemplateName);
+        const children = [];
+        for (const [templateName, nodeList] of [...subtypeMap.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+          nodeList.sort((a, b) => a.id.localeCompare(b.id));
+          const childTemplate = templateMap.get(templateName);
+          children.push({
+            templateName,
+            label: childTemplate?.ui?.displayName ?? templateName,
+            icon: childTemplate?.ui?.icon,
+            colour: childTemplate?.ui?.colour ?? groupTemplate?.ui?.colour ?? 'var(--ink-4)',
+            nodes: nodeList,
+          });
+        }
+        allEntries.push({
+          _sortKey: groupTemplateName,
+          kind: 'group',
+          groupTemplateName,
+          label: groupTemplate?.ui?.displayName ?? groupTemplateName,
+          icon: groupTemplate?.ui?.icon,
+          colour: groupTemplate?.ui?.colour ?? 'var(--ink-4)',
+          children,
+        });
+      }
+    }
+
+    allEntries.sort((a, b) => a._sortKey.localeCompare(b._sortKey));
+    tree.set(component, allEntries.map(({ _sortKey, ...entry }) => entry));
+  }
+
   return tree;
 }
 

@@ -11,7 +11,8 @@ info:
 
 extends: Event
 ui:
-  icon: bolt
   colour: "#E8A838"
   displayName: Domain Event
   displayProperties: []
+  nav:
+    navGroup: Event

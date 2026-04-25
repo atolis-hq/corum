@@ -24,7 +24,7 @@ describe('MCP handlers', () => {
       const handlers = createMcpHandlers(graph)
       const result = handlers.list_nodes({ format: 'json' })
       const nodes = JSON.parse(result.content[0].text)
-      assert.equal(nodes.length, 45)
+      assert.equal(nodes.length, 147)
       assert.ok('id' in nodes[0])
       assert.ok('template' in nodes[0])
       assert.ok('state' in nodes[0])
@@ -35,47 +35,49 @@ describe('MCP handlers', () => {
       const handlers = createMcpHandlers(graph)
       const result = handlers.list_nodes({ template: 'APIEndpoint', format: 'json' })
       const nodes = JSON.parse(result.content[0].text)
-      assert.equal(nodes.length, 1)
-      assert.equal(nodes[0].id, 'orders.APIEndpoint.create-order')
+      assert.equal(nodes.length, 5)
+      assert.ok(nodes.some((n: Record<string, unknown>) => n.id === 'orders.APIEndpoint.create-order'))
     })
 
     it('filters by component', () => {
       const handlers = createMcpHandlers(graph)
       const result = handlers.list_nodes({ component: 'orders', format: 'json' })
       const nodes = JSON.parse(result.content[0].text)
-      assert.equal(nodes.length, 45)
+      assert.equal(nodes.length, 109)
     })
 
     it('returns YAML by default', () => {
       const handlers = createMcpHandlers(graph)
       const result = handlers.list_nodes({ template: 'APIEndpoint' })
       const nodes = parseYaml(result.content[0].text) as Array<Record<string, unknown>>
-      assert.equal(nodes.length, 1)
-      assert.equal(nodes[0].id, 'orders.APIEndpoint.create-order')
+      assert.equal(nodes.length, 5)
+      assert.ok(nodes.some(n => n.id === 'orders.APIEndpoint.create-order'))
     })
 
     it('returns TOON output using the toon format', () => {
       const handlers = createMcpHandlers(graph)
       const result = handlers.list_nodes({ template: 'APIEndpoint', format: 'toon' })
-      assert.match(result.content[0].text, /^\[1\]\{id,template,component,state,stability\}:/)
+      assert.match(result.content[0].text, /^\[\d+\]\{id,template,component,state,stability\}:/)
     })
 
     it('TOON output round trips through the official library', () => {
       const handlers = createMcpHandlers(graph)
       const result = handlers.list_nodes({ template: 'APIEndpoint', format: 'toon' })
       const nodes = decodeToon(result.content[0].text) as Array<Record<string, unknown>>
-      assert.equal(nodes.length, 1)
-      assert.equal(nodes[0].id, 'orders.APIEndpoint.create-order')
+      assert.equal(nodes.length, 5)
       assert.equal(nodes[0].template, 'APIEndpoint')
+      assert.ok(nodes.some(n => n.id === 'orders.APIEndpoint.create-order'))
     })
 
     it('applies compact keys to JSON output when requested', () => {
       const handlers = createMcpHandlers(graph)
       const result = handlers.list_nodes({ template: 'APIEndpoint', format: 'json', compact_keys: true })
       const nodes = JSON.parse(result.content[0].text)
-      assert.equal(nodes[0].i, 'orders.APIEndpoint.create-order')
+      assert.equal(nodes.length, 5)
       assert.equal(nodes[0].t, 'APIEndpoint')
-      assert.equal(nodes[0].cp, 'orders')
+      assert.ok(nodes.some((n: Record<string, unknown>) => n.i === 'orders.APIEndpoint.create-order'))
+      assert.equal(nodes[0].t, 'APIEndpoint')
+      assert.ok(nodes.some((n: Record<string, unknown>) => n.cp === 'orders'))
       assert.equal(nodes[0].st, 'stable')
       assert.ok(!('id' in nodes[0]))
       assert.ok(!('component' in nodes[0]))
@@ -86,9 +88,10 @@ describe('MCP handlers', () => {
       const handlers = createMcpHandlers(graph)
       const result = handlers.list_nodes({ template: 'APIEndpoint', compactKeys: true })
       const nodes = parseYaml(result.content[0].text) as Array<Record<string, unknown>>
-      assert.equal(nodes[0].i, 'orders.APIEndpoint.create-order')
+      assert.equal(nodes.length, 5)
+      assert.ok(nodes.some(n => n.i === 'orders.APIEndpoint.create-order'))
       assert.equal(nodes[0].t, 'APIEndpoint')
-      assert.equal(nodes[0].cp, 'orders')
+      assert.ok(nodes.some(n => n.cp === 'orders'))
       assert.ok(!('id' in nodes[0]))
     })
 
@@ -96,11 +99,12 @@ describe('MCP handlers', () => {
       const handlers = createMcpHandlers(graph)
       const result = handlers.list_nodes({ template: 'APIEndpoint', format: 'toon', compact_keys: true })
       const nodes = decodeToon(result.content[0].text) as Array<Record<string, unknown>>
-      assert.equal(nodes[0].i, 'orders.APIEndpoint.create-order')
+      assert.equal(nodes.length, 5)
+      assert.ok(nodes.some(n => n.i === 'orders.APIEndpoint.create-order'))
       assert.equal(nodes[0].t, 'APIEndpoint')
-      assert.equal(nodes[0].cp, 'orders')
+      assert.ok(nodes.some(n => n.cp === 'orders'))
       assert.ok(!('id' in nodes[0]))
-      assert.match(result.content[0].text, /^\[1\]\{i,t,cp,s,st\}:/)
+      assert.match(result.content[0].text, /^\[\d+\]\{i,t,cp,s,st\}:/)
     })
 
     it('returns error for invalid format', () => {
@@ -194,7 +198,7 @@ describe('MCP handlers', () => {
       const result = handlers.get_cluster({ node_id: 'orders.DomainModel.order', format: 'json' })
       const cluster = JSON.parse(result.content[0].text)
       assert.equal(cluster.root.id, 'orders.DomainModel.order')
-      assert.equal(cluster.children.length, 20)
+      assert.equal(cluster.children.length, 22)
       assert.ok(Array.isArray(cluster.edges))
     })
 
@@ -207,11 +211,11 @@ describe('MCP handlers', () => {
   })
 
   describe('get_linked_fields', () => {
-    it('returns 7 maps-to edges for DomainModel', () => {
+    it('returns 23 maps-to edges for DomainModel', () => {
       const handlers = createMcpHandlers(graph)
       const result = handlers.get_linked_fields({ node_id: 'orders.DomainModel.order', format: 'json' })
       const linked = JSON.parse(result.content[0].text)
-      assert.equal(linked.edges.length, 7)
+      assert.equal(linked.edges.length, 23)
       assert.ok(Array.isArray(linked.nodes))
     })
 

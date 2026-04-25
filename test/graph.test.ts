@@ -19,20 +19,21 @@ describe('graph queries', () => {
   })
 
   describe('listNodes', () => {
-    it('returns all 45 nodes when no filter', () => {
+    it('returns all 147 nodes when no filter', () => {
       const nodes = listNodes(graph)
-      assert.equal(nodes.length, 45)
+      assert.equal(nodes.length, 147)
     })
 
     it('filters by template', () => {
       const domainModels = listNodes(graph, { template: 'DomainModel' })
-      assert.equal(domainModels.length, 1)
-      assert.equal(domainModels[0].id, 'orders.DomainModel.order')
+      assert.equal(domainModels.length, 2)
+      assert.ok(domainModels.some(n => n.id === 'orders.DomainModel.order'))
+      assert.ok(domainModels.some(n => n.id === 'payments.DomainModel.payment'))
     })
 
     it('filters by component', () => {
       const ordersNodes = listNodes(graph, { component: 'orders' })
-      assert.equal(ordersNodes.length, 45)
+      assert.equal(ordersNodes.length, 109)
     })
 
     it('filters by state', () => {
@@ -43,22 +44,22 @@ describe('graph queries', () => {
 
     it('filters by multiple criteria', () => {
       const apiEndpoints = listNodes(graph, { template: 'APIEndpoint', component: 'orders' })
-      assert.equal(apiEndpoints.length, 1)
-      assert.equal(apiEndpoints[0].id, 'orders.APIEndpoint.create-order')
+      assert.equal(apiEndpoints.length, 4)
+      assert.ok(apiEndpoints.some(n => n.id === 'orders.APIEndpoint.create-order'))
     })
   })
 
   describe('getCluster', () => {
-    it('returns root + 20 children for DomainModel cluster', () => {
+    it('returns root + 22 children for DomainModel cluster', () => {
       const cluster = getCluster(graph, 'orders.DomainModel.order')
       assert.equal(cluster.root.id, 'orders.DomainModel.order')
-      assert.equal(cluster.children.length, 20)
+      assert.equal(cluster.children.length, 22)
     })
 
-    it('returns root + 23 children for APIEndpoint cluster', () => {
+    it('returns root + 18 children for APIEndpoint cluster', () => {
       const cluster = getCluster(graph, 'orders.APIEndpoint.create-order')
       assert.equal(cluster.root.id, 'orders.APIEndpoint.create-order')
-      assert.equal(cluster.children.length, 23)
+      assert.equal(cluster.children.length, 18)
     })
 
     it('includes structural edges within the cluster', () => {
@@ -66,7 +67,7 @@ describe('graph queries', () => {
       const hasField = cluster.edges.filter(e => e.type === 'has-field')
       const hasValue = cluster.edges.filter(e => e.type === 'has-value')
       assert.equal(hasField.length, 9)
-      assert.equal(hasValue.length, 3)
+      assert.equal(hasValue.length, 4)
     })
 
     it('throws QueryError for unknown nodeId', () => {
@@ -78,9 +79,9 @@ describe('graph queries', () => {
   })
 
   describe('getLinkedFields', () => {
-    it('returns 7 maps-to edges for DomainModel order', () => {
+    it('returns 23 maps-to edges for DomainModel order', () => {
       const result = getLinkedFields(graph, 'orders.DomainModel.order')
-      assert.equal(result.edges.length, 7)
+      assert.equal(result.edges.length, 23)
       assert.ok(result.edges.every(e => e.type === 'maps-to'))
     })
 

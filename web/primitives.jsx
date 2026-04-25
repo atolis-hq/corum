@@ -186,14 +186,23 @@ function clusterNodeId(nodeId) {
   return nodeId.replace(/\.(fields|values)\.[^.]+$/, '');
 }
 
+function refName(ref) {
+  if (typeof ref === 'string') return ref.replace(/^#\/(schemas|enums)\//, '');
+  if (ref && typeof ref === 'object' && 'display' in ref) return ref.display;
+  return String(ref);
+}
+
+function refLocalSchemaName(ref) {
+  if (typeof ref === 'string') return ref.startsWith('#/schemas/') ? ref.slice(10) : null;
+  if (ref && typeof ref === 'object' && 'display' in ref) return ref.display;
+  return null;
+}
+
 function fieldType(properties) {
   const cardinality = properties?.cardinality === 'many' ? '[]' : '';
   if (properties?.type) return `${properties.type}${cardinality}`;
   const ref = properties?.['$ref'];
-  if (ref) {
-    const name = typeof ref === 'string' ? ref.replace(/^#\/(schemas|enums)\//, '') : ref;
-    return `${name}${cardinality}`;
-  }
+  if (ref) return `${refName(ref)}${cardinality}`;
   return cardinality ? `unknown${cardinality}` : 'unknown';
 }
 
@@ -210,7 +219,7 @@ function fieldCardinality(properties) {
 function fieldDetails(properties) {
   const parts = [];
   const ref = properties?.['$ref'];
-  if (ref) parts.push(`ref ${typeof ref === 'string' ? ref.replace(/^#\/(schemas|enums)\//, '') : ref}`);
+  if (ref) parts.push(`ref ${refName(ref)}`);
   if (properties?.description) parts.push(properties.description);
   return parts.length > 0 ? parts.join(' · ') : '-';
 }
@@ -265,7 +274,7 @@ function buildSchemaModel(schemaNodes, allNodes) {
     fieldsBySchema.get(schemaName).push(node);
 
     const ref = node.properties?.['$ref'];
-    const localName = typeof ref === 'string' ? ref.replace(/^#\/schemas\//, '') : null;
+    const localName = refLocalSchemaName(ref);
     if (localName && schemasByName.has(localName)) {
       referencedSchemas.add(localName);
     }
@@ -300,7 +309,7 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
       {fields.map(field => {
         const name = fieldLocalName(field.id);
         const ref = field.properties?.['$ref'];
-        const localRef = typeof ref === 'string' ? ref.replace(/^#\/schemas\//, '') : null;
+        const localRef = refLocalSchemaName(ref);
         const canExpand = localRef !== null && model.schemasByName.has(localRef) && !visited.has(localRef);
         const childPrefix = `${prefix}${name}${field.properties?.cardinality === 'many' ? '[].' : '.'}`;
         const nextVisited = new Set(visited);

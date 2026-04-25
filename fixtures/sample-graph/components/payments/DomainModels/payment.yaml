@@ -1,0 +1,60 @@
+id: payments.DomainModel.payment
+template: DomainModel
+component: payments
+state: agreed
+stability: stable
+schemaVersion: "1"
+lastModifiedAt: "2026-04-23"
+
+properties:
+  description: A payment record capturing the financial transaction for an order
+  schema: '#/schemas/payment'
+
+schemas:
+  payment:
+    description: Structure of the payment aggregate
+    fields:
+      id:
+        type: uuid
+        nullable: false
+        cardinality: one
+      orderId:
+        type: uuid
+        nullable: false
+        cardinality: one
+      amount:
+        type: decimal
+        nullable: false
+        cardinality: one
+      status:
+        $ref: '#/enums/payment-status'
+        nullable: false
+        cardinality: one
+      capturedAt:
+        type: datetime
+        nullable: true
+        cardinality: one
+
+enums:
+  payment-status:
+    description: Lifecycle state of a payment
+    values:
+      pending:
+        name: PENDING
+        description: Payment initiated but not yet captured
+      captured:
+        name: CAPTURED
+        description: Payment successfully captured
+      failed:
+        name: FAILED
+        description: Payment capture failed
+
+invariants:
+  must-be-pending-to-capture:
+    description: A payment can only be captured when its status is PENDING
+
+operations:
+  initiate:
+    description: Create a new payment record for an order
+  capture:
+    description: Complete the payment capture; transitions status to CAPTURED

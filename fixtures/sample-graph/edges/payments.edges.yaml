@@ -1,0 +1,52 @@
+edges:
+  - from: payments.APIEndpoint.complete-payment
+    to: payments.DomainModel.payment.operations.capture
+    type: calls
+
+  - from: payments.DomainModel.payment.operations.capture
+    to: payments.DomainEvent.payment-captured
+    type: produces
+
+  - from: payments.DomainEvent.payment-captured
+    to: payments.IntegrationEvent.payment-captured
+    type: triggers
+
+  - from: payments.IntegrationEvent.payment-captured
+    to: orders.DomainModel.order.operations.complete
+    type: triggers
+
+  - from: payments.IntegrationEvent.payment-captured.schemas.payment-captured-payload.fields.paymentId
+    to: payments.DomainModel.payment.schemas.payment.fields.id
+    type: maps-to
+
+  - from: payments.IntegrationEvent.payment-captured.schemas.payment-captured-payload.fields.orderId
+    to: payments.DomainModel.payment.schemas.payment.fields.orderId
+    type: maps-to
+
+  - from: payments.IntegrationEvent.payment-captured.schemas.payment-captured-payload.fields.amount
+    to: payments.DomainModel.payment.schemas.payment.fields.amount
+    type: maps-to
+
+  - from: payments.IntegrationEvent.payment-captured.schemas.payment-captured-payload.fields.capturedAt
+    to: payments.DomainModel.payment.schemas.payment.fields.capturedAt
+    type: maps-to
+
+  - from: payments.APIEndpoint.complete-payment.schemas.payment-response.fields.id
+    to: payments.DomainModel.payment.schemas.payment.fields.id
+    type: maps-to
+
+  - from: payments.APIEndpoint.complete-payment.schemas.payment-response.fields.orderId
+    to: payments.DomainModel.payment.schemas.payment.fields.orderId
+    type: maps-to
+
+  - from: payments.APIEndpoint.complete-payment.schemas.payment-response.fields.amount
+    to: payments.DomainModel.payment.schemas.payment.fields.amount
+    type: maps-to
+
+  - from: payments.APIEndpoint.complete-payment.schemas.payment-response.fields.status
+    to: payments.DomainModel.payment.schemas.payment.fields.status
+    type: maps-to
+
+  - from: payments.APIEndpoint.complete-payment.schemas.payment-response.fields.capturedAt
+    to: payments.DomainModel.payment.schemas.payment.fields.capturedAt
+    type: maps-to
