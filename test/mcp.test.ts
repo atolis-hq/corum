@@ -24,7 +24,7 @@ describe('MCP handlers', () => {
       const handlers = createMcpHandlers(graph)
       const result = handlers.list_nodes({ format: 'json' })
       const nodes = JSON.parse(result.content[0].text)
-      assert.equal(nodes.length, 147)
+      assert.equal(nodes.length, 151)
       assert.ok('id' in nodes[0])
       assert.ok('template' in nodes[0])
       assert.ok('state' in nodes[0])
@@ -43,7 +43,7 @@ describe('MCP handlers', () => {
       const handlers = createMcpHandlers(graph)
       const result = handlers.list_nodes({ component: 'orders', format: 'json' })
       const nodes = JSON.parse(result.content[0].text)
-      assert.equal(nodes.length, 109)
+      assert.equal(nodes.length, 113)
     })
 
     it('returns YAML by default', () => {

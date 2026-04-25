@@ -1,10 +1,12 @@
 id: payments.IntegrationEvent.payment-captured
 template: IntegrationEvent
-component: payments
-state: agreed
-stability: stable
 schemaVersion: "1"
-lastModifiedAt: "2026-04-23"
+
+metadata:
+  component: payments
+  state: agreed
+  stability: stable
+  lastModifiedAt: "2026-04-23"
 
 schemas:
   payment-captured-payload:

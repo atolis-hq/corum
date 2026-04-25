@@ -1,10 +1,12 @@
 id: orders.DomainModel.order
 template: DomainModel
-component: orders
-state: agreed
-stability: stable
 schemaVersion: "1"
-lastModifiedAt: "2026-04-23"
+
+metadata:
+  component: orders
+  state: agreed
+  stability: stable
+  lastModifiedAt: "2026-04-23"
 
 properties:
   description: A placed customer order; aggregate root for the orders bounded context

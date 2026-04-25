@@ -74,7 +74,7 @@ describe('pack loader', () => {
 })
 
 describe('cluster loader', () => {
-  it('materialises 147 nodes from sample-graph fixtures', async () => {
+  it('materialises 151 nodes from sample-graph fixtures', async () => {
     const diagnostics: Diagnostic[] = []
     const result = await loadSampleClusters(diagnostics)
 
@@ -83,7 +83,7 @@ describe('cluster loader', () => {
       0,
       `unexpected errors: ${JSON.stringify(diagnostics)}`,
     )
-    assert.equal(result.nodes.size, 147, `expected 147 nodes, got ${result.nodes.size}`)
+    assert.equal(result.nodes.size, 151, `expected 151 nodes, got ${result.nodes.size}`)
   })
 
   it('materialises structural has-field and has-value edges', async () => {
@@ -94,7 +94,7 @@ describe('cluster loader', () => {
     const hasFieldEdges = allEdges.filter(e => e.type === 'has-field')
     const hasValueEdges = allEdges.filter(e => e.type === 'has-value')
 
-    assert.equal(hasFieldEdges.length, 89, `expected 89 has-field edges, got ${hasFieldEdges.length}`)
+    assert.equal(hasFieldEdges.length, 92, `expected 92 has-field edges, got ${hasFieldEdges.length}`)
     assert.equal(hasValueEdges.length, 10, `expected 10 has-value edges, got ${hasValueEdges.length}`)
   })
 
@@ -303,12 +303,12 @@ describe('edge loader', () => {
 })
 
 describe('loadGraph', () => {
-  it('loads full sample-graph with 147 nodes and 164 edges', async () => {
+  it('loads full sample-graph with 151 nodes and 167 edges', async () => {
     const graph = await loadGraph({ graphPath: fixtureGraphDir })
 
-    assert.equal(graph.nodesById.size, 147, `expected 147 nodes, got ${graph.nodesById.size}`)
+    assert.equal(graph.nodesById.size, 151, `expected 151 nodes, got ${graph.nodesById.size}`)
     const allEdges = [...graph.edgesByFrom.values()].flat()
-    assert.equal(allEdges.length, 164, `expected 164 edges, got ${allEdges.length}`)
+    assert.equal(allEdges.length, 167, `expected 167 edges, got ${allEdges.length}`)
   })
 
   it('does not throw in strict mode for the valid fixture', async () => {

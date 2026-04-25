@@ -70,11 +70,13 @@ function toClusterDocument(graph: Graph, root: Node): Record<string, unknown> {
   const doc: Record<string, unknown> = {
     id: root.id,
     template: root.template,
-    component: root.component,
-    state: root.state,
-    stability: root.stability,
     schemaVersion: root.schemaVersion,
-    lastModifiedAt: root.lastModifiedAt,
+    metadata: {
+      component: root.component,
+      state: root.state,
+      stability: root.stability,
+      lastModifiedAt: root.lastModifiedAt,
+    },
   }
 
   if (Object.keys(root.properties).length > 0) {

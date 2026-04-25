@@ -1,10 +1,12 @@
 id: payments.DomainModel.payment
 template: DomainModel
-component: payments
-state: agreed
-stability: stable
 schemaVersion: "1"
-lastModifiedAt: "2026-04-23"
+
+metadata:
+  component: payments
+  state: agreed
+  stability: stable
+  lastModifiedAt: "2026-04-23"
 
 properties:
   description: A payment record capturing the financial transaction for an order

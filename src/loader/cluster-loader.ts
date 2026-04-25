@@ -15,11 +15,8 @@ type ClusterResult = {
 type RootRecord = Record<string, unknown> & {
   id?: unknown
   template?: unknown
-  component?: unknown
-  state?: unknown
-  stability?: unknown
   schemaVersion?: unknown
-  lastModifiedAt?: unknown
+  metadata?: unknown
   properties?: unknown
 }
 
@@ -42,12 +39,14 @@ export function loadClusters(
     }
 
     const record = raw as RootRecord
+    const meta = record.metadata
     if (
       typeof record.id !== 'string' ||
       typeof record.template !== 'string' ||
-      typeof record.component !== 'string' ||
       typeof record.schemaVersion !== 'string' ||
-      typeof record.lastModifiedAt !== 'string'
+      !isRecord(meta) ||
+      typeof meta.component !== 'string' ||
+      typeof meta.lastModifiedAt !== 'string'
     ) {
       diagnostics.push({ severity: 'error', file: filePath, message: 'cluster missing required root fields' })
       continue
@@ -56,11 +55,11 @@ export function loadClusters(
     const root: Node = {
       id: record.id,
       template: record.template,
-      component: record.component,
-      state: asState(record.state, 'proposed'),
-      stability: asStability(record.stability, 'unstable'),
+      component: meta.component,
+      state: asState(meta.state, 'proposed'),
+      stability: asStability(meta.stability, 'unstable'),
       schemaVersion: record.schemaVersion,
-      lastModifiedAt: record.lastModifiedAt,
+      lastModifiedAt: meta.lastModifiedAt,
       extractedFrom: filePath,
       properties: isRecord(record.properties) ? record.properties : {},
     }

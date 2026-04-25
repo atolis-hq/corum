@@ -57,11 +57,8 @@ type: object
 required:
   - id
   - template
-  - component
-  - state
-  - stability
   - schemaVersion
-  - lastModifiedAt
+  - metadata
 additionalProperties: true   # template properties block and owned sections are also present
 
 properties:
@@ -79,27 +76,34 @@ properties:
     pattern: "^[A-Z][a-zA-Z0-9]*$"
     description: Template name from the active template pack (e.g. APIEndpoint, DomainModel).
 
-  component:
-    type: string
-    pattern: "^[a-z][a-zA-Z0-9-]*$"
-    description: |
-      Bounded context this node belongs to. Must match the first segment of id
-      and the component directory name.
-
-  state:
-    $ref: "#/$defs/State"
-
-  stability:
-    $ref: "#/$defs/Stability"
-
   schemaVersion:
     type: string
     description: File format version this node was written against.
 
-  lastModifiedAt:
-    type: string
-    format: date
-    description: ISO 8601 date of last change (YYYY-MM-DD).
+  metadata:
+    type: object
+    additionalProperties: false
+    required:
+      - component
+      - state
+      - stability
+      - lastModifiedAt
+    description: Universal node metadata for root cluster files.
+    properties:
+      component:
+        type: string
+        pattern: "^[a-z][a-zA-Z0-9-]*$"
+        description: |
+          Bounded context this node belongs to. Must match the first segment of id
+          and the component directory name.
+      state:
+        $ref: "#/$defs/State"
+      stability:
+        $ref: "#/$defs/Stability"
+      lastModifiedAt:
+        type: string
+        format: date
+        description: ISO 8601 date of last change (YYYY-MM-DD).
 
   extractedFrom:
     type: string

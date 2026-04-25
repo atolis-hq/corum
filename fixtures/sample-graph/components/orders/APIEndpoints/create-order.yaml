@@ -1,10 +1,12 @@
 id: orders.APIEndpoint.create-order
 template: APIEndpoint
-component: orders
-state: agreed
-stability: stable
 schemaVersion: "1"
-lastModifiedAt: "2026-04-17"
+
+metadata:
+  component: orders
+  state: agreed
+  stability: stable
+  lastModifiedAt: "2026-04-17"
 
 properties:
   method: POST

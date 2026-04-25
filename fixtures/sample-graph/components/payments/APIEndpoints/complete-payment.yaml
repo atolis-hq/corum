@@ -1,10 +1,12 @@
 id: payments.APIEndpoint.complete-payment
 template: APIEndpoint
-component: payments
-state: agreed
-stability: stable
 schemaVersion: "1"
-lastModifiedAt: "2026-04-23"
+
+metadata:
+  component: payments
+  state: agreed
+  stability: stable
+  lastModifiedAt: "2026-04-23"
 
 properties:
   method: POST

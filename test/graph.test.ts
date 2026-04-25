@@ -19,9 +19,9 @@ describe('graph queries', () => {
   })
 
   describe('listNodes', () => {
-    it('returns all 147 nodes when no filter', () => {
+    it('returns all 151 nodes when no filter', () => {
       const nodes = listNodes(graph)
-      assert.equal(nodes.length, 147)
+      assert.equal(nodes.length, 151)
     })
 
     it('filters by template', () => {
@@ -33,7 +33,7 @@ describe('graph queries', () => {
 
     it('filters by component', () => {
       const ordersNodes = listNodes(graph, { component: 'orders' })
-      assert.equal(ordersNodes.length, 109)
+      assert.equal(ordersNodes.length, 113)
     })
 
     it('filters by state', () => {
