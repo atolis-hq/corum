@@ -158,9 +158,13 @@ export class GitGraphSource implements GraphSource {
       const packPrefix = absPackPath.endsWith('/') ? absPackPath : `${absPackPath}/`
 
       for (const filePath of allFiles.filter(file => file.startsWith(packPrefix) && file.endsWith('.yaml'))) {
-        const { blob } = await git.readBlob({ fs, dir, oid: commitSha, filepath: filePath })
-        const relKey = filePath.slice(packPrefix.length)
-        map.set(`${packName}/${relKey}`, Buffer.from(blob).toString('utf-8'))
+        try {
+          const { blob } = await git.readBlob({ fs, dir, oid: commitSha, filepath: filePath })
+          const relKey = filePath.slice(packPrefix.length)
+          map.set(`${packName}/${relKey}`, Buffer.from(blob).toString('utf-8'))
+        } catch {
+          // Skip blobs that cannot be read — corrupt object store or pack not yet fetched.
+        }
       }
     }
 
@@ -175,8 +179,12 @@ export class GitGraphSource implements GraphSource {
     const allFiles = await git.listFiles({ fs, dir, ref: commitSha })
 
     for (const filePath of allFiles.filter(file => file.startsWith(prefix) && file.endsWith('.yaml'))) {
-      const { blob } = await git.readBlob({ fs, dir, oid: commitSha, filepath: filePath })
-      map.set(filePath.slice(prefix.length), Buffer.from(blob).toString('utf-8'))
+      try {
+        const { blob } = await git.readBlob({ fs, dir, oid: commitSha, filepath: filePath })
+        map.set(filePath.slice(prefix.length), Buffer.from(blob).toString('utf-8'))
+      } catch {
+        // Skip blobs that cannot be read — corrupt object store or ref not yet fetched.
+      }
     }
 
     return map
@@ -295,6 +303,10 @@ async function buildUpdatedTree(
   rootTreeOid: string,
   blobMap: Map<string, string>,
 ): Promise<string> {
+  // TODO: rebuildTree iterates the full blobMap at every tree level — O(blobs × depth).
+  // For Stage 1 this is acceptable (graph repos are small). A future optimisation is to
+  // pre-bucket blobMap entries by their top-level path segment before recursing, reducing
+  // work to O(blobs) total. The current approach is correct but redundant at deeper levels.
   async function rebuildTree(treeOid: string, prefix: string): Promise<string> {
     const { tree } = await git.readTree({ fs: fsImpl, dir, oid: treeOid })
     const entries = [...tree]

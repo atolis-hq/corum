@@ -67,8 +67,23 @@ export class FileGraphSource implements GraphSource {
   async loadGraphContent(_ref: string): Promise<ContentMap> {
     const map: ContentMap = new Map()
     if (!existsSync(this.graphDir)) return map
-    walkYamlFilesIntoMap(this.graphDir, this.graphDir, map)
+    const excludeDirs = new Set(this.resolvePackDirs().map(d => path.resolve(d)))
+    walkYamlFilesIntoMap(this.graphDir, this.graphDir, map, excludeDirs)
     return map
+  }
+
+  private resolvePackDirs(): string[] {
+    const graphYamlPath = path.join(this.graphDir, 'graph.yaml')
+    if (!existsSync(graphYamlPath)) {
+      return [path.resolve(this.graphDir, this.packsPath ?? DEFAULT_PACKS_PATH)]
+    }
+    try {
+      const doc = parseYaml(readFileSync(graphYamlPath, 'utf-8')) as Record<string, unknown>
+      const packs = Array.isArray(doc.templatePacks) ? doc.templatePacks : []
+      return packs.filter(isPackRef).map(p => path.resolve(this.graphDir, p.path))
+    } catch {
+      return []
+    }
   }
 
   async commit(branch: string, changes: ContentMap, _message: string, options: CommitOptions = {}): Promise<void> {
@@ -86,6 +101,8 @@ export class FileGraphSource implements GraphSource {
       mkdirSync(path.dirname(filePath), { recursive: true })
       writeFileSync(filePath, content)
     }
+    // TODO: create a git commit for these changes via git.add() + git.commit().
+    // Currently _message is unused — file writes are persisted but not committed to git history.
   }
 }
 
@@ -122,11 +139,18 @@ function resolveContentPath(baseDir: string, key: string): string {
   return resolvedPath
 }
 
-function walkYamlFilesIntoMap(baseDir: string, currentDir: string, map: ContentMap): void {
+function walkYamlFilesIntoMap(
+  baseDir: string,
+  currentDir: string,
+  map: ContentMap,
+  excludeDirs: Set<string> = new Set(),
+): void {
   for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
     const fullPath = path.join(currentDir, entry.name)
     if (entry.isDirectory()) {
-      walkYamlFilesIntoMap(baseDir, fullPath, map)
+      if (!excludeDirs.has(path.resolve(fullPath))) {
+        walkYamlFilesIntoMap(baseDir, fullPath, map, excludeDirs)
+      }
     } else if (entry.isFile() && entry.name.endsWith('.yaml')) {
       const key = path.relative(baseDir, fullPath).split(path.sep).join('/')
       map.set(key, readFileSync(fullPath, 'utf-8'))
