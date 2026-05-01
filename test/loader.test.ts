@@ -11,26 +11,43 @@ import { loadGraph } from '../src/loader/index.js'
 import { VALID_EDGE_TYPE_SET } from '../src/loader/constants.js'
 import { LoadError } from '../src/schema/index.js'
 import type { Diagnostic, Node } from '../src/schema/index.js'
+import type { ContentMap } from '../src/source/index.js'
+import { FileGraphSource } from '../src/source/file-source.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..', '..')
 const fixtureGraphDir = path.join(repoRoot, 'fixtures/sample-graph')
-const samplePackDirs = [
-  path.join(repoRoot, '.corum/packs/core'),
-  path.join(repoRoot, '.corum/packs/rest'),
-  path.join(repoRoot, '.corum/packs/domain'),
-  path.join(repoRoot, '.corum/packs/messaging'),
-]
+
+async function buildPackContentMap(): Promise<ContentMap> {
+  const source = new FileGraphSource({ graphDir: fixtureGraphDir })
+  return source.loadPackContent(await source.defaultBranch())
+}
+
+async function buildGraphContentMap(): Promise<ContentMap> {
+  const source = new FileGraphSource({ graphDir: fixtureGraphDir })
+  return source.loadGraphContent(await source.defaultBranch())
+}
 
 async function loadSampleClusters(diagnostics: Diagnostic[] = []) {
-  const templates = await loadPacks(samplePackDirs, diagnostics)
-  return loadClusters(fixtureGraphDir, templates, diagnostics)
+  const templates = loadPacks(await buildPackContentMap(), diagnostics)
+  return loadClusters(await buildGraphContentMap(), templates, diagnostics)
 }
+
+describe('pack loader (ContentMap)', () => {
+  it('loads templates from ContentMap', async () => {
+    const diagnostics: Diagnostic[] = []
+    const templates = loadPacks(await buildPackContentMap(), diagnostics)
+    assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0)
+    assert.ok(templates.has('DomainModel'))
+    assert.ok(templates.has('APIEndpoint'))
+    assert.ok(templates.has('Field'))
+  })
+})
 
 describe('pack loader', () => {
   it('loads core, rest, domain, and messaging packs from fixture graph.yaml', async () => {
     const diagnostics: Diagnostic[] = []
-    const templates = await loadPacks(samplePackDirs, diagnostics)
+    const templates = loadPacks(await buildPackContentMap(), diagnostics)
 
     assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0)
     assert.ok(templates.has('DomainModel'), 'DomainModel template loaded')
@@ -45,10 +62,11 @@ describe('pack loader', () => {
 
   it('applies _base owned sections to all templates', async () => {
     const diagnostics: Diagnostic[] = []
-    const templates = await loadPacks(
-      [path.join(repoRoot, '.corum/packs/core'), path.join(repoRoot, '.corum/packs/domain')],
-      diagnostics,
-    )
+    const content = await buildPackContentMap()
+    for (const key of [...content.keys()]) {
+      if (!key.startsWith('core/') && !key.startsWith('domain/')) content.delete(key)
+    }
+    const templates = loadPacks(content, diagnostics)
     const domainModel = templates.get('DomainModel')!
 
     assert.ok('schemas' in domainModel, 'schemas section inherited from _base')
@@ -59,17 +77,28 @@ describe('pack loader', () => {
 
   it('loads optional ui.displayName from template yaml', async () => {
     const diagnostics: Diagnostic[] = []
-    const templates = await loadPacks(samplePackDirs, diagnostics)
+    const templates = loadPacks(await buildPackContentMap(), diagnostics)
     const domainModel = templates.get('DomainModel')!
 
     assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0)
     assert.equal(domainModel.ui?.displayName, 'Domain Model')
   })
 
-  it('reports warning for missing pack template directory without crashing', async () => {
+  it('handles empty pack content without crashing', () => {
     const diagnostics: Diagnostic[] = []
-    await loadPacks([path.join(repoRoot, 'nonexistent-pack')], diagnostics)
-    assert.ok(diagnostics.some(d => d.severity === 'warning'))
+    const templates = loadPacks(new Map(), diagnostics)
+    assert.equal(templates.size, 0)
+    assert.equal(diagnostics.length, 0)
+  })
+})
+
+describe('cluster loader (ContentMap)', () => {
+  it('materialises 151 nodes from ContentMap', async () => {
+    const diagnostics: Diagnostic[] = []
+    const templates = loadPacks(await buildPackContentMap(), diagnostics)
+    const result = loadClusters(await buildGraphContentMap(), templates, diagnostics)
+    assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0)
+    assert.equal(result.nodes.size, 151)
   })
 })
 
@@ -257,10 +286,18 @@ describe('edge loader', () => {
     assert.ok(!VALID_EDGE_TYPE_SET.has('unknown'))
   })
 
+  it('loads 65 explicit edges from ContentMap', async () => {
+    const diagnostics: Diagnostic[] = []
+    const clusters = await loadSampleClusters(diagnostics)
+    const edgeResult = loadEdges(await buildGraphContentMap(), clusters.nodes, diagnostics)
+    assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0)
+    assert.equal([...edgeResult.edgesByFrom.values()].flat().length, 65)
+  })
+
   it('loads 65 explicit edges from edge files', async () => {
     const diagnostics: Diagnostic[] = []
     const clusters = await loadSampleClusters(diagnostics)
-    const edgeResult = await loadEdges(fixtureGraphDir, clusters.nodes, diagnostics)
+    const edgeResult = loadEdges(await buildGraphContentMap(), clusters.nodes, diagnostics)
 
     assert.equal(
       diagnostics.filter(d => d.severity === 'error').length,
@@ -274,7 +311,7 @@ describe('edge loader', () => {
   it('derives edge ID as {from}__{type}__{to}', async () => {
     const diagnostics: Diagnostic[] = []
     const clusters = await loadSampleClusters(diagnostics)
-    const edgeResult = await loadEdges(fixtureGraphDir, clusters.nodes, diagnostics)
+    const edgeResult = loadEdges(await buildGraphContentMap(), clusters.nodes, diagnostics)
 
     const all = [...edgeResult.edgesByFrom.values()].flat()
     const readsEdge = all.find(e => e.type === 'reads')!
@@ -285,7 +322,7 @@ describe('edge loader', () => {
   it('applies default state and stability when omitted', async () => {
     const diagnostics: Diagnostic[] = []
     const clusters = await loadSampleClusters(diagnostics)
-    const edgeResult = await loadEdges(fixtureGraphDir, clusters.nodes, diagnostics)
+    const edgeResult = loadEdges(await buildGraphContentMap(), clusters.nodes, diagnostics)
 
     const all = [...edgeResult.edgesByFrom.values()].flat()
     const mapsToEdge = all.find(e => e.type === 'maps-to')!
@@ -296,13 +333,42 @@ describe('edge loader', () => {
 
   it('strict: reports error for unresolved edge endpoint', async () => {
     const diagnostics: Diagnostic[] = []
-    await loadEdges(fixtureGraphDir, new Map<string, Node>(), diagnostics)
+    loadEdges(await buildGraphContentMap(), new Map<string, Node>(), diagnostics)
     const errors = diagnostics.filter(d => d.severity === 'error')
     assert.ok(errors.length > 0, 'expected errors for unresolved endpoints')
   })
 })
 
 describe('loadGraph', () => {
+  it('loads 151 nodes and 167 edges using FileGraphSource', async () => {
+    const source = new FileGraphSource({ graphDir: fixtureGraphDir })
+    const graph = await loadGraph({ source })
+    assert.equal(graph.nodesById.size, 151)
+    assert.equal([...graph.edgesByFrom.values()].flat().length, 167)
+  })
+
+  it('loads packsPath when graph.yaml is absent', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-no-graph-yaml-'))
+    try {
+      const componentsDir = path.join(tmp, 'components', 'shared')
+      fs.mkdirSync(componentsDir, { recursive: true })
+      fs.writeFileSync(
+        path.join(componentsDir, 'problem-detail.yaml'),
+        'id: shared.Schema.problem-detail\ntemplate: Schema\nschemaVersion: "1.0"\nmetadata:\n  component: shared\n  state: agreed\n  stability: stable\n  lastModifiedAt: "2026-01-01"\n',
+      )
+
+      const graph = await loadGraph({
+        graphPath: tmp,
+        packsPath: path.join(repoRoot, '.corum/packs/core'),
+      })
+
+      assert.ok(graph.templates.has('Schema'))
+      assert.ok(graph.nodesById.has('shared.Schema.problem-detail'))
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
   it('loads full sample-graph with 151 nodes and 167 edges', async () => {
     const graph = await loadGraph({ graphPath: fixtureGraphDir })
 

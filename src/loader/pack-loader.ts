@@ -1,7 +1,7 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
-import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
+import type { ContentMap } from '../source/index.js'
 import type { Diagnostic, Template } from '../schema/index.js'
+import { listYamlKeys, readYaml } from '../source/content-utils.js'
 
 function topoSortTemplates(templates: Map<string, Template>): Template[] {
   const sorted: Template[] = []
@@ -39,50 +39,38 @@ export function getOwnedSections(template: Template): Record<string, string> {
 }
 
 export function loadPacks(
-  packDirs: string[],
+  content: ContentMap,
   diagnostics: Diagnostic[],
 ): Map<string, Template> {
   const templates = new Map<string, Template>()
   let base: Template | undefined
 
-  for (const packDir of packDirs) {
-    const templatesDir = path.join(packDir, 'templates')
-    if (!existsSync(templatesDir)) {
-      diagnostics.push({
-        severity: 'warning',
-        file: templatesDir,
-        message: `templates directory not found in pack: ${packDir}`,
-      })
+  const templateKeys = listYamlKeys(content, '').filter(key => key.includes('/templates/'))
+
+  for (const key of templateKeys) {
+    let raw: unknown
+    try {
+      raw = parseYaml(readYaml(content, key))
+    } catch (err) {
+      diagnostics.push({ severity: 'error', file: key, message: `failed to parse YAML: ${err}` })
       continue
     }
 
-    const files = readdirSync(templatesDir).filter(file => file.endsWith('.yaml'))
-    for (const file of files) {
-      const filePath = path.join(templatesDir, file)
-      let raw: unknown
-      try {
-        raw = parseYaml(readFileSync(filePath, 'utf-8'))
-      } catch (err) {
-        diagnostics.push({ severity: 'error', file: filePath, message: `failed to parse YAML: ${err}` })
-        continue
-      }
+    const templateRecord = raw as Record<string, unknown>
+    const info = typeof templateRecord.info === 'object' && templateRecord.info !== null
+      ? templateRecord.info as Record<string, unknown>
+      : null
 
-      const templateRecord = raw as Record<string, unknown>
-      const info = typeof templateRecord.info === 'object' && templateRecord.info !== null
-        ? templateRecord.info as Record<string, unknown>
-        : null
+    if (typeof templateRecord.name !== 'string' || typeof info?.version !== 'string') {
+      diagnostics.push({ severity: 'error', file: key, message: 'template missing required name or info.version' })
+      continue
+    }
 
-      if (typeof templateRecord.name !== 'string' || typeof info?.version !== 'string') {
-        diagnostics.push({ severity: 'error', file: filePath, message: 'template missing required name or info.version' })
-        continue
-      }
-
-      const template = templateRecord as Template
-      if (template.name === 'base') {
-        base = template
-      } else {
-        templates.set(template.name, template)
-      }
+    const template = templateRecord as Template
+    if (template.name === 'base') {
+      base = template
+    } else {
+      templates.set(template.name, template)
     }
   }
 
