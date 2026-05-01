@@ -8,6 +8,14 @@
 
 **Tech Stack:** TypeScript, Node.js built-in test runner (`node:test`), isomorphic-git, existing `yaml` package.
 
+## Stage 1 Decisions
+
+- `ContentMap` keys are canonical source-relative POSIX paths, not absolute filesystem paths. For graph content, keys are relative to the graph root, e.g. `components/orders/DomainModels/order.yaml`, `edges/orders.edges.yaml`, and `graph.yaml` when serialising writes. Loaders use these keys for diagnostics and `Node.extractedFrom`. This keeps filesystem and git sources lossless without exposing storage-specific paths.
+- Pack content is loaded separately from graph content. Pack keys keep the existing logical shape `<packName>/templates/<file>.yaml`; template packs always load from the default branch.
+- Git writes must not materialise or edit a working tree. `GitGraphSource.commit()` writes blobs/trees/commits directly with isomorphic-git plumbing and updates refs.
+- The first write implementation uses a full serialized graph snapshot and replaces the graph directory content on the target branch. This is simpler and avoids stale deleted YAML files. Later stages can optimise this into minimal diffs without changing loader contracts.
+- Remote repos are cached locally as no-checkout repositories. Before listing branches or reading refs, the cache performs a fetch. Branch listing is based on fetched refs: local heads for local repositories, remote heads for remote repositories.
+
 ---
 
 ## File Map
@@ -105,12 +113,16 @@ Expected: TypeScript error — `src/source/index.ts` does not exist.
 ```ts
 export type ContentMap = Map<string, string>
 
+export interface CommitOptions {
+  replaceGraphContent?: boolean
+}
+
 export interface GraphSource {
   defaultBranch(): Promise<string>
   listBranches(): Promise<string[]>
   loadPackContent(ref: string): Promise<ContentMap>
   loadGraphContent(ref: string): Promise<ContentMap>
-  commit(branch: string, changes: ContentMap, message: string): Promise<void>
+  commit(branch: string, changes: ContentMap, message: string, options?: CommitOptions): Promise<void>
 }
 
 export class SourceError extends Error {
@@ -288,7 +300,7 @@ describe('FileGraphSource', () => {
     assert.ok(content.size > 0)
     const keys = [...content.keys()]
     assert.ok(keys.some(k => k.startsWith('components/') && k.endsWith('.yaml')))
-    assert.ok(!keys.some(k => k === 'graph.yaml'), 'graph.yaml excluded from graph content')
+    assert.ok(keys.some(k => k === 'graph.yaml'), 'graph.yaml included for lossless serialization')
   })
 
   it('loadPackContent returns a ContentMap with template yaml files', async () => {
@@ -312,16 +324,14 @@ describe('FileGraphSource', () => {
     }
   })
 
-  it('commit throws SourceError on default branch', async () => {
-    const source = new FileGraphSource({ graphDir: fixtureGraphDir })
-    const branch = await source.defaultBranch()
-    await assert.rejects(
-      () => source.commit(branch, new Map(), 'msg'),
-      (err: unknown) => {
-        assert.ok(err instanceof SourceError)
-        return true
-      },
-    )
+  it('commit writes graph content to the configured graphDir', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-file-source-'))
+    const source = new FileGraphSource({ graphDir: tmpDir, defaultBranch: 'local' })
+    await source.commit('local', new Map([
+      ['graph.yaml', 'templatePacks: []\n'],
+      ['components/orders/order.yaml', 'id: order\n'],
+    ]), 'write snapshot', { replaceGraphContent: true })
+    assert.equal(fs.readFileSync(path.join(tmpDir, 'components/orders/order.yaml'), 'utf-8'), 'id: order\n')
   })
 })
 ```
@@ -337,12 +347,12 @@ Expected: TypeScript error — `file-source.ts` does not exist.
 - [ ] **Step 3: Create `src/source/file-source.ts`**
 
 ```ts
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import * as git from 'isomorphic-git'
 import fs from 'node:fs'
-import type { ContentMap, GraphSource } from './index.js'
+import type { CommitOptions, ContentMap, GraphSource } from './index.js'
 import { SourceError } from './index.js'
 import { isPackRef } from '../loader/fs-utils.js'
 
@@ -404,17 +414,23 @@ export class FileGraphSource implements GraphSource {
 
   async loadGraphContent(_ref: string): Promise<ContentMap> {
     const map: ContentMap = new Map()
-    walkYamlFilesIntoMap(this.graphDir, this.graphDir, map, ['graph.yaml'])
+    walkYamlFilesIntoMap(this.graphDir, this.graphDir, map, [])
     return map
   }
 
-  async commit(branch: string, changes: ContentMap, _message: string): Promise<void> {
+  async commit(branch: string, changes: ContentMap, _message: string, options: CommitOptions = {}): Promise<void> {
     const defaultBranch = await this.defaultBranch()
-    if (branch === defaultBranch) {
-      throw new SourceError(`cannot commit to default branch '${branch}' — it is read-only`)
+    if (branch !== defaultBranch) {
+      throw new SourceError(`FileGraphSource only supports its local branch '${defaultBranch}', got '${branch}'`)
     }
-    // File source write path is implemented in Stage 1 Task 9 (graph-writer integration)
-    throw new SourceError('FileGraphSource.commit() not yet implemented')
+    if (options.replaceGraphContent && existsSync(this.graphDir)) {
+      rmSync(this.graphDir, { recursive: true, force: true })
+    }
+    for (const [key, content] of changes) {
+      const filePath = path.join(this.graphDir, ...key.split('/'))
+      mkdirSync(path.dirname(filePath), { recursive: true })
+      writeFileSync(filePath, content)
+    }
   }
 }
 
@@ -530,33 +546,52 @@ export function loadPacks(
       continue
     }
 
-    const tpl = raw as Template
-    if (typeof tpl?.name !== 'string') {
-      diagnostics.push({ severity: 'error', file: key, message: 'template missing name field' })
+    const templateRecord = raw as Record<string, unknown>
+    const info = typeof templateRecord.info === 'object' && templateRecord.info !== null
+      ? templateRecord.info as Record<string, unknown>
+      : null
+
+    if (typeof templateRecord.name !== 'string' || typeof info?.version !== 'string') {
+      diagnostics.push({ severity: 'error', file: key, message: 'template missing required name or info.version' })
       continue
     }
 
-    if (tpl.name === '_base') {
-      base = tpl
+    const template = templateRecord as Template
+    if (template.name === 'base') {
+      base = template
     } else {
-      templates.set(tpl.name, tpl)
+      templates.set(template.name, template)
     }
   }
 
   if (base) {
-    for (const [, tpl] of templates) {
-      for (const [k, v] of Object.entries(base)) {
-        if (k !== 'name' && k !== 'info' && !(k in tpl)) {
-          (tpl as Record<string, unknown>)[k] = v
-        }
-      }
+    for (const template of templates.values()) {
+      inheritNonReserved(template, base)
     }
   }
 
-  const sorted = topoSortTemplates(templates)
-  const result = new Map<string, Template>()
-  for (const tpl of sorted) result.set(tpl.name, tpl)
-  return result
+  for (const template of topoSortTemplates(templates)) {
+    if (!template.extends) continue
+
+    const parent = templates.get(template.extends)
+    if (!parent) {
+      diagnostics.push({
+        severity: 'error',
+        file: `template:${template.name}`,
+        message: `extends references unknown template: ${template.extends}`,
+      })
+      continue
+    }
+
+    if (parent.properties && template.properties) {
+      template.properties = { allOf: [parent.properties, template.properties] }
+    } else if (parent.properties) {
+      template.properties = parent.properties
+    }
+    inheritNonReserved(template, parent)
+  }
+
+  return templates
 }
 ```
 
@@ -808,7 +843,7 @@ git commit -m "refactor: loadEdges accepts ContentMap instead of graphPath"
 In `src/schema/index.ts`, update `LoadOptions`:
 
 ```ts
-import type { GraphSource } from '../source/index.js'
+import type { ContentMap, GraphSource } from '../source/index.js'
 
 export interface LoadOptions {
   source?: GraphSource
@@ -819,6 +854,8 @@ export interface LoadOptions {
   packsPath?: string
 }
 ```
+
+Also add `sourceContent?: ContentMap` to the existing `Graph` interface. `loadGraph()` stores the graph `ContentMap` there so `serializeGraph()` can preserve `graph.yaml` and original source-relative file keys without reading from a filesystem path.
 
 - [ ] **Step 2: Add failing test**
 
@@ -882,6 +919,7 @@ export async function loadGraph(options: LoadOptions): Promise<Graph> {
     edgesByTo,
     templates,
     diagnostics,
+    sourceContent: graphContent,
   }
 
   if (strict && diagnostics.some(d => d.severity === 'error')) {
@@ -926,7 +964,7 @@ git commit -m "refactor: loadGraph orchestrates via GraphSource; graphPath shim 
 - Modify: `src/writer/graph-writer.ts`
 - Modify: `test/writer.test.ts`
 
-The writer gains a new `serializeGraph()` function that returns a `ContentMap`. `saveGraph()` is kept for backward compatibility (it calls `serializeGraph()` then writes to disk).
+The writer gains a new `serializeGraph()` function that returns a full graph `ContentMap` snapshot. `saveGraph()` is kept for backward compatibility by using `FileGraphSource.commit()` internally; source-aware callers should call `source.commit(branch, serializeGraph(graph), message, { replaceGraphContent: true })`.
 
 - [ ] **Step 1: Add failing test**
 
@@ -938,7 +976,7 @@ import { serializeGraph } from '../src/writer/graph-writer.js'
 describe('serializeGraph', () => {
   it('returns a ContentMap with cluster and edge yaml', async () => {
     const graph = await loadGraph({ graphPath: fixtureGraphDir })
-    const map = serializeGraph(graph, fixtureGraphDir)
+    const map = serializeGraph(graph)
     assert.ok(map.size > 0)
     const keys = [...map.keys()]
     assert.ok(keys.some(k => k.startsWith('components/') && k.endsWith('.yaml')))
@@ -948,9 +986,9 @@ describe('serializeGraph', () => {
 
   it('ContentMap round-trips through loadGraph', async () => {
     const graph = await loadGraph({ graphPath: fixtureGraphDir })
-    const map = serializeGraph(graph, fixtureGraphDir)
     // Write to temp dir and reload via graphPath shim
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-serialize-'))
+    const map = serializeGraph(graph, { sourceGraphPath: fixtureGraphDir, outputGraphPath: tmpDir })
     try {
       for (const [key, content] of map) {
         const filePath = path.join(tmpDir, ...key.split('/'))
@@ -978,19 +1016,23 @@ Add the following before `saveGraph`. The existing private functions (`toCluster
 
 ```ts
 import type { ContentMap } from '../source/index.js'
+import { FileGraphSource } from '../source/file-source.js'
 
-export function serializeGraph(graph: Graph, sourceGraphPath: string): ContentMap {
+export interface SerializeGraphOptions {
+  sourceGraphPath?: string
+  outputGraphPath?: string
+}
+
+export function serializeGraph(graph: Graph, options: SerializeGraphOptions = {}): ContentMap {
   const map: ContentMap = new Map()
 
-  // graph.yaml (with pack paths rewritten relative to map root)
-  map.set('graph.yaml', buildGraphYaml(sourceGraphPath, ''))
+  // Preserve graph.yaml exactly where possible so pack paths remain valid for both FileGraphSource and GitGraphSource.
+  map.set('graph.yaml', buildGraphYaml(graph, options))
 
   // cluster files
   for (const root of getRootNodes(graph)) {
     if (!root.extractedFrom) continue
-    const relativeFilePath = normalizeYamlPath(
-      path.relative(sourceGraphPath, root.extractedFrom),
-    )
+    const relativeFilePath = normalizeContentKey(root.extractedFrom)
     map.set(relativeFilePath, stringifyGraphYaml(toClusterDocument(graph, root)))
   }
 
@@ -1005,19 +1047,24 @@ export function serializeGraph(graph: Graph, sourceGraphPath: string): ContentMa
   return map
 }
 
-function buildGraphYaml(sourceGraphPath: string, outputBase: string): string {
-  const sourceGraphYamlPath = path.join(sourceGraphPath, 'graph.yaml')
-  if (!fs.existsSync(sourceGraphYamlPath)) {
-    return stringifyGraphYaml({ templatePacks: [] })
-  }
-  const doc = parseYaml(fs.readFileSync(sourceGraphYamlPath, 'utf-8')) as Record<string, unknown>
+function normalizeContentKey(value: string): string {
+  return value.split(path.sep).join('/')
+}
+
+function buildGraphYaml(graph: Graph, options: SerializeGraphOptions): string {
+  const content = graph.sourceContent?.get('graph.yaml')
+  if (!content) return stringifyGraphYaml({ templatePacks: [] })
+
+  if (!options.sourceGraphPath || !options.outputGraphPath) return content
+
+  const doc = parseYaml(content) as Record<string, unknown>
   const packs = Array.isArray(doc.templatePacks) ? doc.templatePacks : []
   doc.templatePacks = packs.map(pack => {
     if (!isPackRef(pack)) return pack
-    const absolutePackPath = path.resolve(sourceGraphPath, pack.path)
+    const absolutePackPath = path.resolve(options.sourceGraphPath!, pack.path)
     return {
       ...pack,
-      path: normalizeYamlPath(path.relative(outputBase || sourceGraphPath, absolutePackPath)),
+      path: normalizeContentKey(path.relative(options.outputGraphPath!, absolutePackPath)),
     }
   })
   return stringifyGraphYaml(doc)
@@ -1028,20 +1075,19 @@ Update `saveGraph` to use `serializeGraph`:
 
 ```ts
 export async function saveGraph(graph: Graph, options: SaveGraphOptions): Promise<void> {
-  const { sourceGraphPath, outputGraphPath, replace = true } = options
+  const { outputGraphPath, replace = true } = options
 
   if (fs.existsSync(outputGraphPath)) {
     if (!replace) throw new Error(`output graph folder already exists: ${outputGraphPath}`)
-    fs.rmSync(outputGraphPath, { recursive: true, force: true })
   }
-  fs.mkdirSync(outputGraphPath, { recursive: true })
 
-  const map = serializeGraph(graph, sourceGraphPath)
-  for (const [key, content] of map) {
-    const filePath = path.join(outputGraphPath, ...key.split('/'))
-    fs.mkdirSync(path.dirname(filePath), { recursive: true })
-    fs.writeFileSync(filePath, content)
-  }
+  const source = new FileGraphSource({ graphDir: outputGraphPath, defaultBranch: 'local' })
+  await source.commit(
+    'local',
+    serializeGraph(graph, { sourceGraphPath: options.sourceGraphPath, outputGraphPath }),
+    'save graph',
+    { replaceGraphContent: replace },
+  )
 }
 ```
 
@@ -1140,6 +1186,7 @@ export class GitCacheManager {
           dir,
           url: remoteUrl,
           noCheckout: true,
+          singleBranch: false,
           onAuth,
         })
       } catch (err) {
@@ -1154,6 +1201,8 @@ export class GitCacheManager {
         fs,
         http: (await import('isomorphic-git/http/node')).default,
         dir,
+        remote: 'origin',
+        refspecs: ['+refs/heads/*:refs/remotes/origin/*'],
         onAuth,
       })
     } catch (_fetchErr) {
@@ -1167,6 +1216,7 @@ export class GitCacheManager {
           dir,
           url: remoteUrl,
           noCheckout: true,
+          singleBranch: false,
           onAuth,
         })
       } catch (err) {
@@ -1316,8 +1366,9 @@ npm run build 2>&1 | head -5
 
 ```ts
 import fs from 'node:fs'
+import path from 'node:path'
 import * as git from 'isomorphic-git'
-import type { ContentMap, GraphSource } from './index.js'
+import type { CommitOptions, ContentMap, GraphSource } from './index.js'
 import { SourceError } from './index.js'
 import { GitCacheManager } from './git-cache.js'
 
@@ -1380,9 +1431,12 @@ export class GitGraphSource implements GraphSource {
     if (this.defaultBranchOverride) return this.defaultBranchOverride
     try {
       const dir = await this.dir()
-      // listRefs returns all refs including the symbolic HEAD pointer
-      const refs = await git.listRefs({ fs, dir, filepath: 'refs/heads' })
-      // currentBranch reads HEAD and returns the branch name it points to
+      if (this.remoteUrl) {
+        const branches = await git.listBranches({ fs, dir, remote: 'origin' })
+        if (branches.includes('main')) return 'main'
+        if (branches.includes('master')) return 'master'
+        if (branches.length > 0) return branches[0]
+      }
       const branch = await git.currentBranch({ fs, dir })
       if (branch) return branch
     } catch {
@@ -1395,7 +1449,9 @@ export class GitGraphSource implements GraphSource {
     const dir = await this.dir()
     let branches: string[]
     try {
-      branches = await git.listBranches({ fs, dir })
+      branches = this.remoteUrl
+        ? await git.listBranches({ fs, dir, remote: 'origin' })
+        : await git.listBranches({ fs, dir })
     } catch (err) {
       throw new SourceError('failed to list branches', err)
     }
@@ -1410,7 +1466,7 @@ export class GitGraphSource implements GraphSource {
         // Default branch is always included regardless of staleness
         if (branch === defaultBranch) { fresh.push(branch); continue }
         try {
-          const sha = await git.resolveRef({ fs, dir, ref: branch })
+          const sha = await this.resolveBranchOid(branch)
           const { commit } = await git.readCommit({ fs, dir, oid: sha })
           const commitTime = commit.author.timestamp * 1000
           if (commitTime >= cutoff) fresh.push(branch)
@@ -1425,7 +1481,7 @@ export class GitGraphSource implements GraphSource {
       const withDates: Array<{ branch: string; timestamp: number }> = []
       for (const branch of branches) {
         try {
-          const sha = await git.resolveRef({ fs, dir, ref: branch })
+          const sha = await this.resolveBranchOid(branch)
           const { commit } = await git.readCommit({ fs, dir, oid: sha })
           withDates.push({ branch, timestamp: commit.author.timestamp })
         } catch {
@@ -1442,6 +1498,18 @@ export class GitGraphSource implements GraphSource {
     return branches
   }
 
+  private async resolveBranchOid(branch: string): Promise<string> {
+    const dir = await this.dir()
+    if (this.remoteUrl) {
+      try {
+        return await git.resolveRef({ fs, dir, ref: `refs/remotes/origin/${branch}` })
+      } catch {
+        // fall through to local refs for newly-created branches before first push
+      }
+    }
+    return git.resolveRef({ fs, dir, ref: branch })
+  }
+
   async loadPackContent(_ref: string): Promise<ContentMap> {
     // Packs always come from the default branch
     const defaultRef = await this.defaultBranch()
@@ -1450,7 +1518,7 @@ export class GitGraphSource implements GraphSource {
 
     let commitSha: string
     try {
-      commitSha = await git.resolveRef({ fs, dir, ref: defaultRef })
+      commitSha = await this.resolveBranchOid(defaultRef)
     } catch (err) {
       throw new SourceError(`failed to resolve ref '${defaultRef}'`, err)
     }
@@ -1473,15 +1541,7 @@ export class GitGraphSource implements GraphSource {
     for (const pack of packs) {
       if (typeof (pack as Record<string, unknown>).path !== 'string') continue
       const packPath = (pack as { path: string }).path
-      // Resolve pack path relative to graphDir within the repo
-      const absPackPath = packPath.startsWith('/')
-        ? packPath.slice(1)
-        : `${this.graphDir}/${packPath}`.replace(/\/\.\.\//g, (s, i, str) => {
-            // simple ../ resolution
-            const parts = str.slice(0, i).split('/')
-            parts.pop()
-            return parts.join('/') + '/'
-          })
+      const absPackPath = normalizeRepoPath(this.graphDir, packPath)
       const packName = absPackPath.split('/').pop() ?? packPath
       const packPrefix = absPackPath.endsWith('/') ? absPackPath : absPackPath + '/'
 
@@ -1504,7 +1564,7 @@ export class GitGraphSource implements GraphSource {
 
     let commitSha: string
     try {
-      commitSha = await git.resolveRef({ fs, dir, ref })
+      commitSha = await this.resolveBranchOid(ref)
     } catch (err) {
       throw new SourceError(`failed to resolve ref '${ref}'`, err)
     }
@@ -1512,7 +1572,7 @@ export class GitGraphSource implements GraphSource {
     const prefix = this.graphDir.endsWith('/') ? this.graphDir : this.graphDir + '/'
     const allFiles = await git.listFiles({ fs, dir, ref: commitSha })
 
-    for (const filePath of allFiles.filter(f => f.startsWith(prefix) && f.endsWith('.yaml') && !f.endsWith('graph.yaml'))) {
+    for (const filePath of allFiles.filter(f => f.startsWith(prefix) && f.endsWith('.yaml'))) {
       try {
         const { blob } = await git.readBlob({ fs, dir, oid: commitSha, filepath: filePath })
         map.set(filePath.slice(prefix.length), new TextDecoder().decode(blob))
@@ -1527,6 +1587,16 @@ export class GitGraphSource implements GraphSource {
     // Write path implemented in Task 12
     throw new SourceError('GitGraphSource.commit() not yet implemented — see Task 12')
   }
+}
+
+function normalizeRepoPath(baseDir: string, value: string): string {
+  const normalized = value.startsWith('/')
+    ? path.posix.normalize(value.slice(1))
+    : path.posix.normalize(path.posix.join(baseDir, value))
+  if (normalized === '..' || normalized.startsWith('../')) {
+    throw new SourceError(`path escapes repository root: ${value}`)
+  }
+  return normalized
 }
 ```
 
@@ -1577,7 +1647,7 @@ describe('GitGraphSource write path', () => {
         'id: orders.DomainModel.new-node\ntemplate: DomainModel\nschemaVersion: "1.0"\nmetadata:\n  component: orders\n  state: proposed\n  stability: unstable\n  lastModifiedAt: "2026-01-03"\n'],
     ])
 
-    await source.commit('feat/write-test', changes, 'add new-node')
+    await source.commit('feat/write-test', changes, 'add new-node', { replaceGraphContent: true })
 
     // read back from the branch
     const content = await source.loadGraphContent('feat/write-test')
@@ -1607,7 +1677,7 @@ Expected: `commit() not yet implemented` error.
 Replace the stub `commit()` method with:
 
 ```ts
-async commit(branch: string, changes: ContentMap, message: string): Promise<void> {
+async commit(branch: string, changes: ContentMap, message: string, options: CommitOptions = {}): Promise<void> {
   const defaultBranch = await this.defaultBranch()
   if (branch === defaultBranch) {
     throw new SourceError(`cannot commit to default branch '${branch}' — it is read-only`)
@@ -1619,7 +1689,7 @@ async commit(branch: string, changes: ContentMap, message: string): Promise<void
   // Resolve current HEAD of target branch
   let parentSha: string
   try {
-    parentSha = await git.resolveRef({ fs, dir, ref: branch })
+    parentSha = await this.resolveBranchOid(branch)
   } catch (err) {
     throw new SourceError(`cannot resolve branch '${branch}'`, err)
   }
@@ -1634,8 +1704,10 @@ async commit(branch: string, changes: ContentMap, message: string): Promise<void
     blobMap.set(repoPath, oid)
   }
 
-  // Build updated tree from root
-  const newTreeOid = await buildUpdatedTree(fs, dir, parentCommit.tree, blobMap)
+  // Build updated tree from root. Stage 1 passes replaceGraphContent to avoid stale deleted YAML files.
+  const newTreeOid = options.replaceGraphContent
+    ? await buildReplacedGraphTree(fs, dir, parentCommit.tree, prefix, blobMap)
+    : await buildUpdatedTree(fs, dir, parentCommit.tree, blobMap)
 
   // Write commit
   const now = Math.floor(Date.now() / 1000)
@@ -1666,9 +1738,44 @@ async commit(branch: string, changes: ContentMap, message: string): Promise<void
 }
 ```
 
-Add the `buildUpdatedTree` helper outside the class:
+Add the `buildReplacedGraphTree` and `buildUpdatedTree` helpers outside the class:
 
 ```ts
+async function buildReplacedGraphTree(
+  fsImpl: typeof fs,
+  dir: string,
+  rootTreeOid: string,
+  graphPrefix: string,
+  blobMap: Map<string, string>,
+): Promise<string> {
+  const graphDir = graphPrefix.replace(/\/$/, '')
+  const prunedRoot = await removeTreePath(fsImpl, dir, rootTreeOid, graphDir.split('/'))
+  return buildUpdatedTree(fsImpl, dir, prunedRoot, blobMap)
+}
+
+async function removeTreePath(
+  fsImpl: typeof fs,
+  dir: string,
+  treeOid: string,
+  parts: string[],
+): Promise<string> {
+  const { tree } = await git.readTree({ fs: fsImpl, dir, oid: treeOid })
+  const [head, ...tail] = parts
+  if (!head) return treeOid
+
+  if (tail.length === 0) {
+    return git.writeTree({ fs: fsImpl, dir, tree: tree.filter(entry => entry.path !== head) })
+  }
+
+  const entries = [...tree]
+  const idx = entries.findIndex(entry => entry.path === head && entry.type === 'tree')
+  if (idx < 0) return treeOid
+
+  const nextOid = await removeTreePath(fsImpl, dir, entries[idx].oid, tail)
+  entries[idx] = { ...entries[idx], oid: nextOid }
+  return git.writeTree({ fs: fsImpl, dir, tree: entries })
+}
+
 async function buildUpdatedTree(
   fsImpl: typeof fs,
   dir: string,
