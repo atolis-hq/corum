@@ -221,6 +221,8 @@ These replace `walkYamlFiles()` and `readFileSync()` calls in the loaders.
 
 ## Section 4: Multi-Branch Model
 
+The primary model is **overlay**, not diff. When navigating the graph from any branch, all nodes and edges from all loaded branches are visible simultaneously. Nodes from other branches appear as ghost nodes. A diff (branch vs default) is a secondary tool for explicit comparison.
+
 ### Types
 
 ```ts
@@ -239,26 +241,68 @@ interface BranchLoadResult {
   error?: string    // human-readable reason, present when status === 'failed'
 }
 
+// The cross-branch presence of a single node ID across all loaded branches
+interface OverlayNode {
+  id: string
+  // Branches that contain this node, keyed by ref
+  presence: Map<string, Node>
+  // Derived display state (see ghost states below)
+  ghostState: GhostState
+}
+
+type GhostState =
+  | 'local'              // only on the viewing branch
+  | 'shared'             // on viewing branch and one or more others (same properties)
+  | 'default-only'       // on default branch, not on viewing branch — base reference
+  | 'ghost-single'       // on exactly one other branch, not on viewing branch
+  | 'ghost-consensus'    // on 2+ other branches, all with identical properties
+  | 'ghost-conflict'     // on 2+ other branches with differing properties
+
+interface OverlayEdge {
+  id: string
+  presence: Map<string, Edge>
+  ghostState: GhostState
+}
+
+interface BranchOverlay {
+  viewingRef: string                  // the branch being navigated from
+  nodes: Map<string, OverlayNode>     // all node IDs across all branches
+  edges: Map<string, OverlayEdge>
+}
+
+// Secondary: explicit diff of one branch against default
 interface BranchDiff {
   added: Node[]       // in this branch, not in default
   modified: Node[]    // exists in both, properties differ
   removed: Node[]     // in default, not in this branch
-  ghost: Node[]       // exists on another open branch but not this one
-}
-
-interface NodeConflict {
-  nodeId: string
-  branches: Array<{ ref: string; node: Node }>
 }
 
 interface MultiGraph {
   default: BranchGraph
   branches: BranchGraph[]             // successfully loaded branches only
   branchResults: BranchLoadResult[]   // all attempted branches including failures
-  diff(branchRef: string): BranchDiff
-  conflicts(): NodeConflict[]
+  overlay(viewingRef: string): BranchOverlay
+  diff(branchRef: string): BranchDiff // compare branch against default only
 }
 ```
+
+### Ghost state rules
+
+Given a node ID and a viewing branch:
+
+| Present on viewing branch | Present on other branches | Properties agree across all | GhostState |
+|---|---|---|---|
+| Yes | No | — | `local` |
+| Yes | Yes | Yes | `shared` |
+| Yes | Yes | No | `shared` (conflicts visible via `presence` map) |
+| No | Default only | — | `default-only` |
+| No | Exactly one other | — | `ghost-single` |
+| No | 2+ others | Yes | `ghost-consensus` |
+| No | 2+ others | No | `ghost-conflict` |
+
+`ghost-conflict` is the most complex case: the same node exists on multiple branches with different property values. The UI shows it as a single ghost node with a conflict indicator; the `presence` map exposes all variants for detail views or cherry-pick.
+
+Edges follow the same ghost state logic applied to edge IDs.
 
 ### Load behaviour
 
@@ -272,25 +316,25 @@ async function loadMultiGraph(options: {
 
 1. Load the default branch first. If this fails, throw — no `MultiGraph` is returned.
 2. Load all non-default branches in parallel (`Promise.allSettled`).
-3. For each failed branch, record a `BranchLoadResult` with `status: 'failed'` and the error message. Do not throw.
+3. For each failed branch, record a `BranchLoadResult` with `status: 'failed'`. Do not throw.
 4. Construct and return `MultiGraph`.
 
-### In-memory comparison
+### In-memory overlay computation
 
-`diff(branchRef)` compares `BranchGraph.graph.nodesById` between the target branch and the default branch:
-- Node in branch but not in default → `added`
-- Node in both, deep-equal properties → unchanged (not included)
-- Node in both, properties differ → `modified`
-- Node in default but not in branch → `removed`
-- Node in another loaded branch but not in this branch → `ghost`
+`overlay(viewingRef)` performs a full outer join across all `BranchGraph.graph.nodesById` maps:
 
-`conflicts()` finds node IDs that appear in `modified` in two or more branch diffs simultaneously.
+1. Collect every node ID that appears in any loaded branch.
+2. For each node ID, build an `OverlayNode` with its `presence` map (ref → Node).
+3. Derive `ghostState` from the rules table above using the viewing branch as context.
+4. Repeat for edges.
 
-All comparisons are synchronous Map operations — no I/O, no SQL.
+All operations are synchronous Map iterations — no I/O, no SQL. At realistic graph sizes (hundreds to low thousands of nodes across a handful of branches) this completes in milliseconds.
+
+`diff(branchRef)` is a subset: compare `presence.get(branchRef)` against `presence.get(defaultRef)` for each OverlayNode.
 
 ### FileGraphSource and MultiGraph
 
-`FileGraphSource` produces a `MultiGraph` with exactly one `BranchGraph` (the working tree as `'main'`) and `branchResults` with a single `{ ref: 'main', status: 'loaded' }` entry. The structure is identical — UI and MCP tools need no special-casing per source type.
+`FileGraphSource` produces a `MultiGraph` with exactly one `BranchGraph` and `branchResults` with a single `{ ref: 'main', status: 'loaded' }` entry. `overlay('main')` returns all nodes as `local`. The structure is identical — UI and MCP tools need no special-casing per source type.
 
 ---
 
@@ -336,11 +380,19 @@ Returns `MultiGraph.branchResults` — ref, load status, and error message for a
 
 ### Updated MCP tools
 
-`list_nodes`, `get_cluster`, `get_linked_fields` gain an optional `branch` parameter. When provided, the tool queries the named branch's `BranchGraph.graph`. When omitted, queries the default branch.
+`list_nodes`, `get_cluster`, `get_linked_fields` gain an optional `branch` parameter. When provided, the tool returns the overlay from that branch's perspective — nodes include a `ghostState` field and a `branches` list showing which refs contain that node. When omitted, queries the default branch only (no overlay).
+
+A new `diff_branch` tool takes a `branch` parameter and returns the `BranchDiff` against default — useful for agents doing explicit before/after comparison.
 
 ### UI
 
-The branch switcher (to be designed in a separate task) reads from `MultiGraph.branches` for the selector and `MultiGraph.branchResults` for status indicators. A branch with `status: 'failed'` is shown in the list but marked as unavailable with its error message as a tooltip.
+The branch switcher reads from `MultiGraph.branches` for the selector and `MultiGraph.branchResults` for status indicators. A branch with `status: 'failed'` is shown but marked unavailable with its error as a tooltip.
+
+When a branch is selected, the graph view calls `overlay(selectedRef)` and renders:
+- `local` / `shared` nodes — full opacity, normal interaction
+- `default-only` nodes — visible at reduced opacity, labelled as base
+- `ghost-single` / `ghost-consensus` nodes — ghost styling with branch badge
+- `ghost-conflict` nodes — ghost styling with conflict indicator; detail panel shows all variants side-by-side
 
 ---
 
@@ -350,7 +402,7 @@ The branch switcher (to be designed in a separate task) reads from `MultiGraph.b
 - **Unit tests for `FileGraphSource`:** Operate against a temp directory with fixture YAML files.
 - **Unit tests for `GitGraphSource`:** Use a local fixture repo at `test/fixtures/git-repo/` — a real `.git` directory committed to the test suite. No mocking of isomorphic-git. Multiple branches set up using isomorphic-git in the test fixture setup script.
 - **Integration tests for remote mode:** Use a `file://` URL pointing at the fixture repo. isomorphic-git supports `file://` remotes. No network in CI.
-- **Multi-branch tests:** Fixture repo has `main`, `feat/branch-a`, and `feat/branch-b` with known node differences. Tests assert specific `BranchDiff` and `NodeConflict` output.
+- **Multi-branch tests:** Fixture repo has `main`, `feat/branch-a`, and `feat/branch-b` with known node differences. Tests assert specific `OverlayNode` ghost states — covering `ghost-single`, `ghost-consensus`, and `ghost-conflict` cases. `diff()` tests assert `added`, `modified`, `removed` counts against expected values.
 
 ---
 
