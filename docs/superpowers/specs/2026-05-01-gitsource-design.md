@@ -340,17 +340,35 @@ All operations are synchronous Map iterations — no I/O, no SQL. At realistic g
 
 ## Section 5: Write Path (Stage 1)
 
-`commit(branch, changes, message)` on `GitGraphSource`:
+`commit(branch, changes, message)` on `GitGraphSource` writes directly to git objects — no files are ever materialised to the working tree. This is consistent with the read path, which also never touches the working tree.
 
-1. Write changed YAML strings to the working directory at `cacheDir/<graphDir>/<key>` for each entry in `changes`
-2. `git.add()` each modified file
-3. `git.commit({ message })` — creates a commit on `branch`
-4. `git.push()` to remote (remote mode only)
-5. Update the cached SHA for this branch
+isomorphic-git provides the plumbing APIs needed: `writeBlob`, `readTree`, `writeTree`, `writeCommit`, `updateRef`.
+
+```
+changes (ContentMap)
+  │
+  ├─ writeBlob() for each entry → blob OIDs
+  │
+  ├─ readTree() from current branch HEAD → existing tree structure
+  │
+  ├─ apply blob OIDs into tree (recursive for nested paths) → updated tree
+  │
+  ├─ writeTree() → new tree OID
+  │
+  ├─ writeCommit(tree, parent: currentHead, message) → new commit OID
+  │
+  ├─ updateRef(branchRef → new commit OID)
+  │
+  └─ push() → remote (remote mode only)
+```
+
+The only filesystem involvement is isomorphic-git writing the new objects into `.git/objects/` — the standard git object store. No YAML files are written to any working directory.
+
+Building the updated tree requires recursion for nested paths (e.g. updating `components/orders/order.yaml` means rebuilding the `components/orders/` tree, then `components/`, then the root tree). This is handled by a `buildUpdatedTree` helper internal to `GitGraphSource`.
 
 The default branch is read-only — `commit()` throws `SourceError` if `branch === await this.defaultBranch()`.
 
-For `FileGraphSource.commit()`, files are written directly to the `graphDir` on disk, then committed via isomorphic-git on the containing repo.
+For `FileGraphSource.commit()`, files are written to `graphDir` on disk then committed via isomorphic-git — the filesystem is the source of truth for the file source, so this is correct and expected.
 
 The existing `graph-writer.ts` serialisation logic (YAML stringification, cluster file structure, edge files) is unchanged — it produces a `ContentMap` of path → YAML string, which is passed directly to `source.commit()`.
 
