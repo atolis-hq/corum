@@ -125,38 +125,39 @@ A small helper that owns `~/.corum/cache/`. Keyed by `sha256(remoteUrl)`. On sta
 
 #### loadContent filtering (two-phase)
 
-`loadContent` is a two-phase read to cover both graph data and template packs:
+`loadContent` is a two-phase read. Packs define the schemas that cluster parsing depends on, so they are read first.
 
-**Phase 1 — graph data:** Read all files under `graphDir`, strip the prefix, populate ContentMap.
+**Phase 1 — `graph.yaml` and packs:** Read `graph.yaml` from `graphDir`, extract declared `templatePacks[].path` entries, resolve each path relative to the repo root, and load all YAML files under those paths into the ContentMap under a `__packs__/` namespace. Pack paths that resolve outside the repo root are rejected with a `SourceError`. Packs are always read from the default branch ref — the `ref` parameter is ignored for this phase.
 
-**Phase 2 — pack data:** Read `graph.yaml` from the ContentMap (key `graph.yaml`), extract declared `templatePacks[].path` entries, resolve each path relative to the repo root, and load those directories into the ContentMap under the same relative-to-graphDir key convention. Pack paths that resolve outside the repo root are rejected with a `SourceError`.
+**Phase 2 — cluster and edge data:** Read all remaining files under `graphDir`, strip the prefix, populate ContentMap with graph-data keys.
 
 This keeps reads targeted — only `graphDir` and explicitly declared pack paths are fetched, never a whole-repo sweep.
 
 ```ts
 // Inside GitGraphSource.loadContent(ref):
-const commitSha = await git.resolveRef({ fs, dir, ref })   // ref → SHA first
+const commitSha = await git.resolveRef({ fs, dir, ref })
+const defaultSha = await git.resolveRef({ fs, dir, ref: await this.defaultBranch() })
 const allFiles = await git.listFiles({ fs, dir, ref: commitSha })
 const prefix = graphDir.endsWith('/') ? graphDir : graphDir + '/'
 
-// Phase 1: graph data
-const filtered = allFiles.filter(f => f.startsWith(prefix))
-for (const filePath of filtered) {
-  const { blob } = await git.readBlob({ fs, dir, oid: commitSha, filepath: filePath })
-  const key = filePath.slice(prefix.length)
-  map.set(key, new TextDecoder().decode(blob))
-}
-
-// Phase 2: pack paths from graph.yaml
-const packPaths = resolvePackPaths(map, graphDir)   // reads graph.yaml from map
+// Phase 1: graph.yaml + packs (always from default branch)
+const graphYamlBlob = await git.readBlob({ fs, dir, oid: defaultSha, filepath: prefix + 'graph.yaml' })
+const graphYaml = new TextDecoder().decode(graphYamlBlob.blob)
+map.set('graph.yaml', graphYaml)
+const packPaths = resolvePackPaths(graphYaml, graphDir)   // parses graph.yaml to get pack dirs
+const defaultFiles = await git.listFiles({ fs, dir, ref: defaultSha })
 for (const packPath of packPaths) {
   const packPrefix = packPath.endsWith('/') ? packPath : packPath + '/'
-  const packFiles = allFiles.filter(f => f.startsWith(packPrefix))
-  for (const filePath of packFiles) {
-    const { blob } = await git.readBlob({ fs, dir, oid: commitSha, filepath: filePath })
-    // Pack keys are stored under a '__packs__/' namespace to avoid collision
+  for (const filePath of defaultFiles.filter(f => f.startsWith(packPrefix))) {
+    const { blob } = await git.readBlob({ fs, dir, oid: defaultSha, filepath: filePath })
     map.set('__packs__/' + filePath, new TextDecoder().decode(blob))
   }
+}
+
+// Phase 2: cluster and edge data (from the requested ref)
+for (const filePath of allFiles.filter(f => f.startsWith(prefix) && f !== prefix + 'graph.yaml')) {
+  const { blob } = await git.readBlob({ fs, dir, oid: commitSha, filepath: filePath })
+  map.set(filePath.slice(prefix.length), new TextDecoder().decode(blob))
 }
 ```
 
