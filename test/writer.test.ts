@@ -5,11 +5,58 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadGraph } from '../src/loader/index.js'
-import { saveGraph } from '../src/writer/graph-writer.js'
+import { saveGraph, serializeGraph } from '../src/writer/graph-writer.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..', '..')
 const fixtureGraphDir = path.join(repoRoot, 'fixtures/sample-graph')
+
+describe('serializeGraph', () => {
+  it('returns a ContentMap with cluster and edge yaml', async () => {
+    const graph = await loadGraph({ graphPath: fixtureGraphDir })
+    const map = serializeGraph(graph)
+    const keys = [...map.keys()]
+    assert.ok(keys.some(k => k.startsWith('components/') && k.endsWith('.yaml')))
+    assert.ok(keys.some(k => k.startsWith('edges/')))
+    assert.ok(keys.some(k => k === 'graph.yaml'))
+  })
+
+  it('ContentMap round-trips through loadGraph', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-serialize-'))
+    try {
+      const graph = await loadGraph({ graphPath: fixtureGraphDir })
+      const map = serializeGraph(graph, { sourceGraphPath: fixtureGraphDir, outputGraphPath: tmpDir })
+      for (const [key, content] of map) {
+        const filePath = path.join(tmpDir, ...key.split('/'))
+        fs.mkdirSync(path.dirname(filePath), { recursive: true })
+        fs.writeFileSync(filePath, content)
+      }
+      const reloaded = await loadGraph({ graphPath: tmpDir })
+      assert.equal(reloaded.nodesById.size, 151)
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('relativizes legacy absolute extractedFrom paths', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-absolute-extracted-'))
+    try {
+      const graph = await loadGraph({ graphPath: fixtureGraphDir })
+      const root = graph.nodesById.get('orders.DomainModel.order')
+      assert.ok(root)
+      root.extractedFrom = path.join(fixtureGraphDir, root.extractedFrom!)
+
+      await saveGraph(graph, { sourceGraphPath: fixtureGraphDir, outputGraphPath: tmpDir })
+
+      assert.equal(
+        fs.existsSync(path.join(tmpDir, 'components', 'orders', 'DomainModels', 'order.yaml')),
+        true,
+      )
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+})
 
 describe('graph writer', () => {
   it('writes an edited graph to a replacement folder that can be loaded again', async () => {

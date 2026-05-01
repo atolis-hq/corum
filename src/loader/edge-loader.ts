@@ -1,9 +1,8 @@
-import { existsSync, readFileSync } from 'node:fs'
-import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
+import type { ContentMap } from '../source/index.js'
 import type { Diagnostic, Edge, EdgeType, Node, Stability, State } from '../schema/index.js'
 import { VALID_EDGE_TYPE_SET } from './constants.js'
-import { walkYamlFiles } from './fs-utils.js'
+import { listYamlKeys, readYaml } from '../source/content-utils.js'
 
 type EdgeResult = {
   edgesByFrom: Map<string, Edge[]>
@@ -11,20 +10,18 @@ type EdgeResult = {
 }
 
 export function loadEdges(
-  graphPath: string,
+  content: ContentMap,
   nodes: Map<string, Node>,
   diagnostics: Diagnostic[],
 ): EdgeResult {
   const result: EdgeResult = { edgesByFrom: new Map(), edgesByTo: new Map() }
-  const edgesDir = path.join(graphPath, 'edges')
-  if (!existsSync(edgesDir)) return result
 
-  for (const filePath of walkYamlFiles(edgesDir)) {
+  for (const key of listYamlKeys(content, 'edges')) {
     let raw: unknown
     try {
-      raw = parseYaml(readFileSync(filePath, 'utf-8'))
+      raw = parseYaml(readYaml(content, key))
     } catch (err) {
-      diagnostics.push({ severity: 'error', file: filePath, message: `failed to parse YAML: ${err}` })
+      diagnostics.push({ severity: 'error', file: key, message: `failed to parse YAML: ${err}` })
       continue
     }
 
@@ -36,21 +33,21 @@ export function loadEdges(
         typeof edgeRecord.to !== 'string' ||
         typeof edgeRecord.type !== 'string'
       ) {
-        diagnostics.push({ severity: 'error', file: filePath, message: 'edge missing required from, to, or type' })
+        diagnostics.push({ severity: 'error', file: key, message: 'edge missing required from, to, or type' })
         continue
       }
       if (!VALID_EDGE_TYPE_SET.has(edgeRecord.type)) {
-        diagnostics.push({ severity: 'error', file: filePath, message: `invalid edge type: ${edgeRecord.type}` })
+        diagnostics.push({ severity: 'error', file: key, message: `invalid edge type: ${edgeRecord.type}` })
         continue
       }
 
       let unresolvedEndpoint = false
       if (!nodes.has(edgeRecord.from)) {
-        diagnostics.push({ severity: 'error', file: filePath, message: `edge from unresolved node: ${edgeRecord.from}` })
+        diagnostics.push({ severity: 'error', file: key, message: `edge from unresolved node: ${edgeRecord.from}` })
         unresolvedEndpoint = true
       }
       if (!nodes.has(edgeRecord.to)) {
-        diagnostics.push({ severity: 'error', file: filePath, message: `edge to unresolved node: ${edgeRecord.to}` })
+        diagnostics.push({ severity: 'error', file: key, message: `edge to unresolved node: ${edgeRecord.to}` })
         unresolvedEndpoint = true
       }
       if (unresolvedEndpoint) continue
