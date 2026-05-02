@@ -87,6 +87,15 @@ describe('computeOverlay', () => {
     assert.equal(overlay.nodes.get('conflict')?.ghostState, 'ghost-conflict')
   })
 
+  it('classifies ghost-conflict when only default and one non-default branch disagree', () => {
+    // Minimal case: default has x{v:1}, feat/a has x{v:2}, viewing branch has neither
+    const def = branch('main', true, [node('x', { v: 1 })])
+    const featA = branch('feat/a', false, [node('x', { v: 2 })])
+    const viewing = branch('feat/view', false, [])
+    const overlay = computeOverlay('feat/view', def, [def, featA, viewing])
+    assert.equal(overlay.nodes.get('x')?.ghostState, 'ghost-conflict')
+  })
+
   it('records a presence map for every branch containing the node', () => {
     const overlay = computeOverlay('feat/current', defaultBranch, [defaultBranch, featureBranch, otherBranch, thirdBranch])
     assert.deepEqual([...overlay.nodes.get('shared')!.presence.keys()], ['main', 'feat/current', 'feat/other', 'feat/third'])
