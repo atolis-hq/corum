@@ -10,6 +10,7 @@ import { loadMultiGraph } from '../src/loader/index.js'
 import { QueryError } from '../src/schema/index.js'
 import { FileGraphSource } from '../src/source/file-source.js'
 import { GitGraphSource } from '../src/source/git-source.js'
+import type { ContentMap, GraphSource } from '../src/source/index.js'
 import type { BranchGraph, Edge, GhostState, MultiGraph, Node, OverlayNode } from '../src/schema/index.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -100,6 +101,19 @@ describe('computeOverlay', () => {
     assert.equal(overlay.edges.get('a__calls__b')?.ghostState, 'local-modified')
   })
 
+  it('classifies nodes with reordered object properties as shared', () => {
+    const defaultBranch = branch('main', true, [
+      node('ordered', { config: { a: 1, b: 2 } }),
+    ])
+    const featureBranch = branch('feat/current', false, [
+      node('ordered', { config: { b: 2, a: 1 } }),
+    ])
+
+    const overlay = computeOverlay('feat/current', defaultBranch, [defaultBranch, featureBranch])
+
+    assert.equal(overlay.nodes.get('ordered')?.ghostState, 'shared')
+  })
+
   it('throws QueryError for an unknown viewing ref', () => {
     assert.throws(
       () => computeOverlay('feat/missing', defaultBranch, [defaultBranch, featureBranch]),
@@ -125,6 +139,19 @@ describe('computeDiff', () => {
     assert.deepEqual(diff.added.map(n => n.id), ['added'])
     assert.deepEqual(diff.removed.map(n => n.id), ['removed'])
     assert.deepEqual(diff.modified.map(n => n.id), ['changed'])
+  })
+
+  it('does not report nodes with reordered object properties as modified', () => {
+    const defaultBranch = branch('main', true, [
+      node('ordered', { config: { a: 1, b: 2 } }),
+    ])
+    const featureBranch = branch('feat/current', false, [
+      node('ordered', { config: { b: 2, a: 1 } }),
+    ])
+
+    const diff = computeDiff(featureBranch, defaultBranch)
+
+    assert.deepEqual(diff.modified.map(n => n.id), [])
   })
 })
 
@@ -158,6 +185,19 @@ describe('loadMultiGraph', () => {
     const multi = await loadMultiGraph({ source })
     assert.throws(() => multi.overlay('feat/missing'), (err: unknown) => err instanceof QueryError)
     assert.throws(() => multi.diff('feat/missing'), (err: unknown) => err instanceof QueryError)
+  })
+
+  it('records failed non-default branch loads without throwing', async () => {
+    const source = new FailingBranchSource()
+
+    const multi = await loadMultiGraph({ source })
+
+    assert.deepEqual(multi.branches.map(b => b.ref), ['main', 'feat/loaded'])
+    assert.deepEqual(multi.branchResults, [
+      { ref: 'main', status: 'loaded' },
+      { ref: 'feat/loaded', status: 'loaded' },
+      { ref: 'feat/fails', status: 'failed', error: 'boom' },
+    ])
   })
 
   it('loads GitGraphSource branches and overlays local and shared nodes', async () => {
@@ -252,4 +292,36 @@ metadata:
   stability: ${stability}
   lastModifiedAt: "2026-01-01"
 `
+}
+
+class FailingBranchSource implements GraphSource {
+  async defaultBranch(): Promise<string> {
+    return 'main'
+  }
+
+  async listBranches(): Promise<string[]> {
+    return ['main', 'feat/loaded', 'feat/fails']
+  }
+
+  async loadPackContent(): Promise<ContentMap> {
+    return new Map([
+      ['graph.yaml', 'templatePacks: []\n'],
+      ['packs/test/templates/domain-model.yaml', `name: DomainModel
+info:
+  version: "1.0"
+`],
+    ])
+  }
+
+  async loadGraphContent(ref: string): Promise<ContentMap> {
+    if (ref === 'feat/fails') throw new Error('boom')
+    return new Map([
+      ['graph.yaml', 'templatePacks: []\n'],
+      ['components/orders/order.yaml', clusterYaml(`orders.DomainModel.${ref.replaceAll('/', '-')}`, 'agreed', 'stable')],
+    ])
+  }
+
+  async commit(): Promise<void> {
+    throw new Error('not implemented')
+  }
 }

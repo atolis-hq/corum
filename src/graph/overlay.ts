@@ -97,7 +97,7 @@ function classifyPresence<T>(
 }
 
 function nodesEqual(a: Node, b: Node): boolean {
-  return JSON.stringify(a.properties) === JSON.stringify(b.properties)
+  return deepEqual(a.properties, b.properties)
     && a.state === b.state
     && a.stability === b.stability
 }
@@ -107,6 +107,24 @@ function edgesEqual(a: Edge, b: Edge): boolean {
     && a.state === b.state
     && a.stability === b.stability
     && a.notes === b.notes
+}
+
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true
+  if (typeof a !== 'object' || a === null || typeof b !== 'object' || b === null) return false
+
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false
+    return a.every((item, index) => deepEqual(item, b[index]))
+  }
+
+  const aRecord = a as Record<string, unknown>
+  const bRecord = b as Record<string, unknown>
+  const aKeys = Object.keys(aRecord)
+  const bKeys = Object.keys(bRecord)
+  if (aKeys.length !== bKeys.length) return false
+
+  return aKeys.every(key => Object.prototype.hasOwnProperty.call(bRecord, key) && deepEqual(aRecord[key], bRecord[key]))
 }
 
 function uniqueBranches(branches: BranchGraph[]): BranchGraph[] {
