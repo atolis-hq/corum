@@ -627,6 +627,10 @@ button {
   border: 1px solid color-mix(in oklch, var(--accent) 40%, transparent);
 }
 
+.branch-chip-select {
+  border: 1px dashed color-mix(in oklch, var(--accent) 45%, transparent);
+}
+
 .branch-chip.overlay:hover {
   background: color-mix(in oklch, var(--accent) 22%, var(--paper));
 }
@@ -714,6 +718,15 @@ button {
 .branch-picker-item.active {
   color: var(--accent);
   font-weight: 600;
+}
+
+.branch-picker-item-selectable {
+  justify-content: space-between;
+}
+
+.branch-picker-check {
+  flex-shrink: 0;
+  accent-color: var(--accent);
 }
 
 .branch-picker-item-disabled {

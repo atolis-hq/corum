@@ -893,10 +893,29 @@ describe('web server', () => {
       assert.match(app, /className=\"branch-picker-error\"/)
     })
 
+    it('app: selected mode uses a separate multi-select compare picker and preserves valid compare refs', () => {
+      assert.match(app, /const \[comparePickerOpen, setComparePickerOpen\] = useLocalState\(false\);/)
+      assert.match(app, /const compareableBranches = branches\.filter\(branch => branch\.ref !== viewingRef\);/)
+      assert.match(app, /overlayMode === 'selected' && \(/)
+      assert.match(app, /<span className=\"branch-label\">Compare<\/span>/)
+      assert.match(app, /className=\"branch-chip overlay branch-chip-select\"/)
+      assert.match(app, /onClick=\{\(\) => \{ setComparePickerOpen\(open => !open\); setPickerOpen\(false\); \}\}/)
+      assert.match(app, /type=\"checkbox\"/)
+      assert.match(app, /checked=\{overlayRefs\.includes\(branch\.ref\)\}/)
+      assert.match(app, /onOverlayRefs\(overlayRefs\.includes\(branch\.ref\)/)
+      assert.match(app, /setOverlayRefs\(prev => prev\.filter\(ref => ref !== viewingRef && branches\.some\(branch => branch\.ref === ref\)\)\);/)
+    })
+
     it('style: failed branches in the picker are visibly disabled and show errors', () => {
       assert.match(styles, /\.branch-failed-badge\s*\{[\s\S]*background:/)
       assert.match(styles, /\.branch-picker-item-disabled\s*\{[\s\S]*cursor:\s*not-allowed;/)
       assert.match(styles, /\.branch-picker-error\s*\{[\s\S]*font-size:\s*10px;/)
+    })
+
+    it('style: compare picker supports checkbox selection affordances', () => {
+      assert.match(styles, /\.branch-chip-select\s*\{[\s\S]*border:/)
+      assert.match(styles, /\.branch-picker-check\s*\{[\s\S]*accent-color:/)
+      assert.match(styles, /\.branch-picker-item-selectable\s*\{[\s\S]*justify-content:\s*space-between;/)
     })
   })
 })

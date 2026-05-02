@@ -217,7 +217,9 @@ function NavTree({ navTree, templates, activeNodeId, onNode, overlayIndicatorIds
 function BranchBar({ branches, branchResults, viewingRef, overlayRefs, overlayMode, onViewingRef, onOverlayRefs, onOverlayMode }) {
   const { useState: useLocalState } = React;
   const [pickerOpen, setPickerOpen] = useLocalState(false);
+  const [comparePickerOpen, setComparePickerOpen] = useLocalState(false);
   const failedBranches = branchResults.filter(result => result.status === 'failed');
+  const compareableBranches = branches.filter(branch => branch.ref !== viewingRef);
 
   const effectiveOverlayRefs = overlayMode === 'consolidated'
     ? branches.filter(branch => branch.ref !== viewingRef).map(branch => branch.ref)
@@ -235,7 +237,7 @@ function BranchBar({ branches, branchResults, viewingRef, overlayRefs, overlayMo
       <div style={{ position: 'relative' }}>
         <span
           className="branch-chip viewing"
-          onClick={() => setPickerOpen(open => !open)}
+          onClick={() => { setPickerOpen(open => !open); setComparePickerOpen(false); }}
           title="Switch viewing branch"
         >
           {viewingRef}
@@ -270,6 +272,37 @@ function BranchBar({ branches, branchResults, viewingRef, overlayRefs, overlayMo
           </div>
         )}
       </div>
+      {overlayMode === 'selected' && (
+        <>
+          <span className="branch-label">Compare</span>
+          <div style={{ position: 'relative' }}>
+            <span
+              className="branch-chip overlay branch-chip-select"
+              onClick={() => { setComparePickerOpen(open => !open); setPickerOpen(false); }}
+              title="Select compare branches"
+            >
+              {overlayRefs.length > 0 ? `${overlayRefs.length} selected` : 'Select branches'}
+            </span>
+            {comparePickerOpen && (
+              <div className="branch-picker">
+                {compareableBranches.map(branch => (
+                  <label key={branch.ref} className="branch-picker-item branch-picker-item-selectable">
+                    <span className="branch-picker-main">{branch.ref}</span>
+                    <input
+                      className="branch-picker-check"
+                      type="checkbox"
+                      checked={overlayRefs.includes(branch.ref)}
+                      onChange={() => onOverlayRefs(overlayRefs.includes(branch.ref)
+                        ? overlayRefs.filter(ref => ref !== branch.ref)
+                        : [...overlayRefs, branch.ref])}
+                    />
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
       {overlayMode !== 'single' && effectiveOverlayRefs.length > 0 && (
         <span className="branch-label">overlaid with</span>
       )}
@@ -511,6 +544,10 @@ function App() {
   const activeOverlayRefs = overlayMode === 'single' ? [] :
     overlayMode === 'consolidated' ? branches.filter(branch => branch.ref !== viewingRef).map(branch => branch.ref) :
     overlayRefs;
+
+  useEffect(() => {
+    setOverlayRefs(prev => prev.filter(ref => ref !== viewingRef && branches.some(branch => branch.ref === ref)));
+  }, [viewingRef, branches]);
 
   useEffect(() => {
     if (!viewingRef || activeOverlayRefs.length === 0) {
