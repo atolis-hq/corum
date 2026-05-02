@@ -216,6 +216,7 @@ if (isEntrypoint()) {
     await startWebServer(graph, {
       graphPath: config.graphPath,
       fileWatcher: config.fileWatcherGraphPath && watchFiles ? true : undefined,
+      source: config.source,
     })
   } else if (watchFiles && config.fileWatcherGraphPath) {
     startGraphFileWatcher(graph, { graphPath: config.fileWatcherGraphPath })
