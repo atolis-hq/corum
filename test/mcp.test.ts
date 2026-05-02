@@ -1,13 +1,17 @@
 import { describe, it, before } from 'node:test'
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import * as git from 'isomorphic-git'
 import { parse as parseYaml } from 'yaml'
 import { decode as decodeToon } from '@toon-format/toon'
 import { createMcpHandlers } from '../src/mcp/index.js'
 import { loadGraph } from '../src/loader/index.js'
 import type { Graph } from '../src/schema/index.js'
 import { FileGraphSource } from '../src/source/file-source.js'
+import { GitGraphSource } from '../src/source/git-source.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..', '..')
@@ -126,6 +130,26 @@ describe('MCP handlers', () => {
       assert.equal(nodes.length, 113)
       assert.ok(nodes.every((node: Record<string, unknown>) => node.component === 'orders'))
     })
+
+    it('lists nodes from the selected source-backed branch', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-mcp-'))
+      try {
+        await createMultiBranchRepo(tmpDir)
+        const source = new GitGraphSource({ localPath: tmpDir })
+        const mainGraph = await loadGraph({ source, strict: false })
+        const handlers = createMcpHandlers(mainGraph, source)
+
+        const defaultResult = await handlers.list_nodes({ format: 'json' })
+        const defaultNodes = JSON.parse(defaultResult.content[0].text) as Array<Record<string, unknown>>
+        const branchResult = await handlers.list_nodes({ branch: 'feat/add-payment', format: 'json' })
+        const branchNodes = JSON.parse(branchResult.content[0].text) as Array<Record<string, unknown>>
+
+        assert.ok(!defaultNodes.some(node => node.id === 'orders.DomainModel.payment'))
+        assert.ok(branchNodes.some(node => node.id === 'orders.DomainModel.payment'))
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true })
+      }
+    })
   })
 
   describe('branch tools', () => {
@@ -153,6 +177,22 @@ describe('MCP handlers', () => {
       const branches = JSON.parse(result.content[0].text)
 
       assert.deepEqual(branches, [{ ref: expectedBranch, status: 'loaded', isDefault: true }])
+    })
+
+    it('diff_branch returns added nodes from a source-backed branch', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-mcp-'))
+      try {
+        await createMultiBranchRepo(tmpDir)
+        const source = new GitGraphSource({ localPath: tmpDir })
+        const mainGraph = await loadGraph({ source, strict: false })
+        const handlers = createMcpHandlers(mainGraph, source)
+        const result = await handlers.diff_branch({ branch: 'feat/add-payment', format: 'json' })
+        const diff = JSON.parse(result.content[0].text) as { added: Array<Record<string, unknown>> }
+
+        assert.ok(diff.added.some(node => node.id === 'orders.DomainModel.payment'))
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true })
+      }
     })
   })
 
@@ -248,6 +288,27 @@ describe('MCP handlers', () => {
       assert.ok(result.isError)
       assert.ok(result.content[0].text.includes('not found'))
     })
+
+    it('loads a cluster from a source-backed branch', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-mcp-'))
+      try {
+        await createMultiBranchRepo(tmpDir)
+        const source = new GitGraphSource({ localPath: tmpDir })
+        const mainGraph = await loadGraph({ source, strict: false })
+        const handlers = createMcpHandlers(mainGraph, source)
+        const result = await handlers.get_cluster({
+          branch: 'feat/add-payment',
+          node_id: 'orders.DomainModel.payment',
+          format: 'json',
+        })
+        const cluster = JSON.parse(result.content[0].text)
+
+        assert.equal(result.isError, undefined)
+        assert.equal(cluster.root.id, 'orders.DomainModel.payment')
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true })
+      }
+    })
   })
 
   describe('get_linked_fields', () => {
@@ -264,5 +325,65 @@ describe('MCP handlers', () => {
       const result = await handlers.get_linked_fields({ node_id: 'nonexistent.Node.id' })
       assert.ok(result.isError)
     })
+
+    it('loads linked fields from a source-backed branch', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-mcp-'))
+      try {
+        await createMultiBranchRepo(tmpDir)
+        const source = new GitGraphSource({ localPath: tmpDir })
+        const mainGraph = await loadGraph({ source, strict: false })
+        const handlers = createMcpHandlers(mainGraph, source)
+        const result = await handlers.get_linked_fields({
+          branch: 'feat/add-payment',
+          node_id: 'orders.DomainModel.payment',
+          format: 'json',
+        })
+        const linked = JSON.parse(result.content[0].text)
+
+        assert.equal(result.isError, undefined)
+        assert.ok(Array.isArray(linked.nodes))
+        assert.ok(Array.isArray(linked.edges))
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true })
+      }
+    })
   })
 })
+
+async function createMultiBranchRepo(tmpDir: string): Promise<void> {
+  await git.init({ fs, dir: tmpDir, defaultBranch: 'main' })
+  const graphDir = path.join(tmpDir, '.corum', 'graph')
+  const componentsDir = path.join(graphDir, 'components', 'orders')
+  const templatesDir = path.join(graphDir, 'packs', 'test', 'templates')
+  fs.mkdirSync(componentsDir, { recursive: true })
+  fs.mkdirSync(templatesDir, { recursive: true })
+  fs.writeFileSync(path.join(graphDir, 'graph.yaml'), 'templatePacks:\n  - path: packs/test\n')
+  fs.writeFileSync(path.join(templatesDir, 'domain-model.yaml'), `name: DomainModel
+info:
+  version: "1.0"
+`)
+  fs.writeFileSync(path.join(componentsDir, 'order.yaml'), clusterYaml('orders.DomainModel.order', 'agreed', 'stable'))
+
+  await git.add({ fs, dir: tmpDir, filepath: '.corum/graph/graph.yaml' })
+  await git.add({ fs, dir: tmpDir, filepath: '.corum/graph/packs/test/templates/domain-model.yaml' })
+  await git.add({ fs, dir: tmpDir, filepath: '.corum/graph/components/orders/order.yaml' })
+  await git.commit({ fs, dir: tmpDir, message: 'initial', author: { name: 'Test', email: 'test@test.com' } })
+
+  await git.branch({ fs, dir: tmpDir, ref: 'feat/add-payment', checkout: true })
+  fs.writeFileSync(path.join(componentsDir, 'payment.yaml'), clusterYaml('orders.DomainModel.payment', 'proposed', 'unstable'))
+  await git.add({ fs, dir: tmpDir, filepath: '.corum/graph/components/orders/payment.yaml' })
+  await git.commit({ fs, dir: tmpDir, message: 'add payment', author: { name: 'Test', email: 'test@test.com' } })
+  await git.checkout({ fs, dir: tmpDir, ref: 'main' })
+}
+
+function clusterYaml(id: string, state: string, stability: string): string {
+  return `id: ${id}
+template: DomainModel
+schemaVersion: "1.0"
+metadata:
+  component: orders
+  state: ${state}
+  stability: ${stability}
+  lastModifiedAt: "2026-01-01"
+`
+}

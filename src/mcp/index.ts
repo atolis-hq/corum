@@ -39,13 +39,13 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource): {
           state: typeof args.state === 'string' ? args.state as ListNodesFilter['state'] : undefined,
           stability: typeof args.stability === 'string' ? args.stability as ListNodesFilter['stability'] : undefined,
         }
-        const summaries = listNodes(graph, filter).map(node => ({
+        const summaries = listNodes(targetGraph, filter).map(node => ({
           id: node.id,
           template: node.template,
           component: node.component,
           state: node.state,
-            stability: node.stability,
-          }))
+          stability: node.stability,
+        }))
         return formatResult(summaries, args.format, getCompactKeys(args))
       }
 
