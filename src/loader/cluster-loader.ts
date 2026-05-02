@@ -1,9 +1,8 @@
-import { existsSync, readFileSync } from 'node:fs'
-import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
+import type { ContentMap } from '../source/index.js'
 import type { Diagnostic, Edge, Node, Stability, State, Template } from '../schema/index.js'
 import { getOwnedSections } from './pack-loader.js'
-import { walkYamlFiles } from './fs-utils.js'
+import { listYamlKeys, readYaml } from '../source/content-utils.js'
 import { STRUCTURAL_EDGE_BY_ITEM_TEMPLATE, VALID_STABILITY_SET, VALID_STATE_SET } from './constants.js'
 
 type ClusterResult = {
@@ -21,20 +20,18 @@ type RootRecord = Record<string, unknown> & {
 }
 
 export function loadClusters(
-  graphPath: string,
+  content: ContentMap,
   templates: Map<string, Template>,
   diagnostics: Diagnostic[],
 ): ClusterResult {
   const result: ClusterResult = { nodes: new Map(), edgesByFrom: new Map(), edgesByTo: new Map() }
-  const componentsDir = path.join(graphPath, 'components')
-  if (!existsSync(componentsDir)) return result
 
-  for (const filePath of walkYamlFiles(componentsDir)) {
+  for (const key of listYamlKeys(content, 'components')) {
     let raw: unknown
     try {
-      raw = parseYaml(readFileSync(filePath, 'utf-8'))
+      raw = parseYaml(readYaml(content, key))
     } catch (err) {
-      diagnostics.push({ severity: 'error', file: filePath, message: `failed to parse YAML: ${err}` })
+      diagnostics.push({ severity: 'error', file: key, message: `failed to parse YAML: ${err}` })
       continue
     }
 
@@ -48,7 +45,7 @@ export function loadClusters(
       typeof meta.component !== 'string' ||
       typeof meta.lastModifiedAt !== 'string'
     ) {
-      diagnostics.push({ severity: 'error', file: filePath, message: 'cluster missing required root fields' })
+      diagnostics.push({ severity: 'error', file: key, message: 'cluster missing required root fields' })
       continue
     }
 
@@ -60,12 +57,12 @@ export function loadClusters(
       stability: asStability(meta.stability, 'unstable'),
       schemaVersion: record.schemaVersion,
       lastModifiedAt: meta.lastModifiedAt,
-      extractedFrom: filePath,
+      extractedFrom: key,
       properties: isRecord(record.properties) ? record.properties : {},
     }
 
-    addNode(result, root, filePath, diagnostics)
-    materialiseChildren(result, root, record, templates, filePath, diagnostics)
+    addNode(result, root, key, diagnostics)
+    materialiseChildren(result, root, record, templates, key, diagnostics)
   }
 
   return result

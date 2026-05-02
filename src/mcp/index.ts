@@ -1,12 +1,12 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
-import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { getCluster, getLinkedFields, listNodes, type ListNodesFilter } from '../graph/index.js'
 import { loadGraph } from '../loader/index.js'
 import type { Graph } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
+import { createGraphRuntimeConfig } from '../source/config.js'
 import { startGraphFileWatcher, startWebServer } from '../web/server.js'
 import { compactKeys, getSerializer } from './serializers.js'
 
@@ -114,13 +114,13 @@ function isEntrypoint(): boolean {
 }
 
 if (isEntrypoint()) {
-  const graphPath = process.env.CORUM_GRAPH_PATH ?? path.join(process.cwd(), '.corum/graph')
+  const config = createGraphRuntimeConfig()
 
   let graph: Graph
   let loadError: string | undefined
 
   try {
-    graph = await loadGraph({ graphPath, strict: true })
+    graph = await loadGraph({ source: config.source, strict: true })
   } catch (err) {
     loadError = String(err)
     graph = {
@@ -136,9 +136,12 @@ if (isEntrypoint()) {
   const noWeb = process.argv.includes('--no-web')
   const watchFiles = process.argv.includes('--watch')
   if (!noWeb) {
-    await startWebServer(graph, { graphPath, fileWatcher: watchFiles ? true : undefined })
-  } else if (watchFiles) {
-    startGraphFileWatcher(graph, { graphPath })
+    await startWebServer(graph, {
+      graphPath: config.graphPath,
+      fileWatcher: config.fileWatcherGraphPath && watchFiles ? true : undefined,
+    })
+  } else if (watchFiles && config.fileWatcherGraphPath) {
+    startGraphFileWatcher(graph, { graphPath: config.fileWatcherGraphPath })
   }
 
   const server = new Server(

@@ -1,3 +1,5 @@
+import type { ContentMap, GraphSource } from '../source/index.js'
+
 export type State = 'draft' | 'proposed' | 'agreed' | 'future' | 'removed' | 'implemented'
 export type Stability = 'unstable' | 'stable' | 'deprecated'
 export type EdgeType =
@@ -71,10 +73,13 @@ export interface Graph {
   edgesByTo: Map<string, Edge[]>
   templates: Map<string, Template>
   diagnostics: Diagnostic[]
+  sourceContent?: ContentMap
 }
 
 export interface LoadOptions {
-  graphPath: string
+  source?: GraphSource
+  ref?: string
+  graphPath?: string
   packsPath?: string
   strict?: boolean
 }
@@ -93,3 +98,5 @@ export class QueryError extends Error {
     this.name = 'QueryError'
   }
 }
+
+export { SourceError } from '../source/index.js'

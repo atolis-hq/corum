@@ -12,6 +12,7 @@ import { VALID_EDGE_TYPE_SET } from '../loader/constants.js'
 import { getOwnedSections } from '../loader/pack-loader.js'
 import type { EdgeType, Graph, Node, Template } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
+import { createGraphRuntimeConfig } from '../source/config.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -439,7 +440,10 @@ function isEntrypoint(): boolean {
 }
 
 if (isEntrypoint()) {
-  const graphPath = process.env.CORUM_GRAPH_PATH ?? path.join(process.cwd(), '.corum/graph')
-  const graph = await loadGraph({ graphPath, strict: true })
-  await startWebServer(graph, { graphPath, fileWatcher: process.argv.includes('--watch') ? true : undefined })
+  const config = createGraphRuntimeConfig()
+  const graph = await loadGraph({ source: config.source, strict: true })
+  await startWebServer(graph, {
+    graphPath: config.graphPath,
+    fileWatcher: config.fileWatcherGraphPath && process.argv.includes('--watch') ? true : undefined,
+  })
 }

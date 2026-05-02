@@ -4,6 +4,8 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import type { Edge, Graph, Node } from '../schema/index.js'
 import { getOwnedSections } from '../loader/pack-loader.js'
 import { isPackRef } from '../loader/fs-utils.js'
+import type { ContentMap } from '../source/index.js'
+import { FileGraphSource } from '../source/file-source.js'
 
 export interface SaveGraphOptions {
   sourceGraphPath: string
@@ -11,8 +13,36 @@ export interface SaveGraphOptions {
   replace?: boolean
 }
 
+export interface SerializeGraphOptions {
+  sourceGraphPath?: string
+  outputGraphPath?: string
+}
+
 const STRUCTURAL_EDGE_TYPES = new Set(['has-field', 'has-value'])
 const YAML_STRINGIFY_OPTIONS = { singleQuote: true }
+
+export function serializeGraph(graph: Graph, options: SerializeGraphOptions = {}): ContentMap {
+  const map: ContentMap = new Map()
+  map.set('graph.yaml', buildGraphYaml(graph, options))
+
+  for (const root of getRootNodes(graph)) {
+    if (!root.extractedFrom) continue
+    map.set(
+      normalizeExtractedFrom(root.extractedFrom, options.sourceGraphPath),
+      stringifyGraphYaml(toClusterDocument(graph, root)),
+    )
+  }
+
+  const explicitEdges = getAllEdges(graph)
+    .filter(edge => !STRUCTURAL_EDGE_TYPES.has(edge.type))
+    .sort((a, b) => a.id.localeCompare(b.id))
+
+  if (explicitEdges.length > 0) {
+    map.set('edges/corum.edges.yaml', stringifyGraphYaml({ edges: explicitEdges.map(toEdgeDocument) }))
+  }
+
+  return map
+}
 
 export async function saveGraph(graph: Graph, options: SaveGraphOptions): Promise<void> {
   const { sourceGraphPath, outputGraphPath, replace = true } = options
@@ -21,49 +51,43 @@ export async function saveGraph(graph: Graph, options: SaveGraphOptions): Promis
     if (!replace) {
       throw new Error(`output graph folder already exists: ${outputGraphPath}`)
     }
-    fs.rmSync(outputGraphPath, { recursive: true, force: true })
   }
-  fs.mkdirSync(outputGraphPath, { recursive: true })
 
-  writeGraphYaml(sourceGraphPath, outputGraphPath)
-  writeClusterFiles(graph, sourceGraphPath, outputGraphPath)
-  writeExplicitEdges(graph, outputGraphPath)
+  const source = new FileGraphSource({ graphDir: outputGraphPath, defaultBranch: 'local' })
+  await source.commit(
+    'local',
+    serializeGraph(graph, { sourceGraphPath, outputGraphPath }),
+    'save graph',
+    { replaceGraphContent: replace },
+  )
 }
 
-function writeGraphYaml(sourceGraphPath: string, outputGraphPath: string): void {
-  const sourceGraphYamlPath = path.join(sourceGraphPath, 'graph.yaml')
-  const outputGraphYamlPath = path.join(outputGraphPath, 'graph.yaml')
-
-  if (!fs.existsSync(sourceGraphYamlPath)) {
-    fs.writeFileSync(outputGraphYamlPath, stringifyGraphYaml({ templatePacks: [] }))
-    return
-  }
-
-  const doc = parseYaml(fs.readFileSync(sourceGraphYamlPath, 'utf-8')) as Record<string, unknown>
+function buildGraphYaml(graph: Graph, options: SerializeGraphOptions): string {
+  const content = graph.sourceContent?.get('graph.yaml')
+  if (!content) return stringifyGraphYaml({ templatePacks: [] })
+  if (!options.sourceGraphPath || !options.outputGraphPath) return content
+  const doc = parseYaml(content) as Record<string, unknown>
   const packs = Array.isArray(doc.templatePacks) ? doc.templatePacks : []
   doc.templatePacks = packs.map(pack => {
     if (!isPackRef(pack)) return pack
-    const absolutePackPath = path.resolve(sourceGraphPath, pack.path)
+    const absolutePackPath = path.resolve(options.sourceGraphPath!, pack.path)
     return {
       ...pack,
-      path: normalizeYamlPath(path.relative(outputGraphPath, absolutePackPath)),
+      path: normalizeContentKey(path.relative(options.outputGraphPath!, absolutePackPath)),
     }
   })
-
-  fs.writeFileSync(outputGraphYamlPath, stringifyGraphYaml(doc))
+  return stringifyGraphYaml(doc)
 }
 
-function writeClusterFiles(graph: Graph, sourceGraphPath: string, outputGraphPath: string): void {
-  const rootNodes = getRootNodes(graph)
+function normalizeContentKey(value: string): string {
+  return value.split(path.sep).join('/')
+}
 
-  for (const root of rootNodes) {
-    if (!root.extractedFrom) continue
-
-    const relativeFilePath = path.relative(sourceGraphPath, root.extractedFrom)
-    const outputFilePath = path.join(outputGraphPath, relativeFilePath)
-    fs.mkdirSync(path.dirname(outputFilePath), { recursive: true })
-    fs.writeFileSync(outputFilePath, stringifyGraphYaml(toClusterDocument(graph, root)))
+function normalizeExtractedFrom(value: string, sourceGraphPath?: string): string {
+  if (sourceGraphPath && path.isAbsolute(value)) {
+    return normalizeContentKey(path.relative(sourceGraphPath, value))
   }
+  return normalizeContentKey(value)
 }
 
 function toClusterDocument(graph: Graph, root: Node): Record<string, unknown> {
@@ -122,21 +146,6 @@ function getLocalName(childId: string, parentId: string, sectionName: string): s
   return childId.slice(`${parentId}.${sectionName}.`.length)
 }
 
-function writeExplicitEdges(graph: Graph, outputGraphPath: string): void {
-  const explicitEdges = getAllEdges(graph)
-    .filter(edge => !STRUCTURAL_EDGE_TYPES.has(edge.type))
-    .sort((a, b) => a.id.localeCompare(b.id))
-
-  if (explicitEdges.length === 0) return
-
-  const edgesDir = path.join(outputGraphPath, 'edges')
-  fs.mkdirSync(edgesDir, { recursive: true })
-  fs.writeFileSync(
-    path.join(edgesDir, 'corum.edges.yaml'),
-    stringifyGraphYaml({ edges: explicitEdges.map(toEdgeDocument) }),
-  )
-}
-
 function stringifyGraphYaml(value: unknown): string {
   return stringifyYaml(value, YAML_STRINGIFY_OPTIONS)
 }
@@ -168,8 +177,4 @@ function getRootNodes(graph: Graph): Node[] {
   return nodes
     .filter(node => !nodes.some(other => other.id !== node.id && node.id.startsWith(`${other.id}.`)))
     .sort((a, b) => a.id.localeCompare(b.id))
-}
-
-function normalizeYamlPath(value: string): string {
-  return value.split(path.sep).join('/')
 }
