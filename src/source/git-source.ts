@@ -249,6 +249,22 @@ export class GitGraphSource implements GraphSource {
     }
   }
 
+  async reloadSignature(): Promise<string> {
+    const dir = await this.dir()
+    const branches = await this.listBranches()
+    const refs: string[] = []
+
+    for (const branch of [...branches].sort((a, b) => a.localeCompare(b))) {
+      try {
+        refs.push(`${branch}:${await this.resolveBranchOid(branch)}`)
+      } catch {
+        refs.push(`${branch}:unresolved`)
+      }
+    }
+
+    return refs.join('|')
+  }
+
   private async resolveBranchOid(branch: string): Promise<string> {
     const dir = await this.dir()
     if (this.remoteUrl) {

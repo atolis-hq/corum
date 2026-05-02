@@ -2,13 +2,13 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { pathToFileURL } from 'node:url'
-import { getCluster, getLinkedFields, listNodes, type ListNodesFilter } from '../graph/index.js'
+import { computeClusterOverlay, getCluster, getLinkedFields, listNodes, type ListNodesFilter } from '../graph/index.js'
 import { loadGraph, loadMultiGraph } from '../loader/index.js'
 import type { BranchGraph, Graph } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
 import { createGraphRuntimeConfig } from '../source/config.js'
 import type { GraphSource } from '../source/index.js'
-import { startGraphFileWatcher, startWebServer } from '../web/server.js'
+import { startGraphFileWatcher, startWebServer, type MultiGraphCache } from '../web/server.js'
 import { compactKeys, getSerializer } from './serializers.js'
 
 type ToolContent = { type: 'text'; text: string }
@@ -21,7 +21,7 @@ type ToolResult = {
 type MaybePromise<T> = T | Promise<T>
 type ToolHandler = (args: Record<string, unknown>) => MaybePromise<ToolResult>
 
-export function createMcpHandlers(graph: Graph, source?: GraphSource): {
+export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: MultiGraphCache): {
   list_nodes: ToolHandler
   list_templates: ToolHandler
   get_template: ToolHandler
@@ -30,6 +30,8 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource): {
   list_branches: ToolHandler
   diff_branch: ToolHandler
 } {
+  const resolveMulti = (src: GraphSource) => cache ? cache.get() : loadMultiGraph({ source: src })
+
   return {
     list_nodes(args) {
       const run = (targetGraph: Graph): ToolResult => {
@@ -61,8 +63,8 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource): {
     },
 
     list_templates(args) {
-      try {
-        const summaries = [...graph.templates.values()]
+      const run = (targetGraph: Graph): ToolResult => {
+        const summaries = [...targetGraph.templates.values()]
           .map(template => ({
             name: template.name,
             version: template.info?.version,
@@ -73,6 +75,14 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource): {
           }))
           .sort((a, b) => a.name.localeCompare(b.name))
         return formatResult(summaries, args.format, getCompactKeys(args))
+      }
+
+      if (hasBranch(args) && source) {
+        return withBranchGraph(source, String(args.branch), branch => run(branch.graph))
+      }
+
+      try {
+        return run(graph)
       } catch (err) {
         return errorResult(err)
       }
@@ -92,18 +102,27 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource): {
     },
 
     get_cluster(args) {
-      const run = (targetGraph: Graph): ToolResult =>
-        formatResult(getCluster(targetGraph, String(args.node_id)), args.format, getCompactKeys(args))
+      const overlayRefs = Array.isArray(args.overlay_refs)
+        ? args.overlay_refs.filter((ref): ref is string => typeof ref === 'string')
+        : []
 
-      if (hasBranch(args)) {
-        return withBranchGraph(source, String(args.branch), branch => run(branch.graph))
+      const run = async (targetGraph: Graph, branchRef?: string): Promise<ToolResult> => {
+        const cluster = getCluster(targetGraph, String(args.node_id))
+        if (overlayRefs.length === 0 || !source || !branchRef) {
+          return formatResult(cluster, args.format, getCompactKeys(args))
+        }
+        const multi = await resolveMulti(source)
+        const overlay = computeClusterOverlay(multi, branchRef, overlayRefs, String(args.node_id))
+        return formatResult({ ...cluster, overlay }, args.format, getCompactKeys(args))
       }
 
-      try {
-        return run(graph)
-      } catch (err) {
-        return errorResult(err)
+      const branchRef = hasBranch(args) ? String(args.branch) : undefined
+
+      if (branchRef) {
+        return withBranchGraph(source, branchRef, branch => run(branch.graph, branchRef), cache)
       }
+
+      return run(graph).catch(err => errorResult(err))
     },
 
     get_linked_fields(args) {
@@ -124,7 +143,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource): {
     async list_branches(args) {
       try {
         if (!source) throw new QueryError('GraphSource is required for list_branches')
-        const multi = await loadMultiGraph({ source })
+        const multi = await resolveMulti(source)
         const summaries = multi.branchResults.map(result => ({
           ref: result.ref,
           status: result.status,
@@ -143,7 +162,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource): {
         if (typeof args.branch !== 'string' || args.branch.length === 0) {
           throw new QueryError('branch is required')
         }
-        const multi = await loadMultiGraph({ source })
+        const multi = await resolveMulti(source)
         return formatResult(multi.diff(args.branch), args.format, getCompactKeys(args))
       } catch (err) {
         return errorResult(err)
@@ -155,11 +174,12 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource): {
 async function withBranchGraph(
   source: GraphSource | undefined,
   branchRef: string,
-  fn: (branch: BranchGraph) => ToolResult,
+  fn: (branch: BranchGraph) => MaybePromise<ToolResult>,
+  cache?: MultiGraphCache,
 ): Promise<ToolResult> {
   try {
     if (!source) throw new QueryError('GraphSource is required when branch is provided')
-    const multi = await loadMultiGraph({ source })
+    const multi = cache ? await cache.get() : await loadMultiGraph({ source })
     const branch = multi.branches.find(item => item.ref === branchRef)
     if (!branch) throw new QueryError(`branch '${branchRef}' not found or failed to load`)
     return fn(branch)
@@ -251,6 +271,7 @@ if (isEntrypoint()) {
         inputSchema: {
           type: 'object',
           properties: {
+            branch: { type: 'string', description: 'Branch ref to load templates from' },
             format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
             compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
           },
@@ -278,6 +299,11 @@ if (isEntrypoint()) {
           properties: {
             node_id: { type: 'string', description: 'Fully qualified node ID' },
             branch: { type: 'string', description: 'Branch ref to load the cluster from' },
+            overlay_refs: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Branch refs to overlay. Returns ghost field data alongside the cluster.',
+            },
             format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
             compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
           },

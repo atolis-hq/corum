@@ -6,11 +6,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { AddressInfo } from 'node:net'
 import type { Response } from 'express'
 import { parse as parseYaml } from 'yaml'
-import { getClusterView, listNodes, type ListNodesFilter } from '../graph/index.js'
+import { computeClusterOverlay, getClusterView, listNodes, type ListNodesFilter } from '../graph/index.js'
 import { loadGraph, loadMultiGraph } from '../loader/index.js'
 import { VALID_EDGE_TYPE_SET } from '../loader/constants.js'
 import { getOwnedSections } from '../loader/pack-loader.js'
-import type { EdgeType, Graph, Node, Template } from '../schema/index.js'
+import type { EdgeType, Graph, MultiGraph, Node, Template } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
 import { createGraphRuntimeConfig } from '../source/config.js'
 import type { GraphSource } from '../source/index.js'
@@ -25,6 +25,7 @@ export type WebServerOptions = {
   source?: GraphSource
   fileWatcher?: boolean
   fileWatcherDebounceMs?: number
+  gitPollSeconds?: number
   logger?: (message: string) => void
 }
 
@@ -43,6 +44,34 @@ export type GraphFileWatcherOptions = {
 type ReloadEvents = {
   subscribe(res: Response): void
   notify(): void
+}
+
+export type MultiGraphCache = {
+  get(): Promise<MultiGraph>
+  invalidate(): void
+}
+
+type PollableGraphSource = GraphSource & {
+  reloadSignature(): Promise<string>
+}
+
+function createMultiGraphCache(source: GraphSource): MultiGraphCache {
+  let cache: MultiGraph | null = null
+  return {
+    async get(): Promise<MultiGraph> {
+      if (!cache) cache = await loadMultiGraph({ source })
+      return cache
+    },
+    invalidate() {
+      cache = null
+    },
+  }
+}
+
+async function getGraphForRef(ref: string, cache: MultiGraphCache, fallback: Graph): Promise<Graph> {
+  const multi = await cache.get()
+  const branch = multi.branches.find(item => item.ref === ref)
+  return branch?.graph ?? fallback
 }
 
 async function getPluginFiles(): Promise<string[]> {
@@ -300,6 +329,8 @@ export function createApp(
   graph: Graph,
   reloadEvents: ReloadEvents = createReloadEvents(),
   source?: GraphSource,
+  multiCache?: MultiGraphCache,
+  onReloadRequest?: () => Promise<void>,
 ): express.Application {
   const app = express()
 
@@ -311,9 +342,15 @@ export function createApp(
     reloadEvents.subscribe(res)
   })
 
-  app.get('/api/templates', (req, res) => {
+  app.get('/api/templates', async (req, res) => {
     const includeCore = req.query.includeCore === 'true'
-    const templates = [...graph.templates.values()]
+
+    let targetGraph = graph
+    if (typeof req.query.ref === 'string' && multiCache) {
+      targetGraph = await getGraphForRef(req.query.ref, multiCache, graph)
+    }
+
+    const templates = [...targetGraph.templates.values()]
       .filter(template => includeCore || !template.info?.core)
       .sort((a, b) => a.name.localeCompare(b.name))
       .map(template => ({
@@ -328,7 +365,7 @@ export function createApp(
     res.json(templates)
   })
 
-  app.get('/api/nodes', (req, res) => {
+  app.get('/api/nodes', async (req, res) => {
     const { template, component, state, stability } = req.query
     const includeCore = req.query.includeCore === 'true'
     const filter: ListNodesFilter = {
@@ -337,10 +374,15 @@ export function createApp(
       state: typeof state === 'string' ? state as ListNodesFilter['state'] : undefined,
       stability: typeof stability === 'string' ? stability as ListNodesFilter['stability'] : undefined,
     }
-    const nodes = listNodes(graph, filter)
-      .filter(node => includeCore || !graph.templates.get(node.template)?.info?.core)
+    let targetGraph = graph
+    if (typeof req.query.ref === 'string' && multiCache) {
+      targetGraph = await getGraphForRef(req.query.ref, multiCache, graph)
+    }
+
+    const nodes = listNodes(targetGraph, filter)
+      .filter(node => includeCore || !targetGraph.templates.get(node.template)?.info?.core)
       .map(node => {
-        const ownership = summarizeNodeForNavigation(graph, node)
+        const ownership = summarizeNodeForNavigation(targetGraph, node)
         return {
           id: ownership.id,
           template: ownership.template,
@@ -354,7 +396,7 @@ export function createApp(
     res.json(nodes)
   })
 
-  app.get('/api/cluster', (req, res) => {
+  app.get('/api/cluster', async (req, res) => {
     const nodeId = typeof req.query.nodeId === 'string' ? req.query.nodeId : undefined
     if (!nodeId) {
       res.status(400).json({ error: 'nodeId query param required' })
@@ -362,12 +404,30 @@ export function createApp(
     }
 
     try {
-      const cluster = getClusterView(graph, nodeId, parseIncludeEdges(req.query.includeEdges))
+      let targetGraph = graph
+      if (typeof req.query.ref === 'string' && multiCache) {
+        targetGraph = await getGraphForRef(req.query.ref, multiCache, graph)
+      }
+
+      const cluster = getClusterView(targetGraph, nodeId, parseIncludeEdges(req.query.includeEdges))
+      const rawOverlayRefs = req.query.overlayRefs
+      const overlayRefs = Array.isArray(rawOverlayRefs)
+        ? rawOverlayRefs.filter((r): r is string => typeof r === 'string' && r.length > 0)
+        : typeof rawOverlayRefs === 'string' && rawOverlayRefs.length > 0
+          ? [rawOverlayRefs]
+          : []
+      let overlay = null
+      if (overlayRefs.length > 0 && multiCache && typeof req.query.ref === 'string') {
+        const multi = await multiCache.get()
+        overlay = computeClusterOverlay(multi, req.query.ref, overlayRefs, nodeId)
+      }
+
       res.json({
-        root: summarizeNodeForNavigation(graph, annotateNode(graph, cluster.root)),
-        descendants: cluster.descendants.map(child => summarizeNodeForNavigation(graph, annotateNode(graph, child))),
-        includedNodes: cluster.includedNodes.map(node => summarizeNodeForNavigation(graph, annotateNode(graph, node))),
+        root: summarizeNodeForNavigation(targetGraph, annotateNode(targetGraph, cluster.root)),
+        descendants: cluster.descendants.map(child => summarizeNodeForNavigation(targetGraph, annotateNode(targetGraph, child))),
+        includedNodes: cluster.includedNodes.map(node => summarizeNodeForNavigation(targetGraph, annotateNode(targetGraph, node))),
         edges: cluster.edges,
+        overlay,
       })
     } catch (err) {
       if (err instanceof QueryError) {
@@ -391,7 +451,7 @@ export function createApp(
     }
 
     try {
-      const multi = await loadMultiGraph({ source })
+      const multi = multiCache ? await multiCache.get() : await loadMultiGraph({ source })
       res.json({
         default: multi.default.ref,
         branches: multi.branches.map(branch => ({
@@ -405,6 +465,15 @@ export function createApp(
     }
   })
 
+  app.post('/api/reload', async (_req, res) => {
+    try {
+      await onReloadRequest?.()
+      res.status(202).json({ ok: true })
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Internal server error' })
+    }
+  })
+
   app.get('/api/overlay/:ref(*)', async (req, res) => {
     if (!source) {
       res.status(501).json({ error: 'multi-branch requires a configured source' })
@@ -412,7 +481,7 @@ export function createApp(
     }
 
     try {
-      const multi = await loadMultiGraph({ source })
+      const multi = multiCache ? await multiCache.get() : await loadMultiGraph({ source })
       const overlay = multi.overlay(req.params.ref)
       res.json({
         viewingRef: overlay.viewingRef,
@@ -458,15 +527,41 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
   const graphPath = options.graphPath ?? process.env.CORUM_GRAPH_PATH ?? path.join(process.cwd(), '.corum/graph')
   const logger = options.logger ?? console.error
   const reloadEvents = createReloadEvents()
-  const app = createApp(graph, reloadEvents, options.source)
+  const multiCache = options.source ? createMultiGraphCache(options.source) : undefined
+  let reloadInFlight: Promise<void> | null = null
+
+  async function reloadState(reason: string): Promise<void> {
+    if (reloadInFlight) return reloadInFlight
+    reloadInFlight = (async () => {
+      const nextGraph = options.source
+        ? await loadGraph({ source: options.source, strict: true })
+        : await loadGraph({ graphPath, strict: true })
+      replaceGraph(graph, nextGraph)
+      multiCache?.invalidate()
+      reloadEvents.notify()
+      logger(`[corum] graph reloaded after ${reason}`)
+    })()
+
+    try {
+      await reloadInFlight
+    } finally {
+      reloadInFlight = null
+    }
+  }
+
+  const app = createApp(graph, reloadEvents, options.source, multiCache, () => reloadState('manual reload'))
   const stopWatcher = isFileWatcherEnabled(options)
     ? startGraphFileWatcher(graph, {
-      graphPath,
-      debounceMs: options.fileWatcherDebounceMs,
-      logger,
-      onReload: () => reloadEvents.notify(),
-    })
+        graphPath,
+        debounceMs: options.fileWatcherDebounceMs,
+        logger,
+        onReload: () => {
+          multiCache?.invalidate()
+          reloadEvents.notify()
+        },
+      })
     : undefined
+  const stopPoller = startGitSourcePoller(options.source, options.gitPollSeconds, logger, () => reloadState('git poll'))
   return new Promise((resolve, reject) => {
     const server = app.listen(port, () => {
       const addr = server.address() as AddressInfo
@@ -481,12 +576,59 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
         port: addr.port,
         close: () => new Promise<void>((res, rej) => {
           stopWatcher?.()
+          stopPoller?.()
           server.close(err => (err ? rej(err) : res()))
         }),
       })
     })
     server.on('error', reject)
   })
+}
+
+function startGitSourcePoller(
+  source: GraphSource | undefined,
+  pollSeconds: number | undefined,
+  logger: (message: string) => void,
+  onChange: () => Promise<void>,
+): (() => void) | undefined {
+  if (!source || !pollSeconds || !hasReloadSignature(source)) return undefined
+  const pollableSource = source
+
+  let timer: NodeJS.Timeout | undefined
+  let stopped = false
+  let inFlight = false
+  let lastSignature: string | null = null
+
+  async function check(): Promise<void> {
+    if (stopped || inFlight) return
+    inFlight = true
+    try {
+      const signature = await pollableSource.reloadSignature()
+      if (lastSignature !== null && signature !== lastSignature) {
+        await onChange()
+      }
+      lastSignature = signature
+    } catch (err) {
+      logger(`[corum] git poll failed: ${err}`)
+    } finally {
+      inFlight = false
+    }
+  }
+
+  void check()
+  timer = setInterval(() => {
+    void check()
+  }, pollSeconds * 1000)
+  logger(`[corum] git poll enabled (${pollSeconds}s)`)
+
+  return () => {
+    stopped = true
+    if (timer) clearInterval(timer)
+  }
+}
+
+function hasReloadSignature(source: GraphSource): source is PollableGraphSource {
+  return typeof (source as PollableGraphSource).reloadSignature === 'function'
 }
 
 function isEntrypoint(): boolean {
@@ -499,6 +641,7 @@ if (isEntrypoint()) {
   await startWebServer(graph, {
     graphPath: config.graphPath,
     source: config.source,
+    gitPollSeconds: config.gitPollSeconds,
     fileWatcher: config.fileWatcherGraphPath && process.argv.includes('--watch') ? true : undefined,
   })
 }

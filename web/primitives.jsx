@@ -288,7 +288,7 @@ function buildSchemaModel(schemaNodes, allNodes) {
   };
 }
 
-function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = new Set(), edges = [] }) {
+function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = new Set(), edges = [], overlayFields, overlayRefs }) {
   const fields = model.fieldsBySchema.get(schemaName) ?? [];
   if (fields.length === 0) {
     return (
@@ -311,6 +311,8 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
         const ref = field.properties?.['$ref'];
         const localRef = refLocalSchemaName(ref);
         const canExpand = localRef !== null && model.schemasByName.has(localRef) && !visited.has(localRef);
+        const childSchemaNode = canExpand ? model.schemasByName.get(localRef) : null;
+        const childGhostFields = childSchemaNode ? overlayFieldsForSchema(overlayFields, childSchemaNode.id) : [];
         const childPrefix = `${prefix}${name}${field.properties?.cardinality === 'many' ? '[].' : '.'}`;
         const nextVisited = new Set(visited);
         nextVisited.add(schemaName);
@@ -350,14 +352,21 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
               </div>
             </div>
             {canExpand && (
-              <SchemaFieldRows
-                schemaName={localRef}
-                model={model}
-                prefix={childPrefix}
-                depth={depth + 1}
-                visited={nextVisited}
-                edges={edges}
-              />
+              <>
+                <SchemaFieldRows
+                  schemaName={localRef}
+                  model={model}
+                  prefix={childPrefix}
+                  depth={depth + 1}
+                  visited={nextVisited}
+                  edges={edges}
+                  overlayFields={overlayFields}
+                  overlayRefs={overlayRefs}
+                />
+                {childGhostFields.length > 0 && (
+                  <GhostFieldRows fields={childGhostFields} overlayRefs={overlayRefs} prefix={childPrefix} depth={depth + 1} />
+                )}
+              </>
             )}
           </React.Fragment>
         );
@@ -366,7 +375,82 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
   );
 }
 
-function SchemaCard({ title, nodes, allNodes, edges, anchorIdForNode }) {
+// Max 2 distinct stripe colours — OverlayLegend also only renders 2 entries.
+function ghostStripeClass(index) {
+  if (index === 0) return 'overlay-stripe-0';
+  if (index === 1) return 'overlay-stripe-1';
+  return 'overlay-stripe-0';
+}
+
+function overlayFieldsForSchema(overlayFields, schemaNodeId) {
+  if (!overlayFields) return [];
+  const prefix = schemaNodeId + '.fields.';
+  return overlayFields.filter(field => field.id.startsWith(prefix));
+}
+
+function GhostFieldRows({ fields, overlayRefs, prefix = '', depth = 0 }) {
+  return (
+    <>
+      {fields.map(field => {
+        const isConflict = field.ghostState === 'ghost-conflict' || field.ghostState === 'local-modified';
+        const refIndex = overlayRefs ? overlayRefs.indexOf(field.sourceRef) : 0;
+        const stripeClass = isConflict ? 'overlay-conflict' : ghostStripeClass(Math.max(0, refIndex));
+        const name = prefix + (fieldLocalName(field.id));
+        const type = field.node.properties?.type || (field.node.properties?.['$ref'] ? String(field.node.properties['$ref']).replace(/^#\/(schemas|enums)\//, '') : '-');
+        return (
+          <div
+            key={field.id}
+            className={`field-row overlay-ghost ${stripeClass}${depth > 0 ? ' nested' : ''}`}
+            style={{ '--field-depth': depth }}
+            title={`From ${field.sourceRef}`}
+          >
+            <div className="gutter">
+              {isConflict && <span style={{ color: '#c44', fontWeight: 700 }}>!</span>}
+            </div>
+            <div className="name">{name}</div>
+            <div className="type">{type}</div>
+            <div className="cardinality">-</div>
+            <div className="req">-</div>
+            <div className="state">
+              {isConflict
+                ? <span className="tag" style={{ background: '#c4422222', color: '#c44' }}>conflict</span>
+                : <StateTag state={field.node.state} />
+              }
+            </div>
+            <div className="lineage">
+              <span className="mono" style={{ fontSize: 10.5, opacity: 0.7 }}>{field.sourceRef}</span>
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function OverlayLegend({ overlayRefs }) {
+  if (!overlayRefs || overlayRefs.length === 0) return null;
+  const colours = ['var(--accent)', '#5c7aa8'];
+  return (
+    <div className="overlay-legend">
+      <span className="label-xs">Incoming:</span>
+      {overlayRefs.map((ref, index) => (
+        <span key={ref} className="overlay-legend-item">
+          <span
+            className="overlay-legend-swatch"
+            style={{ background: colours[index % colours.length] }}
+          />
+          <span className="mono" style={{ fontSize: 10.5 }}>{ref}</span>
+        </span>
+      ))}
+      <span className="overlay-legend-item" style={{ color: '#c44' }}>
+        <span className="overlay-legend-swatch" style={{ background: '#c44' }} />
+        conflict
+      </span>
+    </div>
+  );
+}
+
+function SchemaCard({ title, nodes, allNodes, edges, anchorIdForNode, overlayFields, overlayRefs }) {
   if (!nodes || nodes.length === 0) return null;
 
   if (title === 'EnumDefinition') {
@@ -429,6 +513,7 @@ function SchemaCard({ title, nodes, allNodes, edges, anchorIdForNode }) {
         <div className="card-body">
           {model.topSchemas.map(schema => {
             const schemaName = localSchemaName(schema.id);
+            const ghostFields = overlayFieldsForSchema(overlayFields, schema.id);
             return (
               <div key={schema.id} className="schema-section" id={anchorIdForNode ? anchorIdForNode(schema.id) : undefined}>
                 <div className="schema-section-head">
@@ -438,6 +523,7 @@ function SchemaCard({ title, nodes, allNodes, edges, anchorIdForNode }) {
                   </div>
                   <div className="label-sm mono">{schema.id}</div>
                 </div>
+                {ghostFields.length > 0 && <OverlayLegend overlayRefs={overlayRefs} />}
                 <div className="field-row field-row-head">
                   <div />
                   <div className="label-xs">Name</div>
@@ -447,7 +533,17 @@ function SchemaCard({ title, nodes, allNodes, edges, anchorIdForNode }) {
                   <div className="label-xs">State</div>
                   <div className="label-xs">Links</div>
                 </div>
-                <SchemaFieldRows schemaName={schemaName} model={model} visited={new Set()} edges={edges ?? []} />
+                <SchemaFieldRows
+                  schemaName={schemaName}
+                  model={model}
+                  visited={new Set()}
+                  edges={edges ?? []}
+                  overlayFields={overlayFields}
+                  overlayRefs={overlayRefs}
+                />
+                {ghostFields.length > 0 && (
+                  <GhostFieldRows fields={ghostFields} overlayRefs={overlayRefs} />
+                )}
               </div>
             );
           })}

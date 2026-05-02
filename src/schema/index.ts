@@ -123,6 +123,7 @@ export interface BranchLoadResult {
   ref: string
   status: BranchLoadStatus
   error?: string
+  diagnostics?: Diagnostic[]
 }
 
 export interface OverlayNode {
@@ -155,6 +156,19 @@ export interface MultiGraph {
   branchResults: BranchLoadResult[]
   overlay(viewingRef: string): BranchOverlay
   diff(branchRef: string): BranchDiff
+}
+
+export type ClusterOverlayField = {
+  id: string
+  ghostState: GhostState
+  sourceRef: string
+  node: Node
+}
+
+export type ClusterOverlay = {
+  viewingRef: string
+  overlayRefs: string[]
+  fields: ClusterOverlayField[]
 }
 
 export interface MultiLoadOptions {

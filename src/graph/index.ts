@@ -1,4 +1,15 @@
-import type { Edge, EdgeType, Graph, Node, Stability, State } from '../schema/index.js'
+import type {
+  ClusterOverlay,
+  ClusterOverlayField,
+  Edge,
+  EdgeType,
+  GhostState,
+  Graph,
+  MultiGraph,
+  Node,
+  Stability,
+  State,
+} from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
 
 export type ListNodesFilter = {
@@ -147,4 +158,30 @@ function collectIncludedEdge(
   seen.add(edge.id)
   if (!clusterIds.has(edge.from)) includedNodeIds.add(edge.from)
   if (!clusterIds.has(edge.to)) includedNodeIds.add(edge.to)
+}
+
+const OVERLAY_EXCLUDED: ReadonlySet<GhostState> = new Set(['local', 'shared'])
+
+export function computeClusterOverlay(
+  multi: MultiGraph,
+  viewingRef: string,
+  overlayRefs: string[],
+  clusterRootId: string,
+): ClusterOverlay | null {
+  const overlay = multi.overlay(viewingRef)
+  const prefix = `${clusterRootId}.`
+
+  const fields: ClusterOverlayField[] = [...overlay.nodes.values()]
+    .filter(node => {
+      if (OVERLAY_EXCLUDED.has(node.ghostState)) return false
+      if (!node.id.startsWith(prefix)) return false
+      return overlayRefs.some(ref => node.presence.has(ref))
+    })
+    .map(node => {
+      const sourceRef = overlayRefs.find(ref => node.presence.has(ref)) ?? viewingRef
+      const sourceNode = node.presence.get(sourceRef) ?? [...node.presence.values()][0]
+      return { id: node.id, ghostState: node.ghostState, sourceRef, node: sourceNode }
+    })
+
+  return fields.length === 0 ? null : { viewingRef, overlayRefs, fields }
 }

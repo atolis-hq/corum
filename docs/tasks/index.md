@@ -4,7 +4,6 @@
 
 | Priority | Feature | File | Summary |
 |----------|---------|------|---------|
-| 1 | Git Source / Branch Support | [gitsource.md](gitsource.md) | Load/save direct to git; design branches visible simultaneously in-memory; derived branches produced from code merges |
 | 3 | Linter | [linter.md](linter.md) | Validate templates, nodes, and edges; detect broken edges |
 | 4 | Rename & Deletion | [renaminganddeletion.md](renaminganddeletion.md) | Rename nodes without losing linkage; renamed-from tracking across branches |
 | 5 | User Journeys | [userjourneys.md](userjourneys.md) | Event modelling swimlanes; journey steps; relationship timelines |
