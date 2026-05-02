@@ -5,7 +5,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as git from 'isomorphic-git'
+import { loadGraph } from '../src/loader/index.js'
 import { listYamlKeys, readYaml, hasKey } from '../src/source/content-utils.js'
+import { createGraphRuntimeConfig } from '../src/source/config.js'
 import { FileGraphSource } from '../src/source/file-source.js'
 import { GitCacheManager } from '../src/source/git-cache.js'
 import { GitGraphSource } from '../src/source/git-source.js'
@@ -144,6 +146,62 @@ describe('GitCacheManager', () => {
 
   it('cacheDir path does not contain the URL directly', () => {
     assert.ok(!new GitCacheManager().cacheDir('https://github.com/org/repo').includes('github.com'))
+  })
+})
+
+describe('createGraphRuntimeConfig', () => {
+  it('defaults to a filesystem source using CORUM_GRAPH_PATH', async () => {
+    const config = createGraphRuntimeConfig({ CORUM_GRAPH_PATH: fixtureGraphDir }, repoRoot)
+    assert.equal(config.kind, 'filesystem')
+    assert.equal(config.graphPath, fixtureGraphDir)
+    assert.equal(config.fileWatcherGraphPath, fixtureGraphDir)
+
+    const graph = await loadGraph({ source: config.source, strict: true })
+    assert.ok(graph.nodesById.size > 0)
+  })
+
+  it('creates a git source from local repo env config', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-runtime-git-'))
+    try {
+      await createFixtureRepo(tmpDir)
+      const config = createGraphRuntimeConfig({
+        CORUM_SOURCE: 'git',
+        CORUM_GIT_LOCAL_PATH: tmpDir,
+        CORUM_GIT_GRAPH_DIR: 'wrong/graph',
+        CORUM_GIT_BRANCH: 'feat/payment',
+      }, repoRoot)
+
+      assert.equal(config.kind, 'git')
+      assert.equal(config.graphPath, `git:${tmpDir}/.corum/graph`)
+      assert.equal(config.fileWatcherGraphPath, undefined)
+
+      const content = await config.source.loadGraphContent(await config.source.defaultBranch())
+      assert.ok(content.has('components/orders/payment.yaml'))
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects git source config without local or remote repository', () => {
+    assert.throws(
+      () => createGraphRuntimeConfig({ CORUM_SOURCE: 'git' }, repoRoot),
+      /CORUM_SOURCE=git requires CORUM_GIT_LOCAL_PATH or CORUM_GIT_REMOTE_URL/,
+    )
+  })
+
+  it('passes token auth through remote git source config without exposing it in graphPath', () => {
+    const config = createGraphRuntimeConfig({
+      CORUM_SOURCE: 'git',
+      CORUM_GIT_REMOTE_URL: 'https://github.com/org/design-repo.git',
+      CORUM_GIT_GRAPH_DIR: 'wrong/graph',
+      CORUM_GIT_BRANCH: 'main',
+      CORUM_GIT_USERNAME: 'x-access-token',
+      CORUM_GIT_TOKEN: 'secret-token',
+    }, repoRoot)
+
+    assert.equal(config.kind, 'git')
+    assert.equal(config.graphPath, 'git:https://github.com/org/design-repo.git/.corum/graph')
+    assert.equal(config.fileWatcherGraphPath, undefined)
   })
 })
 

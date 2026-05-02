@@ -92,6 +92,32 @@ Starting with powershell
  npm run web
 ```
 
+To run the web app against a git repository instead of a filesystem graph path, set `CORUM_SOURCE=git` before starting the app.
+
+For a local git repository:
+
+```powershell
+$env:CORUM_SOURCE = "git"
+$env:CORUM_GIT_LOCAL_PATH = "C:\git\atolis-hq\corum-design-graph"
+$env:CORUM_GIT_BRANCH = "main"
+$env:CORUM_WEB_PORT = 3001
+npm run web
+```
+
+For a remote repository:
+
+```powershell
+$env:CORUM_SOURCE = "git"
+$env:CORUM_GIT_REMOTE_URL = "https://github.com/org/design-repo.git"
+$env:CORUM_GIT_BRANCH = "main"
+$env:CORUM_WEB_PORT = 3001
+npm run web
+```
+
+For private remote repositories, also set `CORUM_GIT_TOKEN`. `CORUM_GIT_USERNAME` defaults to `x-access-token` when a token is present.
+
+The same git source config is used by `npm run mcp`. Git-backed startup expects graph files in `.corum/graph` and template packs in `.corum/packs`, and loads the selected branch at process start. `CORUM_FILE_WATCHER` only watches filesystem graph paths, so restart the server to reload git content after branch or remote changes.
+
 The MCP server exposes these tools:
 
 - `list_nodes`: lists graph nodes, optionally filtered by `template`, `component`, `state`, or `stability`
