@@ -100,6 +100,7 @@ For a local git repository:
 $env:CORUM_SOURCE = "git"
 $env:CORUM_GIT_LOCAL_PATH = "C:\git\atolis-hq\corum-design-graph"
 $env:CORUM_GIT_BRANCH = "main"
+$env:CORUM_GIT_POLL_SECONDS = 10
 $env:CORUM_WEB_PORT = 3001
 npm run web
 ```
@@ -110,13 +111,18 @@ For a remote repository:
 $env:CORUM_SOURCE = "git"
 $env:CORUM_GIT_REMOTE_URL = "https://github.com/org/design-repo.git"
 $env:CORUM_GIT_BRANCH = "main"
+$env:CORUM_GIT_POLL_SECONDS = 10
 $env:CORUM_WEB_PORT = 3001
 npm run web
 ```
 
 For private remote repositories, also set `CORUM_GIT_TOKEN`. `CORUM_GIT_USERNAME` defaults to `x-access-token` when a token is present.
 
-The same git source config is used by `npm run mcp`. Git-backed startup expects graph files in `.corum/graph` and template packs in `.corum/packs`, and loads the selected branch at process start. `CORUM_FILE_WATCHER` only watches filesystem graph paths, so restart the server to reload git content after branch or remote changes.
+The same git source config is used by `npm run mcp`. Git-backed startup expects graph files in `.corum/graph` and template packs in `.corum/packs`, and loads the selected branch at process start.
+
+`CORUM_GIT_POLL_SECONDS` is optional. When set to a positive number of seconds, the web server polls the git source for branch/ref changes, invalidates its cached multi-branch view, and reloads the app automatically. If it is not set, git-backed content is not polled.
+
+`CORUM_FILE_WATCHER` only watches filesystem graph paths. It does not watch git refs. For git-backed web sessions, you can either enable `CORUM_GIT_POLL_SECONDS` or use the always-visible `Reload` button in the branch bar to force a refresh.
 
 The MCP server exposes these tools:
 

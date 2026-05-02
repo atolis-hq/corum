@@ -1,7 +1,9 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { createMcpHandlers } from '../src/mcp/index.js'
-import type { Graph } from '../src/schema/index.js'
+import type { Graph, MultiGraph } from '../src/schema/index.js'
+import type { GraphSource, ContentMap } from '../src/source/index.js'
+import type { MultiGraphCache } from '../src/web/server.js'
 
 function makeMinimalGraph(): Graph {
   const templates = new Map()
@@ -70,5 +72,48 @@ describe('MCP handlers - get_cluster overlay_refs', () => {
   it('with unknown branch - returns error', async () => {
     const result = await handlers.get_cluster({ node_id: 'comp.Widget.first', branch: 'nonexistent' })
     assert.equal(result.isError, true)
+  })
+})
+
+describe('MCP handlers - MultiGraphCache support', () => {
+  class BrokenSource implements GraphSource {
+    async defaultBranch(): Promise<string> { return 'main' }
+    async listBranches(): Promise<string[]> { throw new Error('broken source: should not be called') }
+    async loadPackContent(): Promise<ContentMap> { return new Map() }
+    async loadGraphContent(): Promise<ContentMap> { return new Map() }
+    async commit(): Promise<void> { throw new Error('not implemented') }
+  }
+
+  function makeFakeMulti(graph: Graph): MultiGraph {
+    const branch = { ref: 'main', graph, isDefault: true }
+    return {
+      default: branch,
+      branches: [branch],
+      branchResults: [{ ref: 'main', status: 'loaded' as const }],
+      overlay: () => { throw new Error('not used') },
+      diff: () => { throw new Error('not used') },
+    }
+  }
+
+  it('list_branches uses provided cache instead of calling loadMultiGraph', async () => {
+    const graph = makeMinimalGraph()
+    let cacheGetCalls = 0
+    const cache: MultiGraphCache = {
+      get: async () => { cacheGetCalls++; return makeFakeMulti(graph) },
+      invalidate: () => {},
+    }
+    const handlers = createMcpHandlers(graph, new BrokenSource(), cache)
+    const result = await handlers.list_branches({})
+    assert.equal(result.isError, undefined)
+    assert.equal(cacheGetCalls, 1)
+    assert.match(result.content[0].text, /main/)
+  })
+
+  it('list_branches without cache calls loadMultiGraph (source error propagates)', async () => {
+    const graph = makeMinimalGraph()
+    const handlers = createMcpHandlers(graph, new BrokenSource())
+    const result = await handlers.list_branches({})
+    assert.equal(result.isError, true)
+    assert.match(result.content[0].text, /broken source/)
   })
 })

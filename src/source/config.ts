@@ -9,6 +9,7 @@ export type GraphRuntimeConfig = {
   source: GraphSource
   graphPath: string
   fileWatcherGraphPath?: string
+  gitPollSeconds?: number
 }
 
 type Env = Record<string, string | undefined>
@@ -47,6 +48,7 @@ export function createGraphRuntimeConfig(
     ? { username: env.CORUM_GIT_USERNAME ?? 'x-access-token', token }
     : undefined
   const repoLabel = localPath ?? remoteUrl!
+  const gitPollSeconds = parseOptionalSeconds(env.CORUM_GIT_POLL_SECONDS)
 
   return {
     kind: 'git',
@@ -58,9 +60,19 @@ export function createGraphRuntimeConfig(
       auth,
     }),
     graphPath: `git:${repoLabel}/${graphDir.replace(/\\/g, '/')}`,
+    gitPollSeconds,
   }
 }
 
 function emptyToUndefined(value: string | undefined): string | undefined {
   return value && value.trim() !== '' ? value : undefined
+}
+
+function parseOptionalSeconds(value: string | undefined): number | undefined {
+  if (!value || value.trim() === '') return undefined
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new SourceError('CORUM_GIT_POLL_SECONDS must be a positive number of seconds')
+  }
+  return parsed
 }

@@ -25,6 +25,7 @@ export type WebServerOptions = {
   source?: GraphSource
   fileWatcher?: boolean
   fileWatcherDebounceMs?: number
+  gitPollSeconds?: number
   logger?: (message: string) => void
 }
 
@@ -45,9 +46,13 @@ type ReloadEvents = {
   notify(): void
 }
 
-type MultiGraphCache = {
+export type MultiGraphCache = {
   get(): Promise<MultiGraph>
   invalidate(): void
+}
+
+type PollableGraphSource = GraphSource & {
+  reloadSignature(): Promise<string>
 }
 
 function createMultiGraphCache(source: GraphSource): MultiGraphCache {
@@ -325,6 +330,7 @@ export function createApp(
   reloadEvents: ReloadEvents = createReloadEvents(),
   source?: GraphSource,
   multiCache?: MultiGraphCache,
+  onReloadRequest?: () => Promise<void>,
 ): express.Application {
   const app = express()
 
@@ -404,8 +410,12 @@ export function createApp(
       }
 
       const cluster = getClusterView(targetGraph, nodeId, parseIncludeEdges(req.query.includeEdges))
-      const rawOverlayRefs = typeof req.query.overlayRefs === 'string' ? req.query.overlayRefs : ''
-      const overlayRefs = rawOverlayRefs.split(',').map(ref => ref.trim()).filter(ref => ref.length > 0)
+      const rawOverlayRefs = req.query.overlayRefs
+      const overlayRefs = Array.isArray(rawOverlayRefs)
+        ? rawOverlayRefs.filter((r): r is string => typeof r === 'string' && r.length > 0)
+        : typeof rawOverlayRefs === 'string' && rawOverlayRefs.length > 0
+          ? [rawOverlayRefs]
+          : []
       let overlay = null
       if (overlayRefs.length > 0 && multiCache && typeof req.query.ref === 'string') {
         const multi = await multiCache.get()
@@ -450,6 +460,15 @@ export function createApp(
         })),
         results: multi.branchResults,
       })
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Internal server error' })
+    }
+  })
+
+  app.post('/api/reload', async (_req, res) => {
+    try {
+      await onReloadRequest?.()
+      res.status(202).json({ ok: true })
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : 'Internal server error' })
     }
@@ -509,7 +528,28 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
   const logger = options.logger ?? console.error
   const reloadEvents = createReloadEvents()
   const multiCache = options.source ? createMultiGraphCache(options.source) : undefined
-  const app = createApp(graph, reloadEvents, options.source, multiCache)
+  let reloadInFlight: Promise<void> | null = null
+
+  async function reloadState(reason: string): Promise<void> {
+    if (reloadInFlight) return reloadInFlight
+    reloadInFlight = (async () => {
+      const nextGraph = options.source
+        ? await loadGraph({ source: options.source, strict: true })
+        : await loadGraph({ graphPath, strict: true })
+      replaceGraph(graph, nextGraph)
+      multiCache?.invalidate()
+      reloadEvents.notify()
+      logger(`[corum] graph reloaded after ${reason}`)
+    })()
+
+    try {
+      await reloadInFlight
+    } finally {
+      reloadInFlight = null
+    }
+  }
+
+  const app = createApp(graph, reloadEvents, options.source, multiCache, () => reloadState('manual reload'))
   const stopWatcher = isFileWatcherEnabled(options)
     ? startGraphFileWatcher(graph, {
         graphPath,
@@ -521,6 +561,7 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
         },
       })
     : undefined
+  const stopPoller = startGitSourcePoller(options.source, options.gitPollSeconds, logger, () => reloadState('git poll'))
   return new Promise((resolve, reject) => {
     const server = app.listen(port, () => {
       const addr = server.address() as AddressInfo
@@ -535,12 +576,59 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
         port: addr.port,
         close: () => new Promise<void>((res, rej) => {
           stopWatcher?.()
+          stopPoller?.()
           server.close(err => (err ? rej(err) : res()))
         }),
       })
     })
     server.on('error', reject)
   })
+}
+
+function startGitSourcePoller(
+  source: GraphSource | undefined,
+  pollSeconds: number | undefined,
+  logger: (message: string) => void,
+  onChange: () => Promise<void>,
+): (() => void) | undefined {
+  if (!source || !pollSeconds || !hasReloadSignature(source)) return undefined
+  const pollableSource = source
+
+  let timer: NodeJS.Timeout | undefined
+  let stopped = false
+  let inFlight = false
+  let lastSignature: string | null = null
+
+  async function check(): Promise<void> {
+    if (stopped || inFlight) return
+    inFlight = true
+    try {
+      const signature = await pollableSource.reloadSignature()
+      if (lastSignature !== null && signature !== lastSignature) {
+        await onChange()
+      }
+      lastSignature = signature
+    } catch (err) {
+      logger(`[corum] git poll failed: ${err}`)
+    } finally {
+      inFlight = false
+    }
+  }
+
+  void check()
+  timer = setInterval(() => {
+    void check()
+  }, pollSeconds * 1000)
+  logger(`[corum] git poll enabled (${pollSeconds}s)`)
+
+  return () => {
+    stopped = true
+    if (timer) clearInterval(timer)
+  }
+}
+
+function hasReloadSignature(source: GraphSource): source is PollableGraphSource {
+  return typeof (source as PollableGraphSource).reloadSignature === 'function'
 }
 
 function isEntrypoint(): boolean {
@@ -553,6 +641,7 @@ if (isEntrypoint()) {
   await startWebServer(graph, {
     graphPath: config.graphPath,
     source: config.source,
+    gitPollSeconds: config.gitPollSeconds,
     fileWatcher: config.fileWatcherGraphPath && process.argv.includes('--watch') ? true : undefined,
   })
 }

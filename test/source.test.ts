@@ -174,6 +174,7 @@ describe('createGraphRuntimeConfig', () => {
       assert.equal(config.kind, 'git')
       assert.equal(config.graphPath, `git:${tmpDir}/.corum/graph`)
       assert.equal(config.fileWatcherGraphPath, undefined)
+      assert.equal(config.gitPollSeconds, undefined)
 
       const content = await config.source.loadGraphContent(await config.source.defaultBranch())
       assert.ok(content.has('components/orders/payment.yaml'))
@@ -202,6 +203,27 @@ describe('createGraphRuntimeConfig', () => {
     assert.equal(config.kind, 'git')
     assert.equal(config.graphPath, 'git:https://github.com/org/design-repo.git/.corum/graph')
     assert.equal(config.fileWatcherGraphPath, undefined)
+  })
+
+  it('parses optional git poll seconds from config', () => {
+    const config = createGraphRuntimeConfig({
+      CORUM_SOURCE: 'git',
+      CORUM_GIT_LOCAL_PATH: 'C:/repo',
+      CORUM_GIT_POLL_SECONDS: '15',
+    }, repoRoot)
+
+    assert.equal(config.gitPollSeconds, 15)
+  })
+
+  it('rejects invalid git poll seconds', () => {
+    assert.throws(
+      () => createGraphRuntimeConfig({
+        CORUM_SOURCE: 'git',
+        CORUM_GIT_LOCAL_PATH: 'C:/repo',
+        CORUM_GIT_POLL_SECONDS: '0',
+      }, repoRoot),
+      /CORUM_GIT_POLL_SECONDS must be a positive number of seconds/,
+    )
   })
 })
 

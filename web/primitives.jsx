@@ -375,6 +375,7 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
   );
 }
 
+// Max 2 distinct stripe colours — OverlayLegend also only renders 2 entries.
 function ghostStripeClass(index) {
   if (index === 0) return 'overlay-stripe-0';
   if (index === 1) return 'overlay-stripe-1';

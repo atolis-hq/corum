@@ -367,6 +367,59 @@ describe('web server', () => {
         await failingHandle.close()
       }
     })
+
+    it('POST /api/reload invalidates cached branch state', async () => {
+      const source = new MutableBranchSource()
+      const graph = await loadGraph({ source })
+      const reloadingHandle = await startWebServer(graph, { port: 0, source, logger: () => {} })
+      try {
+        const before = await fetch(`http://localhost:${reloadingHandle.port}/api/branches`).then(res => res.json()) as {
+          branches: Array<{ ref: string }>
+        }
+        assert.deepEqual(before.branches.map(branch => branch.ref), ['main'])
+
+        source.setBranches(['main', 'feat/two'])
+
+        const reloadRes = await fetch(`http://localhost:${reloadingHandle.port}/api/reload`, { method: 'POST' })
+        assert.equal(reloadRes.status, 202)
+
+        const after = await fetch(`http://localhost:${reloadingHandle.port}/api/branches`).then(res => res.json()) as {
+          branches: Array<{ ref: string }>
+        }
+        assert.deepEqual(after.branches.map(branch => branch.ref), ['main', 'feat/two'])
+      } finally {
+        await reloadingHandle.close()
+      }
+    })
+
+    it('git polling invalidates cached branch state when the repo signature changes', async () => {
+      const source = new MutableBranchSource()
+      const graph = await loadGraph({ source })
+      const pollingHandle = await startWebServer(graph, {
+        port: 0,
+        source,
+        gitPollSeconds: 0.05,
+        logger: () => {},
+      })
+      try {
+        const before = await fetch(`http://localhost:${pollingHandle.port}/api/branches`).then(res => res.json()) as {
+          branches: Array<{ ref: string }>
+        }
+        assert.deepEqual(before.branches.map(branch => branch.ref), ['main'])
+
+        source.setBranches(['main', 'feat/two'])
+
+        const after = await eventually(
+          async () => fetch(`http://localhost:${pollingHandle.port}/api/branches`).then(res => res.json()) as Promise<{
+            branches: Array<{ ref: string }>
+          }>,
+          body => body.branches.some(branch => branch.ref === 'feat/two'),
+        )
+        assert.deepEqual(after.branches.map(branch => branch.ref), ['main', 'feat/two'])
+      } finally {
+        await pollingHandle.close()
+      }
+    })
   })
 
   describe('?ref= support', () => {
@@ -803,9 +856,11 @@ describe('web server', () => {
       assert.match(app, /const childDisplayEntries = \[\.\.\.displayChildren\.entries\(\)\]/)
     })
 
-    it('app: reload events refetch graph lists and visible cluster data', () => {
+    it('app: reload events refetch branches, graph lists, and visible cluster data', () => {
       assert.match(app, /new EventSource\('\/api\/events'\)/)
-      assert.match(app, /eventSource\.addEventListener\('graph-reloaded', refreshGraphData\)/)
+      assert.match(app, /const refreshBranchState = useCallback\(\(\) => \{/)
+      assert.match(app, /const refreshAllData = useCallback\(\(\) => \{/)
+      assert.match(app, /eventSource\.addEventListener\('graph-reloaded', refreshAllData\)/)
       assert.match(app, /refreshToken/)
       assert.match(app, /fetch\(`\/api\/cluster\?nodeId=\$\{encodeURIComponent\(nodeId\)\}&includeEdges=maps-to\$\{refParam\}\$\{overlayParam\}`\)/)
     })
@@ -906,6 +961,15 @@ describe('web server', () => {
       assert.match(app, /setOverlayRefs\(prev => prev\.filter\(ref => ref !== viewingRef && branches\.some\(branch => branch\.ref === ref\)\)\);/)
     })
 
+    it('app: branch bar exposes an always-visible reload button backed by the reload endpoint', () => {
+      assert.match(app, /function BranchBar\(\{ branches, branchResults, viewingRef, overlayRefs, overlayMode, onViewingRef, onOverlayRefs, onOverlayMode, onReload \}\)/)
+      assert.match(app, /className="branch-chip reload"/)
+      assert.match(app, /onClick=\{onReload\}/)
+      assert.match(app, /fetch\('\/api\/reload', \{ method: 'POST' \}\)/)
+      assert.match(app, /\.then\(\(\) => refreshAllData\(\)\)/)
+      assert.match(app, /\.catch\(\(\) => refreshAllData\(\)\)/)
+    })
+
     it('style: failed branches in the picker are visibly disabled and show errors', () => {
       assert.match(styles, /\.branch-failed-badge\s*\{[\s\S]*background:/)
       assert.match(styles, /\.branch-picker-item-disabled\s*\{[\s\S]*cursor:\s*not-allowed;/)
@@ -916,6 +980,21 @@ describe('web server', () => {
       assert.match(styles, /\.branch-chip-select\s*\{[\s\S]*border:/)
       assert.match(styles, /\.branch-picker-check\s*\{[\s\S]*accent-color:/)
       assert.match(styles, /\.branch-picker-item-selectable\s*\{[\s\S]*justify-content:\s*space-between;/)
+    })
+
+    it('style: reload button is styled as a dedicated branch chip action', () => {
+      assert.match(styles, /\.branch-chip\.reload\s*\{[\s\S]*cursor:\s*pointer;/)
+      assert.match(styles, /\.branch-chip\.reload:hover\s*\{/)
+    })
+
+    it('app: overlayRefs encoded as repeated query params not comma-joined', () => {
+      assert.doesNotMatch(app, /overlayRefs\.map\(ref => encodeURIComponent\(ref\)\)\.join\(','\)/)
+      assert.match(app, /overlayRefs\.map\(ref => `overlayRefs=\$\{encodeURIComponent\(ref\)\}`\)\.join\('&'\)/)
+    })
+
+    it('app: branch picker dismisses on click outside', () => {
+      assert.match(app, /document\.addEventListener\('mousedown', handleClickOutside\)/)
+      assert.match(app, /document\.removeEventListener\('mousedown', handleClickOutside\)/)
     })
   })
 })
@@ -948,5 +1027,68 @@ class FailingBranchSource implements GraphSource {
 
   async commit(): Promise<void> {
     throw new Error('not implemented')
+  }
+}
+
+class MutableBranchSource implements GraphSource {
+  private branches = ['main']
+  private defaultRef = 'main'
+
+  setBranches(branches: string[]): void {
+    this.branches = [...branches]
+  }
+
+  async defaultBranch(): Promise<string> {
+    return this.defaultRef
+  }
+
+  async listBranches(): Promise<string[]> {
+    return [...this.branches]
+  }
+
+  async loadPackContent(): Promise<ContentMap> {
+    return new Map([
+      ['pack/templates/Thing.yaml', [
+        'name: Thing',
+        'info:',
+        '  version: "1"',
+        'ui:',
+        '  displayName: Thing',
+        '',
+      ].join('\n')],
+    ])
+  }
+
+  async loadGraphContent(ref: string): Promise<ContentMap> {
+    return new Map([
+      ['graph.yaml', [
+        'schemaVersion: "1"',
+        'templatePacks:',
+        '  - name: pack',
+        '    path: ../pack',
+        '',
+      ].join('\n')],
+      [`components/orders/${ref.replace(/[^\w-]/g, '_')}.yaml`, [
+        `id: orders.Thing.${ref.replace(/[^\w-]/g, '_')}`,
+        'template: Thing',
+        'schemaVersion: "1"',
+        'metadata:',
+        '  component: orders',
+        '  state: agreed',
+        '  stability: stable',
+        '  lastModifiedAt: "2026-05-02"',
+        'properties:',
+        `  description: ${ref}`,
+        '',
+      ].join('\n')],
+    ])
+  }
+
+  async commit(): Promise<void> {
+    throw new Error('not implemented')
+  }
+
+  async reloadSignature(): Promise<string> {
+    return this.branches.join('|')
   }
 }

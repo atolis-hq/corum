@@ -635,6 +635,17 @@ button {
   background: color-mix(in oklch, var(--accent) 22%, var(--paper));
 }
 
+.branch-chip.reload {
+  background: var(--paper);
+  color: var(--ink-2);
+  border: 1px solid color-mix(in oklch, var(--ink) 18%, transparent);
+  cursor: pointer;
+}
+
+.branch-chip.reload:hover {
+  background: color-mix(in oklch, var(--ink) 10%, var(--paper));
+}
+
 .branch-chip.more {
   background: var(--paper-3);
   color: var(--ink-3);

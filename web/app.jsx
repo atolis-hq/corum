@@ -214,10 +214,26 @@ function NavTree({ navTree, templates, activeNodeId, onNode, overlayIndicatorIds
   );
 }
 
-function BranchBar({ branches, branchResults, viewingRef, overlayRefs, overlayMode, onViewingRef, onOverlayRefs, onOverlayMode }) {
-  const { useState: useLocalState } = React;
+function BranchBar({ branches, branchResults, viewingRef, overlayRefs, overlayMode, onViewingRef, onOverlayRefs, onOverlayMode, onReload }) {
+  const { useState: useLocalState, useEffect: useLocalEffect, useRef: useLocalRef } = React;
   const [pickerOpen, setPickerOpen] = useLocalState(false);
   const [comparePickerOpen, setComparePickerOpen] = useLocalState(false);
+  const viewingPickerRef = useLocalRef(null);
+  const comparePickerRef = useLocalRef(null);
+
+  useLocalEffect(() => {
+    if (!pickerOpen && !comparePickerOpen) return;
+    function handleClickOutside(e) {
+      if (viewingPickerRef.current && !viewingPickerRef.current.contains(e.target)) {
+        setPickerOpen(false);
+      }
+      if (comparePickerRef.current && !comparePickerRef.current.contains(e.target)) {
+        setComparePickerOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [pickerOpen, comparePickerOpen]);
   const failedBranches = branchResults.filter(result => result.status === 'failed');
   const compareableBranches = branches.filter(branch => branch.ref !== viewingRef);
 
@@ -232,9 +248,9 @@ function BranchBar({ branches, branchResults, viewingRef, overlayRefs, overlayMo
 
   return (
     <div className="branch-bar">
-      <span className="branch-label">|||</span>
+      <span className="branch-label">⎇</span>
       <span className="branch-label">Viewing</span>
-      <div style={{ position: 'relative' }}>
+      <div ref={viewingPickerRef} style={{ position: 'relative' }}>
         <span
           className="branch-chip viewing"
           onClick={() => { setPickerOpen(open => !open); setComparePickerOpen(false); }}
@@ -275,7 +291,7 @@ function BranchBar({ branches, branchResults, viewingRef, overlayRefs, overlayMo
       {overlayMode === 'selected' && (
         <>
           <span className="branch-label">Compare</span>
-          <div style={{ position: 'relative' }}>
+          <div ref={comparePickerRef} style={{ position: 'relative' }}>
             <span
               className="branch-chip overlay branch-chip-select"
               onClick={() => { setComparePickerOpen(open => !open); setPickerOpen(false); }}
@@ -322,6 +338,9 @@ function BranchBar({ branches, branchResults, viewingRef, overlayRefs, overlayMo
         <span className="branch-chip more">+{hiddenCount} more</span>
       )}
       <div className="branch-bar-spacer" />
+      <span className="branch-chip reload" onClick={onReload} title="Reload branches and graph data">
+        Reload
+      </span>
       <div className="branch-seg">
         {['single', 'selected', 'consolidated'].map(mode => (
           <span
@@ -355,7 +374,7 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
     setError(null);
     const refParam = viewingRef ? `&ref=${encodeURIComponent(viewingRef)}` : '';
     const overlayParam = overlayRefs && overlayRefs.length > 0
-      ? `&overlayRefs=${overlayRefs.map(ref => encodeURIComponent(ref)).join(',')}`
+      ? '&' + overlayRefs.map(ref => `overlayRefs=${encodeURIComponent(ref)}`).join('&')
       : '';
     fetch(`/api/cluster?nodeId=${encodeURIComponent(nodeId)}&includeEdges=maps-to${refParam}${overlayParam}`)
       .then(response => response.ok ? response.json() : Promise.reject(response.status))
@@ -478,9 +497,9 @@ function App() {
   const [overlayMode, setOverlayMode] = useState('single');
   const [overlayIndicatorIds, setOverlayIndicatorIds] = useState(new Set());
 
-  const refreshGraphData = useCallback(() => {
+  const refreshGraphData = useCallback((targetViewingRef = viewingRef) => {
     setError(null);
-    const refParam = viewingRef ? `?ref=${encodeURIComponent(viewingRef)}` : '';
+    const refParam = targetViewingRef ? `?ref=${encodeURIComponent(targetViewingRef)}` : '';
     return Promise.all([
       fetch(`/api/templates${refParam}`).then(response => response.ok ? response.json() : Promise.reject(response.status)),
       fetch(`/api/nodes${refParam}`).then(response => response.ok ? response.json() : Promise.reject(response.status)),
@@ -497,33 +516,45 @@ function App() {
       });
   }, [viewingRef]);
 
-  useEffect(() => {
-    if (!window.EventSource) return;
-    const eventSource = new EventSource('/api/events');
-    eventSource.addEventListener('graph-reloaded', refreshGraphData);
-    return () => {
-      eventSource.removeEventListener('graph-reloaded', refreshGraphData);
-      eventSource.close();
-    };
-  }, [refreshGraphData]);
-
-  useEffect(() => {
-    fetch('/api/branches')
+  const refreshBranchState = useCallback(() => {
+    return fetch('/api/branches')
       .then(res => {
         if (!res.ok) return null;
         return res.json();
       })
       .then(data => {
-        if (!data) return;
+        if (!data) return null;
         setGitMode(true);
         setBranches(data.branches || []);
         setBranchResults(data.results || []);
         const urlRef = parseRoute(window.location.hash).branch;
-        const validRef = (data.branches || []).find(branch => branch.ref === urlRef);
-        setViewingRef(validRef ? urlRef : data.default);
+        const validUrlRef = (data.branches || []).find(branch => branch.ref === urlRef);
+        const validViewingRef = (data.branches || []).find(branch => branch.ref === viewingRef);
+        const nextViewingRef = validUrlRef ? urlRef : (validViewingRef ? viewingRef : data.default);
+        setViewingRef(nextViewingRef);
+        return { nextViewingRef };
       })
-      .catch(() => {});
-  }, []);
+      .catch(() => null);
+  }, [viewingRef]);
+
+  const refreshAllData = useCallback(() => {
+    return refreshBranchState()
+      .then(result => refreshGraphData(result?.nextViewingRef ?? viewingRef));
+  }, [refreshBranchState, refreshGraphData, viewingRef]);
+
+  useEffect(() => {
+    if (!window.EventSource) return;
+    const eventSource = new EventSource('/api/events');
+    eventSource.addEventListener('graph-reloaded', refreshAllData);
+    return () => {
+      eventSource.removeEventListener('graph-reloaded', refreshAllData);
+      eventSource.close();
+    };
+  }, [refreshAllData]);
+
+  useEffect(() => {
+    refreshBranchState();
+  }, [refreshBranchState]);
 
   useEffect(() => {
     if (viewingRef !== null || !gitMode) {
@@ -604,14 +635,19 @@ function App() {
           viewingRef={viewingRef}
           overlayRefs={overlayRefs}
           overlayMode={overlayMode}
-          onViewingRef={ref => {
-            setViewingRef(ref);
-            navigate(buildRoute({ pathname: route.pathname, params: route.params, branch: ref }));
-          }}
-          onOverlayRefs={setOverlayRefs}
-          onOverlayMode={setOverlayMode}
-        />
-      )}
+                  onViewingRef={ref => {
+                        setViewingRef(ref);
+                        navigate(buildRoute({ pathname: route.pathname, params: route.params, branch: ref }));
+                      }}
+                      onOverlayRefs={setOverlayRefs}
+                      onOverlayMode={setOverlayMode}
+                      onReload={() => {
+                        fetch('/api/reload', { method: 'POST' })
+                          .then(() => refreshAllData())
+                          .catch(() => refreshAllData());
+                      }}
+                    />
+                  )}
       <div className="main">
         <NavRail activeSection={activeSection} onSection={handleSection} />
         {showTree && !loading && !error && (
