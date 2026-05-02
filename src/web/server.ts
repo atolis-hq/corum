@@ -6,11 +6,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { AddressInfo } from 'node:net'
 import type { Response } from 'express'
 import { parse as parseYaml } from 'yaml'
-import { getClusterView, listNodes, type ListNodesFilter } from '../graph/index.js'
+import { computeClusterOverlay, getClusterView, listNodes, type ListNodesFilter } from '../graph/index.js'
 import { loadGraph, loadMultiGraph } from '../loader/index.js'
 import { VALID_EDGE_TYPE_SET } from '../loader/constants.js'
 import { getOwnedSections } from '../loader/pack-loader.js'
-import type { EdgeType, Graph, Node, Template } from '../schema/index.js'
+import type { EdgeType, Graph, MultiGraph, Node, Template } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
 import { createGraphRuntimeConfig } from '../source/config.js'
 import type { GraphSource } from '../source/index.js'
@@ -43,6 +43,30 @@ export type GraphFileWatcherOptions = {
 type ReloadEvents = {
   subscribe(res: Response): void
   notify(): void
+}
+
+type MultiGraphCache = {
+  get(): Promise<MultiGraph>
+  invalidate(): void
+}
+
+function createMultiGraphCache(source: GraphSource): MultiGraphCache {
+  let cache: MultiGraph | null = null
+  return {
+    async get(): Promise<MultiGraph> {
+      if (!cache) cache = await loadMultiGraph({ source })
+      return cache
+    },
+    invalidate() {
+      cache = null
+    },
+  }
+}
+
+async function getGraphForRef(ref: string, cache: MultiGraphCache, fallback: Graph): Promise<Graph> {
+  const multi = await cache.get()
+  const branch = multi.branches.find(item => item.ref === ref)
+  return branch?.graph ?? fallback
 }
 
 async function getPluginFiles(): Promise<string[]> {
@@ -300,6 +324,7 @@ export function createApp(
   graph: Graph,
   reloadEvents: ReloadEvents = createReloadEvents(),
   source?: GraphSource,
+  multiCache?: MultiGraphCache,
 ): express.Application {
   const app = express()
 
@@ -311,9 +336,15 @@ export function createApp(
     reloadEvents.subscribe(res)
   })
 
-  app.get('/api/templates', (req, res) => {
+  app.get('/api/templates', async (req, res) => {
     const includeCore = req.query.includeCore === 'true'
-    const templates = [...graph.templates.values()]
+
+    let targetGraph = graph
+    if (typeof req.query.ref === 'string' && multiCache) {
+      targetGraph = await getGraphForRef(req.query.ref, multiCache, graph)
+    }
+
+    const templates = [...targetGraph.templates.values()]
       .filter(template => includeCore || !template.info?.core)
       .sort((a, b) => a.name.localeCompare(b.name))
       .map(template => ({
@@ -328,7 +359,7 @@ export function createApp(
     res.json(templates)
   })
 
-  app.get('/api/nodes', (req, res) => {
+  app.get('/api/nodes', async (req, res) => {
     const { template, component, state, stability } = req.query
     const includeCore = req.query.includeCore === 'true'
     const filter: ListNodesFilter = {
@@ -337,10 +368,15 @@ export function createApp(
       state: typeof state === 'string' ? state as ListNodesFilter['state'] : undefined,
       stability: typeof stability === 'string' ? stability as ListNodesFilter['stability'] : undefined,
     }
-    const nodes = listNodes(graph, filter)
-      .filter(node => includeCore || !graph.templates.get(node.template)?.info?.core)
+    let targetGraph = graph
+    if (typeof req.query.ref === 'string' && multiCache) {
+      targetGraph = await getGraphForRef(req.query.ref, multiCache, graph)
+    }
+
+    const nodes = listNodes(targetGraph, filter)
+      .filter(node => includeCore || !targetGraph.templates.get(node.template)?.info?.core)
       .map(node => {
-        const ownership = summarizeNodeForNavigation(graph, node)
+        const ownership = summarizeNodeForNavigation(targetGraph, node)
         return {
           id: ownership.id,
           template: ownership.template,
@@ -354,7 +390,7 @@ export function createApp(
     res.json(nodes)
   })
 
-  app.get('/api/cluster', (req, res) => {
+  app.get('/api/cluster', async (req, res) => {
     const nodeId = typeof req.query.nodeId === 'string' ? req.query.nodeId : undefined
     if (!nodeId) {
       res.status(400).json({ error: 'nodeId query param required' })
@@ -362,12 +398,26 @@ export function createApp(
     }
 
     try {
-      const cluster = getClusterView(graph, nodeId, parseIncludeEdges(req.query.includeEdges))
+      let targetGraph = graph
+      if (typeof req.query.ref === 'string' && multiCache) {
+        targetGraph = await getGraphForRef(req.query.ref, multiCache, graph)
+      }
+
+      const cluster = getClusterView(targetGraph, nodeId, parseIncludeEdges(req.query.includeEdges))
+      const rawOverlayRefs = typeof req.query.overlayRefs === 'string' ? req.query.overlayRefs : ''
+      const overlayRefs = rawOverlayRefs.split(',').map(ref => ref.trim()).filter(ref => ref.length > 0)
+      let overlay = null
+      if (overlayRefs.length > 0 && multiCache && typeof req.query.ref === 'string') {
+        const multi = await multiCache.get()
+        overlay = computeClusterOverlay(multi, req.query.ref, overlayRefs, nodeId)
+      }
+
       res.json({
-        root: summarizeNodeForNavigation(graph, annotateNode(graph, cluster.root)),
-        descendants: cluster.descendants.map(child => summarizeNodeForNavigation(graph, annotateNode(graph, child))),
-        includedNodes: cluster.includedNodes.map(node => summarizeNodeForNavigation(graph, annotateNode(graph, node))),
+        root: summarizeNodeForNavigation(targetGraph, annotateNode(targetGraph, cluster.root)),
+        descendants: cluster.descendants.map(child => summarizeNodeForNavigation(targetGraph, annotateNode(targetGraph, child))),
+        includedNodes: cluster.includedNodes.map(node => summarizeNodeForNavigation(targetGraph, annotateNode(targetGraph, node))),
         edges: cluster.edges,
+        overlay,
       })
     } catch (err) {
       if (err instanceof QueryError) {
@@ -391,7 +441,7 @@ export function createApp(
     }
 
     try {
-      const multi = await loadMultiGraph({ source })
+      const multi = multiCache ? await multiCache.get() : await loadMultiGraph({ source })
       res.json({
         default: multi.default.ref,
         branches: multi.branches.map(branch => ({
@@ -412,7 +462,7 @@ export function createApp(
     }
 
     try {
-      const multi = await loadMultiGraph({ source })
+      const multi = multiCache ? await multiCache.get() : await loadMultiGraph({ source })
       const overlay = multi.overlay(req.params.ref)
       res.json({
         viewingRef: overlay.viewingRef,
@@ -458,14 +508,18 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
   const graphPath = options.graphPath ?? process.env.CORUM_GRAPH_PATH ?? path.join(process.cwd(), '.corum/graph')
   const logger = options.logger ?? console.error
   const reloadEvents = createReloadEvents()
-  const app = createApp(graph, reloadEvents, options.source)
+  const multiCache = options.source ? createMultiGraphCache(options.source) : undefined
+  const app = createApp(graph, reloadEvents, options.source, multiCache)
   const stopWatcher = isFileWatcherEnabled(options)
     ? startGraphFileWatcher(graph, {
-      graphPath,
-      debounceMs: options.fileWatcherDebounceMs,
-      logger,
-      onReload: () => reloadEvents.notify(),
-    })
+        graphPath,
+        debounceMs: options.fileWatcherDebounceMs,
+        logger,
+        onReload: () => {
+          multiCache?.invalidate()
+          reloadEvents.notify()
+        },
+      })
     : undefined
   return new Promise((resolve, reject) => {
     const server = app.listen(port, () => {

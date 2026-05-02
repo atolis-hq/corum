@@ -2,7 +2,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { pathToFileURL } from 'node:url'
-import { getCluster, getLinkedFields, listNodes, type ListNodesFilter } from '../graph/index.js'
+import { computeClusterOverlay, getCluster, getLinkedFields, listNodes, type ListNodesFilter } from '../graph/index.js'
 import { loadGraph, loadMultiGraph } from '../loader/index.js'
 import type { BranchGraph, Graph } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
@@ -61,8 +61,8 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource): {
     },
 
     list_templates(args) {
-      try {
-        const summaries = [...graph.templates.values()]
+      const run = (targetGraph: Graph): ToolResult => {
+        const summaries = [...targetGraph.templates.values()]
           .map(template => ({
             name: template.name,
             version: template.info?.version,
@@ -73,6 +73,14 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource): {
           }))
           .sort((a, b) => a.name.localeCompare(b.name))
         return formatResult(summaries, args.format, getCompactKeys(args))
+      }
+
+      if (hasBranch(args) && source) {
+        return withBranchGraph(source, String(args.branch), branch => run(branch.graph))
+      }
+
+      try {
+        return run(graph)
       } catch (err) {
         return errorResult(err)
       }
@@ -92,18 +100,27 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource): {
     },
 
     get_cluster(args) {
-      const run = (targetGraph: Graph): ToolResult =>
-        formatResult(getCluster(targetGraph, String(args.node_id)), args.format, getCompactKeys(args))
+      const overlayRefs = Array.isArray(args.overlay_refs)
+        ? args.overlay_refs.filter((ref): ref is string => typeof ref === 'string')
+        : []
 
-      if (hasBranch(args)) {
-        return withBranchGraph(source, String(args.branch), branch => run(branch.graph))
+      const run = async (targetGraph: Graph, branchRef?: string): Promise<ToolResult> => {
+        const cluster = getCluster(targetGraph, String(args.node_id))
+        if (overlayRefs.length === 0 || !source || !branchRef) {
+          return formatResult(cluster, args.format, getCompactKeys(args))
+        }
+        const multi = await loadMultiGraph({ source })
+        const overlay = computeClusterOverlay(multi, branchRef, overlayRefs, String(args.node_id))
+        return formatResult({ ...cluster, overlay }, args.format, getCompactKeys(args))
       }
 
-      try {
-        return run(graph)
-      } catch (err) {
-        return errorResult(err)
+      const branchRef = hasBranch(args) ? String(args.branch) : undefined
+
+      if (branchRef) {
+        return withBranchGraph(source, branchRef, branch => run(branch.graph, branchRef))
       }
+
+      return run(graph).catch(err => errorResult(err))
     },
 
     get_linked_fields(args) {
@@ -155,7 +172,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource): {
 async function withBranchGraph(
   source: GraphSource | undefined,
   branchRef: string,
-  fn: (branch: BranchGraph) => ToolResult,
+  fn: (branch: BranchGraph) => MaybePromise<ToolResult>,
 ): Promise<ToolResult> {
   try {
     if (!source) throw new QueryError('GraphSource is required when branch is provided')
@@ -251,6 +268,7 @@ if (isEntrypoint()) {
         inputSchema: {
           type: 'object',
           properties: {
+            branch: { type: 'string', description: 'Branch ref to load templates from' },
             format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
             compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
           },
@@ -278,6 +296,11 @@ if (isEntrypoint()) {
           properties: {
             node_id: { type: 'string', description: 'Fully qualified node ID' },
             branch: { type: 'string', description: 'Branch ref to load the cluster from' },
+            overlay_refs: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Branch refs to overlay. Returns ghost field data alongside the cluster.',
+            },
             format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
             compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
           },

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import * as git from 'isomorphic-git'
 import { computeDiff, computeOverlay } from '../src/graph/overlay.js'
 import { loadMultiGraph } from '../src/loader/index.js'
-import { QueryError } from '../src/schema/index.js'
+import { LoadError, QueryError } from '../src/schema/index.js'
 import { FileGraphSource } from '../src/source/file-source.js'
 import { GitGraphSource } from '../src/source/git-source.js'
 import type { ContentMap, GraphSource } from '../src/source/index.js'
@@ -205,7 +205,18 @@ describe('loadMultiGraph', () => {
     assert.deepEqual(multi.branchResults, [
       { ref: 'main', status: 'loaded' },
       { ref: 'feat/loaded', status: 'loaded' },
-      { ref: 'feat/fails', status: 'failed', error: 'boom' },
+      {
+        ref: 'feat/fails',
+        status: 'failed',
+        error: 'Graph load failed with 1 error(s)',
+        diagnostics: [
+          {
+            severity: 'error',
+            file: 'components/orders/broken.yaml',
+            message: 'unknown template: MissingTemplate',
+          },
+        ],
+      },
     ])
   })
 
@@ -323,7 +334,15 @@ info:
   }
 
   async loadGraphContent(ref: string): Promise<ContentMap> {
-    if (ref === 'feat/fails') throw new Error('boom')
+    if (ref === 'feat/fails') {
+      throw new LoadError([
+        {
+          severity: 'error',
+          file: 'components/orders/broken.yaml',
+          message: 'unknown template: MissingTemplate',
+        },
+      ])
+    }
     return new Map([
       ['graph.yaml', 'templatePacks: []\n'],
       ['components/orders/order.yaml', clusterYaml(`orders.DomainModel.${ref.replaceAll('/', '-')}`, 'agreed', 'stable')],

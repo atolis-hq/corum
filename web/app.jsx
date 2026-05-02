@@ -11,13 +11,8 @@ const {
   PropertiesTable,
   SchemaCard,
 } = window.CorumPrimitives;
-const { buildNavTree } = window.CorumNav;
-
-function parseRoute() {
-  const hash = window.location.hash.slice(1) || '/dashboard';
-  const [pathname, search] = hash.split('?');
-  return { pathname, params: new URLSearchParams(search) };
-}
+const { buildNavTree, buildOverlayIndicatorIds } = window.CorumNav;
+const { parseRoute, buildRoute } = window.CorumRouter;
 
 function displayName(id) {
   const parts = id.split('.');
@@ -30,6 +25,14 @@ function anchorIdForNode(nodeId) {
 
 function templateDisplayName(template) {
   return template?.ui?.displayName ?? template?.name ?? '';
+}
+
+function summarizeBranchFailure(result) {
+  const firstDiagnostic = result?.diagnostics?.[0];
+  if (firstDiagnostic) {
+    return `${firstDiagnostic.file}: ${firstDiagnostic.message}`;
+  }
+  return result?.error ?? 'Branch failed to load';
 }
 
 function TopBar() {
@@ -67,7 +70,7 @@ function NavRail({ activeSection, onSection }) {
   );
 }
 
-function NavTree({ navTree, templates, activeNodeId, onNode }) {
+function NavTree({ navTree, templates, activeNodeId, onNode, overlayIndicatorIds }) {
   const sortedComponents = [...navTree.keys()].sort((a, b) => a.localeCompare(b));
   const [openComponent, setOpenComponent] = useState();
   const templateMap = new Map(templates.map(template => [template.name, template]));
@@ -135,6 +138,11 @@ function NavTree({ navTree, templates, activeNodeId, onNode }) {
                               style={isActive ? { '--nav-node-active-bg': child.colour } : undefined}
                             >
                               {displayName(node.id)}
+                              {overlayIndicatorIds && overlayIndicatorIds.has(node.id) && (
+                                <span className="signal-dots">
+                                  <span className="signal-dot signal-dot-0" />
+                                </span>
+                              )}
                             </div>
                           );
                         })}
@@ -183,6 +191,11 @@ function NavTree({ navTree, templates, activeNodeId, onNode }) {
                                   style={childIsActive ? { '--nav-node-active-bg': childColour } : undefined}
                                 >
                                   {displayName(child.id)}
+                                  {overlayIndicatorIds && overlayIndicatorIds.has(child.id) && (
+                                    <span className="signal-dots">
+                                      <span className="signal-dot signal-dot-0" />
+                                    </span>
+                                  )}
                                 </div>
                               );
                             })}
@@ -201,6 +214,96 @@ function NavTree({ navTree, templates, activeNodeId, onNode }) {
   );
 }
 
+function BranchBar({ branches, branchResults, viewingRef, overlayRefs, overlayMode, onViewingRef, onOverlayRefs, onOverlayMode }) {
+  const { useState: useLocalState } = React;
+  const [pickerOpen, setPickerOpen] = useLocalState(false);
+  const failedBranches = branchResults.filter(result => result.status === 'failed');
+
+  const effectiveOverlayRefs = overlayMode === 'consolidated'
+    ? branches.filter(branch => branch.ref !== viewingRef).map(branch => branch.ref)
+    : overlayMode === 'selected'
+      ? overlayRefs
+      : [];
+
+  const visibleOverlayRefs = effectiveOverlayRefs.slice(0, 3);
+  const hiddenCount = effectiveOverlayRefs.length - visibleOverlayRefs.length;
+
+  return (
+    <div className="branch-bar">
+      <span className="branch-label">|||</span>
+      <span className="branch-label">Viewing</span>
+      <div style={{ position: 'relative' }}>
+        <span
+          className="branch-chip viewing"
+          onClick={() => setPickerOpen(open => !open)}
+          title="Switch viewing branch"
+        >
+          {viewingRef}
+        </span>
+        {failedBranches.length > 0 && (
+          <span className="branch-failed-badge" title={failedBranches.map(summarizeBranchFailure).join('\n')}>
+            {failedBranches.length} failed
+          </span>
+        )}
+        {pickerOpen && (
+          <div className="branch-picker">
+            {branches.map(branch => (
+              <div
+                key={branch.ref}
+                className={`branch-picker-item${branch.ref === viewingRef ? ' active' : ''}`}
+                onClick={() => { onViewingRef(branch.ref); setPickerOpen(false); }}
+              >
+                {branch.ref === viewingRef && <Icon name="check" size={11} />}
+                {branch.ref}
+              </div>
+            ))}
+            {failedBranches.map(result => (
+              <div
+                key={result.ref}
+                className="branch-picker-item branch-picker-item-disabled"
+                title={summarizeBranchFailure(result)}
+              >
+                <div className="branch-picker-main">{result.ref}</div>
+                <div className="branch-picker-error">{summarizeBranchFailure(result)}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {overlayMode !== 'single' && effectiveOverlayRefs.length > 0 && (
+        <span className="branch-label">overlaid with</span>
+      )}
+      {overlayMode === 'selected' && visibleOverlayRefs.map(ref => (
+        <span key={ref} className="branch-chip overlay">
+          {ref}
+          <span
+            className="branch-chip-remove"
+            onClick={() => onOverlayRefs(overlayRefs.filter(item => item !== ref))}
+          >x</span>
+        </span>
+      ))}
+      {overlayMode === 'consolidated' && visibleOverlayRefs.map(ref => (
+        <span key={ref} className="branch-chip overlay">{ref}</span>
+      ))}
+      {hiddenCount > 0 && (
+        <span className="branch-chip more">+{hiddenCount} more</span>
+      )}
+      <div className="branch-bar-spacer" />
+      <div className="branch-seg">
+        {['single', 'selected', 'consolidated'].map(mode => (
+          <span
+            key={mode}
+            className={`branch-seg-item${overlayMode === mode ? ' active' : ''}`}
+            onClick={() => onOverlayMode(mode)}
+          >
+            {mode.charAt(0).toUpperCase() + mode.slice(1)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function DashboardPage() {
   return <div className="content"><h1>Dashboard</h1></div>;
 }
@@ -209,7 +312,7 @@ function ComponentsPage() {
   return <div className="content"><h1>Components</h1></div>;
 }
 
-function NodePage({ nodeId, templates, onNavigate, refreshToken }) {
+function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, overlayRefs }) {
   const [cluster, setCluster] = useState(null);
   const [error, setError] = useState(null);
 
@@ -217,11 +320,15 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken }) {
     if (!nodeId) return;
     setCluster(null);
     setError(null);
-    fetch(`/api/cluster?nodeId=${encodeURIComponent(nodeId)}&includeEdges=maps-to`)
+    const refParam = viewingRef ? `&ref=${encodeURIComponent(viewingRef)}` : '';
+    const overlayParam = overlayRefs && overlayRefs.length > 0
+      ? `&overlayRefs=${overlayRefs.map(ref => encodeURIComponent(ref)).join(',')}`
+      : '';
+    fetch(`/api/cluster?nodeId=${encodeURIComponent(nodeId)}&includeEdges=maps-to${refParam}${overlayParam}`)
       .then(response => response.ok ? response.json() : Promise.reject(response.status))
       .then(setCluster)
       .catch(err => setError(String(err)));
-  }, [nodeId, refreshToken]);
+  }, [nodeId, refreshToken, viewingRef, overlayRefs]);
 
   if (!nodeId) return <div className="content"><p className="label-sm">No node selected.</p></div>;
   if (error) return <div className="content"><p style={{ color: 'var(--warn)' }}>Error loading node: {error}</p></div>;
@@ -302,6 +409,8 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken }) {
             allNodes={[root, ...descendants, ...includedNodes]}
             edges={edges}
             anchorIdForNode={anchorIdForNode}
+            overlayFields={cluster.overlay ? cluster.overlay.fields : null}
+            overlayRefs={cluster.overlay ? cluster.overlay.overlayRefs : null}
           />
         ))}
     </div>
@@ -326,14 +435,22 @@ function App() {
   const [nodes, setNodes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [route, setRoute] = useState(parseRoute);
+  const [route, setRoute] = useState(() => parseRoute(window.location.hash));
   const [refreshToken, setRefreshToken] = useState(0);
+  const [gitMode, setGitMode] = useState(false);
+  const [branches, setBranches] = useState([]);
+  const [branchResults, setBranchResults] = useState([]);
+  const [viewingRef, setViewingRef] = useState(null);
+  const [overlayRefs, setOverlayRefs] = useState([]);
+  const [overlayMode, setOverlayMode] = useState('single');
+  const [overlayIndicatorIds, setOverlayIndicatorIds] = useState(new Set());
 
   const refreshGraphData = useCallback(() => {
     setError(null);
+    const refParam = viewingRef ? `?ref=${encodeURIComponent(viewingRef)}` : '';
     return Promise.all([
-      fetch('/api/templates').then(response => response.ok ? response.json() : Promise.reject(response.status)),
-      fetch('/api/nodes').then(response => response.ok ? response.json() : Promise.reject(response.status)),
+      fetch(`/api/templates${refParam}`).then(response => response.ok ? response.json() : Promise.reject(response.status)),
+      fetch(`/api/nodes${refParam}`).then(response => response.ok ? response.json() : Promise.reject(response.status)),
     ])
       .then(([templateData, nodeData]) => {
         setTemplates(resolveTemplates(templateData));
@@ -345,11 +462,7 @@ function App() {
         setError(String(err));
         setLoading(false);
       });
-  }, []);
-
-  useEffect(() => {
-    refreshGraphData();
-  }, [refreshGraphData]);
+  }, [viewingRef]);
 
   useEffect(() => {
     if (!window.EventSource) return;
@@ -362,7 +475,31 @@ function App() {
   }, [refreshGraphData]);
 
   useEffect(() => {
-    const handler = () => setRoute(parseRoute());
+    fetch('/api/branches')
+      .then(res => {
+        if (!res.ok) return null;
+        return res.json();
+      })
+      .then(data => {
+        if (!data) return;
+        setGitMode(true);
+        setBranches(data.branches || []);
+        setBranchResults(data.results || []);
+        const urlRef = parseRoute(window.location.hash).branch;
+        const validRef = (data.branches || []).find(branch => branch.ref === urlRef);
+        setViewingRef(validRef ? urlRef : data.default);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (viewingRef !== null || !gitMode) {
+      refreshGraphData();
+    }
+  }, [viewingRef, gitMode, refreshGraphData]);
+
+  useEffect(() => {
+    const handler = () => setRoute(parseRoute(window.location.hash));
     window.addEventListener('hashchange', handler);
     return () => window.removeEventListener('hashchange', handler);
   }, []);
@@ -371,13 +508,29 @@ function App() {
   const activeSection = activeNodeId ? 'components' : (route.pathname.slice(1) || 'dashboard');
   const navTree = buildNavTree(nodes, templates);
   const showTree = activeSection === 'components' || activeNodeId;
+  const activeOverlayRefs = overlayMode === 'single' ? [] :
+    overlayMode === 'consolidated' ? branches.filter(branch => branch.ref !== viewingRef).map(branch => branch.ref) :
+    overlayRefs;
+
+  useEffect(() => {
+    if (!viewingRef || activeOverlayRefs.length === 0) {
+      setOverlayIndicatorIds(new Set());
+      return;
+    }
+    fetch(`/api/overlay/${encodeURIComponent(viewingRef)}`)
+      .then(res => res.ok ? res.json() : Promise.reject(res.status))
+      .then(data => {
+        setOverlayIndicatorIds(buildOverlayIndicatorIds(nodes, templates, data.nodes || [], activeOverlayRefs));
+      })
+      .catch(() => setOverlayIndicatorIds(new Set()));
+  }, [viewingRef, overlayMode, overlayRefs, branches, nodes, templates]);
 
   function handleSection(section) {
-    navigate(`/${section}`);
+    navigate(buildRoute({ pathname: `/${section}`, params: {}, branch: viewingRef }));
   }
 
   function handleNode(nodeId) {
-    navigate(`/node?id=${encodeURIComponent(nodeId)}`);
+    navigate(buildRoute({ pathname: '/node', params: { id: nodeId }, branch: viewingRef }));
   }
 
   let page;
@@ -390,7 +543,16 @@ function App() {
   } else if (route.pathname === '/components') {
     page = <ComponentsPage />;
   } else if (route.pathname === '/node') {
-    page = <NodePage nodeId={activeNodeId} templates={templates} onNavigate={handleNode} refreshToken={refreshToken} />;
+    page = (
+      <NodePage
+        nodeId={activeNodeId}
+        templates={templates}
+        onNavigate={handleNode}
+        refreshToken={refreshToken}
+        viewingRef={viewingRef}
+        overlayRefs={activeOverlayRefs}
+      />
+    );
   } else {
     page = <div className="content"><p className="label-sm">Page not found.</p></div>;
   }
@@ -398,6 +560,21 @@ function App() {
   return (
     <>
       <TopBar />
+      {gitMode && (
+        <BranchBar
+          branches={branches}
+          branchResults={branchResults}
+          viewingRef={viewingRef}
+          overlayRefs={overlayRefs}
+          overlayMode={overlayMode}
+          onViewingRef={ref => {
+            setViewingRef(ref);
+            navigate(buildRoute({ pathname: route.pathname, params: route.params, branch: ref }));
+          }}
+          onOverlayRefs={setOverlayRefs}
+          onOverlayMode={setOverlayMode}
+        />
+      )}
       <div className="main">
         <NavRail activeSection={activeSection} onSection={handleSection} />
         {showTree && !loading && !error && (
@@ -406,6 +583,7 @@ function App() {
             templates={templates}
             activeNodeId={activeNodeId}
             onNode={handleNode}
+            overlayIndicatorIds={overlayIndicatorIds}
           />
         )}
         {page}

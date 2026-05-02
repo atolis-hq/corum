@@ -8,7 +8,8 @@ import { fileURLToPath } from 'node:url'
 import { startWebServer, type WebServerHandle } from '../src/web/server.js'
 import { loadGraph } from '../src/loader/index.js'
 import { FileGraphSource } from '../src/source/file-source.js'
-import type { Graph } from '../src/schema/index.js'
+import { LoadError, type Graph } from '../src/schema/index.js'
+import type { ContentMap, GraphSource } from '../src/source/index.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..', '..')
@@ -340,6 +341,119 @@ describe('web server', () => {
       assert.ok(body.nodes.every(node => node.ghostState === 'local'))
       assert.ok(body.nodes.every(node => node.branches.length === 1 && node.branches[0] === branchesBody.default))
       assert.ok(body.nodes.every(node => node.id === node.node.id))
+    })
+
+    it('GET /api/branches includes diagnostics for failed branch loads', async () => {
+      const failingGraph = makeTestGraph()
+      const failingHandle = await startWebServer(failingGraph, { port: 0, source: new FailingBranchSource() })
+      try {
+        const res = await fetch(`http://localhost:${failingHandle.port}/api/branches`)
+
+        assert.equal(res.status, 200)
+        const body = await res.json() as {
+          results: Array<{ ref: string; status: string; error?: string; diagnostics?: Array<{ file: string; message: string }> }>
+        }
+        const failed = body.results.find(result => result.ref === 'feat/fails')
+        assert.equal(failed?.status, 'failed')
+        assert.equal(failed?.error, 'Graph load failed with 1 error(s)')
+        assert.deepEqual(failed?.diagnostics, [
+          {
+            severity: 'error',
+            file: 'components/orders/broken.yaml',
+            message: 'unknown template: MissingTemplate',
+          },
+        ])
+      } finally {
+        await failingHandle.close()
+      }
+    })
+  })
+
+  describe('?ref= support', () => {
+    let sourceHandle: WebServerHandle
+
+    before(async () => {
+      const source = new FileGraphSource({ graphDir: fixtureGraphDir })
+      const graph = await loadGraph({ source })
+      sourceHandle = await startWebServer(graph, { port: 0, source })
+    })
+
+    after(async () => {
+      await sourceHandle.close()
+    })
+
+    it('GET /api/nodes returns same nodes with valid ?ref= as without (single-branch source)', async () => {
+      const branchesRes = await fetch(`http://localhost:${sourceHandle.port}/api/branches`)
+      const { default: defaultRef } = await branchesRes.json() as { default: string }
+      const [noRef, withRef] = await Promise.all([
+        fetch(`http://localhost:${sourceHandle.port}/api/nodes`).then(r => r.json()) as Promise<Array<{ id: string }>>,
+        fetch(`http://localhost:${sourceHandle.port}/api/nodes?ref=${encodeURIComponent(defaultRef)}`).then(r => r.json()) as Promise<Array<{ id: string }>>,
+      ])
+      assert.deepEqual(withRef.map(n => n.id).sort(), noRef.map(n => n.id).sort())
+    })
+
+    it('GET /api/nodes falls back to default graph for unknown ?ref=', async () => {
+      const defaultRes = await fetch(`http://localhost:${sourceHandle.port}/api/nodes`)
+      const defaultBody = await defaultRes.json() as Array<{ id: string }>
+      const refRes = await fetch(`http://localhost:${sourceHandle.port}/api/nodes?ref=nonexistent-branch`)
+      assert.equal(refRes.status, 200)
+      const refBody = await refRes.json() as Array<{ id: string }>
+      assert.deepEqual(refBody.map(n => n.id).sort(), defaultBody.map(n => n.id).sort())
+    })
+
+    it('GET /api/nodes ignores ?ref= when no source configured', async () => {
+      const noSourceHandle = await startWebServer(makeTestGraph(), { port: 0 })
+      try {
+        const res = await fetch(`http://localhost:${noSourceHandle.port}/api/nodes?ref=main`)
+        assert.equal(res.status, 200)
+        const body = await res.json() as Array<{ id: string }>
+        assert.equal(body.length, 3)
+      } finally {
+        await noSourceHandle.close()
+      }
+    })
+
+    it('GET /api/templates returns same templates with valid ?ref= (single-branch source)', async () => {
+      const branchesRes = await fetch(`http://localhost:${sourceHandle.port}/api/branches`)
+      const { default: defaultRef } = await branchesRes.json() as { default: string }
+      const [noRef, withRef] = await Promise.all([
+        fetch(`http://localhost:${sourceHandle.port}/api/templates`).then(r => r.json()) as Promise<Array<{ name: string }>>,
+        fetch(`http://localhost:${sourceHandle.port}/api/templates?ref=${encodeURIComponent(defaultRef)}`).then(r => r.json()) as Promise<Array<{ name: string }>>,
+      ])
+      assert.deepEqual(withRef.map(t => t.name).sort(), noRef.map(t => t.name).sort())
+    })
+
+    it('GET /api/cluster returns overlay: null when overlayRefs not provided', async () => {
+      const branchesRes = await fetch(`http://localhost:${sourceHandle.port}/api/branches`)
+      const { default: defaultRef } = await branchesRes.json() as { default: string }
+      const nodesRes = await fetch(`http://localhost:${sourceHandle.port}/api/nodes`)
+      const nodes = await nodesRes.json() as Array<{ id: string; template: string }>
+      const root = nodes.find(n => !n.id.includes('.')) ?? nodes[0]
+      if (!root) return
+
+      const res = await fetch(
+        `http://localhost:${sourceHandle.port}/api/cluster?nodeId=${encodeURIComponent(root.id)}&ref=${encodeURIComponent(defaultRef)}`,
+      )
+      assert.equal(res.status, 200)
+      const body = await res.json() as { root: { id: string }; overlay: unknown }
+      assert.equal(body.root.id, root.id)
+      assert.equal(body.overlay, null)
+    })
+
+    it('GET /api/cluster with overlayRefs= returns overlay null when no ghost fields (single-branch source)', async () => {
+      const branchesRes = await fetch(`http://localhost:${sourceHandle.port}/api/branches`)
+      const { default: defaultRef } = await branchesRes.json() as { default: string }
+      const nodesRes = await fetch(`http://localhost:${sourceHandle.port}/api/nodes`)
+      const nodes = await nodesRes.json() as Array<{ id: string }>
+      const root = nodes[0]
+      if (!root) return
+
+      const res = await fetch(
+        `http://localhost:${sourceHandle.port}/api/cluster?nodeId=${encodeURIComponent(root.id)}&ref=${encodeURIComponent(defaultRef)}&overlayRefs=${encodeURIComponent(defaultRef)}`,
+      )
+      assert.equal(res.status, 200)
+      const body = await res.json() as { overlay: unknown }
+      assert.equal(body.overlay, null)
     })
   })
 
@@ -693,11 +807,23 @@ describe('web server', () => {
       assert.match(app, /new EventSource\('\/api\/events'\)/)
       assert.match(app, /eventSource\.addEventListener\('graph-reloaded', refreshGraphData\)/)
       assert.match(app, /refreshToken/)
-      assert.match(app, /fetch\(`\/api\/cluster\?nodeId=\$\{encodeURIComponent\(nodeId\)\}&includeEdges=maps-to`\)/)
+      assert.match(app, /fetch\(`\/api\/cluster\?nodeId=\$\{encodeURIComponent\(nodeId\)\}&includeEdges=maps-to\$\{refParam\}\$\{overlayParam\}`\)/)
     })
 
     it('app: SchemaCard receives allNodes including includedNodes', () => {
       assert.match(app, /allNodes=\{\[root, \.\.\.descendants, \.\.\.includedNodes\]\}/)
+    })
+
+    it('primitives: nested child schemas render overlay ghost rows in the recursive schema view', () => {
+      assert.match(primitives, /function SchemaFieldRows\(\{ schemaName, model, prefix = '', depth = 0, visited = new Set\(\), edges = \[\], overlayFields, overlayRefs \}\)/)
+      assert.match(primitives, /const childSchemaNode = canExpand \? model\.schemasByName\.get\(localRef\) : null;/)
+      assert.match(primitives, /const childGhostFields = childSchemaNode \? overlayFieldsForSchema\(overlayFields, childSchemaNode\.id\) : \[\];/)
+      assert.match(primitives, /<SchemaFieldRows[\s\S]*overlayFields=\{overlayFields\}[\s\S]*overlayRefs=\{overlayRefs\}/)
+      assert.match(primitives, /\{childGhostFields\.length > 0 && \(\s*<GhostFieldRows fields=\{childGhostFields\} overlayRefs=\{overlayRefs\} prefix=\{childPrefix\} depth=\{depth \+ 1\} \/>\s*\)\}/)
+      assert.match(primitives, /function GhostFieldRows\(\{ fields, overlayRefs, prefix = '', depth = 0 \}\)/)
+      assert.match(primitives, /const name = prefix \+ \(fieldLocalName\(field\.id\)\);/)
+      assert.match(primitives, /className=\{`field-row overlay-ghost \$\{stripeClass\}\$\{depth > 0 \? ' nested' : ''\}`\}/)
+      assert.match(primitives, /style=\{\{ '--field-depth': depth \}\}/)
     })
 
     it('app: rootSpecializedTemplates handles Schema and EnumDefinition nodes', () => {
@@ -725,5 +851,83 @@ describe('web server', () => {
       assert.match(styles, /\.prop-row\.nested\s*\{[\s\S]*\}/)
       assert.match(styles, /\.prop-key-label\s*\{[\s\S]*padding-left:\s*calc\(var\(--prop-depth,\s*0\)\s*\*\s*24px\);/)
     })
+
+    it('style: branch picker is not clipped by the branch bar', () => {
+      assert.match(styles, /\.branch-picker\s*\{[\s\S]*z-index:\s*100;/)
+      assert.match(styles, /\.branch-bar\s*\{[^}]*overflow:\s*visible;/)
+    })
+
+    it('style: non-conflict ghost rows use a stronger neutral grey background while conflicts stay red', () => {
+      assert.match(styles, /\.field-row\.overlay-ghost\s*\{[^}]*background:\s*color-mix\(in oklch,\s*var\(--ink\)\s*6%,\s*var\(--paper\)\);/)
+      assert.match(styles, /\.overlay-stripe-0\s*\{[^}]*background:\s*color-mix\(in oklch,\s*var\(--ink\)\s*8%,\s*var\(--paper\)\);/)
+      assert.match(styles, /\.overlay-stripe-1\s*\{[^}]*background:\s*color-mix\(in oklch,\s*var\(--ink\)\s*8%,\s*var\(--paper\)\);/)
+      assert.match(styles, /\.overlay-conflict\s*\{[^}]*background:\s*color-mix\(in oklch,\s*#c44\s*5%,\s*var\(--paper\)\);/)
+    })
+
+    it('app: components section navigation still routes through /components', () => {
+      assert.match(app, /function handleSection\(section\) \{/)
+      assert.match(app, /navigate\(buildRoute\(\{ pathname: `\/\$\{section\}`, params: \{\}, branch: viewingRef \}\)\);/)
+      assert.match(app, /const showTree = activeSection === 'components' \|\| activeNodeId;/)
+      assert.match(app, /} else if \(route\.pathname === '\/components'\) \{\s*page = <ComponentsPage \/>;/)
+    })
+
+    it('app: initial route state is derived from window.location.hash', () => {
+      assert.match(app, /const \[route, setRoute\] = useState\(\(\) => parseRoute\(window\.location\.hash\)\);/)
+      assert.match(app, /const handler = \(\) => setRoute\(parseRoute\(window\.location\.hash\)\);/)
+      assert.doesNotMatch(app, /const \[route, setRoute\] = useState\(parseRoute\);/)
+      assert.doesNotMatch(app, /setRoute\(parseRoute\(\)\);/)
+    })
+
+    it('app: overlay nav dots are derived from diff-aware indicator ids', () => {
+      assert.match(app, /const \{ buildNavTree, buildOverlayIndicatorIds \} = window\.CorumNav;/)
+      assert.match(app, /setOverlayIndicatorIds\(buildOverlayIndicatorIds\(nodes, templates, data\.nodes \|\| \[\], activeOverlayRefs\)\);/)
+      assert.doesNotMatch(app, /\.filter\(node => activeOverlayRefs\.some\(ref => node\.branches\.includes\(ref\)\)\)\s*\.map\(node => node\.id\)/)
+    })
+
+    it('app: branch picker renders failed branches and their load errors', () => {
+      assert.match(app, /const \[branchResults, setBranchResults\] = useState\(\[\]\);/)
+      assert.match(app, /setBranchResults\(data\.results \|\| \[\]\);/)
+      assert.match(app, /const failedBranches = branchResults\.filter\(result => result\.status === 'failed'\);/)
+      assert.match(app, /className=\"branch-failed-badge\"/)
+      assert.match(app, /className=\"branch-picker-item branch-picker-item-disabled\"/)
+      assert.match(app, /className=\"branch-picker-error\"/)
+    })
+
+    it('style: failed branches in the picker are visibly disabled and show errors', () => {
+      assert.match(styles, /\.branch-failed-badge\s*\{[\s\S]*background:/)
+      assert.match(styles, /\.branch-picker-item-disabled\s*\{[\s\S]*cursor:\s*not-allowed;/)
+      assert.match(styles, /\.branch-picker-error\s*\{[\s\S]*font-size:\s*10px;/)
+    })
   })
 })
+
+class FailingBranchSource implements GraphSource {
+  async defaultBranch(): Promise<string> {
+    return 'main'
+  }
+
+  async listBranches(): Promise<string[]> {
+    return ['main', 'feat/fails']
+  }
+
+  async loadPackContent(): Promise<ContentMap> {
+    return new Map()
+  }
+
+  async loadGraphContent(ref: string): Promise<ContentMap> {
+    if (ref === 'feat/fails') {
+      throw new LoadError([
+        {
+          severity: 'error',
+          file: 'components/orders/broken.yaml',
+          message: 'unknown template: MissingTemplate',
+        },
+      ])
+    }
+    return new Map()
+  }
+
+  async commit(): Promise<void> {
+    throw new Error('not implemented')
+  }
+}

@@ -92,10 +92,12 @@ export async function loadMultiGraph(options: MultiLoadOptions): Promise<MultiGr
       branches.push(result.value)
       branchResults.push({ ref, status: 'loaded' })
     } else {
+      const diagnostics = result.reason instanceof LoadError ? result.reason.diagnostics : undefined
       branchResults.push({
         ref,
         status: 'failed',
         error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+        diagnostics,
       })
     }
   }

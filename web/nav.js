@@ -1,6 +1,14 @@
-/* Navigation tree builder — pure function, no DOM dependency. */
+/* Navigation tree builder - pure function, no DOM dependency. */
 
-function buildNavTree(nodes, templates) {
+const OVERLAY_DIFF_STATES = new Set([
+  'local-modified',
+  'default-only',
+  'ghost-single',
+  'ghost-consensus',
+  'ghost-conflict',
+]);
+
+function collectNestedNavigation(nodes, templates) {
   const nodeMap = new Map(nodes.map(node => [node.id, node]));
   const templateMap = new Map(templates.map(template => [template.name, template]));
   const nestedByParent = new Map();
@@ -26,6 +34,11 @@ function buildNavTree(nodes, templates) {
     nestedNodeIds.add(node.id);
   }
 
+  return { templateMap, nestedByParent, nestedNodeIds };
+}
+
+function buildNavTree(nodes, templates) {
+  const { templateMap, nestedByParent, nestedNodeIds } = collectNestedNavigation(nodes, templates);
   const plainByComponent = new Map();
   const groupsByComponent = new Map();
 
@@ -103,4 +116,26 @@ function buildNavTree(nodes, templates) {
   return tree;
 }
 
-window.CorumNav = { buildNavTree };
+function buildOverlayIndicatorIds(nodes, templates, overlayNodes, activeOverlayRefs) {
+  if (!Array.isArray(activeOverlayRefs) || activeOverlayRefs.length === 0) return new Set();
+
+  const visibleNavNodeIds = nodes.map(node => node.id);
+  const indicatorIds = new Set();
+
+  for (const overlayNode of overlayNodes ?? []) {
+    if (!OVERLAY_DIFF_STATES.has(overlayNode.ghostState)) continue;
+    if (!activeOverlayRefs.some(ref => overlayNode.branches.includes(ref))) continue;
+
+    let bestMatch = null;
+    for (const nodeId of visibleNavNodeIds) {
+      if (overlayNode.id !== nodeId && !overlayNode.id.startsWith(`${nodeId}.`)) continue;
+      if (!bestMatch || nodeId.length > bestMatch.length) bestMatch = nodeId;
+    }
+
+    if (bestMatch) indicatorIds.add(bestMatch);
+  }
+
+  return indicatorIds;
+}
+
+window.CorumNav = { buildNavTree, buildOverlayIndicatorIds };

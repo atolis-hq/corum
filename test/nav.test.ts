@@ -28,7 +28,17 @@ type NavTemplate = {
   }
 }
 
-function loadNav(): { buildNavTree: (nodes: NavNode[], templates: NavTemplate[]) => NavTree } {
+type OverlayNode = { id: string; ghostState: string; branches: string[] }
+
+function loadNav(): {
+  buildNavTree: (nodes: NavNode[], templates: NavTemplate[]) => NavTree
+  buildOverlayIndicatorIds: (
+    nodes: NavNode[],
+    templates: NavTemplate[],
+    overlayNodes: OverlayNode[],
+    activeOverlayRefs: string[],
+  ) => Set<string>
+} {
   const ctx = vm.createContext({ window: {} as Record<string, unknown> })
   vm.runInContext(navSource, ctx)
   return ctx.window.CorumNav as ReturnType<typeof loadNav>
@@ -238,5 +248,69 @@ describe('buildNavTree', () => {
     // DomainModel < Event alphabetically
     assert.ok(entries[0].kind === 'template' && entries[0].templateName === 'DomainModel')
     assert.ok(entries[1].kind === 'group' && entries[1].groupTemplateName === 'Event')
+  })
+})
+
+describe('buildOverlayIndicatorIds', () => {
+  let buildOverlayIndicatorIds: ReturnType<typeof loadNav>['buildOverlayIndicatorIds']
+
+  before(() => {
+    buildOverlayIndicatorIds = loadNav().buildOverlayIndicatorIds
+  })
+
+  it('marks only nodes that differ from the active overlay branches', () => {
+    const nodes: NavNode[] = [
+      { id: 'orders.Order', template: 'DomainModel', component: 'orders' },
+      { id: 'orders.Shipment', template: 'DomainModel', component: 'orders' },
+    ]
+    const templates: NavTemplate[] = [{ name: 'DomainModel' }]
+    const overlayNodes: OverlayNode[] = [
+      { id: 'orders.Order', ghostState: 'shared', branches: ['main', 'feature'] },
+      { id: 'orders.Shipment', ghostState: 'local-modified', branches: ['main', 'feature'] },
+    ]
+
+    const indicatorIds = buildOverlayIndicatorIds(nodes, templates, overlayNodes, ['feature'])
+
+    assert.deepEqual([...indicatorIds], ['orders.Shipment'])
+  })
+
+  it('rolls descendant diffs up to the deepest visible nav item', () => {
+    const nodes: NavNode[] = [
+      { id: 'orders.Order', template: 'DomainModel', component: 'orders' },
+      {
+        id: 'orders.Order.operations.cancel',
+        template: 'DomainOperation',
+        component: 'orders',
+        parentId: 'orders.Order',
+        ownedSection: 'operations',
+      },
+    ]
+    const templates: NavTemplate[] = [
+      { name: 'DomainModel', ui: { nav: { nestOwned: [{ section: 'operations', label: 'Operations' }] } } },
+      { name: 'DomainOperation' },
+    ]
+    const overlayNodes: OverlayNode[] = [
+      {
+        id: 'orders.Order.operations.cancel.schemas.request.fields.reason',
+        ghostState: 'local-modified',
+        branches: ['main', 'feature'],
+      },
+    ]
+
+    const indicatorIds = buildOverlayIndicatorIds(nodes, templates, overlayNodes, ['feature'])
+
+    assert.deepEqual([...indicatorIds], ['orders.Order.operations.cancel'])
+  })
+
+  it('ignores nodes that are only present in inactive overlay branches', () => {
+    const nodes: NavNode[] = [{ id: 'orders.Order', template: 'DomainModel', component: 'orders' }]
+    const templates: NavTemplate[] = [{ name: 'DomainModel' }]
+    const overlayNodes: OverlayNode[] = [
+      { id: 'orders.Order', ghostState: 'local-modified', branches: ['main', 'other-branch'] },
+    ]
+
+    const indicatorIds = buildOverlayIndicatorIds(nodes, templates, overlayNodes, ['feature'])
+
+    assert.equal(indicatorIds.size, 0)
   })
 })
