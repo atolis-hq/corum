@@ -3,10 +3,11 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { pathToFileURL } from 'node:url'
 import { getCluster, getLinkedFields, listNodes, type ListNodesFilter } from '../graph/index.js'
-import { loadGraph } from '../loader/index.js'
-import type { Graph } from '../schema/index.js'
+import { loadGraph, loadMultiGraph } from '../loader/index.js'
+import type { BranchGraph, Graph } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
 import { createGraphRuntimeConfig } from '../source/config.js'
+import type { GraphSource } from '../source/index.js'
 import { startGraphFileWatcher, startWebServer } from '../web/server.js'
 import { compactKeys, getSerializer } from './serializers.js'
 
@@ -17,23 +18,28 @@ type ToolResult = {
   isError?: boolean
 }
 
-export function createMcpHandlers(graph: Graph): {
-  list_nodes: (args: Record<string, unknown>) => ToolResult
-  list_templates: (args: Record<string, unknown>) => ToolResult
-  get_template: (args: Record<string, unknown>) => ToolResult
-  get_cluster: (args: Record<string, unknown>) => ToolResult
-  get_linked_fields: (args: Record<string, unknown>) => ToolResult
+type MaybePromise<T> = T | Promise<T>
+type ToolHandler = (args: Record<string, unknown>) => MaybePromise<ToolResult>
+
+export function createMcpHandlers(graph: Graph, source?: GraphSource): {
+  list_nodes: ToolHandler
+  list_templates: ToolHandler
+  get_template: ToolHandler
+  get_cluster: ToolHandler
+  get_linked_fields: ToolHandler
+  list_branches: ToolHandler
+  diff_branch: ToolHandler
 } {
   return {
     list_nodes(args) {
-      try {
+      const run = (targetGraph: Graph): ToolResult => {
         const filter: ListNodesFilter = {
           template: typeof args.template === 'string' ? args.template : undefined,
           component: typeof args.component === 'string' ? args.component : undefined,
           state: typeof args.state === 'string' ? args.state as ListNodesFilter['state'] : undefined,
           stability: typeof args.stability === 'string' ? args.stability as ListNodesFilter['stability'] : undefined,
         }
-        const summaries = listNodes(graph, filter).map(node => ({
+        const summaries = listNodes(targetGraph, filter).map(node => ({
           id: node.id,
           template: node.template,
           component: node.component,
@@ -41,6 +47,14 @@ export function createMcpHandlers(graph: Graph): {
           stability: node.stability,
         }))
         return formatResult(summaries, args.format, getCompactKeys(args))
+      }
+
+      if (hasBranch(args)) {
+        return withBranchGraph(source, String(args.branch), branch => run(branch.graph))
+      }
+
+      try {
+        return run(graph)
       } catch (err) {
         return errorResult(err)
       }
@@ -78,21 +92,84 @@ export function createMcpHandlers(graph: Graph): {
     },
 
     get_cluster(args) {
+      const run = (targetGraph: Graph): ToolResult =>
+        formatResult(getCluster(targetGraph, String(args.node_id)), args.format, getCompactKeys(args))
+
+      if (hasBranch(args)) {
+        return withBranchGraph(source, String(args.branch), branch => run(branch.graph))
+      }
+
       try {
-        return formatResult(getCluster(graph, String(args.node_id)), args.format, getCompactKeys(args))
+        return run(graph)
       } catch (err) {
         return errorResult(err)
       }
     },
 
     get_linked_fields(args) {
+      const run = (targetGraph: Graph): ToolResult =>
+        formatResult(getLinkedFields(targetGraph, String(args.node_id)), args.format, getCompactKeys(args))
+
+      if (hasBranch(args)) {
+        return withBranchGraph(source, String(args.branch), branch => run(branch.graph))
+      }
+
       try {
-        return formatResult(getLinkedFields(graph, String(args.node_id)), args.format, getCompactKeys(args))
+        return run(graph)
+      } catch (err) {
+        return errorResult(err)
+      }
+    },
+
+    async list_branches(args) {
+      try {
+        if (!source) throw new QueryError('GraphSource is required for list_branches')
+        const multi = await loadMultiGraph({ source })
+        const summaries = multi.branchResults.map(result => ({
+          ref: result.ref,
+          status: result.status,
+          error: result.error,
+          isDefault: result.ref === multi.default.ref,
+        }))
+        return formatResult(summaries, args.format, getCompactKeys(args))
+      } catch (err) {
+        return errorResult(err)
+      }
+    },
+
+    async diff_branch(args) {
+      try {
+        if (!source) throw new QueryError('GraphSource is required for diff_branch')
+        if (typeof args.branch !== 'string' || args.branch.length === 0) {
+          throw new QueryError('branch is required')
+        }
+        const multi = await loadMultiGraph({ source })
+        return formatResult(multi.diff(args.branch), args.format, getCompactKeys(args))
       } catch (err) {
         return errorResult(err)
       }
     },
   }
+}
+
+async function withBranchGraph(
+  source: GraphSource | undefined,
+  branchRef: string,
+  fn: (branch: BranchGraph) => ToolResult,
+): Promise<ToolResult> {
+  try {
+    if (!source) throw new QueryError('GraphSource is required when branch is provided')
+    const multi = await loadMultiGraph({ source })
+    const branch = multi.branches.find(item => item.ref === branchRef)
+    if (!branch) throw new QueryError(`branch '${branchRef}' not found or failed to load`)
+    return fn(branch)
+  } catch (err) {
+    return errorResult(err)
+  }
+}
+
+function hasBranch(args: Record<string, unknown>): boolean {
+  return typeof args.branch === 'string' && args.branch.length > 0
 }
 
 function formatResult(value: unknown, format: unknown, compact: unknown = false): ToolResult {
@@ -132,7 +209,7 @@ if (isEntrypoint()) {
     }
   }
 
-  const handlers = createMcpHandlers(graph)
+  const handlers = createMcpHandlers(graph, config.source)
   const noWeb = process.argv.includes('--no-web')
   const watchFiles = process.argv.includes('--watch')
   if (!noWeb) {
@@ -161,6 +238,7 @@ if (isEntrypoint()) {
             component: { type: 'string', description: 'Filter by component name' },
             state: { type: 'string', description: 'Filter by lifecycle state' },
             stability: { type: 'string', description: 'Filter by stability' },
+            branch: { type: 'string', description: 'Branch ref to load nodes from' },
             format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
             compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
           },
@@ -198,6 +276,7 @@ if (isEntrypoint()) {
           required: ['node_id'],
           properties: {
             node_id: { type: 'string', description: 'Fully qualified node ID' },
+            branch: { type: 'string', description: 'Branch ref to load the cluster from' },
             format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
             compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
           },
@@ -211,6 +290,31 @@ if (isEntrypoint()) {
           required: ['node_id'],
           properties: {
             node_id: { type: 'string', description: 'Fully qualified root node ID' },
+            branch: { type: 'string', description: 'Branch ref to load linked fields from' },
+            format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+            compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          },
+        },
+      },
+      {
+        name: 'list_branches',
+        description: 'List branches available from the configured graph source and their load status.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+            compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          },
+        },
+      },
+      {
+        name: 'diff_branch',
+        description: 'Diff a branch against the default branch.',
+        inputSchema: {
+          type: 'object',
+          required: ['branch'],
+          properties: {
+            branch: { type: 'string', description: 'Branch ref to diff against the default branch' },
             format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
             compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
           },
@@ -227,15 +331,19 @@ if (isEntrypoint()) {
     const args = (request.params.arguments ?? {}) as Record<string, unknown>
     switch (request.params.name) {
       case 'list_nodes':
-        return handlers.list_nodes(args)
+        return await handlers.list_nodes(args)
       case 'list_templates':
-        return handlers.list_templates(args)
+        return await handlers.list_templates(args)
       case 'get_template':
-        return handlers.get_template(args)
+        return await handlers.get_template(args)
       case 'get_cluster':
-        return handlers.get_cluster(args)
+        return await handlers.get_cluster(args)
       case 'get_linked_fields':
-        return handlers.get_linked_fields(args)
+        return await handlers.get_linked_fields(args)
+      case 'list_branches':
+        return await handlers.list_branches(args)
+      case 'diff_branch':
+        return await handlers.diff_branch(args)
       default:
         return { content: [{ type: 'text', text: `Unknown tool: ${request.params.name}` }], isError: true }
     }
