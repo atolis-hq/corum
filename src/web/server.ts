@@ -498,6 +498,7 @@ if (isEntrypoint()) {
   const graph = await loadGraph({ source: config.source, strict: true })
   await startWebServer(graph, {
     graphPath: config.graphPath,
+    source: config.source,
     fileWatcher: config.fileWatcherGraphPath && process.argv.includes('--watch') ? true : undefined,
   })
 }

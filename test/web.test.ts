@@ -1,5 +1,6 @@
 import { describe, it, before, after } from 'node:test'
 import assert from 'node:assert/strict'
+import { spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -221,6 +222,52 @@ async function eventually<T>(read: () => Promise<T>, predicate: (value: T) => bo
   assert.fail(`condition was not met; last value: ${JSON.stringify(last)}`)
 }
 
+async function startStandaloneWebEntrypoint(): Promise<{ child: ChildProcess; port: number }> {
+  const child = spawn(process.execPath, [path.join(repoRoot, 'dist/src/web/server.js')], {
+    env: {
+      ...process.env,
+      CORUM_GRAPH_PATH: fixtureGraphDir,
+      CORUM_WEB_PORT: '0',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+
+  let logs = ''
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      child.kill()
+      reject(new Error(`standalone web server did not start; logs: ${logs}`))
+    }, 5000)
+
+    child.once('error', err => {
+      clearTimeout(timeout)
+      reject(err)
+    })
+    child.once('exit', (code, signal) => {
+      clearTimeout(timeout)
+      reject(new Error(`standalone web server exited early with code ${code} signal ${signal}; logs: ${logs}`))
+    })
+
+    child.stderr.on('data', chunk => {
+      logs += chunk.toString()
+      const match = logs.match(/http:\/\/localhost:(\d+)/)
+      if (!match) return
+
+      clearTimeout(timeout)
+      child.removeAllListeners('exit')
+      resolve({ child, port: Number(match[1]) })
+    })
+  })
+}
+
+async function stopStandaloneWebEntrypoint(child: ChildProcess): Promise<void> {
+  if (child.exitCode !== null) return
+  await new Promise<void>(resolve => {
+    child.once('exit', () => resolve())
+    child.kill()
+  })
+}
+
 describe('web server', () => {
   let handle: WebServerHandle
 
@@ -293,6 +340,24 @@ describe('web server', () => {
       assert.ok(body.nodes.every(node => node.ghostState === 'local'))
       assert.ok(body.nodes.every(node => node.branches.length === 1 && node.branches[0] === branchesBody.default))
       assert.ok(body.nodes.every(node => node.id === node.node.id))
+    })
+  })
+
+  describe('standalone entrypoint', () => {
+    it('passes configured source to the web server options', async () => {
+      const { child, port } = await startStandaloneWebEntrypoint()
+      try {
+        const res = await fetch(`http://localhost:${port}/api/branches`)
+
+        assert.equal(res.status, 200)
+        const body = await res.json() as {
+          default: string
+          branches: Array<{ ref: string; isDefault: boolean }>
+        }
+        assert.deepEqual(body.branches, [{ ref: body.default, isDefault: true }])
+      } finally {
+        await stopStandaloneWebEntrypoint(child)
+      }
     })
   })
 
