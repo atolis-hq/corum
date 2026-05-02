@@ -7,12 +7,13 @@ import type { AddressInfo } from 'node:net'
 import type { Response } from 'express'
 import { parse as parseYaml } from 'yaml'
 import { getClusterView, listNodes, type ListNodesFilter } from '../graph/index.js'
-import { loadGraph } from '../loader/index.js'
+import { loadGraph, loadMultiGraph } from '../loader/index.js'
 import { VALID_EDGE_TYPE_SET } from '../loader/constants.js'
 import { getOwnedSections } from '../loader/pack-loader.js'
 import type { EdgeType, Graph, Node, Template } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
 import { createGraphRuntimeConfig } from '../source/config.js'
+import type { GraphSource } from '../source/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -21,6 +22,7 @@ const WEB_DIR = path.join(__dirname, '..', '..', '..', 'web')
 export type WebServerOptions = {
   port?: number
   graphPath?: string
+  source?: GraphSource
   fileWatcher?: boolean
   fileWatcherDebounceMs?: number
   logger?: (message: string) => void
@@ -294,7 +296,11 @@ export function startGraphFileWatcher(
   }
 }
 
-export function createApp(graph: Graph, reloadEvents: ReloadEvents = createReloadEvents()): express.Application {
+export function createApp(
+  graph: Graph,
+  reloadEvents: ReloadEvents = createReloadEvents(),
+  source?: GraphSource,
+): express.Application {
   const app = express()
 
   app.get('/health', (_req, res) => {
@@ -378,6 +384,54 @@ export function createApp(graph: Graph, reloadEvents: ReloadEvents = createReloa
       .catch(() => res.json([]))
   })
 
+  app.get('/api/branches', async (_req, res) => {
+    if (!source) {
+      res.status(501).json({ error: 'multi-branch requires a configured source' })
+      return
+    }
+
+    try {
+      const multi = await loadMultiGraph({ source })
+      res.json({
+        default: multi.default.ref,
+        branches: multi.branches.map(branch => ({
+          ref: branch.ref,
+          isDefault: branch.isDefault,
+        })),
+        results: multi.branchResults,
+      })
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Internal server error' })
+    }
+  })
+
+  app.get('/api/overlay/:ref(*)', async (req, res) => {
+    if (!source) {
+      res.status(501).json({ error: 'multi-branch requires a configured source' })
+      return
+    }
+
+    try {
+      const multi = await loadMultiGraph({ source })
+      const overlay = multi.overlay(req.params.ref)
+      res.json({
+        viewingRef: overlay.viewingRef,
+        nodes: [...overlay.nodes.values()].map(node => ({
+          id: node.id,
+          ghostState: node.ghostState,
+          branches: [...node.presence.keys()],
+          node: node.presence.get(overlay.viewingRef) ?? [...node.presence.values()][0],
+        })),
+      })
+    } catch (err) {
+      if (err instanceof QueryError) {
+        res.status(400).json({ error: err.message })
+      } else {
+        res.status(500).json({ error: err instanceof Error ? err.message : 'Internal server error' })
+      }
+    }
+  })
+
   app.use(express.static(WEB_DIR, {
     setHeaders(res, filePath) {
       if (filePath.endsWith('.jsx')) {
@@ -404,7 +458,7 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
   const graphPath = options.graphPath ?? process.env.CORUM_GRAPH_PATH ?? path.join(process.cwd(), '.corum/graph')
   const logger = options.logger ?? console.error
   const reloadEvents = createReloadEvents()
-  const app = createApp(graph, reloadEvents)
+  const app = createApp(graph, reloadEvents, options.source)
   const stopWatcher = isFileWatcherEnabled(options)
     ? startGraphFileWatcher(graph, {
       graphPath,
@@ -444,6 +498,7 @@ if (isEntrypoint()) {
   const graph = await loadGraph({ source: config.source, strict: true })
   await startWebServer(graph, {
     graphPath: config.graphPath,
+    source: config.source,
     fileWatcher: config.fileWatcherGraphPath && process.argv.includes('--watch') ? true : undefined,
   })
 }

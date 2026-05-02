@@ -100,3 +100,65 @@ export class QueryError extends Error {
 }
 
 export { SourceError } from '../source/index.js'
+
+export type GhostState =
+  | 'local'
+  | 'local-modified'
+  | 'shared'
+  | 'default-only'
+  | 'ghost-single'
+  | 'ghost-consensus'
+  | 'ghost-conflict'
+
+export interface BranchGraph {
+  ref: string
+  sha?: string
+  isDefault: boolean
+  graph: Graph
+}
+
+export type BranchLoadStatus = 'loaded' | 'failed'
+
+export interface BranchLoadResult {
+  ref: string
+  status: BranchLoadStatus
+  error?: string
+}
+
+export interface OverlayNode {
+  id: string
+  presence: Map<string, Node>
+  ghostState: GhostState
+}
+
+export interface OverlayEdge {
+  id: string
+  presence: Map<string, Edge>
+  ghostState: GhostState
+}
+
+export interface BranchOverlay {
+  viewingRef: string
+  nodes: Map<string, OverlayNode>
+  edges: Map<string, OverlayEdge>
+}
+
+export interface BranchDiff {
+  added: Node[]
+  modified: Node[]
+  removed: Node[]
+}
+
+export interface MultiGraph {
+  default: BranchGraph
+  branches: BranchGraph[]
+  branchResults: BranchLoadResult[]
+  overlay(viewingRef: string): BranchOverlay
+  diff(branchRef: string): BranchDiff
+}
+
+export interface MultiLoadOptions {
+  source: GraphSource
+  branches?: string[]
+  strict?: boolean
+}
