@@ -3,9 +3,15 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { startWebServer, type WebServerHandle } from '../src/web/server.js'
 import { loadGraph } from '../src/loader/index.js'
+import { FileGraphSource } from '../src/source/file-source.js'
 import type { Graph } from '../src/schema/index.js'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const repoRoot = path.resolve(__dirname, '..', '..')
+const fixtureGraphDir = path.join(repoRoot, 'fixtures/sample-graph')
 
 function makeTestGraph(): Graph {
   const templates = new Map()
@@ -232,6 +238,61 @@ describe('web server', () => {
       assert.equal(res.status, 200)
       const body = await res.json() as unknown
       assert.deepEqual(body, { ok: true })
+    })
+  })
+
+  describe('multi-branch API', () => {
+    let sourceHandle: WebServerHandle
+
+    before(async () => {
+      const source = new FileGraphSource({ graphDir: fixtureGraphDir })
+      const graph = await loadGraph({ source })
+      sourceHandle = await startWebServer(graph, { port: 0, source })
+    })
+
+    after(async () => {
+      await sourceHandle.close()
+    })
+
+    it('GET /api/branches returns 501 without a configured source', async () => {
+      const res = await fetch(`http://localhost:${handle.port}/api/branches`)
+
+      assert.equal(res.status, 501)
+      assert.deepEqual(await res.json(), { error: 'multi-branch requires a configured source' })
+    })
+
+    it('GET /api/branches returns one FileGraphSource default branch', async () => {
+      const res = await fetch(`http://localhost:${sourceHandle.port}/api/branches`)
+
+      assert.equal(res.status, 200)
+      const body = await res.json() as {
+        default: string
+        branches: Array<{ ref: string; isDefault: boolean }>
+        results: Array<{ ref: string; status: string }>
+      }
+      assert.equal(body.branches.length, 1)
+      assert.deepEqual(body.branches, [{ ref: body.default, isDefault: true }])
+      assert.deepEqual(body.results, [{ ref: body.default, status: 'loaded' }])
+    })
+
+    it('GET /api/overlay/:ref returns FileGraphSource nodes as local', async () => {
+      const branchesRes = await fetch(`http://localhost:${sourceHandle.port}/api/branches`)
+      const branchesBody = await branchesRes.json() as { default: string }
+
+      const res = await fetch(
+        `http://localhost:${sourceHandle.port}/api/overlay/${encodeURIComponent(branchesBody.default)}`,
+      )
+
+      assert.equal(res.status, 200)
+      const body = await res.json() as {
+        viewingRef: string
+        nodes: Array<{ id: string; ghostState: string; branches: string[]; node: { id: string } }>
+      }
+      assert.equal(body.viewingRef, branchesBody.default)
+      assert.ok(body.nodes.length > 0)
+      assert.ok(body.nodes.every(node => node.ghostState === 'local'))
+      assert.ok(body.nodes.every(node => node.branches.length === 1 && node.branches[0] === branchesBody.default))
+      assert.ok(body.nodes.every(node => node.id === node.node.id))
     })
   })
 
