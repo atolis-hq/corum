@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "corum": "./dist/src/bin/corum.js"
+  },
   "scripts": {
     "build": "tsc",
     "test": "tsc && node --test dist/test",
