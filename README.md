@@ -14,23 +14,13 @@ Or run without installing:
 npx @atolis-hq/corum <command>
 ```
 
-**Windows (PowerShell):** npm global bins require script execution to be enabled. Run this once if you see an "execution policy" error:
+**Windows:** If you see an "execution policy" error in PowerShell, run this once:
 
 ```powershell
 Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
-**Windows (Command Prompt):** If `corum` tries to open a file instead of running, use `corum.cmd` explicitly, or ensure `.CMD` is in your `PATHEXT`:
-
-```cmd
-echo %PATHEXT%
-```
-
-If `.CMD` is missing, add it permanently and open a new terminal:
-
-```cmd
-setx PATHEXT "%PATHEXT%;.CMD"
-```
+This is a standard one-time setup step for Node.js development on Windows. Alternatively, `npx @atolis-hq/corum <command>` works without any setup on all platforms.
 
 ## Update
 
