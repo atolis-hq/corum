@@ -2,6 +2,7 @@
 import { Command } from 'commander'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { readFile as fsReadFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { buildOpenAPIConfig, loadImportConfig } from '../import/config.js'
@@ -16,12 +17,15 @@ import { fetchRegistry, findPack, resolveRef } from '../pack/registry.js'
 import { createGraphRuntimeConfig } from '../source/config.js'
 import { startWebServer } from '../web/server.js'
 
+const require = createRequire(import.meta.url)
+const { version } = require('../../../package.json') as { version: string }
+
 const program = new Command()
 
 program
   .name('corum')
   .description('Corum graph CLI')
-  .version('0.1.0')
+  .version(version)
 
 program
   .command('mcp')
