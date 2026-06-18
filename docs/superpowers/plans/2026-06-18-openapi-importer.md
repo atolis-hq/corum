@@ -1389,9 +1389,10 @@ git commit -m "feat: per-component reconcile diff logic"
 
 - [ ] **Write the runner**
 
+The runner accepts a `GraphRuntimeConfig` (same type used by the MCP and web servers) so it works with both filesystem and git sources.
+
 ```typescript
 import { parse as parseYaml } from 'yaml'
-import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { loadGraph } from '../loader/index.js'
 import { serializeGraph } from '../writer/graph-writer.js'
@@ -1399,25 +1400,25 @@ import { getAdapter } from '../adapters/index.js'
 import { diffNodes } from '../reconcile/index.js'
 import type { ImportConfig } from './config.js'
 import type { AdapterPackConfig } from '../adapters/index.js'
-import type { Diagnostic, Node } from '../schema/index.js'
-import type { Graph } from '../schema/index.js'
-import { FileGraphSource } from '../source/file-source.js'
+import type { Diagnostic } from '../schema/index.js'
+import type { ContentMap } from '../source/index.js'
+import type { GraphRuntimeConfig } from '../source/config.js'
 
 export interface RunResult {
   diagnostics: Diagnostic[]
 }
 
-export async function runImport(config: ImportConfig, graphPath: string): Promise<RunResult> {
+export async function runImport(config: ImportConfig, runtimeConfig: GraphRuntimeConfig): Promise<RunResult> {
   const allDiagnostics: Diagnostic[] = []
 
-  const graph = await loadGraph({ graphPath })
+  const graph = await loadGraph({ source: runtimeConfig.source })
 
   for (const entry of config.imports) {
-    const packConfig = await loadPackAdapterConfig(graphPath, entry.adapter)
+    const packConfig = await loadPackAdapterConfig(runtimeConfig, entry.adapter)
     if (!packConfig) {
       allDiagnostics.push({
         severity: 'error',
-        file: graphPath,
+        file: runtimeConfig.graphPath,
         message: `No ${entry.adapter} adapter config found in active packs — is the ${entry.adapter === 'openapi' ? 'rest' : entry.adapter} pack active?`,
       })
       continue
@@ -1430,26 +1431,29 @@ export async function runImport(config: ImportConfig, graphPath: string): Promis
     if (result.diagnostics.some(d => d.severity === 'error')) continue
 
     const specPath = path.resolve(entry.spec)
-    const existingNodes = graph.nodesById
-    const { toAdd, toUpdate, toRemove } = diffNodes(result.nodes, existingNodes, specPath)
+    const { toAdd, toUpdate, toRemove } = diffNodes(result.nodes, graph.nodesById, specPath)
 
     for (const node of [...toAdd, ...toUpdate, ...toRemove]) {
       graph.nodesById.set(node.id, node)
     }
   }
 
-  const source = new FileGraphSource({ graphDir: graphPath, defaultBranch: 'local' })
+  const graphPath = runtimeConfig.kind === 'filesystem' ? runtimeConfig.graphPath : undefined
   const contentMap = serializeGraph(graph, { sourceGraphPath: graphPath, outputGraphPath: graphPath })
-  await source.commit('local', contentMap, 'corum import', { replaceGraphContent: true })
+  await runtimeConfig.source.commit(
+    await runtimeConfig.source.defaultBranch(),
+    contentMap,
+    'corum import',
+    { replaceGraphContent: true },
+  )
 
   return { diagnostics: allDiagnostics }
 }
 
-async function loadPackAdapterConfig(graphPath: string, adapterId: string): Promise<AdapterPackConfig | null> {
-  const source = new FileGraphSource({ graphDir: graphPath, defaultBranch: 'local' })
-  let packContent: import('../source/index.js').ContentMap
+async function loadPackAdapterConfig(runtimeConfig: GraphRuntimeConfig, adapterId: string): Promise<AdapterPackConfig | null> {
+  let packContent: ContentMap
   try {
-    packContent = await source.loadPackContent(await source.defaultBranch())
+    packContent = await runtimeConfig.source.loadPackContent(await runtimeConfig.source.defaultBranch())
   } catch {
     return null
   }
@@ -1490,11 +1494,14 @@ git commit -m "feat: import runner orchestrating adapter, reconcile, and write"
 
 - [ ] **Write `src/bin/corum.ts`**
 
+Graph source is configured exactly as for the MCP and web servers — via `createGraphRuntimeConfig()` which reads `CORUM_SOURCE`, `CORUM_GRAPH_PATH`, and related env vars. The `--graph` flag is a shorthand that sets `CORUM_GRAPH_PATH` before calling `createGraphRuntimeConfig()`.
+
 ```typescript
 import { Command } from 'commander'
 import path from 'node:path'
 import { loadImportConfig, buildOpenAPIConfig } from '../import/config.js'
 import { runImport } from '../import/runner.js'
+import { createGraphRuntimeConfig } from '../source/config.js'
 
 const program = new Command()
 
@@ -1508,15 +1515,15 @@ const importCmd = program.command('import')
 importCmd
   .command('openapi <spec>')
   .description('Import an OpenAPI spec into the graph')
-  .option('--component-strategy <strategy>', 'Component mapping strategy: uri-segment, tag, hardcoded', 'uri-segment')
-  .option('--segment <n>', 'URI segment index (for uri-segment strategy)', parseInt)
-  .option('--pattern <regex>', 'Regex pattern (for uri-segment strategy)')
-  .option('--component <name>', 'Component name (for hardcoded strategy)')
-  .option('--graph <path>', 'Path to graph directory', '.corum/graph')
+  .option('--component-strategy <strategy>', 'Component mapping: uri-segment, tag, hardcoded', 'uri-segment')
+  .option('--segment <n>', 'URI segment index (uri-segment strategy)', parseInt)
+  .option('--pattern <regex>', 'Regex pattern (uri-segment strategy)')
+  .option('--component <name>', 'Component name (hardcoded strategy)')
+  .option('--graph <path>', 'Override CORUM_GRAPH_PATH')
   .action(async (spec: string, opts) => {
+    const runtimeConfig = buildRuntimeConfig(opts.graph)
     const entry = buildOpenAPIConfig(spec, opts.componentStrategy, opts.segment, opts.pattern, opts.component)
-    const config = { imports: [entry] }
-    const result = await runImport(config, path.resolve(opts.graph))
+    const result = await runImport({ imports: [entry] }, runtimeConfig)
     reportDiagnostics(result.diagnostics)
     if (result.diagnostics.some(d => d.severity === 'error')) process.exit(1)
   })
@@ -1525,13 +1532,19 @@ importCmd
   .command('run')
   .description('Run imports from a config file')
   .option('--config <path>', 'Path to import config YAML', 'corum-imports.yaml')
-  .option('--graph <path>', 'Path to graph directory', '.corum/graph')
+  .option('--graph <path>', 'Override CORUM_GRAPH_PATH')
   .action(async (opts) => {
+    const runtimeConfig = buildRuntimeConfig(opts.graph)
     const config = loadImportConfig(path.resolve(opts.config))
-    const result = await runImport(config, path.resolve(opts.graph))
+    const result = await runImport(config, runtimeConfig)
     reportDiagnostics(result.diagnostics)
     if (result.diagnostics.some(d => d.severity === 'error')) process.exit(1)
   })
+
+function buildRuntimeConfig(graphOverride?: string) {
+  if (graphOverride) process.env.CORUM_GRAPH_PATH = path.resolve(graphOverride)
+  return createGraphRuntimeConfig()
+}
 
 function reportDiagnostics(diagnostics: { severity: string; file: string; message: string }[]): void {
   for (const d of diagnostics) {
@@ -1721,6 +1734,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadGraph } from '../../src/loader/index.js'
 import { runImport } from '../../src/import/runner.js'
+import { createGraphRuntimeConfig } from '../../src/source/config.js'
 import type { ImportConfig } from '../../src/import/config.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -1730,7 +1744,6 @@ const specsDir = path.join(repoRoot, 'test/fixtures/openapi/specs')
 
 async function runAgainstFixture(specFile: string): Promise<{ graphDir: string; cleanup: () => void }> {
   const graphDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-import-'))
-  // Copy fixture graph to temp dir
   fs.cpSync(fixtureGraphDir, graphDir, { recursive: true })
   const config: ImportConfig = {
     imports: [{
@@ -1739,7 +1752,9 @@ async function runAgainstFixture(specFile: string): Promise<{ graphDir: string; 
       componentMapping: { strategy: 'uri-segment', segment: 0 },
     }],
   }
-  await runImport(config, graphDir)
+  process.env.CORUM_GRAPH_PATH = graphDir
+  const runtimeConfig = createGraphRuntimeConfig()
+  await runImport(config, runtimeConfig)
   return { graphDir, cleanup: () => fs.rmSync(graphDir, { recursive: true, force: true }) }
 }
 
