@@ -20,6 +20,18 @@ npx @atolis-hq/corum <command>
 Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
+**Windows (Command Prompt):** If `corum` tries to open a file instead of running, use `corum.cmd` explicitly, or ensure `.CMD` is in your `PATHEXT`:
+
+```cmd
+echo %PATHEXT%
+```
+
+If `.CMD` is missing, add it permanently and open a new terminal:
+
+```cmd
+setx PATHEXT "%PATHEXT%;.CMD"
+```
+
 ## Update
 
 ```bash
