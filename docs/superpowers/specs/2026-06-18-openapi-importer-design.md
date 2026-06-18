@@ -65,11 +65,12 @@ corum import [flags | --config file]
 
 ## 3. Schema changes
 
-The only change to existing types — add two optional fields to `Node` and `Edge` in `src/schema/index.ts`, as already specified in ADR-003b:
+**TypeScript types** — add optional fields to `Node` and `Edge` in `src/schema/index.ts`, as specified in ADR-003b:
 
 ```typescript
 interface Node {
   // ... existing fields unchanged ...
+  extractedFrom?: string                           // source spec/code path — already present
   derivation?: 'determined' | 'inferred' | 'manual'
   derivedBy?: string    // e.g. 'adapter:openapi', 'extractor:treesitter'
 }
@@ -80,6 +81,29 @@ interface Edge {
   derivedBy?: string
 }
 ```
+
+**YAML cluster files** — `extractedFrom`, `derivation`, and `derivedBy` all live inside the `metadata` block (updated in `node.schema.yaml`). An imported cluster file looks like:
+
+```yaml
+id: orders.APIEndpoint.create-order
+template: APIEndpoint
+schemaVersion: "1"
+
+metadata:
+  component: orders
+  state: implemented
+  stability: unstable
+  lastModifiedAt: "2026-06-18"
+  extractedFrom: ./specs/orders-api.yaml   # source spec — in metadata alongside state/stability
+  derivation: determined
+  derivedBy: adapter:openapi
+
+properties:
+  method: POST
+  path: /orders/...
+```
+
+**Implementation note — writer/loader separation:** The writer (`graph-writer.ts`) currently uses `Node.extractedFrom` as the cluster output file path, and the loader sets it to the cluster file path. These are two distinct concepts that must be separated before the importer can use `extractedFrom` for the source spec path. The implementation plan will address this: the cluster output path should be derived from the node ID (component + template + name), freeing `extractedFrom` to carry its intended meaning.
 
 ---
 

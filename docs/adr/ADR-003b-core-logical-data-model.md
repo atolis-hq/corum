@@ -251,6 +251,8 @@ These are constraints that any implementation of this model must maintain, regar
 - **Linter (ADR-006):** a new **warning**-level rule fires when an `inferred` node or edge declares `stability: stable` — trust should be promoted (re-derived deterministically or human-confirmed) before a contract is marked stable. Never an error.
 - **MCP/UI (ADR-005):** cluster responses surface `derivation` so consumers can filter or render `inferred` data distinctly.
 
+**YAML placement:** `extractedFrom`, `derivation`, and `derivedBy` all live inside the `metadata` block in cluster YAML files, alongside `state`, `stability`, and `lastModifiedAt`. `metadata` is the complete node classification block — lifecycle, ownership, and provenance. `node.schema.yaml` in the core pack is updated accordingly.
+
 **Prior text amended:** the universal node property table and the edge entity table now include `derivation` and `derivedBy`. References throughout to "every node carries `state`, `stability`, …" should be read to include `derivation`.
 
 ---
