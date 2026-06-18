@@ -972,3 +972,106 @@ EOF
 - [ ] **Step 3: Verify CI passes on the PR**
 
 Check GitHub Actions — the `test` job should pass. The `publish` job should not run (only triggers on push to main).
+
+- [ ] **Step 4: Wait for approval and merge**
+
+Have the PR approved and merged. Do not continue to Task 9 until it is merged into main.
+
+---
+
+## Task 9: Post-merge bootstrap
+
+These steps are run once after the NpmPublish PR is merged. They get the package live on npm and wire up CI publishing.
+
+- [ ] **Step 1: Pull latest main and build**
+
+```bash
+git checkout main
+git pull origin main
+npm ci
+npm run build
+```
+
+Expected: build succeeds, `dist/` is populated.
+
+- [ ] **Step 2: Log in to npm**
+
+```bash
+npm login
+```
+
+Follow the browser prompt to authenticate with your npm account (or use `npm login --auth-type=legacy` for token-based login). Verify you are logged in:
+
+```bash
+npm whoami
+```
+
+Expected: your npm username.
+
+- [ ] **Step 3: Publish the package for the first time**
+
+```bash
+npm publish --access public
+```
+
+Expected: output ends with `+ @atolis-hq/corum@0.1.0`.
+
+- [ ] **Step 4: Verify the package is live**
+
+```bash
+npm view @atolis-hq/corum
+```
+
+Expected: package metadata including `version: 0.1.0` and `dist.tarball` URL.
+
+Also check: `https://www.npmjs.com/package/@atolis-hq/corum`
+
+- [ ] **Step 5: Create and push the initial version tag**
+
+This gives `paulhatch/semantic-version` a base to increment from. Without it, the action has no tag history and will output `0.0.1`.
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+- [ ] **Step 6: Add NPM_TOKEN secret to GitHub**
+
+1. Go to npmjs.com → your account → Access Tokens → Generate New Token → **Automation** type
+2. Copy the token
+3. Go to GitHub → repository → Settings → Secrets and variables → Actions → New repository secret
+4. Name: `NPM_TOKEN`, value: the token you just copied
+5. Save
+
+- [ ] **Step 7: Verify CI auto-publish works**
+
+Make a trivial commit to main (or merge any branch) and watch GitHub Actions:
+
+```bash
+git commit --allow-empty -m "chore: trigger first CI publish"
+git push origin main
+```
+
+Wait for the `publish` job to complete. Then verify:
+
+```bash
+npm view @atolis-hq/corum version
+```
+
+Expected: `0.1.1` (patch bump from the CI run).
+
+- [ ] **Step 8: (Optional) Set up npm Trusted Publishers**
+
+This removes the need for the `NPM_TOKEN` secret — npm uses GitHub's OIDC token instead.
+
+1. Go to npmjs.com → `@atolis-hq/corum` → Settings → Publishing Access
+2. Under **Trusted Publishers**, click **Add a publisher**
+3. Set:
+   - Publisher: **GitHub Actions**
+   - Repository owner: `atolis-hq`
+   - Repository name: `corum`
+   - Workflow filename: `ci-cd.yml`
+4. Save
+5. In `.github/workflows/ci-cd.yml`, remove the `env: NODE_AUTH_TOKEN` line from the publish step — npm will use OIDC automatically
+6. Commit, push to a branch, open a PR, merge
+7. Delete the `NPM_TOKEN` secret from GitHub (Settings → Secrets → Actions → delete)
