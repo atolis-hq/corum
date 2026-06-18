@@ -6,7 +6,7 @@
 
 **Architecture:** A single CLI entrypoint (`src/bin/corum.ts`) handles all commands. The MCP server startup logic is extracted from `src/mcp/index.ts` into an exported `startMcpServer()` function called by both the CLI and the legacy `npm run mcp` entrypoint. Config file discovery is added to `src/source/config-file.ts` and wired into `createGraphRuntimeConfig()` as the lowest-precedence source.
 
-**Tech Stack:** Node 20, TypeScript 5, commander 14, yaml, semver (devDep), GitHub Actions.
+**Tech Stack:** Node 20, TypeScript 5, commander 14, yaml, GitHub Actions (`paulhatch/semantic-version`).
 
 ---
 
@@ -15,10 +15,9 @@
 | File | Action | Purpose |
 |------|--------|---------|
 | `.github/workflows/ci-cd.yml` | Create | CI/CD pipeline |
-| `scripts/bump-version.mjs` | Create | Read npm latest, patch-bump, write package.json |
 | `src/source/config-file.ts` | Create | `.corum/config.yaml` discovery and parsing |
 | `test/config-file.test.ts` | Create | Unit tests for config file module |
-| `package.json` | Modify | Rename, remove private, add files, add semver devDep |
+| `package.json` | Modify | Rename, remove private, add files field |
 | `src/source/config.ts` | Modify | Merge config file values into runtime config |
 | `src/mcp/index.ts` | Modify | Extract `startMcpServer()` export |
 | `src/bin/corum.ts` | Modify | Add `mcp`, `web`, `init` commands |
@@ -121,23 +120,14 @@ Apply these changes to `package.json`:
     "@types/express": "^4.17.25",
     "@types/node": "^20.0.0",
     "@types/swagger-parser": "^4.0.3",
-    "semver": "^7.7.2",
     "typescript": "^5.0.0"
   }
 }
 ```
 
-Key changes: removed `"private": true`, renamed to `@atolis-hq/corum`, added `"files"` field, added `semver` devDep.
+Key changes: removed `"private": true`, renamed to `@atolis-hq/corum`, added `"files"` field.
 
-- [ ] **Step 2: Install semver**
-
-```bash
-npm install
-```
-
-Expected: `semver` appears in `node_modules/semver/`.
-
-- [ ] **Step 3: Build and test to confirm nothing broke**
+- [ ] **Step 2: Build and test to confirm nothing broke**
 
 ```bash
 npm test
@@ -149,7 +139,7 @@ Expected: build succeeds, all tests pass.
 
 ```bash
 git add package.json package-lock.json
-git commit -m "chore: rename to @atolis-hq/corum, add files field, add semver devDep"
+git commit -m "chore: rename to @atolis-hq/corum, add files field"
 ```
 
 ---
@@ -861,65 +851,9 @@ git commit -m "feat: add corum mcp, web, and init CLI commands"
 
 ---
 
-## Task 7: Version bump script
+## Task 7: Complete ci-cd.yml with publish job
 
-**Files:**
-- Create: `scripts/bump-version.mjs`
-
-- [ ] **Step 1: Create the script**
-
-Create `scripts/bump-version.mjs`:
-
-```javascript
-import { execSync } from 'node:child_process'
-import { readFileSync, writeFileSync } from 'node:fs'
-import semver from 'semver'
-
-const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
-
-let latest
-try {
-  latest = execSync('npm view @atolis-hq/corum version --json', { encoding: 'utf8' }).trim().replace(/"/g, '')
-} catch {
-  // Package does not exist on npm yet — use current package.json version as base
-  latest = pkg.version
-}
-
-const next = semver.inc(latest, 'patch')
-if (!next) {
-  process.stderr.write(`Could not compute next version from "${latest}"\n`)
-  process.exit(1)
-}
-
-pkg.version = next
-writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n')
-process.stdout.write(next + '\n')
-```
-
-- [ ] **Step 2: Test the script locally**
-
-```bash
-node scripts/bump-version.mjs
-```
-
-Expected: prints a version number (e.g. `0.1.1`). Check that `package.json` was updated.
-
-Reset the version back:
-
-```bash
-git checkout package.json
-```
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add scripts/bump-version.mjs
-git commit -m "chore: add version bump script for CI"
-```
-
----
-
-## Task 8: Complete ci-cd.yml with publish job
+Versioning uses `paulhatch/semantic-version`, which reads git tags to determine the next version. No version bump commit is pushed to main (branch is protected). Instead, a git tag is pushed after publish — that tag becomes the base for the next run. `package.json` in the repo stays at `0.1.0` permanently; the published package always has the correct version.
 
 **Files:**
 - Modify: `.github/workflows/ci-cd.yml`
@@ -938,6 +872,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -961,35 +897,39 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - run: npm ci
       - run: npm run build
-      - name: Bump version
-        run: |
-          NEW_VERSION=$(node scripts/bump-version.mjs)
-          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
-      - name: Commit and push version bump
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json
-          git commit -m "chore: bump version to ${{ env.NEW_VERSION }} [skip ci]"
-          git push
+      - name: Determine next version
+        id: semver
+        uses: paulhatch/semantic-version@v5.4.0
+        with:
+          tag_prefix: "v"
+          major_pattern: "(MAJOR)"
+          minor_pattern: "(MINOR)"
+      - name: Set version in package.json
+        run: npm version ${{ steps.semver.outputs.version }} --no-git-tag-version
       - name: Publish to npm
         run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Tag release
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag v${{ steps.semver.outputs.version }}
+          git push origin v${{ steps.semver.outputs.version }}
 ```
 
-**Note:** The `NODE_AUTH_TOKEN` secret must be set in GitHub repository settings. After the package is live on npm, you can configure it as a Trusted Publisher and remove the secret — see the bootstrap steps in the design spec at `docs/superpowers/specs/2026-06-18-npm-publish-design.md`.
+**Note:** `NODE_AUTH_TOKEN` must be set as a secret in GitHub repository settings (Settings → Secrets → Actions). To bump major or minor, include `(MAJOR)` or `(MINOR)` in the commit message — otherwise every push to main is a patch bump.
 
 - [ ] **Step 2: Commit**
 
 ```bash
 git add .github/workflows/ci-cd.yml
-git commit -m "ci: add publish job to ci-cd workflow"
+git commit -m "ci: add publish job using semantic-version and npm provenance"
 ```
 
 ---
 
-## Task 9: Open pull request
+## Task 8: Open pull request
 
 - [ ] **Step 1: Push the branch**
 
@@ -1004,12 +944,12 @@ gh pr create --title "feat: publish @atolis-hq/corum to npm with CLI and CI/CD" 
 ## Summary
 - Adds `corum mcp`, `corum web`, `corum init` CLI commands
 - Adds `.corum/config.yaml` discovery (lowest precedence, walks up from cwd)
-- Publishes as `@atolis-hq/corum` with patch bump on every push to main
+- Publishes as `@atolis-hq/corum` — patch bump on every push to main via `paulhatch/semantic-version` git tags; add `(MAJOR)` or `(MINOR)` to commit messages for larger bumps
 
 ## Bootstrap steps after merge
-1. `npm login && npm publish --access public` (first publish, from local)
-2. Set `NPM_TOKEN` secret in GitHub repo settings
-3. Optionally configure npm Trusted Publisher to remove the secret (see design spec)
+1. `npm login && npm publish --access public` (first publish from local, creates the package on npm)
+2. Set `NPM_TOKEN` secret in GitHub repo settings (Settings → Secrets → Actions)
+3. Push a `v0.1.0` git tag so semantic-version has a base: `git tag v0.1.0 && git push origin v0.1.0`
 
 ## Test plan
 - [ ] `corum --help` shows all subcommands

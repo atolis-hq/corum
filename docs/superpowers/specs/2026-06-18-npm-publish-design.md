@@ -11,7 +11,7 @@ Publish corum as `@atolis-hq/corum` on npm. This covers three things: wiring the
 - Remove `"private": true` from `package.json`
 - Package name: `@atolis-hq/corum` (public scoped package)
 - The existing `bin` entry is already correct: `"corum": "./dist/src/bin/corum.js"`
-- Add `semver` as a dependency (used by the publish workflow)
+- No additional runtime dependencies — versioning handled by `paulhatch/semantic-version` GitHub Action
 
 ## 2. CLI Commands
 
@@ -112,32 +112,27 @@ Two jobs:
 
 **`publish` job** — runs only on push to `main` (`if: github.ref == 'refs/heads/main' && github.event_name == 'push'`), depends on `test` passing (`needs: test`):
 
-Permissions: `id-token: write` (OIDC for npm Trusted Publisher), `contents: write` (version bump commit).
+Permissions: `id-token: write` (npm provenance), `contents: write` (git tag push).
 
 Steps:
-1. Checkout (with `fetch-depth: 0` for git history)
-2. Node setup
+1. Checkout (`fetch-depth: 0` — semantic-version needs full history)
+2. Node setup with `registry-url: https://registry.npmjs.org`
 3. `npm ci`
-4. Read latest published version: `npm view @atolis-hq/corum version` (defaults to `package.json` version if 404 — handles first publish)
-5. Compute next patch version using `semver` package: `semver.inc(latest, 'patch')`
-6. Write new version: `npm version <next> --no-git-tag-version`
-7. Commit version bump back to main: `git commit -am "chore: bump version to <next> [skip ci]"` then `git push`
-8. `npm publish --access public --provenance`
+4. `npm run build`
+5. `paulhatch/semantic-version@v5.4.0` — reads git tags, outputs next version. Default: patch bump. Add `(MAJOR)` or `(MINOR)` to commit messages for larger bumps.
+6. `npm version <output> --no-git-tag-version` — updates `package.json` in CI working copy only (not committed — main is branch-protected)
+7. `npm publish --access public --provenance`
+8. `git tag v<version> && git push origin v<version>` — tags the release so the next run increments correctly
 
-### One-time bootstrap (Trusted Publishers)
+### One-time bootstrap
 
-npm Trusted Publishers requires the package to exist on npm before it can be configured. First publish is manual:
-
-1. Log in to npm: `npm login`
-2. Publish once: `npm publish --access public` (from local, on `main`)
-3. On npmjs.com → `@atolis-hq/corum` → Settings → Configure GitHub Actions as Trusted Publisher:
-   - Repository: `atolis-hq/corum`
-   - Workflow: `ci-cd.yml`
-4. After this, no npm token is needed in GitHub secrets — OIDC handles auth
+1. `npm login && npm publish --access public` (first publish from local — creates the package on npm)
+2. Set `NPM_TOKEN` as a repository secret (GitHub → Settings → Secrets → Actions → New repository secret)
+3. Push the initial tag: `git tag v0.1.0 && git push origin v0.1.0` — gives semantic-version a base to increment from
 
 ## 5. Out of Scope
 
 - `corum export`, `corum lint`, `corum add-pack` — future commands, not included
 - Interactive `corum config` wizard — `corum init` covers basic scaffolding; a full interactive config command is a follow-up
-- Major/minor version bump strategy — patch-only for now; strategy TBD
+- Major/minor bump: use `(MAJOR)` or `(MINOR)` in commit messages — already supported by the workflow
 - Usage guide / npm README — separate task
