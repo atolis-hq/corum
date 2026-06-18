@@ -1,220 +1,188 @@
 # Corum
 
-Corum loads design graph files from disk into an in-memory graph and exposes the graph through MCP tools.
-
-## Requirements
-
-- Node.js 20 or newer
-- npm
+Corum is a Git-native design graph for service architecture. It models components (APIs, domain models, schemas, fields) as nodes with typed edges, and exposes the graph through MCP tools so AI assistants can reason about your architecture.
 
 ## Install
 
-From the repository root:
+```bash
+npm install -g @atolis-hq/corum
+```
+
+Or run without installing:
+
+```bash
+npx @atolis-hq/corum <command>
+```
+
+**Windows:** If you see an "execution policy" error in PowerShell, run this once:
 
 ```powershell
-npm install
+Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
-This installs TypeScript, the MCP SDK, and YAML parsing dependencies.
+This is a standard one-time setup step for Node.js development on Windows. Alternatively, `npx @atolis-hq/corum <command>` works without any setup on all platforms.
 
-## Build
+## Update
 
-Compile the TypeScript sources into `dist/`:
-
-```powershell
-npm run build
+```bash
+npm update -g @atolis-hq/corum
 ```
 
-The build command runs `tsc`.
+## Quick Start
 
-## Test
+Scaffold a config file in your project:
 
-Run the full test suite:
-
-```powershell
-npm test
+```bash
+corum init
 ```
 
-This compiles the project and runs the Node test runner against:
+This creates `.corum/config.yaml` with commented defaults. Edit it to point at your graph directory or git repository, then start the MCP server:
 
-- `test/schema.test.ts`
-- `test/loader.test.ts`
-- `test/graph.test.ts`
-- `test/mcp.test.ts`
-- `test/writer.test.ts`
-- `test/serializer.test.ts`
-
-The fixture graph used by the tests is in `fixtures/sample-graph`. The tests verify that it loads as `45` nodes and `38` edges.
-
-## Run The MCP Server
-
-Build first:
-
-```powershell
-npm run build
+```bash
+corum mcp
 ```
 
-Run the MCP server against the default graph path:
+## Commands
 
-```powershell
-npm run mcp
+### `corum mcp`
+
+Start the MCP stdio server. Also starts a web UI by default.
+
+```bash
+corum mcp [options]
+
+Options:
+  --no-web          Suppress the web UI
+  --watch           Reload graph on file changes
+  --graph <path>    Override the graph directory
 ```
 
-By default, the server loads:
+### `corum web`
 
-```text
-.corum/graph
+Start the web UI only.
+
+```bash
+corum web [options]
+
+Options:
+  --port <n>        Port to listen on (default: 3000)
+  --graph <path>    Override the graph directory
 ```
 
-To run it against the sample graph fixture instead:
+### `corum init`
 
-```powershell
-$env:CORUM_GRAPH_PATH = "fixtures/sample-graph"
-npm run mcp
+Scaffold `.corum/config.yaml` with commented defaults. Does not overwrite an existing file.
+
+```bash
+corum init
 ```
 
-To reload the in-memory graph when graph YAML or template YAML files change, pass `--watch` to the built server:
+### `corum import`
 
-```powershell
-node dist/src/mcp/index.js --watch
+Import specifications into the graph.
+
+```bash
+corum import --config <path>    Import using a config YAML file
 ```
 
-The same watcher can be enabled for the web server with `node dist/src/web/server.js --watch`, or for either server by setting `CORUM_FILE_WATCHER=true`.
+#### `corum import openapi <spec>`
 
-Starting with powershell
-```
- $env:CORUM_GRAPH_PATH = "fixtures/sample-graph";
- $env:CORUM_WEB_PORT = 3001;
- $env:CORUM_FILE_WATCHER="true";
- npm run web
-```
+Import an OpenAPI spec directly.
 
-To run the web app against a git repository instead of a filesystem graph path, set `CORUM_SOURCE=git` before starting the app.
+```bash
+corum import openapi <spec> [options]
 
-For a local git repository:
-
-```powershell
-$env:CORUM_SOURCE = "git"
-$env:CORUM_GIT_LOCAL_PATH = "C:\git\atolis-hq\corum-design-graph"
-$env:CORUM_GIT_BRANCH = "main"
-$env:CORUM_GIT_POLL_SECONDS = 10
-$env:CORUM_WEB_PORT = 3001
-npm run web
+Options:
+  --component-strategy <strategy>   Component mapping: uri-segment (default), tag, hardcoded
+  --segment <n>                     URI segment index (uri-segment strategy)
+  --pattern <regex>                 Regex pattern (uri-segment strategy)
+  --component <name>                Component name (hardcoded strategy)
+  --graph <path>                    Override the graph directory
 ```
 
-For a remote repository:
+## Configuration
 
-```powershell
-$env:CORUM_SOURCE = "git"
-$env:CORUM_GIT_REMOTE_URL = "https://github.com/org/design-repo.git"
-$env:CORUM_GIT_BRANCH = "main"
-$env:CORUM_GIT_POLL_SECONDS = 10
-$env:CORUM_WEB_PORT = 3001
-npm run web
+Run `corum init` to generate a `.corum/config.yaml` with all available options. Corum walks up from the current directory to find it, so you can place it at your project root.
+
+**Precedence (highest to lowest):** CLI flags → environment variables → `.corum/config.yaml`
+
+| Config key | Environment variable | Description |
+|---|---|---|
+| `source` | `CORUM_SOURCE` | `file` (default) or `git` |
+| `graph` | `CORUM_GRAPH_PATH` | Path to the graph directory |
+| `git_local_path` | `CORUM_GIT_LOCAL_PATH` | Local git repo path |
+| `git_remote_url` | `CORUM_GIT_REMOTE_URL` | Remote git repo URL |
+| `git_branch` | `CORUM_GIT_BRANCH` | Branch to load |
+| `git_poll_seconds` | `CORUM_GIT_POLL_SECONDS` | Polling interval for remote git |
+| `git_token` | `CORUM_GIT_TOKEN` | Auth token for private repos |
+| `git_username` | `CORUM_GIT_USERNAME` | Auth username (default: `x-access-token`) |
+
+### File source (default)
+
+```yaml
+# .corum/config.yaml
+source: file
+graph: .corum/graph
 ```
 
-For private remote repositories, also set `CORUM_GIT_TOKEN`. `CORUM_GIT_USERNAME` defaults to `x-access-token` when a token is present.
+### Git source
 
-The same git source config is used by `npm run mcp`. Git-backed startup expects graph files in `.corum/graph` and template packs in `.corum/packs`, and loads the selected branch at process start.
-
-`CORUM_GIT_POLL_SECONDS` is optional. When set to a positive number of seconds, the web server polls the git source for branch/ref changes, invalidates its cached multi-branch view, and reloads the app automatically. If it is not set, git-backed content is not polled.
-
-`CORUM_FILE_WATCHER` only watches filesystem graph paths. It does not watch git refs. For git-backed web sessions, you can either enable `CORUM_GIT_POLL_SECONDS` or use the always-visible `Reload` button in the branch bar to force a refresh.
-
-The MCP server exposes these tools:
-
-- `list_nodes`: lists graph nodes, optionally filtered by `template`, `component`, `state`, or `stability`
-- `list_templates`: lists loaded graph templates with summary metadata
-- `get_template`: returns full details for a loaded graph template
-- `get_cluster`: returns a root node, owned child nodes, and edges inside that cluster
-- `get_linked_fields`: returns `maps-to` edges touching fields owned by a root node
-
-Each tool accepts an optional `format` argument:
-
-- `yaml`: default, human-readable YAML
-- `json`: pretty JSON
-- `toon`: TOON output via the official `@toon-format/toon` encoder for lower token use
-
-Each tool also accepts `compact_keys: true` to shorten common graph keys before serialization. This works with all formats:
-
-```text
-id -> i
-template -> t
-component -> cp
-state -> s
-stability -> st
-schemaVersion -> sv
-lastModifiedAt -> lm
-extractedFrom -> xf
-properties -> p
-root -> r
-children -> ch
-edges -> e
-nodes -> n
-from -> fr
-to -> to
-type -> ty
-notes -> nt
+```yaml
+# .corum/config.yaml
+source: git
+git_remote_url: https://github.com/org/design-repo
+git_branch: main
+git_poll_seconds: 30
 ```
+
+For private repositories, set `CORUM_GIT_TOKEN` as an environment variable rather than storing it in the config file.
 
 ## MCP Client Configuration
 
-This repo includes a project-level `.mcp.json`:
+Configure your MCP client to run Corum. For Claude Code or Claude Desktop:
 
 ```json
 {
   "mcpServers": {
     "corum": {
-      "command": "node",
-      "args": ["dist/src/mcp/index.js"],
+      "command": "npx",
+      "args": ["@atolis-hq/corum", "mcp", "--no-web"],
       "env": {
-        "CORUM_GRAPH_PATH": "fixtures/sample-graph"
+        "CORUM_GRAPH_PATH": "/path/to/your/graph"
       }
     }
   }
 }
 ```
 
-Build the project before using this config from an MCP client:
+Or if installed globally:
 
-```powershell
-npm run build
+```json
+{
+  "mcpServers": {
+    "corum": {
+      "command": "corum",
+      "args": ["mcp", "--no-web"],
+      "env": {
+        "CORUM_GRAPH_PATH": "/path/to/your/graph"
+      }
+    }
+  }
+}
 ```
 
-The checked-in config points at `fixtures/sample-graph` so the tools return sample nodes immediately. Change `CORUM_GRAPH_PATH` to `.corum/graph` when you have graph component files there.
+## MCP Tools
 
-## MCP Smoke Test
+| Tool | Description |
+|---|---|
+| `list_nodes` | List graph nodes, optionally filtered by `template`, `component`, `state`, or `stability` |
+| `list_templates` | List loaded templates with summary metadata |
+| `get_template` | Return full details for a template |
+| `get_cluster` | Return a root node, its owned children, and internal edges |
+| `get_linked_fields` | Return `maps-to` edges touching fields owned by a root node |
 
-Run a local MCP client against the configured server and print graph data:
+All tools accept an optional `format` argument: `yaml` (default), `json`, or `toon`. All tools also accept `compact_keys: true` to shorten common keys before serialization, reducing token usage.
 
-```powershell
-npm run mcp:smoke
-```
+## Contributing
 
-The smoke test starts the MCP server over stdio and calls:
-
-- `list_nodes`
-- `list_nodes` filtered to `APIEndpoint`
-- `get_cluster` for `orders.DomainModel.order`
-- `get_linked_fields` for `orders.DomainModel.order`
-
-## Useful Development Commands
-
-Type-check without emitting files:
-
-```powershell
-npx tsc --noEmit
-```
-
-Run one compiled test file after building:
-
-```powershell
-npm run build
-node --test dist/test/loader.test.js
-```
-
-Clean generated build output manually if needed:
-
-```powershell
-Remove-Item -Recurse -Force dist
-```
+See [DEVELOPMENT.md](DEVELOPMENT.md) for build, test, and local development instructions.
