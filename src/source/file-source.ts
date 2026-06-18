@@ -107,11 +107,12 @@ export class FileGraphSource implements GraphSource {
 }
 
 function readPackTemplatesIntoMap(packDir: string, map: ContentMap): void {
-  const templatesDir = path.join(packDir, 'templates')
-  if (!existsSync(templatesDir)) return
+  if (!existsSync(packDir)) return
   const packName = path.basename(packDir)
-  for (const file of readdirSync(templatesDir).filter(name => name.endsWith('.yaml'))) {
-    map.set(`${packName}/templates/${file}`, readFileSync(path.join(templatesDir, file), 'utf-8'))
+  const packContent: ContentMap = new Map()
+  walkYamlFilesIntoMap(packDir, packDir, packContent)
+  for (const [relKey, content] of packContent) {
+    map.set(`${packName}/${relKey}`, content)
   }
 }
 

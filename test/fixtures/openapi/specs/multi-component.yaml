@@ -1,0 +1,59 @@
+openapi: '3.0.3'
+info:
+  title: Multi-Component API
+  version: '1.0'
+paths:
+  /orders/create:
+    post:
+      operationId: createOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customerId]
+              properties:
+                customerId:
+                  type: string
+                  format: uuid
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [orderId]
+                properties:
+                  orderId:
+                    type: string
+                    format: uuid
+  /payments/capture:
+    post:
+      operationId: capturePayment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderId, amount]
+              properties:
+                orderId:
+                  type: string
+                  format: uuid
+                amount:
+                  type: number
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [paymentId]
+                properties:
+                  paymentId:
+                    type: string
+                    format: uuid

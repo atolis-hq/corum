@@ -1,0 +1,20 @@
+id: orders.Schema.OrderSummary
+template: Schema
+schemaVersion: '1'
+metadata:
+  component: orders
+  state: implemented
+  stability: unstable
+  lastModifiedAt: <date>
+  extractedFrom: <spec>
+  derivation: determined
+  derivedBy: adapter:openapi
+fields:
+  orderId:
+    type: uuid
+    nullable: false
+    cardinality: one
+  status:
+    $ref: orders.EnumDefinition.OrderStatus
+    nullable: false
+    cardinality: one

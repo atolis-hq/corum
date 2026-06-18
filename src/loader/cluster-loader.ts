@@ -57,7 +57,9 @@ export function loadClusters(
       stability: asStability(meta.stability, 'unstable'),
       schemaVersion: record.schemaVersion,
       lastModifiedAt: meta.lastModifiedAt,
-      extractedFrom: key,
+      ...(typeof meta.extractedFrom === 'string' && { extractedFrom: meta.extractedFrom }),
+      ...(typeof meta.derivation === 'string' && { derivation: meta.derivation as Node['derivation'] }),
+      ...(typeof meta.derivedBy === 'string' && { derivedBy: meta.derivedBy }),
       properties: isRecord(record.properties) ? record.properties : {},
     }
 
@@ -106,7 +108,6 @@ function materialiseChildren(
         stability: asStability(value.stability, parent.stability),
         schemaVersion: parent.schemaVersion,
         lastModifiedAt: parent.lastModifiedAt,
-        extractedFrom: filePath,
         properties: stripOwnedSections(value, childTemplateName, templates),
       }
 

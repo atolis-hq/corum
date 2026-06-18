@@ -1,18 +1,16 @@
-schema-version: "1.0"
-name: "Corum Design Graph"
-
+schema-version: '1.0'
+name: Corum Design Graph
 templatePacks:
   - name: core
-    version: "1.0.0"
+    version: 1.0.0
     path: ../packs/core
   - name: rest
-    version: "1.0.0"
+    version: 1.0.0
     path: ../packs/rest
   - name: messaging
-    version: "1.0.0"
+    version: 1.0.0
     path: ../packs/messaging
   - name: domain
-    version: "1.0.0"
+    version: 1.0.0
     path: ../packs/domain
-
 components: []

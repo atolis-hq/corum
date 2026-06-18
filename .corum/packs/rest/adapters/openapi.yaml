@@ -1,0 +1,37 @@
+adapter: openapi
+version: '1.0'
+
+constructs:
+  operation:
+    template: APIEndpoint
+    properties:
+      summary: description
+
+  requestSchema:
+    template: Schema
+    section: schemas
+
+  responseSchema:
+    template: Schema
+    section: schemas
+
+  schemaProperty:
+    template: Field
+    section: fields
+
+  enumDefinition:
+    template: EnumDefinition
+    section: enums
+
+  enumValue:
+    template: EnumValue
+    section: values
+
+scalarTypes:
+  string: string
+  string/uuid: uuid
+  string/date: date
+  string/date-time: datetime
+  integer: integer
+  number: decimal
+  boolean: boolean

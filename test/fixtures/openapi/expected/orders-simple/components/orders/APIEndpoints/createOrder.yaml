@@ -1,0 +1,33 @@
+id: orders.APIEndpoint.createOrder
+template: APIEndpoint
+schemaVersion: '1'
+metadata:
+  component: orders
+  state: implemented
+  stability: unstable
+  lastModifiedAt: <date>
+  extractedFrom: <spec>
+  derivation: determined
+  derivedBy: adapter:openapi
+properties:
+  method: POST
+  path: /orders/create
+  operationId: createOrder
+  description: Create a new order
+schemas:
+  createOrder-request:
+    fields:
+      customerId:
+        type: uuid
+        nullable: false
+        cardinality: one
+      notes:
+        type: string
+        nullable: true
+        cardinality: one
+  createOrder-response-201:
+    fields:
+      orderId:
+        type: uuid
+        nullable: false
+        cardinality: one

@@ -104,12 +104,28 @@ properties:
         type: string
         format: date
         description: ISO 8601 date of last change (YYYY-MM-DD).
-
-  extractedFrom:
-    type: string
-    description: |
-      Source file path if this node was extracted from code.
-      Omitted for human-authored nodes.
+      extractedFrom:
+        type: string
+        description: |
+          Source file path or URL this node was extracted from (e.g. an OpenAPI spec,
+          a source code file). Omitted for human-authored nodes.
+      derivation:
+        type: string
+        enum:
+          - determined
+          - inferred
+          - manual
+        description: |
+          How this node was established. Orthogonal to state.
+          determined — authoritative, reproducible method (spec, structural extraction).
+          inferred   — heuristic or ambiguous method (name match, LLM). Awaits promotion.
+          manual     — authored by a human. Default when omitted.
+      derivedBy:
+        type: string
+        description: |
+          Identifier of the producer that established this node.
+          e.g. adapter:openapi, extractor:treesitter, linker:llm.
+          Omitted for human-authored nodes.
 
   properties:
     type: object

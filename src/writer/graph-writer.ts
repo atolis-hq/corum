@@ -26,11 +26,7 @@ export function serializeGraph(graph: Graph, options: SerializeGraphOptions = {}
   map.set('graph.yaml', buildGraphYaml(graph, options))
 
   for (const root of getRootNodes(graph)) {
-    if (!root.extractedFrom) continue
-    map.set(
-      normalizeExtractedFrom(root.extractedFrom, options.sourceGraphPath),
-      stringifyGraphYaml(toClusterDocument(graph, root)),
-    )
+    map.set(clusterPath(root), stringifyGraphYaml(toClusterDocument(graph, root)))
   }
 
   const explicitEdges = getAllEdges(graph)
@@ -42,6 +38,13 @@ export function serializeGraph(graph: Graph, options: SerializeGraphOptions = {}
   }
 
   return map
+}
+
+function clusterPath(node: Node): string {
+  const parts = node.id.split('.')
+  if (parts.length !== 3) throw new Error(`clusterPath: expected 3-segment root node ID, got: ${node.id}`)
+  const [component, template, name] = parts
+  return `components/${component}/${template}s/${name}.yaml`
 }
 
 export async function saveGraph(graph: Graph, options: SaveGraphOptions): Promise<void> {
@@ -83,24 +86,22 @@ function normalizeContentKey(value: string): string {
   return value.split(path.sep).join('/')
 }
 
-function normalizeExtractedFrom(value: string, sourceGraphPath?: string): string {
-  if (sourceGraphPath && path.isAbsolute(value)) {
-    return normalizeContentKey(path.relative(sourceGraphPath, value))
-  }
-  return normalizeContentKey(value)
-}
-
 function toClusterDocument(graph: Graph, root: Node): Record<string, unknown> {
+  const metadata: Record<string, unknown> = {
+    component: root.component,
+    state: root.state,
+    stability: root.stability,
+    lastModifiedAt: root.lastModifiedAt,
+  }
+  if (root.extractedFrom !== undefined) metadata.extractedFrom = root.extractedFrom
+  if (root.derivation !== undefined) metadata.derivation = root.derivation
+  if (root.derivedBy !== undefined) metadata.derivedBy = root.derivedBy
+
   const doc: Record<string, unknown> = {
     id: root.id,
     template: root.template,
     schemaVersion: root.schemaVersion,
-    metadata: {
-      component: root.component,
-      state: root.state,
-      stability: root.stability,
-      lastModifiedAt: root.lastModifiedAt,
-    },
+    metadata,
   }
 
   if (Object.keys(root.properties).length > 0) {
