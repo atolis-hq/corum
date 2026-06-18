@@ -41,3 +41,6 @@ export function getAdapter(adapterId: string): SpecAdapter {
   if (!adapter) throw new Error(`Unknown adapter: ${adapterId}`)
   return adapter
 }
+
+import { OpenAPIAdapter } from './openapi/index.js'
+registerAdapter(new OpenAPIAdapter())
