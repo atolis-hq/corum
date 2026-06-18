@@ -1,0 +1,18 @@
+version: "1.0"
+packs:
+  - name: core
+    description: "Core templates required by all graphs"
+    repo: https://github.com/atolis-hq/corum
+    path: .corum/packs/core
+  - name: domain
+    description: "Domain model templates (DomainModel, Command, ReadModel, etc.)"
+    repo: https://github.com/atolis-hq/corum
+    path: .corum/packs/domain
+  - name: rest
+    description: "REST API templates (APIEndpoint)"
+    repo: https://github.com/atolis-hq/corum
+    path: .corum/packs/rest
+  - name: messaging
+    description: "Messaging templates (DomainEvent, IntegrationEvent)"
+    repo: https://github.com/atolis-hq/corum
+    path: .corum/packs/messaging

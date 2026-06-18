@@ -62,4 +62,19 @@ describe('loadProjectConfig', () => {
       fs.rmSync(dir, { recursive: true })
     }
   })
+
+  it('loads pack_registry as a string', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-test-'))
+    fs.mkdirSync(path.join(dir, '.corum'))
+    fs.writeFileSync(
+      path.join(dir, '.corum', 'config.yaml'),
+      'pack_registry: https://github.com/atolis-hq/corum/packs/registry.yaml\n',
+    )
+    try {
+      const result = loadProjectConfig(dir)
+      assert.equal(result.pack_registry, 'https://github.com/atolis-hq/corum/packs/registry.yaml')
+    } finally {
+      fs.rmSync(dir, { recursive: true })
+    }
+  })
 })

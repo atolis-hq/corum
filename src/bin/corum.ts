@@ -1,11 +1,18 @@
 #!/usr/bin/env node
 import { Command } from 'commander'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { readFile as fsReadFile } from 'node:fs/promises'
 import path from 'node:path'
-import { loadImportConfig, buildOpenAPIConfig } from '../import/config.js'
+import { parse as parseYaml } from 'yaml'
+import { buildOpenAPIConfig, loadImportConfig } from '../import/config.js'
 import { runImport } from '../import/runner.js'
 import { loadGraph } from '../loader/index.js'
 import { startMcpServer } from '../mcp/index.js'
+import { parseGitHubRepo, toPackRawBaseUrl } from '../pack/github-urls.js'
+import { registerPackInGraph } from '../pack/graph-yaml.js'
+import { installPackFiles } from '../pack/installer.js'
+import { readManifest, upsertPack } from '../pack/manifest.js'
+import { fetchRegistry, findPack, resolveRef } from '../pack/registry.js'
 import { createGraphRuntimeConfig } from '../source/config.js'
 import { startWebServer } from '../web/server.js'
 
@@ -15,8 +22,6 @@ program
   .name('corum')
   .description('Corum graph CLI')
   .version('0.1.0')
-
-// ── mcp ──────────────────────────────────────────────────────────────────────
 
 program
   .command('mcp')
@@ -28,8 +33,6 @@ program
     if (opts.graph) process.env.CORUM_GRAPH_PATH = path.resolve(opts.graph)
     await startMcpServer({ noWeb: !opts.web, watch: opts.watch ?? false })
   })
-
-// ── web ──────────────────────────────────────────────────────────────────────
 
 program
   .command('web')
@@ -53,22 +56,23 @@ program
     })
   })
 
-// ── init ─────────────────────────────────────────────────────────────────────
-
 const CONFIG_TEMPLATE = `# Corum project configuration
 # Uncomment and set the options relevant to your setup.
 # All values can be overridden by environment variables (CORUM_*) or CLI flags.
+
+# Registry URL for discovering and installing template packs.
+pack_registry: https://github.com/atolis-hq/corum/packs/registry.yaml
 
 # Source type: 'file' (default) or 'git'
 # Maps to: CORUM_SOURCE
 # source: file
 
-# ── File source (default) ─────────────────────────────────────────────────────
+# File source (default)
 # Local path to the graph directory.
 # Maps to: CORUM_GRAPH_PATH
 # graph: .corum/graph
 
-# ── Git source ────────────────────────────────────────────────────────────────
+# Git source
 # Uncomment 'source: git' above and configure one of the following:
 
 # Local path to a git repository containing the graph.
@@ -96,21 +100,48 @@ const CONFIG_TEMPLATE = `# Corum project configuration
 # git_username: x-access-token
 `
 
+const GRAPH_TEMPLATE = `schema-version: '1.0'
+name: My Graph
+templatePacks: []
+components: []
+`
+
 program
   .command('init')
-  .description('Scaffold .corum/config.yaml with commented defaults')
-  .action(() => {
-    const configPath = path.join(process.cwd(), '.corum', 'config.yaml')
-    if (existsSync(configPath)) {
-      process.stdout.write(`.corum/config.yaml already exists — not overwriting\n`)
-      return
-    }
-    mkdirSync(path.dirname(configPath), { recursive: true })
-    writeFileSync(configPath, CONFIG_TEMPLATE)
-    process.stdout.write(`Created .corum/config.yaml\n`)
-  })
+  .description('Scaffold .corum project structure and install default packs')
+  .action(async () => {
+    const cwd = process.cwd()
+    const corumDir = path.join(cwd, '.corum')
+    const configPath = path.join(corumDir, 'config.yaml')
+    const graphPath = path.join(corumDir, 'graph', 'graph.yaml')
 
-// ── import ───────────────────────────────────────────────────────────────────
+    if (existsSync(configPath)) {
+      process.stdout.write('.corum/config.yaml already exists - not overwriting\n')
+    } else {
+      mkdirSync(path.dirname(configPath), { recursive: true })
+      writeFileSync(configPath, CONFIG_TEMPLATE)
+      process.stdout.write('Created .corum/config.yaml\n')
+    }
+
+    if (existsSync(graphPath)) {
+      process.stdout.write('.corum/graph/graph.yaml already exists - not overwriting\n')
+    } else {
+      mkdirSync(path.dirname(graphPath), { recursive: true })
+      writeFileSync(graphPath, GRAPH_TEMPLATE)
+      mkdirSync(path.join(corumDir, 'graph', 'components'), { recursive: true })
+      mkdirSync(path.join(corumDir, 'graph', 'edges'), { recursive: true })
+      process.stdout.write('Created .corum/graph/graph.yaml\n')
+    }
+
+    for (const packName of ['core', 'domain', 'rest', 'messaging']) {
+      try {
+        await installPack(packName, cwd)
+      } catch (err) {
+        process.stderr.write(`[ERROR] Failed to install pack ${packName}: ${err instanceof Error ? err.message : String(err)}\n`)
+        process.exit(1)
+      }
+    }
+  })
 
 const importCmd = program.command('import')
   .description('Import specifications into the graph')
@@ -154,6 +185,39 @@ importCmd
     }
   })
 
+const packCmd = program.command('pack').description('Manage template packs')
+
+packCmd
+  .command('install <name>')
+  .description('Install a pack from the registry (e.g. core, domain@v0.1.5)')
+  .action(async (name: string) => {
+    try {
+      await installPack(name)
+    } catch (err) {
+      process.stderr.write(`[ERROR] ${err instanceof Error ? err.message : String(err)}\n`)
+      process.exit(1)
+    }
+  })
+
+packCmd
+  .command('list')
+  .description('List installed packs')
+  .action(async () => {
+    try {
+      const manifest = await readManifest(path.join(process.cwd(), '.corum', 'packs.yaml'))
+      if (manifest.packs.length === 0) {
+        process.stdout.write('No packs installed. Run: corum pack install <name>\n')
+        return
+      }
+      for (const p of manifest.packs) {
+        process.stdout.write(`${p.name}@${p.ref}  (${p.installedAt})\n`)
+      }
+    } catch (err) {
+      process.stderr.write(`[ERROR] ${err instanceof Error ? err.message : String(err)}\n`)
+      process.exit(1)
+    }
+  })
+
 function buildRuntimeConfig(graphOverride?: string) {
   if (graphOverride) process.env.CORUM_GRAPH_PATH = path.resolve(graphOverride)
   return createGraphRuntimeConfig()
@@ -167,6 +231,38 @@ function reportDiagnostics(diagnostics: { severity: string; file: string; messag
   const errors = diagnostics.filter(d => d.severity === 'error').length
   const warnings = diagnostics.filter(d => d.severity === 'warning').length
   process.stdout.write(`Import complete. ${errors} error(s), ${warnings} warning(s).\n`)
+}
+
+async function readPackRegistryUrl(cwd: string): Promise<string> {
+  const configPath = path.join(cwd, '.corum', 'config.yaml')
+  const text = await fsReadFile(configPath, 'utf8')
+  const config = parseYaml(text) as { pack_registry?: string }
+  if (!config.pack_registry) throw new Error('pack_registry not set in .corum/config.yaml - run corum init first')
+  return config.pack_registry
+}
+
+export async function installPack(nameWithRef: string, cwd: string = process.cwd()): Promise<void> {
+  const atIdx = nameWithRef.indexOf('@')
+  const name = atIdx >= 0 ? nameWithRef.slice(0, atIdx) : nameWithRef
+  const specifiedRef = atIdx >= 0 ? nameWithRef.slice(atIdx + 1) : undefined
+
+  const registryUrl = await readPackRegistryUrl(cwd)
+  const registry = await fetchRegistry(registryUrl)
+  const pack = findPack(registry, name)
+  const { owner, repo } = parseGitHubRepo(pack.repo)
+  const ref = await resolveRef(owner, repo, specifiedRef)
+  const baseUrl = toPackRawBaseUrl(owner, repo, ref, pack.path)
+
+  await installPackFiles(baseUrl, path.join(cwd, '.corum', 'packs', name))
+  await upsertPack(path.join(cwd, '.corum', 'packs.yaml'), {
+    name,
+    repo: pack.repo,
+    path: pack.path,
+    ref,
+    installedAt: new Date().toISOString(),
+  })
+  await registerPackInGraph(path.join(cwd, '.corum', 'graph', 'graph.yaml'), name, `../packs/${name}`)
+  process.stdout.write(`Installed pack: ${name}@${ref}\n`)
 }
 
 program.parse()

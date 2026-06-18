@@ -11,6 +11,7 @@ export type CorumConfig = {
   git_poll_seconds?: number
   git_token?: string
   git_username?: string
+  pack_registry?: string
 }
 
 export function loadProjectConfig(cwd: string): CorumConfig {
