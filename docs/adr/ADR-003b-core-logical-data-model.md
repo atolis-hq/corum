@@ -44,6 +44,8 @@ Every node in the graph — regardless of template type — carries the followin
 | `schemaVersion` | string | yes | File format version this node was written against |
 | `lastModifiedAt` | date | yes | ISO 8601 date of last change |
 | `extractedFrom` | string | no | Source file path if extracted from code; omitted for human-authored nodes |
+| `derivation` | enum | no | `determined` \| `inferred` \| `manual`. How this node was established. Orthogonal to `state`. Defaults to `manual`. See [Amendment 2026-06-17](#amendment-2026-06-17--the-derivation-confidence-axis). |
+| `derivedBy` | string | no | Identifier of the producer/method that established this node, e.g. `extractor:treesitter`, `adapter:openapi`, `linker:llm`. |
 | `properties` | map | no | Template-defined additional properties; validated against the template's property schema |
 
 **Root-default-with-child-override:** In cluster files, `state` and `stability` are declared on the root node and inherited by all owned child nodes (fields, enum values, invariants, operations). A child node may declare its own `state` or `stability` to override the root's value — for example, a single enum value marked `stability: deprecated` while the rest of the enum remains `stable`. All other universal properties (`id`, `template`, `component`, `schemaVersion`, `lastModifiedAt`) are derived for child nodes and must not be declared inline. The full universal property schema is defined in `.corum/packs/core/node.schema.yaml`.
@@ -121,6 +123,8 @@ Edges are first-class entities. An edge is not a property of either endpoint —
 | `type` | enum | yes | See edge type vocabulary below |
 | `state` | enum | no | Defaults to `proposed`. An edge may be in-flight while its endpoint nodes are `agreed`. |
 | `stability` | enum | no | Defaults to `unstable`. |
+| `derivation` | enum | no | `determined` \| `inferred` \| `manual`. How this edge was established. Orthogonal to `state`. Defaults to `manual` for authored edges; producers set it explicitly. |
+| `derivedBy` | string | no | Identifier of the producer/method that established this edge. |
 | `notes` | string | no | Annotation on this specific edge instance |
 
 The full edge schema is defined in `.corum/packs/core/edge.schema.yaml`.
@@ -222,6 +226,32 @@ These are constraints that any implementation of this model must maintain, regar
 - The complete MCP tool signatures over this model (ADR-005)
 - The SQLite physical schema implementing this model (ADR-003 / implementation)
 - Operation behaviour modelling depth (future ADR)
+
+---
+
+## Amendment: 2026-06-17 — the `derivation` confidence axis
+
+**Added:** `derivation` (optional on nodes, optional on edges) and the optional companion `derivedBy`, on the universal node properties and the edge entity.
+
+**Reason:** Main state is derived from heterogeneous producers (ADR-009). Some facts are established **deterministically** (structural extraction, exact symbol resolution, an authoritative spec), others are **inferred** (heuristic name matching, LLM proposal, ambiguous resolution). Consumers, the linter, and the UI need to tell these apart — a deterministically extracted `maps-to` and an LLM-guessed one are both `state: implemented` on `main` and differ only in trust. Confidence is therefore an axis **orthogonal to lifecycle `state`**, not a new `state` value.
+
+**Semantics:**
+
+| `derivation` | Meaning |
+|---|---|
+| `determined` | Established by an authoritative, reproducible method — a spec, structural extraction, or exact resolution. Trusted. |
+| `inferred` | Established by a heuristic, probabilistic, or ambiguous method (name match, LLM, short-name resolution). Awaits promotion. |
+| `manual` | Authored by a human. Default for hand-written nodes and edges. |
+
+**Rules:**
+
+- `derivation` does **not** appear in the `state` enum. The two axes are independent: a node may be `state: implemented, derivation: inferred` on `main` (no branch required), and a branch edge may be `state: proposed, derivation: inferred`.
+- Producers set `derivation` explicitly. Reference mappings: structural extraction → `determined`; `$ref`/type links resolved by name → `inferred`; an exact symbol/identifier match → `determined`, an ambiguous name-only match → `inferred`; an authoritative spec adapter → `determined`.
+- On reconcile, when a node is contributed by multiple producers, the merged `derivation` takes the **lower** confidence unless all contributors agree (`determined` > `inferred` for this purpose; `manual` is preserved if a human has touched it — promotion rules to be specified in the reconcile spec).
+- **Linter (ADR-006):** a new **warning**-level rule fires when an `inferred` node or edge declares `stability: stable` — trust should be promoted (re-derived deterministically or human-confirmed) before a contract is marked stable. Never an error.
+- **MCP/UI (ADR-005):** cluster responses surface `derivation` so consumers can filter or render `inferred` data distinctly.
+
+**Prior text amended:** the universal node property table and the edge entity table now include `derivation` and `derivedBy`. References throughout to "every node carries `state`, `stability`, …" should be read to include `derivation`.
 
 ---
 
