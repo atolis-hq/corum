@@ -64,10 +64,12 @@ No ref is stored in the registry. The CLI resolves the ref at install time.
 Adds one new uncommented field — `pack_registry` — since it is required for pack commands to work:
 
 ```yaml
-pack_registry: https://raw.githubusercontent.com/atolis-hq/corum/main/packs/registry.yaml
+pack_registry: https://github.com/atolis-hq/corum/blob/main/packs/registry.yaml
 
 # ... existing commented options unchanged ...
 ```
+
+The CLI transforms `github.com/{owner}/{repo}/blob/{ref}/{path}` to `raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}` before fetching. The same transformation applies when constructing raw file URLs from pack `repo` + `path` + resolved ref.
 
 ### `.corum/graph/graph.yaml` (minimal scaffold)
 
