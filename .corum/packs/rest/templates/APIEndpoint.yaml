@@ -56,6 +56,10 @@ properties:
         - /orders
         - /orders/{orderId}
 
+    description:
+      type: string
+      description: "Human-readable summary of what this operation does"
+
     request:
       type: string
       format: node-ref

@@ -116,7 +116,6 @@ export function mapDocument(
       endpointNode.properties = {
         method: method.toUpperCase(),
         path: urlPath,
-        ...(operation.operationId && { operationId: operation.operationId }),
         ...(operation.summary && { description: operation.summary }),
       }
       nodes.push(endpointNode)
@@ -125,17 +124,21 @@ export function mapDocument(
       if (requestBody?.content) {
         const jsonContent = requestBody.content['application/json']
         if (jsonContent?.schema) {
-          emitSchemaNode(jsonContent.schema, `${operationId}-request`, endpointId, 'schemas', packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas)
+          const ref = emitSchemaNode(jsonContent.schema, `${operationId}-request`, endpointId, 'schemas', packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas)
+          if (ref) endpointNode.properties.request = ref
         }
       }
 
+      const responses: Record<string, string> = {}
       for (const [status, response] of Object.entries(operation.responses ?? {})) {
         const responseObj = response as OpenAPIV3.ResponseObject
         const jsonContent = responseObj.content?.['application/json']
         if (jsonContent?.schema) {
-          emitSchemaNode(jsonContent.schema, `${operationId}-response-${status}`, endpointId, 'schemas', packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas)
+          const ref = emitSchemaNode(jsonContent.schema, `${operationId}-response-${status}`, endpointId, 'schemas', packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas)
+          if (ref) responses[status] = ref
         }
       }
+      if (Object.keys(responses).length > 0) endpointNode.properties.responses = responses
     }
   }
 
@@ -169,14 +172,9 @@ function emitSchemaNode(
   edges: Edge[],
   diagnostics: Diagnostic[],
   sharedSchemas: Map<string, string>,
-): void {
+): string | undefined {
   if (isRefSchema(schema)) {
-    const refId = sharedSchemas.get(refName(schema.$ref))
-    if (refId) {
-      const parent = nodes.find(n => n.id === parentId)
-      if (parent) parent.properties[`${section}.${name}`] = refId
-    }
-    return
+    return sharedSchemas.get(refName(schema.$ref))
   }
   const schemaId = deriveNodeId('schema', undefined, name, parentId, section)
   const [component] = parentId.split('.')
@@ -184,6 +182,7 @@ function emitSchemaNode(
   nodes.push(node)
   edges.push({ id: `${parentId}__has-field__${schemaId}`, from: parentId, to: schemaId, type: 'has-field', state: 'implemented', stability: 'unstable' })
   emitFields(schema as OpenAPIV3.SchemaObject, schemaId, 'fields', packConfig, specPath, nodes, edges, diagnostics, sharedSchemas)
+  return `#/${section}/${name}`
 }
 
 function emitFields(

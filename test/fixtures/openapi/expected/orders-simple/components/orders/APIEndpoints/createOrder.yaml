@@ -12,8 +12,10 @@ metadata:
 properties:
   method: POST
   path: /orders/create
-  operationId: createOrder
   description: Create a new order
+  request: '#/schemas/createOrder-request'
+  responses:
+    '201': '#/schemas/createOrder-response-201'
 schemas:
   createOrder-request:
     fields:
