@@ -36,7 +36,7 @@ jobs:
       - run: npm run build
       - name: Determine next version
         id: semver
-        uses: paulhatch/semantic-version@v5.4.0
+        uses: paulhatch/semantic-version@v6.0.2
         with:
           tag_prefix: "v"
           major_pattern: "(MAJOR)"
