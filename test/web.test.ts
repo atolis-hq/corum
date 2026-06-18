@@ -881,6 +881,12 @@ describe('web server', () => {
       assert.match(primitives, /style=\{\{ '--field-depth': depth \}\}/)
     })
 
+    it('primitives: fieldSchemaName resolves fields from standalone Schema nodes', () => {
+      assert.match(primitives, /if \(fieldIdx < 0\) return null;/)
+      assert.match(primitives, /if \(schemaIdx < 0\)/)
+      assert.match(primitives, /return nodeId\.slice\(0, fieldIdx\)\.split\('\.'\)\.pop\(\) \?\? null;/)
+    })
+
     it('app: rootSpecializedTemplates handles Schema and EnumDefinition nodes', () => {
       assert.match(app, /const rootSpecializedTemplates = new Set\(\['Schema', 'EnumDefinition'\]\);/)
       assert.match(app, /const rootSpecializedNodes = rootSpecializedTemplates\.has\(root\.template\) \? \[\[root\.template, \[root\]\]\] : \[\];/)

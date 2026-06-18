@@ -147,6 +147,17 @@ describe('import runner — multi-component.yaml', () => {
   })
 })
 
+describe('import runner — shared-error.yaml', () => {
+  it('places schemas referenced by multiple components in shared component', async () => {
+    const { graphDir, cleanup } = await runAgainstFixture('shared-error.yaml')
+    try {
+      assertMatchesExpected(graphDir, 'shared-error')
+    } finally {
+      cleanup()
+    }
+  })
+})
+
 describe('import runner — orphan removal', () => {
   it('marks a previously imported endpoint as removed when absent from updated spec', async () => {
     const { graphDir, cleanup } = await setupGraphDir()

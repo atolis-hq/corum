@@ -1,0 +1,24 @@
+id: orders.APIEndpoint.createOrder
+template: APIEndpoint
+schemaVersion: '1'
+metadata:
+  component: orders
+  state: implemented
+  stability: unstable
+  lastModifiedAt: <date>
+  extractedFrom: <spec>
+  derivation: determined
+  derivedBy: adapter:openapi
+properties:
+  method: POST
+  path: /orders/create
+  responses:
+    '201': '#/schemas/createOrder-response-201'
+    default: shared.Schema.ApiError
+schemas:
+  createOrder-response-201:
+    fields:
+      id:
+        type: uuid
+        nullable: false
+        cardinality: one
