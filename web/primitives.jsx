@@ -168,7 +168,11 @@ function fieldSchemaName(nodeId) {
   const fieldMarker = '.fields.';
   const schemaIdx = nodeId.indexOf(schemaMarker);
   const fieldIdx = nodeId.indexOf(fieldMarker);
-  if (schemaIdx < 0 || fieldIdx < 0) return null;
+  if (fieldIdx < 0) return null;
+  if (schemaIdx < 0) {
+    // Standalone Schema node: e.g. user.Schema.User.fields.email → 'User'
+    return nodeId.slice(0, fieldIdx).split('.').pop() ?? null;
+  }
   return nodeId.slice(schemaIdx + schemaMarker.length, fieldIdx);
 }
 
