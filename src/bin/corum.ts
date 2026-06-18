@@ -12,6 +12,25 @@ program
   .version('0.1.0')
 
 const importCmd = program.command('import')
+  .description('Import specifications into the graph')
+  .option('--config <path>', 'Path to import config YAML')
+  .option('--graph <path>', 'Override CORUM_GRAPH_PATH')
+  .action(async (opts) => {
+    if (!opts.config) {
+      importCmd.help()
+      return
+    }
+    try {
+      const runtimeConfig = buildRuntimeConfig(opts.graph)
+      const config = loadImportConfig(path.resolve(opts.config))
+      const result = await runImport(config, runtimeConfig)
+      reportDiagnostics(result.diagnostics)
+      if (result.diagnostics.some(d => d.severity === 'error')) process.exit(1)
+    } catch (err) {
+      process.stderr.write(`[ERROR] ${err instanceof Error ? err.message : String(err)}\n`)
+      process.exit(2)
+    }
+  })
 
 importCmd
   .command('openapi <spec>')
@@ -22,24 +41,16 @@ importCmd
   .option('--component <name>', 'Component name (hardcoded strategy)')
   .option('--graph <path>', 'Override CORUM_GRAPH_PATH')
   .action(async (spec: string, opts) => {
-    const runtimeConfig = buildRuntimeConfig(opts.graph)
-    const entry = buildOpenAPIConfig(spec, opts.componentStrategy, opts.segment, opts.pattern, opts.component)
-    const result = await runImport({ imports: [entry] }, runtimeConfig)
-    reportDiagnostics(result.diagnostics)
-    if (result.diagnostics.some(d => d.severity === 'error')) process.exit(1)
-  })
-
-importCmd
-  .command('run')
-  .description('Run imports from a config file')
-  .option('--config <path>', 'Path to import config YAML', 'corum-imports.yaml')
-  .option('--graph <path>', 'Override CORUM_GRAPH_PATH')
-  .action(async (opts) => {
-    const runtimeConfig = buildRuntimeConfig(opts.graph)
-    const config = loadImportConfig(path.resolve(opts.config))
-    const result = await runImport(config, runtimeConfig)
-    reportDiagnostics(result.diagnostics)
-    if (result.diagnostics.some(d => d.severity === 'error')) process.exit(1)
+    try {
+      const runtimeConfig = buildRuntimeConfig(opts.graph)
+      const entry = buildOpenAPIConfig(spec, opts.componentStrategy, opts.segment, opts.pattern, opts.component)
+      const result = await runImport({ imports: [entry] }, runtimeConfig)
+      reportDiagnostics(result.diagnostics)
+      if (result.diagnostics.some(d => d.severity === 'error')) process.exit(1)
+    } catch (err) {
+      process.stderr.write(`[ERROR] ${err instanceof Error ? err.message : String(err)}\n`)
+      process.exit(2)
+    }
   })
 
 function buildRuntimeConfig(graphOverride?: string) {

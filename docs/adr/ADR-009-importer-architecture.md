@@ -134,7 +134,7 @@ Subsequent producers (AsyncAPI adapter; a proprietary analysis-tool → contract
 
 ## Companion Decision (specified separately)
 
-This architecture assumes nodes and edges carry a **`derivation`** axis (`deterministic | inferred | manual`) orthogonal to lifecycle `state`, so that confidence-tagged data (e.g. a heuristically resolved field reference) can land on main without overloading `proposed`. That is a change to the universal node/edge model and is captured as an amendment to **ADR-003b**; this ADR depends on it but does not define it.
+This architecture assumes nodes and edges carry a **`derivation`** axis (`determined | inferred | manual`) orthogonal to lifecycle `state`, so that confidence-tagged data (e.g. a heuristically resolved field reference) can land on main without overloading `proposed`. That is a change to the universal node/edge model and is captured as an amendment to **ADR-003b**; this ADR depends on it but does not define it.
 
 ---
 

@@ -6,7 +6,7 @@ export interface DiffResult {
   toRemove: Node[]
 }
 
-const ADAPTER_OWNED = new Set(['method', 'path', 'operationId', 'type', 'nullable', 'cardinality', 'objectRef'])
+const ADAPTER_OWNED = new Set(['method', 'path', 'operationId', 'type', 'nullable', 'cardinality', '$ref'])
 const HUMAN_OWNED = new Set(['state', 'stability', 'notes'])
 
 export function diffNodes(

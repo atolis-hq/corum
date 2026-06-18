@@ -166,13 +166,15 @@ Graph output path comes from the existing graph config (`.corum/graph` by defaul
 
 ## 5. CLI interface
 
-A new `bin/corum.ts` entry point using `commander`. Added to `package.json`:
+A new `src/bin/corum.ts` entry point using `commander`. Added to `package.json`:
 
 ```json
 {
-  "bin": { "corum": "./dist/bin/corum.js" }
+  "bin": { "corum": "./dist/src/bin/corum.js" }
 }
 ```
+
+The file lives under `src/bin/` (Node.js convention for CLI executables) and is named after the command. TypeScript compiles `src/` to `dist/src/`, so the compiled path is `dist/src/bin/corum.js`.
 
 **Commands:**
 
@@ -207,7 +209,7 @@ const config = loadImportConfig(opts.config)
 runImport(config, graphPath)
 ```
 
-**Exit codes:** 0 = success (warnings allowed), 1 = import errors, 2 = config/invocation error. Diagnostics to stderr; summary line to stdout.
+**Exit codes:** 0 = success (warnings allowed), 1 = import errors (bad spec, missing pack config), 2 = config/invocation error (missing flags, unreadable config file). Diagnostics to stderr; summary line to stdout.
 
 ---
 
@@ -333,7 +335,7 @@ Parse errors (invalid YAML/JSON, broken `$ref`s, OpenAPI schema validation failu
 ```typescript
 if ('$ref' in schema) {
   const name = schema.$ref.split('/').pop()   // '#/components/schemas/Order' → 'Order'
-  // emit standalone Schema node; Field.objectRef = name
+  // emit standalone Schema node; Field.$ref = resolvedNode (or name if not yet resolved)
 } else {
   // emit owned Schema node on the endpoint
 }
@@ -364,8 +366,11 @@ reconcile(incoming: AdapterResult, specPath: string, graphPath: string)
 ```
 
 **Property ownership rules (step 2):**
-- The adapter owns properties the spec expresses: method, path, field types, nullability, cardinality, operationId. These are overwritten on every import.
+- The adapter owns properties the spec expresses: `method`, `path`, `operationId`, `type`, `$ref`, `nullable`, `cardinality`. These are overwritten on every import.
 - The adapter does not touch human-owned properties the spec has no opinion on: `state`, `stability`, `notes`. These are preserved even when the node is otherwise updated.
+- Any other property key (unknown to both sets) is also preserved — adapter ownership is an opt-in allowlist, not a default-overwrite.
+
+**Note — lint step deferred:** Step 5 (stage-1 lint on affected cluster files) is not implemented in v1. It depends on ADR-006 (linter), which is not yet built. The reconcile returns diagnostics from the adapter; lint gating is a separate follow-on task.
 
 **`derivation` rule:** the adapter's value always wins. If an existing node carries `derivation: manual` but the adapter now produces it deterministically, the node becomes `derivation: determined`. The human's prior authorship is visible in git history.
 
@@ -392,22 +397,22 @@ reconcile(incoming: AdapterResult, specPath: string, graphPath: string)
 test/fixtures/openapi/
   specs/
     orders-simple.yaml          # inline schemas only
-    orders-shared.yaml          # components/schemas $refs
-    orders-enums.yaml           # enum definitions
-    multi-component.yaml        # multiple components via uri-segment
     orders-simple.json          # JSON format (same content as orders-simple.yaml)
+    orders-shared.yaml          # components/schemas with $ref and enum
+    multi-component.yaml        # multiple components via uri-segment
   expected/
-    orders-simple/              # expected cluster YAML output, byte-for-byte
-      orders/
-        APIEndpoint.create-order.yaml
+    orders-simple/              # expected cluster YAML output (normalised: <date>, <spec>)
+      components/orders/APIEndpoints/createOrder.yaml
     orders-shared/
-      orders/
-        APIEndpoint.create-order.yaml
-        Schema.order.yaml
-    ...
+      components/orders/APIEndpoints/createOrder.yaml
+      components/orders/Schemas/OrderSummary.yaml
+      components/orders/EnumDefinitions/OrderStatus.yaml
+    multi-component/
+      components/orders/APIEndpoints/createOrder.yaml
+      components/payments/APIEndpoints/capturePayment.yaml
 ```
 
-Each fixture test runs the full import pipeline and diffs output against `expected/`. Byte-identical match required. Idempotency is tested by running each fixture twice and asserting no second-run changes.
+Each fixture test runs the full import pipeline and compares output files against `expected/`. Dynamic fields (`lastModifiedAt`, `extractedFrom`) are normalised to `<date>` / `<spec>` before comparison. Idempotency is tested by running each fixture twice and asserting no second-run changes.
 
 ---
 
@@ -416,7 +421,7 @@ Each fixture test runs the full import pipeline and diffs output against `expect
 | # | Criterion |
 |---|---|
 | 1 | Importing a spec with inline schemas produces `APIEndpoint` nodes with correct method, path, field types, nullability |
-| 2 | Importing a spec with `components/schemas` produces shared `Schema` nodes with `objectRef` on referencing fields |
+| 2 | Importing a spec with `components/schemas` produces shared `Schema` nodes with `$ref` on referencing fields |
 | 3 | Enums produce `EnumDefinition` + `EnumValue` nodes |
 | 4 | A spec covering multiple paths produces nodes in the correct components via uri-segment strategy |
 | 5 | Re-importing an unchanged spec produces no file changes (idempotent) |

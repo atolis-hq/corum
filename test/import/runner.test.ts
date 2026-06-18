@@ -14,7 +14,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..', '..', '..')
 const fixtureGraphDir = path.join(repoRoot, 'fixtures/sample-graph')
 const specsDir = path.join(repoRoot, 'test/fixtures/openapi/specs')
-const goldenBaseDir = path.join(repoRoot, 'test/fixtures/openapi/golden')
+const expectedBaseDir = path.join(repoRoot, 'test/fixtures/openapi/expected')
 
 function makeRuntimeConfig(graphDir: string) {
   process.env.CORUM_GRAPH_PATH = graphDir
@@ -48,8 +48,8 @@ function normalizeYaml(content: string): string {
     .replace(/extractedFrom: .+/g, 'extractedFrom: <spec>')
 }
 
-function assertMatchesGolden(graphDir: string, goldenSubdir: string): void {
-  const goldenDir = path.join(goldenBaseDir, goldenSubdir)
+function assertMatchesExpected(graphDir: string, goldenSubdir: string): void {
+  const goldenDir = path.join(expectedBaseDir, goldenSubdir)
   function readYamlFiles(baseDir: string): Map<string, string> {
     const map = new Map<string, string>()
     if (!fs.existsSync(baseDir)) return map
@@ -86,7 +86,7 @@ describe('import runner — orders-simple.yaml', () => {
   it('output matches golden files', async () => {
     const { graphDir, cleanup } = await runAgainstFixture('orders-simple.yaml')
     try {
-      assertMatchesGolden(graphDir, 'orders-simple')
+      assertMatchesExpected(graphDir, 'orders-simple')
     } finally {
       cleanup()
     }
@@ -116,8 +116,8 @@ describe('import runner — orders-simple.yaml', () => {
     const { graphDir: yamlDir, cleanup: cleanYaml } = await runAgainstFixture('orders-simple.yaml')
     const { graphDir: jsonDir, cleanup: cleanJson } = await runAgainstFixture('orders-simple.json')
     try {
-      assertMatchesGolden(yamlDir, 'orders-simple')
-      assertMatchesGolden(jsonDir, 'orders-simple')
+      assertMatchesExpected(yamlDir, 'orders-simple')
+      assertMatchesExpected(jsonDir, 'orders-simple')
     } finally {
       cleanYaml()
       cleanJson()
@@ -126,10 +126,21 @@ describe('import runner — orders-simple.yaml', () => {
 })
 
 describe('import runner — orders-shared.yaml', () => {
-  it('output matches golden files', async () => {
+  it('output matches expected files', async () => {
     const { graphDir, cleanup } = await runAgainstFixture('orders-shared.yaml')
     try {
-      assertMatchesGolden(graphDir, 'orders-shared')
+      assertMatchesExpected(graphDir, 'orders-shared')
+    } finally {
+      cleanup()
+    }
+  })
+})
+
+describe('import runner — multi-component.yaml', () => {
+  it('routes operations to correct components via uri-segment strategy', async () => {
+    const { graphDir, cleanup } = await runAgainstFixture('multi-component.yaml')
+    try {
+      assertMatchesExpected(graphDir, 'multi-component')
     } finally {
       cleanup()
     }

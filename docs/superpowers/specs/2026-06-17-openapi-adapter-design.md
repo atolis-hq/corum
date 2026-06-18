@@ -61,7 +61,7 @@ Shared schema   {component}.Schema.{componentSchemaName}
 
 ## 6. Derivation / confidence
 
-All OpenAPI-derived nodes and fields are `derivation: deterministic, derivedBy: "adapter:openapi"` — OpenAPI is an authoritative spec. No `inferred` output.
+All OpenAPI-derived nodes and fields are `derivation: determined, derivedBy: "adapter:openapi"` — OpenAPI is an authoritative spec. No `inferred` output.
 
 ## 7. Reconcile behaviour
 

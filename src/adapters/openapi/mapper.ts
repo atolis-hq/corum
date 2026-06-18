@@ -205,12 +205,12 @@ function emitFields(
 
     if (isRefSchema(fieldSchema)) {
       const ref = refName(fieldSchema.$ref)
-      fieldNode.properties = { objectRef: sharedSchemas.get(ref) ?? ref, nullable: !required, cardinality: 'one' }
+      fieldNode.properties = { $ref: sharedSchemas.get(ref) ?? ref, nullable: !required, cardinality: 'one' }
     } else {
       const fs = fieldSchema as OpenAPIV3.SchemaObject
       if (fs.enum && fs.type !== 'object') {
         const enumRef = sharedSchemas.get(fieldName)
-        fieldNode.properties = { ...(enumRef ? { objectRef: enumRef } : { type: 'string' }), nullable: !required, cardinality: 'one' }
+        fieldNode.properties = { ...(enumRef ? { $ref: enumRef } : { type: 'string' }), nullable: !required, cardinality: 'one' }
       } else if (fs.type === 'array') {
         const items = fs.items
         if (isRefSchema(items)) {

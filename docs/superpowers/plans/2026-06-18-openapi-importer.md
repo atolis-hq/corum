@@ -1003,14 +1003,14 @@ function emitFields(
     const required = Array.isArray(schema.required) && schema.required.includes(fieldName)
 
     if (isRefSchema(fieldSchema)) {
-      fieldNode.properties = { objectRef: refName(fieldSchema.$ref), nullable: !required, cardinality: 'one' }
+      fieldNode.properties = { $ref: refName(fieldSchema.$ref), nullable: !required, cardinality: 'one' }
     } else {
       const fs = fieldSchema as OpenAPIV3.SchemaObject
       const scalarType = deriveScalarType(fs.type ?? 'string', fs.format, packConfig.scalarTypes)
       if (fs.type === 'array') {
         const items = fs.items
         if (isRefSchema(items)) {
-          fieldNode.properties = { objectRef: refName(items.$ref), nullable: !required, cardinality: 'many' }
+          fieldNode.properties = { $ref: refName(items.$ref), nullable: !required, cardinality: 'many' }
         } else {
           const itemType = deriveScalarType((items as OpenAPIV3.SchemaObject)?.type ?? 'string', (items as OpenAPIV3.SchemaObject)?.format, packConfig.scalarTypes)
           fieldNode.properties = { type: itemType ?? 'string', nullable: !required, cardinality: 'many' }
@@ -1110,9 +1110,9 @@ In `emitFields`, update the field property building to recognise enum refs:
 if (!isRefSchema(fieldSchema)) {
   const fs = fieldSchema as OpenAPIV3.SchemaObject
   if (fs.enum && fs.type !== 'object') {
-    // Inline enum on a field — skip scalar type lookup, use objectRef pointing to shared enum if it exists
+    // Inline enum on a field — skip scalar type lookup, use $ref pointing to shared enum if it exists
     const enumRef = sharedSchemas?.get(fieldName) // convention: if enum was promoted
-    fieldNode.properties = { ...(enumRef ? { objectRef: enumRef } : { type: 'string' }), nullable: !required, cardinality: 'one' }
+    fieldNode.properties = { ...(enumRef ? { $ref: enumRef } : { type: 'string' }), nullable: !required, cardinality: 'one' }
   }
 }
 ```
@@ -1299,7 +1299,7 @@ export interface DiffResult {
   toRemove: Node[]
 }
 
-const ADAPTER_OWNED = new Set(['method', 'path', 'operationId', 'type', 'nullable', 'cardinality', 'objectRef'])
+const ADAPTER_OWNED = new Set(['method', 'path', 'operationId', 'type', 'nullable', 'cardinality', '$ref'])
 const HUMAN_OWNED = new Set(['state', 'stability', 'notes'])
 
 export function diffNodes(
@@ -1572,13 +1572,13 @@ program.parse()
 ```bash
 npm run build && node dist/src/bin/corum.js --help
 ```
-Expected: help text showing `import` command with `openapi` and `run` subcommands.
+Expected: help text showing `import` command with `openapi` subcommand and `--config` option.
 
 - [ ] **Commit**
 
 ```bash
 git add src/bin/corum.ts package.json
-git commit -m "feat: corum CLI entry point with import openapi and import run commands"
+git commit -m "feat: corum CLI entry point with import openapi and import --config commands"
 ```
 
 ---
