@@ -30,13 +30,13 @@ npm update -g @atolis-hq/corum
 
 ## Quick Start
 
-Scaffold a config file in your project:
+Scaffold a new project in the current directory:
 
 ```bash
 corum init
 ```
 
-This creates `.corum/config.yaml` with commented defaults. Edit it to point at your graph directory or git repository, then start the MCP server:
+This creates `.corum/config.yaml`, scaffolds a graph at `.corum/graph/`, and downloads the official template packs (`core`, `domain`, `rest`, `messaging`). Then start the MCP server:
 
 ```bash
 corum mcp
@@ -71,10 +71,41 @@ Options:
 
 ### `corum init`
 
-Scaffold `.corum/config.yaml` with commented defaults. Does not overwrite an existing file.
+Scaffold a `.corum/` project structure and install the four default template packs (`core`, `domain`, `rest`, `messaging`). Skips any step where the target already exists.
 
 ```bash
 corum init
+```
+
+Creates:
+- `.corum/config.yaml` - project configuration
+- `.corum/graph/graph.yaml` - graph definition
+- `.corum/graph/components/` and `.corum/graph/edges/` - empty directories ready for nodes
+- `.corum/packs/` - downloaded template packs
+- `.corum/packs.yaml` - local manifest of installed packs
+
+### `corum pack install`
+
+Install a template pack from the registry into `.corum/packs/`. Appends the pack to `.corum/graph/graph.yaml` and records it in `.corum/packs.yaml`.
+
+```bash
+corum pack install <name>          # install latest tag
+corum pack install <name>@<ref>    # install a specific tag
+```
+
+Examples:
+
+```bash
+corum pack install domain
+corum pack install domain@v0.1.5
+```
+
+### `corum pack list`
+
+List installed packs with their resolved version and install date.
+
+```bash
+corum pack list
 ```
 
 ### `corum import`
@@ -108,6 +139,7 @@ Run `corum init` to generate a `.corum/config.yaml` with all available options. 
 
 | Config key | Environment variable | Description |
 |---|---|---|
+| `pack_registry` | - | URL of the pack registry YAML (set by `corum init`) |
 | `source` | `CORUM_SOURCE` | `file` (default) or `git` |
 | `graph` | `CORUM_GRAPH_PATH` | Path to the graph directory |
 | `git_local_path` | `CORUM_GIT_LOCAL_PATH` | Local git repo path |
