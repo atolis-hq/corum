@@ -17,6 +17,7 @@
 | 13 | Agent Skills | [agentskills.md](agentskills.md) | Installable skill making MCP usage highly effective; process guidance |
 | 14 | GitHub Actions Template | [githubactionstemplate.md](githubactionstemplate.md) | CI step to lint graph and template YAML on PR |
 | 15 | Importers | [importers.md](importers.md) | Import from OpenAPI, AsyncAPI, JSON Schema to bootstrap graph |
+| 15a | CLI Config File | [cliconfig.md](cliconfig.md) | Project-level `corum.yaml` discovery so developers don't need env vars for daily use |
 | 16 | Dashboard | [dashboard.md](dashboard.md) | Branch diff vs main; pending nodes; open discussions |
 | 17 | Custom UI | [customui.md](customui.md) | Pack-provided UI overrides for cards and pages; configured per node template |
 | 18 | Semantic Matching | [semanticmatching.md](semanticmatching.md) | Identify semantically similar fields across branches and services |
