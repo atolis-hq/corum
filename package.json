@@ -7,7 +7,7 @@
     "web/"
   ],
   "bin": {
-    "corum": "./dist/src/bin/corum.js"
+    "corum": "dist/src/bin/corum.js"
   },
   "scripts": {
     "build": "tsc",
