@@ -1,0 +1,38 @@
+openapi: '3.0.3'
+info:
+  title: Orders API (shared schemas)
+  version: '1.0'
+components:
+  schemas:
+    OrderStatus:
+      type: string
+      enum: [pending, confirmed, cancelled]
+    OrderSummary:
+      type: object
+      required: [orderId, status]
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+paths:
+  /orders/create:
+    post:
+      operationId: createOrder
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                customerId:
+                  type: string
+                  format: uuid
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderSummary'
