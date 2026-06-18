@@ -14,6 +14,12 @@ Or run without installing:
 npx @atolis-hq/corum <command>
 ```
 
+**Windows (PowerShell):** npm global bins require script execution to be enabled. Run this once if you see an "execution policy" error:
+
+```powershell
+Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
 ## Update
 
 ```bash
