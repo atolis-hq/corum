@@ -41,7 +41,9 @@ export function serializeGraph(graph: Graph, options: SerializeGraphOptions = {}
 }
 
 function clusterPath(node: Node): string {
-  const [component, template, name] = node.id.split('.')
+  const parts = node.id.split('.')
+  if (parts.length !== 3) throw new Error(`clusterPath: expected 3-segment root node ID, got: ${node.id}`)
+  const [component, template, name] = parts
   return `components/${component}/${template}s/${name}.yaml`
 }
 

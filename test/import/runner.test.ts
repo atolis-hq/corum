@@ -14,6 +14,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..', '..', '..')
 const fixtureGraphDir = path.join(repoRoot, 'fixtures/sample-graph')
 const specsDir = path.join(repoRoot, 'test/fixtures/openapi/specs')
+const goldenBaseDir = path.join(repoRoot, 'test/fixtures/openapi/golden')
 
 function makeRuntimeConfig(graphDir: string) {
   process.env.CORUM_GRAPH_PATH = graphDir
@@ -41,30 +42,51 @@ async function runAgainstFixture(specFile: string): Promise<{ graphDir: string; 
   return { graphDir, cleanup }
 }
 
-describe('import runner — orders-simple.yaml', () => {
-  it('produces an APIEndpoint node for createOrder', async () => {
-    const { graphDir, cleanup } = await runAgainstFixture('orders-simple.yaml')
-    try {
-      const graph = await loadGraph({ graphPath: graphDir })
-      const node = graph.nodesById.get('orders.APIEndpoint.createOrder')
-      assert.ok(node, 'expected orders.APIEndpoint.createOrder node')
-      assert.equal(node.properties.method, 'POST')
-      assert.equal(node.properties.path, '/orders/create')
-      assert.equal(node.derivation, 'determined')
-      assert.equal(node.derivedBy, 'adapter:openapi')
-    } finally {
-      cleanup()
-    }
-  })
+function normalizeYaml(content: string): string {
+  return content
+    .replace(/lastModifiedAt: .+/g, 'lastModifiedAt: <date>')
+    .replace(/extractedFrom: .+/g, 'extractedFrom: <spec>')
+}
 
-  it('produces Field nodes with correct types', async () => {
+function assertMatchesGolden(graphDir: string, goldenSubdir: string): void {
+  const goldenDir = path.join(goldenBaseDir, goldenSubdir)
+  function readYamlFiles(baseDir: string): Map<string, string> {
+    const map = new Map<string, string>()
+    if (!fs.existsSync(baseDir)) return map
+    function walk(dir: string) {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name)
+        if (entry.isDirectory()) walk(full)
+        else if (entry.name.endsWith('.yaml')) {
+          const key = path.relative(baseDir, full).split(path.sep).join('/')
+          map.set(key, fs.readFileSync(full, 'utf-8'))
+        }
+      }
+    }
+    walk(baseDir)
+    return map
+  }
+
+  const golden = readYamlFiles(goldenDir)
+  assert.ok(golden.size > 0, `golden dir ${goldenSubdir} should contain at least one file`)
+
+  for (const [key, expectedContent] of golden) {
+    const actualPath = path.join(graphDir, key)
+    assert.ok(fs.existsSync(actualPath), `expected imported file ${key} to exist in graph`)
+    const actualContent = fs.readFileSync(actualPath, 'utf-8')
+    assert.equal(
+      normalizeYaml(actualContent),
+      normalizeYaml(expectedContent),
+      `${key} output should match golden file`,
+    )
+  }
+}
+
+describe('import runner — orders-simple.yaml', () => {
+  it('output matches golden files', async () => {
     const { graphDir, cleanup } = await runAgainstFixture('orders-simple.yaml')
     try {
-      const graph = await loadGraph({ graphPath: graphDir })
-      const customerIdField = [...graph.nodesById.values()].find(n => n.id.endsWith('.fields.customerId'))
-      assert.ok(customerIdField)
-      assert.equal(customerIdField.properties.type, 'uuid')
-      assert.equal(customerIdField.properties.nullable, false)
+      assertMatchesGolden(graphDir, 'orders-simple')
     } finally {
       cleanup()
     }
@@ -94,12 +116,8 @@ describe('import runner — orders-simple.yaml', () => {
     const { graphDir: yamlDir, cleanup: cleanYaml } = await runAgainstFixture('orders-simple.yaml')
     const { graphDir: jsonDir, cleanup: cleanJson } = await runAgainstFixture('orders-simple.json')
     try {
-      const yamlGraph = await loadGraph({ graphPath: yamlDir })
-      const jsonGraph = await loadGraph({ graphPath: jsonDir })
-      const yamlEndpoint = yamlGraph.nodesById.get('orders.APIEndpoint.createOrder')
-      const jsonEndpoint = jsonGraph.nodesById.get('orders.APIEndpoint.createOrder')
-      assert.ok(yamlEndpoint && jsonEndpoint)
-      assert.equal(yamlEndpoint.properties.method, jsonEndpoint.properties.method)
+      assertMatchesGolden(yamlDir, 'orders-simple')
+      assertMatchesGolden(jsonDir, 'orders-simple')
     } finally {
       cleanYaml()
       cleanJson()
@@ -108,25 +126,10 @@ describe('import runner — orders-simple.yaml', () => {
 })
 
 describe('import runner — orders-shared.yaml', () => {
-  it('produces a shared Schema node for OrderSummary', async () => {
+  it('output matches golden files', async () => {
     const { graphDir, cleanup } = await runAgainstFixture('orders-shared.yaml')
     try {
-      const graph = await loadGraph({ graphPath: graphDir })
-      const schemaNode = graph.nodesById.get('orders.Schema.OrderSummary')
-      assert.ok(schemaNode, 'expected shared Schema node for OrderSummary')
-    } finally {
-      cleanup()
-    }
-  })
-
-  it('produces an EnumDefinition for OrderStatus', async () => {
-    const { graphDir, cleanup } = await runAgainstFixture('orders-shared.yaml')
-    try {
-      const graph = await loadGraph({ graphPath: graphDir })
-      const enumNode = graph.nodesById.get('orders.EnumDefinition.OrderStatus')
-      assert.ok(enumNode, 'expected EnumDefinition node for OrderStatus')
-      const pendingValue = graph.nodesById.get('orders.EnumDefinition.OrderStatus.values.pending')
-      assert.ok(pendingValue)
+      assertMatchesGolden(graphDir, 'orders-shared')
     } finally {
       cleanup()
     }
@@ -137,7 +140,6 @@ describe('import runner — orphan removal', () => {
   it('marks a previously imported endpoint as removed when absent from updated spec', async () => {
     const { graphDir, cleanup } = await setupGraphDir()
     try {
-      // Write spec to a stable temp path, import it to establish extractedFrom
       const tempSpec = path.join(graphDir, 'test-spec.yaml')
       fs.copyFileSync(path.join(specsDir, 'orders-simple.yaml'), tempSpec)
       const makeConfig = (): ImportConfig => ({
@@ -152,7 +154,6 @@ describe('import runner — orphan removal', () => {
       const graphBefore = await loadGraph({ graphPath: graphDir })
       assert.ok(graphBefore.nodesById.get('orders.APIEndpoint.createOrder'), 'node should exist after first import')
 
-      // Overwrite same path with empty spec — orphan detection fires on re-import
       fs.writeFileSync(tempSpec, `openapi: '3.0.3'\ninfo:\n  title: Empty\n  version: '1.0'\npaths: {}`)
       await runImport(makeConfig(), makeRuntimeConfig(graphDir))
 

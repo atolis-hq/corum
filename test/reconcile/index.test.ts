@@ -78,4 +78,13 @@ describe('diffNodes', () => {
     const { toUpdate } = diffNodes([incoming], existing, './specs/orders.yaml')
     assert.equal(toUpdate[0].derivation, 'determined')
   })
+
+  it('preserves unknown/custom properties on update — only adapter-owned keys are overwritten', () => {
+    const original = makeNode('orders.APIEndpoint.create', { properties: { method: 'GET', displayName: 'Create Order' } })
+    const incoming = makeNode('orders.APIEndpoint.create', { properties: { method: 'POST' } })
+    const existing = new Map([[original.id, original]])
+    const { toUpdate } = diffNodes([incoming], existing, './specs/orders.yaml')
+    assert.equal(toUpdate[0].properties.method, 'POST')
+    assert.equal(toUpdate[0].properties.displayName, 'Create Order')
+  })
 })

@@ -3,8 +3,6 @@ import type { Node, Edge, Diagnostic } from '../../schema/index.js'
 import type { AdapterPackConfig } from '../index.js'
 import type { ComponentMapping, OpenAPIImportEntry } from '../../import/config.js'
 
-const TODAY = new Date().toISOString().split('T')[0]
-
 export interface MapResult {
   nodes: Node[]
   edges: Edge[]
@@ -152,7 +150,7 @@ function makeNode(template: string, component: string, specPath: string, id: str
     state: 'implemented',
     stability: 'unstable',
     schemaVersion: '1',
-    lastModifiedAt: TODAY,
+    lastModifiedAt: new Date().toISOString().split('T')[0],
     extractedFrom: specPath,
     derivation: 'determined',
     derivedBy: 'adapter:openapi',
@@ -206,7 +204,8 @@ function emitFields(
     const required = Array.isArray(schema.required) && schema.required.includes(fieldName)
 
     if (isRefSchema(fieldSchema)) {
-      fieldNode.properties = { objectRef: refName(fieldSchema.$ref), nullable: !required, cardinality: 'one' }
+      const ref = refName(fieldSchema.$ref)
+      fieldNode.properties = { objectRef: sharedSchemas.get(ref) ?? ref, nullable: !required, cardinality: 'one' }
     } else {
       const fs = fieldSchema as OpenAPIV3.SchemaObject
       if (fs.enum && fs.type !== 'object') {
@@ -236,7 +235,9 @@ function emitFields(
   }
 }
 
-function deriveComponentForSchema(name: string, document: OpenAPIV3.Document, entry: OpenAPIImportEntry): string | undefined {
+function deriveComponentForSchema(name: string, document: OpenAPIV3.Document, entry: OpenAPIImportEntry, visited: Set<string> = new Set()): string | undefined {
+  if (visited.has(name)) return undefined
+  visited.add(name)
   // Direct: find an operation that references this schema
   for (const [urlPath, pathItem] of Object.entries(document.paths ?? {})) {
     if (!pathItem) continue
@@ -254,8 +255,8 @@ function deriveComponentForSchema(name: string, document: OpenAPIV3.Document, en
   // Indirect: find another component schema that references this one and use its component
   for (const [schemaName, schema] of Object.entries(document.components?.schemas ?? {})) {
     if (schemaName === name || isRefSchema(schema)) continue
-    if (JSON.stringify(schema).includes(`#/components/schemas/${name}`)) {
-      const comp = deriveComponentForSchema(schemaName, document, entry)
+    if (JSON.stringify(schema).includes(`"#/components/schemas/${name}"`)) {
+      const comp = deriveComponentForSchema(schemaName, document, entry, visited)
       if (comp) return comp
     }
   }
@@ -263,5 +264,5 @@ function deriveComponentForSchema(name: string, document: OpenAPIV3.Document, en
 }
 
 function referencesSchema(operation: OpenAPIV3.OperationObject, schemaName: string): boolean {
-  return JSON.stringify(operation).includes(`#/components/schemas/${schemaName}`)
+  return JSON.stringify(operation).includes(`"#/components/schemas/${schemaName}"`)
 }

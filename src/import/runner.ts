@@ -30,13 +30,14 @@ export async function runImport(config: ImportConfig, runtimeConfig: GraphRuntim
       continue
     }
 
-    const adapter = getAdapter(entry.adapter)
-    const result = await adapter.import(entry, { packConfig, templates: graph.templates })
+    const specPath = path.resolve(entry.spec)
+    const resolvedEntry = { ...entry, spec: specPath }
+    const adapter = getAdapter(resolvedEntry.adapter)
+    const result = await adapter.import(resolvedEntry, { packConfig, templates: graph.templates })
     allDiagnostics.push(...result.diagnostics)
 
     if (result.diagnostics.some(d => d.severity === 'error')) continue
 
-    const specPath = path.resolve(entry.spec)
     const { toAdd, toUpdate, toRemove } = diffNodes(result.nodes, graph.nodesById, specPath)
 
     for (const node of [...toAdd, ...toUpdate, ...toRemove]) {

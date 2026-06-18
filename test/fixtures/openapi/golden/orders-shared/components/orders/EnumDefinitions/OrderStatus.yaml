@@ -1,0 +1,18 @@
+id: orders.EnumDefinition.OrderStatus
+template: EnumDefinition
+schemaVersion: '1'
+metadata:
+  component: orders
+  state: implemented
+  stability: unstable
+  lastModifiedAt: <date>
+  extractedFrom: <spec>
+  derivation: determined
+  derivedBy: adapter:openapi
+values:
+  cancelled:
+    name: cancelled
+  confirmed:
+    name: confirmed
+  pending:
+    name: pending

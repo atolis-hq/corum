@@ -57,7 +57,7 @@ function mergeProperties(
 ): Record<string, unknown> {
   const merged = { ...current }
   for (const [key, value] of Object.entries(incoming)) {
-    if (ADAPTER_OWNED.has(key) || !HUMAN_OWNED.has(key)) {
+    if (ADAPTER_OWNED.has(key)) {
       merged[key] = value
     }
   }
