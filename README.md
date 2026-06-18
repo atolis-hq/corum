@@ -14,6 +14,12 @@ Or run without installing:
 npx @atolis-hq/corum <command>
 ```
 
+## Update
+
+```bash
+npm update -g @atolis-hq/corum
+```
+
 ## Quick Start
 
 Scaffold a config file in your project:
