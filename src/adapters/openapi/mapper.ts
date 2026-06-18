@@ -237,6 +237,7 @@ function emitFields(
 }
 
 function deriveComponentForSchema(name: string, document: OpenAPIV3.Document, entry: OpenAPIImportEntry): string | undefined {
+  // Direct: find an operation that references this schema
   for (const [urlPath, pathItem] of Object.entries(document.paths ?? {})) {
     if (!pathItem) continue
     const methods = ['get', 'post', 'put', 'patch', 'delete'] as const
@@ -248,6 +249,14 @@ function deriveComponentForSchema(name: string, document: OpenAPIV3.Document, en
           ? operation.tags?.[0]
           : deriveComponent(urlPath, entry.componentMapping)
       }
+    }
+  }
+  // Indirect: find another component schema that references this one and use its component
+  for (const [schemaName, schema] of Object.entries(document.components?.schemas ?? {})) {
+    if (schemaName === name || isRefSchema(schema)) continue
+    if (JSON.stringify(schema).includes(`#/components/schemas/${name}`)) {
+      const comp = deriveComponentForSchema(schemaName, document, entry)
+      if (comp) return comp
     }
   }
   return undefined
