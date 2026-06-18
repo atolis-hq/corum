@@ -3,6 +3,7 @@ import { FileGraphSource } from './file-source.js'
 import { GitGraphSource } from './git-source.js'
 import type { GraphSource } from './index.js'
 import { SourceError } from './index.js'
+import { loadProjectConfig } from './config-file.js'
 
 export type GraphRuntimeConfig = {
   kind: 'filesystem' | 'git'
@@ -18,9 +19,22 @@ export function createGraphRuntimeConfig(
   env: Env = process.env,
   cwd = process.cwd(),
 ): GraphRuntimeConfig {
-  const sourceKind = (env.CORUM_SOURCE ?? 'filesystem').toLowerCase()
+  const fileConfig = loadProjectConfig(cwd)
+  const e: Env = {
+    ...env,
+    CORUM_SOURCE: env.CORUM_SOURCE ?? fileConfig.source,
+    CORUM_GRAPH_PATH: env.CORUM_GRAPH_PATH ?? fileConfig.graph,
+    CORUM_GIT_LOCAL_PATH: env.CORUM_GIT_LOCAL_PATH ?? fileConfig.git_local_path,
+    CORUM_GIT_REMOTE_URL: env.CORUM_GIT_REMOTE_URL ?? fileConfig.git_remote_url,
+    CORUM_GIT_BRANCH: env.CORUM_GIT_BRANCH ?? fileConfig.git_branch,
+    CORUM_GIT_POLL_SECONDS: env.CORUM_GIT_POLL_SECONDS ?? (fileConfig.git_poll_seconds !== undefined ? String(fileConfig.git_poll_seconds) : undefined),
+    CORUM_GIT_TOKEN: env.CORUM_GIT_TOKEN ?? fileConfig.git_token,
+    CORUM_GIT_USERNAME: env.CORUM_GIT_USERNAME ?? fileConfig.git_username,
+  }
+
+  const sourceKind = (e.CORUM_SOURCE ?? 'filesystem').toLowerCase()
   if (sourceKind === 'filesystem' || sourceKind === 'file' || sourceKind === 'fs') {
-    const graphPath = env.CORUM_GRAPH_PATH ?? path.join(cwd, '.corum/graph')
+    const graphPath = e.CORUM_GRAPH_PATH ?? path.join(cwd, '.corum/graph')
     return {
       kind: 'filesystem',
       source: new FileGraphSource({ graphDir: graphPath }),
@@ -30,11 +44,11 @@ export function createGraphRuntimeConfig(
   }
 
   if (sourceKind !== 'git') {
-    throw new SourceError(`unsupported CORUM_SOURCE: ${env.CORUM_SOURCE}`)
+    throw new SourceError(`unsupported CORUM_SOURCE: ${e.CORUM_SOURCE}`)
   }
 
-  const localPath = emptyToUndefined(env.CORUM_GIT_LOCAL_PATH)
-  const remoteUrl = emptyToUndefined(env.CORUM_GIT_REMOTE_URL)
+  const localPath = emptyToUndefined(e.CORUM_GIT_LOCAL_PATH)
+  const remoteUrl = emptyToUndefined(e.CORUM_GIT_REMOTE_URL)
   if (!localPath && !remoteUrl) {
     throw new SourceError('CORUM_SOURCE=git requires CORUM_GIT_LOCAL_PATH or CORUM_GIT_REMOTE_URL')
   }
@@ -43,12 +57,12 @@ export function createGraphRuntimeConfig(
   }
 
   const graphDir = '.corum/graph'
-  const token = emptyToUndefined(env.CORUM_GIT_TOKEN)
+  const token = emptyToUndefined(e.CORUM_GIT_TOKEN)
   const auth = token
-    ? { username: env.CORUM_GIT_USERNAME ?? 'x-access-token', token }
+    ? { username: e.CORUM_GIT_USERNAME ?? 'x-access-token', token }
     : undefined
   const repoLabel = localPath ?? remoteUrl!
-  const gitPollSeconds = parseOptionalSeconds(env.CORUM_GIT_POLL_SECONDS)
+  const gitPollSeconds = parseOptionalSeconds(e.CORUM_GIT_POLL_SECONDS)
 
   return {
     kind: 'git',
@@ -56,7 +70,7 @@ export function createGraphRuntimeConfig(
       localPath,
       remoteUrl,
       graphDir,
-      defaultBranch: emptyToUndefined(env.CORUM_GIT_BRANCH),
+      defaultBranch: emptyToUndefined(e.CORUM_GIT_BRANCH),
       auth,
     }),
     graphPath: `git:${repoLabel}/${graphDir.replace(/\\/g, '/')}`,
