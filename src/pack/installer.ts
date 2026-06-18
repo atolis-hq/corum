@@ -4,6 +4,7 @@ import { parse } from 'yaml'
 
 interface PackMeta {
   templates: string[]
+  files?: string[]
 }
 
 export async function installPackFiles(
@@ -25,5 +26,14 @@ export async function installPackFiles(
     const res = await fetchFn(templateUrl)
     if (!res.ok) throw new Error(`Failed to fetch template ${templateName}: ${res.status} ${res.statusText}`)
     await writeFile(path.join(destDir, 'templates', `${templateName}.yaml`), await res.text())
+  }
+
+  for (const filePath of meta.files ?? []) {
+    const fileUrl = `${baseUrl}/${filePath}`
+    const res = await fetchFn(fileUrl)
+    if (!res.ok) throw new Error(`Failed to fetch file ${filePath}: ${res.status} ${res.statusText}`)
+    const dest = path.join(destDir, filePath)
+    await mkdir(path.dirname(dest), { recursive: true })
+    await writeFile(dest, await res.text())
   }
 }

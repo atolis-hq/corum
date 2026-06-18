@@ -6,3 +6,7 @@ templates:
   - Field
   - EnumDefinition
   - EnumValue
+files:
+  - edge.schema.yaml
+  - node.schema.yaml
+  - template.schema.yaml

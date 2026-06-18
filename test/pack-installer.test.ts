@@ -6,6 +6,7 @@ import path from 'node:path'
 import { installPackFiles } from '../src/pack/installer.js'
 
 const packYaml = `name: core\nversion: "1.0.0"\ndescription: Core\ntemplates:\n  - Schema\n  - Field\n`
+const packYamlWithFiles = `name: core\nversion: "1.0.0"\ndescription: Core\ntemplates:\n  - Schema\nfiles:\n  - edge.schema.yaml\n`
 const schemaYaml = `name: Schema\n`
 const fieldYaml = `name: Field\n`
 
@@ -47,6 +48,23 @@ describe('installPackFiles', () => {
         () => installPackFiles(baseUrl, path.join(dir, 'core'), mockFetch),
         /404/,
       )
+    } finally {
+      fs.rmSync(dir, { recursive: true })
+    }
+  })
+
+  it('downloads additional files listed in the files array', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-test-'))
+    try {
+      const baseUrl = 'https://raw.githubusercontent.com/a/b/v1/.corum/packs/core'
+      const edgeSchemaYaml = `$schema: https://json-schema.org/draft/2020-12/schema\n`
+      const mockFetch = makeMockFetch({
+        [`${baseUrl}/pack.yaml`]: packYamlWithFiles,
+        [`${baseUrl}/templates/Schema.yaml`]: schemaYaml,
+        [`${baseUrl}/edge.schema.yaml`]: edgeSchemaYaml,
+      })
+      await installPackFiles(baseUrl, path.join(dir, 'core'), mockFetch)
+      assert.equal(fs.readFileSync(path.join(dir, 'core', 'edge.schema.yaml'), 'utf8'), edgeSchemaYaml)
     } finally {
       fs.rmSync(dir, { recursive: true })
     }
