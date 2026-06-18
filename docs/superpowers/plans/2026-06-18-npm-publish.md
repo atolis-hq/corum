@@ -26,15 +26,16 @@
 
 ## Task 1: Stub ci-cd.yml on main
 
-A minimal workflow must exist in `main` before the full PR is opened, so GitHub Actions will pick it up for PR runs.
+A minimal workflow must exist in `main` before the full PR is opened, so GitHub Actions will pick it up for PR runs. Since main is branch-protected, this goes in via its own small PR.
 
 **Files:**
 - Create: `.github/workflows/ci-cd.yml`
 
-- [ ] **Step 1: Switch to main and create the workflow directory**
+- [ ] **Step 1: Create a short-lived branch from main**
 
 ```bash
 git checkout main
+git checkout -b stub-cicd
 mkdir -p .github/workflows
 ```
 
@@ -61,18 +62,25 @@ jobs:
       - run: npm test
 ```
 
-- [ ] **Step 3: Commit and push to main**
+- [ ] **Step 3: Commit, push, and open a PR to main**
 
 ```bash
 git add .github/workflows/ci-cd.yml
 git commit -m "ci: add stub ci-cd workflow (test only)"
-git push origin main
+git push -u origin stub-cicd
+gh pr create --title "ci: add stub ci-cd workflow" --body "Adds a minimal CI workflow (test only) to main so the full NpmPublish PR can trigger CI runs. No publish logic yet."
 ```
 
-- [ ] **Step 4: Switch back to NpmPublish branch**
+- [ ] **Step 4: Wait for approval and merge**
+
+Have the PR approved and merged via GitHub. Do not continue until it is merged.
+
+- [ ] **Step 5: Switch back to NpmPublish and rebase onto updated main**
 
 ```bash
 git checkout NpmPublish
+git fetch origin
+git rebase origin/main
 ```
 
 ---
