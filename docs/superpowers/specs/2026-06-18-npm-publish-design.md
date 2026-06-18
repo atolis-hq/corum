@@ -52,38 +52,77 @@ The `if (isEntrypoint())` block is extracted into an exported `startMcpServer(op
 
 `corum init` creates `.corum/config.yaml` if it does not already exist. If the file exists, it prints a message and exits without changes.
 
+All keys map directly to the corresponding `CORUM_*` environment variable. Env vars override config file values; CLI flags override env vars.
+
 ```yaml
 # Corum project configuration
+# Uncomment and set the options relevant to your setup.
+# All values can be overridden by environment variables (CORUM_*) or CLI flags.
 
-# source: git          # 'git' (default) or 'file'
-# graph: .corum/graph  # path to graph directory
+# Source type: 'file' (default) or 'git'
+# Maps to: CORUM_SOURCE
+# source: file
 
-# Git source options (when source: git)
-# branch: main         # default branch to load
+# ── File source (default) ────────────────────────────────────────────────────
+# Local path to the graph directory.
+# Maps to: CORUM_GRAPH_PATH
+# graph: .corum/graph
+
+# ── Git source ───────────────────────────────────────────────────────────────
+# Uncomment 'source: git' above and configure one of the following:
+
+# Local path to a git repository containing the graph.
+# Maps to: CORUM_GIT_LOCAL_PATH
+# git_local_path: /path/to/repo
+
+# Remote URL of a git repository containing the graph.
+# Maps to: CORUM_GIT_REMOTE_URL
+# git_remote_url: https://github.com/org/repo
+
+# Default branch to load (git source only).
+# Maps to: CORUM_GIT_BRANCH
+# git_branch: main
+
+# How often to poll the remote for changes, in seconds (remote git only).
+# Maps to: CORUM_GIT_POLL_SECONDS
+# git_poll_seconds: 30
+
+# Auth token for private repositories. Prefer setting CORUM_GIT_TOKEN as an
+# environment variable rather than storing a token in this file.
+# git_token: ""
+
+# Auth username (default: x-access-token, suits GitHub PATs and Actions tokens).
+# Maps to: CORUM_GIT_USERNAME
+# git_username: x-access-token
 ```
 
 ## 4. GitHub Actions
 
-### `ci.yml` — runs on all pushes and PRs
+### `ci-cd.yml` — single workflow, conditional publish
 
-- Trigger: `push` (all branches) and `pull_request`
-- Steps: checkout → Node setup → `npm ci` → `npm test`
-- Does **not** publish
+**Trigger:** `push` (all branches) and `pull_request`.
 
-### `publish.yml` — runs on push to `main` only
+Two jobs:
 
-- Trigger: `push` to `main`
-- Permissions: `id-token: write` (OIDC for npm Trusted Publisher), `contents: write` (version bump commit)
-- Steps:
-  1. Checkout (with full history for the version bump commit)
-  2. Node setup
-  3. `npm ci`
-  4. `npm test` — publish workflow re-runs tests itself; it does not depend on `ci.yml`
-  5. Read latest published version: `npm view @atolis-hq/corum version` (handles 404 gracefully for first publish)
-  6. Compute next patch version using `semver` package: `semver.inc(latest, 'patch')`
-  7. Write new version: `npm version <next> --no-git-tag-version`
-  8. Commit version bump back to main: `git commit -am "chore: bump version to <next> [skip ci]"`
-  9. `npm publish --access public --provenance`
+**`test` job** — always runs:
+1. Checkout
+2. Node setup
+3. `npm ci`
+4. `npm test`
+
+**`publish` job** — runs only on push to `main` (`if: github.ref == 'refs/heads/main' && github.event_name == 'push'`), depends on `test` passing (`needs: test`):
+
+Permissions: `id-token: write` (OIDC for npm Trusted Publisher), `contents: write` (version bump commit).
+
+Steps:
+1. Checkout (with `fetch-depth: 0` for git history)
+2. Node setup
+3. `npm ci`
+4. Read latest published version: `npm view @atolis-hq/corum version` (defaults to `package.json` version if 404 — handles first publish)
+5. Compute next patch version using `semver` package: `semver.inc(latest, 'patch')`
+6. Write new version: `npm version <next> --no-git-tag-version`
+7. Commit version bump back to main: `git commit -am "chore: bump version to <next> [skip ci]"` then `git push`
+8. `npm publish --access public --provenance`
 
 ### One-time bootstrap (Trusted Publishers)
 
@@ -93,7 +132,7 @@ npm Trusted Publishers requires the package to exist on npm before it can be con
 2. Publish once: `npm publish --access public` (from local, on `main`)
 3. On npmjs.com → `@atolis-hq/corum` → Settings → Configure GitHub Actions as Trusted Publisher:
    - Repository: `atolis-hq/corum`
-   - Workflow: `publish.yml`
+   - Workflow: `ci-cd.yml`
 4. After this, no npm token is needed in GitHub secrets — OIDC handles auth
 
 ## 5. Out of Scope
