@@ -206,11 +206,15 @@ function errorResult(err: unknown): ToolResult {
   return { content: [{ type: 'text', text: message }], isError: true }
 }
 
-function isEntrypoint(): boolean {
-  return process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href
+// TODO: A future library-first refactor (src/runtime/) would be the right path
+// if external consumers of this startup API emerge. For now, the CLI is the only consumer.
+export type McpServerOptions = {
+  noWeb?: boolean
+  watch?: boolean
 }
 
-if (isEntrypoint()) {
+export async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
+  const { noWeb = false, watch = false } = options
   const config = createGraphRuntimeConfig()
 
   let graph: Graph
@@ -230,15 +234,14 @@ if (isEntrypoint()) {
   }
 
   const handlers = createMcpHandlers(graph, config.source)
-  const noWeb = process.argv.includes('--no-web')
-  const watchFiles = process.argv.includes('--watch')
+
   if (!noWeb) {
     await startWebServer(graph, {
       graphPath: config.graphPath,
-      fileWatcher: config.fileWatcherGraphPath && watchFiles ? true : undefined,
+      fileWatcher: config.fileWatcherGraphPath && watch ? true : undefined,
       source: config.source,
     })
-  } else if (watchFiles && config.fileWatcherGraphPath) {
+  } else if (watch && config.fileWatcherGraphPath) {
     startGraphFileWatcher(graph, { graphPath: config.fileWatcherGraphPath })
   }
 
@@ -377,4 +380,12 @@ if (isEntrypoint()) {
   })
 
   await server.connect(new StdioServerTransport())
+}
+
+function isEntrypoint(): boolean {
+  return process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href
+}
+
+if (isEntrypoint()) {
+  await startMcpServer()
 }

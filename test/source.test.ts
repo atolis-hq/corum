@@ -225,6 +225,30 @@ describe('createGraphRuntimeConfig', () => {
       /CORUM_GIT_POLL_SECONDS must be a positive number of seconds/,
     )
   })
+
+  it('uses config file value when env var not set', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-test-'))
+    fs.mkdirSync(path.join(dir, '.corum'))
+    fs.writeFileSync(path.join(dir, '.corum', 'config.yaml'), 'graph: /from/config\n')
+    try {
+      const config = createGraphRuntimeConfig({}, dir)
+      assert.equal(config.graphPath, '/from/config')
+    } finally {
+      fs.rmSync(dir, { recursive: true })
+    }
+  })
+
+  it('env var takes precedence over config file', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-test-'))
+    fs.mkdirSync(path.join(dir, '.corum'))
+    fs.writeFileSync(path.join(dir, '.corum', 'config.yaml'), 'graph: /from/config\n')
+    try {
+      const config = createGraphRuntimeConfig({ CORUM_GRAPH_PATH: '/from/env' }, dir)
+      assert.equal(config.graphPath, '/from/env')
+    } finally {
+      fs.rmSync(dir, { recursive: true })
+    }
+  })
 })
 
 async function createFixtureRepo(tmpDir: string): Promise<void> {
