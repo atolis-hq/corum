@@ -38,20 +38,23 @@ describe('serializeGraph', () => {
     }
   })
 
-  it('relativizes legacy absolute extractedFrom paths', async () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-absolute-extracted-'))
+  it('writes extractedFrom into metadata block and reloads it', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-metadata-'))
     try {
       const graph = await loadGraph({ graphPath: fixtureGraphDir })
       const root = graph.nodesById.get('orders.DomainModel.order')
       assert.ok(root)
-      root.extractedFrom = path.join(fixtureGraphDir, root.extractedFrom!)
+      root.extractedFrom = './specs/orders-api.yaml'
+      root.derivation = 'determined'
+      root.derivedBy = 'adapter:openapi'
 
       await saveGraph(graph, { sourceGraphPath: fixtureGraphDir, outputGraphPath: tmpDir })
-
-      assert.equal(
-        fs.existsSync(path.join(tmpDir, 'components', 'orders', 'DomainModels', 'order.yaml')),
-        true,
-      )
+      const reloaded = await loadGraph({ graphPath: tmpDir })
+      const reloadedRoot = reloaded.nodesById.get('orders.DomainModel.order')
+      assert.ok(reloadedRoot)
+      assert.equal(reloadedRoot.extractedFrom, './specs/orders-api.yaml')
+      assert.equal(reloadedRoot.derivation, 'determined')
+      assert.equal(reloadedRoot.derivedBy, 'adapter:openapi')
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true })
     }
