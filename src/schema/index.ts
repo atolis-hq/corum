@@ -15,6 +15,8 @@ export interface Node {
   schemaVersion: string
   lastModifiedAt: string
   extractedFrom?: string
+  derivation?: 'determined' | 'inferred' | 'manual'
+  derivedBy?: string
   properties: Record<string, unknown>
 }
 
@@ -26,6 +28,8 @@ export interface Edge {
   state: State
   stability: Stability
   notes?: string
+  derivation?: 'determined' | 'inferred' | 'manual'
+  derivedBy?: string
 }
 
 export interface Template {
