@@ -1181,3 +1181,130 @@ Expected: all tests pass.
 git add src/bin/corum.ts
 git commit -m "feat: extend corum init to scaffold graph and install default packs"
 ```
+
+---
+
+## Task 10: Update README
+
+**Files:**
+- Modify: `README.md`
+
+No tests — documentation only.
+
+- [ ] **Step 1: Update the Quick Start section**
+
+Replace the existing Quick Start section:
+
+```markdown
+## Quick Start
+
+Scaffold a config file in your project:
+
+```bash
+corum init
+```
+
+This creates `.corum/config.yaml` with commented defaults. Edit it to point at your graph directory or git repository, then start the MCP server:
+
+```bash
+corum mcp
+```
+```
+
+With:
+
+```markdown
+## Quick Start
+
+Scaffold a new project in the current directory:
+
+```bash
+corum init
+```
+
+This creates `.corum/config.yaml`, scaffolds a graph at `.corum/graph/`, and downloads the official template packs (`core`, `domain`, `rest`, `messaging`). Then start the MCP server:
+
+```bash
+corum mcp
+```
+```
+
+- [ ] **Step 2: Update the `corum init` command description**
+
+Replace:
+
+```markdown
+### `corum init`
+
+Scaffold `.corum/config.yaml` with commented defaults. Does not overwrite an existing file.
+
+```bash
+corum init
+```
+```
+
+With:
+
+```markdown
+### `corum init`
+
+Scaffold a `.corum/` project structure and install the four default template packs (`core`, `domain`, `rest`, `messaging`). Skips any step where the target already exists.
+
+```bash
+corum init
+```
+
+Creates:
+- `.corum/config.yaml` — project configuration
+- `.corum/graph/graph.yaml` — graph definition
+- `.corum/graph/components/` and `.corum/graph/edges/` — empty directories ready for nodes
+- `.corum/packs/` — downloaded template packs
+- `.corum/packs.yaml` — local manifest of installed packs
+```
+
+- [ ] **Step 3: Add `corum pack` section after `corum init`**
+
+Insert this after the `corum init` section and before the `corum import` section:
+
+```markdown
+### `corum pack install`
+
+Install a template pack from the registry into `.corum/packs/`. Appends the pack to `.corum/graph/graph.yaml` and records it in `.corum/packs.yaml`.
+
+```bash
+corum pack install <name>          # install latest release
+corum pack install <name>@<ref>    # install a specific tag
+```
+
+Examples:
+
+```bash
+corum pack install domain
+corum pack install domain@v0.1.5
+```
+
+### `corum pack list`
+
+List installed packs with their resolved version and install date.
+
+```bash
+corum pack list
+```
+```
+
+- [ ] **Step 4: Add `pack_registry` to the configuration table**
+
+Add a row to the configuration table:
+
+```markdown
+| `pack_registry` | — | URL of the pack registry YAML (set by `corum init`) |
+```
+
+Insert it as the first row in the table (before `source`).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add README.md
+git commit -m "docs: update README for corum init and pack commands"
+```
