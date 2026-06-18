@@ -12,8 +12,9 @@ metadata:
 properties:
   method: POST
   path: /orders/create
-  operationId: createOrder
-  schemas.createOrder-response-201: orders.Schema.OrderSummary
+  request: '#/schemas/createOrder-request'
+  responses:
+    '201': orders.Schema.OrderSummary
 schemas:
   createOrder-request:
     fields:

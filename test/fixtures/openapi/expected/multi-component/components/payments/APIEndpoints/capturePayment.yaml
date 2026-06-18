@@ -12,7 +12,9 @@ metadata:
 properties:
   method: POST
   path: /payments/capture
-  operationId: capturePayment
+  request: '#/schemas/capturePayment-request'
+  responses:
+    '200': '#/schemas/capturePayment-response-200'
 schemas:
   capturePayment-request:
     fields:
