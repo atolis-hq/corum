@@ -33,39 +33,6 @@ properties:
     - method
     - path
     - responses
-  $defs:
-    Parameter:
-      type: object
-      additionalProperties: false
-      required:
-        - location
-        - required
-        - cardinality
-      properties:
-        location:
-          type: string
-          enum:
-            - path
-            - query
-            - header
-        type:
-          type: string
-          enum:
-            - uuid
-            - string
-            - integer
-            - decimal
-            - boolean
-            - datetime
-            - date
-            - time
-        required:
-          type: boolean
-        cardinality:
-          type: string
-          enum:
-            - one
-            - many
   properties:
 
     method:
@@ -100,7 +67,37 @@ properties:
         and header parameters. Location (path/query/header) is declared on
         each entry. Cookie parameters are not modelled.
       additionalProperties:
-        $ref: '#/$defs/Parameter'
+        type: object
+        additionalProperties: false
+        required:
+          - location
+          - required
+          - cardinality
+        properties:
+          location:
+            type: string
+            enum:
+              - path
+              - query
+              - header
+          type:
+            type: string
+            enum:
+              - uuid
+              - string
+              - integer
+              - decimal
+              - boolean
+              - datetime
+              - date
+              - time
+          required:
+            type: boolean
+          cardinality:
+            type: string
+            enum:
+              - one
+              - many
 
     request:
       type: string
