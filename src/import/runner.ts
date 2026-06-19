@@ -43,6 +43,18 @@ export async function runImport(config: ImportConfig, runtimeConfig: GraphRuntim
     for (const node of [...toAdd, ...toUpdate, ...toRemove]) {
       graph.nodesById.set(node.id, node)
     }
+
+    const STRUCTURAL_EDGE_TYPES = new Set(['has-field', 'has-value'])
+    for (const edge of result.edges) {
+      if (STRUCTURAL_EDGE_TYPES.has(edge.type)) continue
+      const existing = graph.edgesByFrom.get(edge.from) ?? []
+      if (!existing.some(e => e.id === edge.id)) {
+        const updated = [...existing, edge]
+        graph.edgesByFrom.set(edge.from, updated)
+        const byTo = graph.edgesByTo.get(edge.to) ?? []
+        graph.edgesByTo.set(edge.to, [...byTo, edge])
+      }
+    }
   }
 
   const graphPath = runtimeConfig.kind === 'filesystem' ? runtimeConfig.graphPath : undefined

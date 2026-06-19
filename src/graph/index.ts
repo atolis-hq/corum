@@ -88,10 +88,10 @@ export function getClusterView(graph: Graph, nodeId: string, includeEdgeTypes: E
 
   for (const id of clusterIds) {
     for (const edge of graph.edgesByFrom.get(id) ?? []) {
-      collectIncludedEdge(edge, requestedTypes, clusterIds, includedNodeIds, edges, seen)
+      collectIncludedEdge(edge, requestedTypes, clusterIds, includedNodeIds, edges, seen, graph)
     }
     for (const edge of graph.edgesByTo.get(id) ?? []) {
-      collectIncludedEdge(edge, requestedTypes, clusterIds, includedNodeIds, edges, seen)
+      collectIncludedEdge(edge, requestedTypes, clusterIds, includedNodeIds, edges, seen, graph)
     }
   }
 
@@ -152,12 +152,19 @@ function collectIncludedEdge(
   includedNodeIds: Set<string>,
   edges: Edge[],
   seen: Set<string>,
+  graph: Graph,
 ): void {
   if (!requestedTypes.has(edge.type) || seen.has(edge.id)) return
   edges.push(edge)
   seen.add(edge.id)
-  if (!clusterIds.has(edge.from)) includedNodeIds.add(edge.from)
-  if (!clusterIds.has(edge.to)) includedNodeIds.add(edge.to)
+  for (const endId of [edge.from, edge.to]) {
+    if (clusterIds.has(endId)) continue
+    includedNodeIds.add(endId)
+    const prefix = `${endId}.`
+    for (const id of graph.nodesById.keys()) {
+      if (id.startsWith(prefix)) includedNodeIds.add(id)
+    }
+  }
 }
 
 const OVERLAY_EXCLUDED: ReadonlySet<GhostState> = new Set(['local', 'shared'])

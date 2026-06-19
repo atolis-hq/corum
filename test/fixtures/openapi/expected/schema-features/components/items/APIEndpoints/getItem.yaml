@@ -1,0 +1,55 @@
+id: items.APIEndpoint.getItem
+template: APIEndpoint
+schemaVersion: '1'
+metadata:
+  component: items
+  state: implemented
+  stability: unstable
+  lastModifiedAt: <date>
+  extractedFrom: <spec>
+  derivation: determined
+  derivedBy: adapter:openapi
+properties:
+  method: GET
+  path: /items/{itemId}
+  responses:
+    '200': '#/schemas/ItemDetail'
+    default: items.Schema.SharedError
+schemas:
+  address:
+    fields:
+      city:
+        type: string
+        nullable: true
+        cardinality: one
+      street:
+        type: string
+        nullable: true
+        cardinality: one
+  ItemDetail:
+    fields:
+      address:
+        $ref: '#/schemas/address'
+        nullable: true
+        cardinality: one
+      id:
+        type: uuid
+        nullable: false
+        cardinality: one
+      metadata:
+        type: string
+        nullable: true
+        cardinality: many
+        keyed: true
+      name:
+        type: string
+        nullable: false
+        cardinality: one
+      status:
+        $ref: items.EnumDefinition.Status
+        nullable: true
+        cardinality: one
+      tags:
+        type: string
+        nullable: true
+        cardinality: many

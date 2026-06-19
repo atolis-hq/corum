@@ -56,6 +56,19 @@ properties:
         - one
         - many
       description: "Whether this field holds a single value or a collection"
+    keyed:
+      type: boolean
+      description: "Whether this collection is keyed by a string (map/dictionary). Only valid when cardinality is 'many'."
+  if:
+    properties:
+      keyed:
+        const: true
+    required:
+      - keyed
+  then:
+    properties:
+      cardinality:
+        const: many
   oneOf:
     - required:
         - type

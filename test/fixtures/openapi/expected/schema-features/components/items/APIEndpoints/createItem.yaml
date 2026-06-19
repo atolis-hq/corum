@@ -1,0 +1,24 @@
+id: items.APIEndpoint.createItem
+template: APIEndpoint
+schemaVersion: '1'
+metadata:
+  component: items
+  state: implemented
+  stability: unstable
+  lastModifiedAt: <date>
+  extractedFrom: <spec>
+  derivation: determined
+  derivedBy: adapter:openapi
+properties:
+  method: POST
+  path: /items
+  request: '#/schemas/createItem-request'
+  responses:
+    default: items.Schema.SharedError
+schemas:
+  createItem-request:
+    fields:
+      name:
+        type: string
+        nullable: true
+        cardinality: one

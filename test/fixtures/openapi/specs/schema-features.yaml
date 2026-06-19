@@ -1,0 +1,86 @@
+openapi: '3.0.3'
+info:
+  title: Schema Feature Tests
+  version: '1.0'
+# Tests: allOf:[{$ref}] unwrapping, anonymous objects → inline schema,
+#        additionalProperties → keyed: true, single-use vs multi-use sharing.
+components:
+  schemas:
+    Status:
+      type: string
+      enum: [active, inactive]
+    ItemDetail:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        status:
+          # allOf:[{$ref}] field — tests resolveAllOfRef on a field
+          allOf:
+            - $ref: '#/components/schemas/Status'
+        metadata:
+          # additionalProperties → keyed: true
+          type: object
+          additionalProperties:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        address:
+          # anonymous object → inline sibling schema
+          type: object
+          properties:
+            street:
+              type: string
+            city:
+              type: string
+    SharedError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+paths:
+  /items/{itemId}:
+    get:
+      operationId: getItem
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                # allOf:[{$ref}] response — tests resolveAllOfRef on a response schema
+                allOf:
+                  - $ref: '#/components/schemas/ItemDetail'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharedError'
+  /items:
+    post:
+      operationId: createItem
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharedError'

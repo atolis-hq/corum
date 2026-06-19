@@ -203,11 +203,13 @@ function refLocalSchemaName(ref) {
 }
 
 function fieldType(properties) {
-  const cardinality = properties?.cardinality === 'many' ? '[]' : '';
-  if (properties?.type) return `${properties.type}${cardinality}`;
+  const suffix = properties?.cardinality === 'many'
+    ? (properties?.keyed ? '{}' : '[]')
+    : '';
+  if (properties?.type) return `${properties.type}${suffix}`;
   const ref = properties?.['$ref'];
-  if (ref) return `${refName(ref)}${cardinality}`;
-  return cardinality ? `unknown${cardinality}` : 'unknown';
+  if (ref) return `${refName(ref)}${suffix}`;
+  return suffix ? `unknown${suffix}` : 'unknown';
 }
 
 function fieldRequirement(properties) {
@@ -454,7 +456,7 @@ function OverlayLegend({ overlayRefs }) {
   );
 }
 
-function SchemaCard({ title, nodes, allNodes, edges, anchorIdForNode, overlayFields, overlayRefs }) {
+function SchemaCard({ title, nodes, allNodes, edges, anchorIdForNode, overlayFields, overlayRefs, isShared }) {
   if (!nodes || nodes.length === 0) return null;
 
   if (title === 'EnumDefinition') {
@@ -469,7 +471,7 @@ function SchemaCard({ title, nodes, allNodes, edges, anchorIdForNode, overlayFie
 
     return (
       <div className="card enum-card">
-        <div className="card-head">Enums</div>
+        <div className="card-head">{isShared ? 'Shared Enums' : 'Enums'}</div>
         <div className="card-body">
           {nodes.map(enumNode => {
             const enumName = localEnumName(enumNode.id);
@@ -513,7 +515,7 @@ function SchemaCard({ title, nodes, allNodes, edges, anchorIdForNode, overlayFie
     const model = buildSchemaModel(nodes, allNodes ?? nodes);
     return (
       <div className="card schema-card">
-        <div className="card-head">Schemas</div>
+        <div className="card-head">{isShared ? 'Shared Schemas' : 'Schemas'}</div>
         <div className="card-body">
           {model.topSchemas.map(schema => {
             const schemaName = localSchemaName(schema.id);
@@ -521,8 +523,9 @@ function SchemaCard({ title, nodes, allNodes, edges, anchorIdForNode, overlayFie
             return (
               <div key={schema.id} className="schema-section" id={anchorIdForNode ? anchorIdForNode(schema.id) : undefined}>
                 <div className="schema-section-head">
-                  <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div className="schema-title">{schemaName}</div>
+                    {isShared && <span className="tag" style={{ fontSize: 10, padding: '1px 6px', background: 'var(--ink-4)', color: 'var(--bg)' }}>shared</span>}
                     {schema.properties?.description && <div className="label-sm">{schema.properties.description}</div>}
                   </div>
                   <div className="label-sm mono">{schema.id}</div>
