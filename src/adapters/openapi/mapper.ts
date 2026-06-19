@@ -86,18 +86,34 @@ export function mapDocument(
   const opCounts = countSchemaOperationUsage(document)
   const sharedSchemaNames = collectAllSharedSchemaNames(document, opCounts)
 
+  // Pass 1: register all enum and shared-schema IDs upfront so cross-references
+  // resolve correctly regardless of definition order in the spec.
+  if (document.components?.schemas) {
+    for (const [name, schema] of Object.entries(document.components.schemas)) {
+      if (isRefSchema(schema)) continue
+      const s = schema as OpenAPIV3.SchemaObject
+      const component = deriveComponentForSchema(name, document, entry)
+      if (!component) continue
+      if (s.type !== 'object' && s.enum) {
+        sharedSchemas.set(name, `${component}.EnumDefinition.${name}`)
+      } else if (sharedSchemaNames.has(name)) {
+        sharedSchemas.set(name, `${component}.Schema.${name}`)
+      }
+    }
+  }
+
+  // Pass 2: emit nodes and fields now that all IDs are registered.
   if (document.components?.schemas) {
     for (const [name, schema] of Object.entries(document.components.schemas)) {
       if (isRefSchema(schema)) continue
       const s = schema as OpenAPIV3.SchemaObject
 
       if (s.type !== 'object' && s.enum) {
-        const component = deriveComponentForSchema(name, document, entry)
-        if (!component) continue
-        const enumId = `${component}.EnumDefinition.${name}`
+        const enumId = sharedSchemas.get(name)
+        if (!enumId) continue
+        const [component] = enumId.split('.')
         const enumNode = makeNode(packConfig.constructs.enumDefinition?.template ?? 'EnumDefinition', component, entry.spec, enumId)
         nodes.push(enumNode)
-        sharedSchemas.set(name, enumId)
         s.enum.forEach((value) => {
           const valueId = deriveNodeId('enumValue', undefined, String(value), enumId, 'values')
           const valueNode = makeNode(packConfig.constructs.enumValue?.template ?? 'EnumValue', component, entry.spec, valueId)
@@ -110,13 +126,12 @@ export function mapDocument(
 
       if (!sharedSchemaNames.has(name)) continue
 
-      const component = deriveComponentForSchema(name, document, entry)
-      if (!component) {
+      const schemaId = sharedSchemas.get(name)
+      if (!schemaId) {
         diagnostics.push({ severity: 'warning', file: entry.spec, message: `Cannot derive component for schema ${name}, skipping` })
         continue
       }
-      const schemaId = `${component}.Schema.${name}`
-      sharedSchemas.set(name, schemaId)
+      const [component] = schemaId.split('.')
       const node = makeNode(packConfig.constructs.requestSchema?.template ?? 'Schema', component, entry.spec, schemaId)
       nodes.push(node)
       emitFields(s, schemaId, 'fields', undefined, packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, new Map())
