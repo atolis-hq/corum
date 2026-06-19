@@ -140,3 +140,6 @@ ui:
     - method
     - path
   badge: method
+  propertyDisplay:
+    parameters:
+      as: inline

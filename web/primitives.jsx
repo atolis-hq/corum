@@ -74,10 +74,28 @@ function PropertyValue({ value, onNavigate }) {
   return <span>{String(value)}</span>;
 }
 
-function buildPropertyRows(entries, onNavigate, depth = 0, parentPath = '') {
+function InlineObjectValue({ value }) {
+  if (!value || typeof value !== 'object') return <PropertyValue value={value} />;
+  const parts = Object.entries(value).filter(([, v]) => v !== null && v !== undefined);
+  if (parts.length === 0) return <span className="prop-empty">-</span>;
+  return (
+    <span>
+      {parts.map(([k, v], i) => (
+        <React.Fragment key={k}>
+          {i > 0 && <span style={{ margin: '0 6px', opacity: 0.4 }}>|</span>}
+          <span className="prop-key-label prop-key-label--inline mono">{k}:</span>
+          {' '}{String(v)}
+        </React.Fragment>
+      ))}
+    </span>
+  );
+}
+
+function buildPropertyRows(entries, onNavigate, depth = 0, parentPath = '', propertyHints = {}) {
   return entries.flatMap(([key, value], index) => {
     const rowPath = parentPath ? `${parentPath}.${key}` : key;
     const rowKey = `${rowPath}:${index}`;
+    const hint = depth === 0 ? propertyHints[key] : null;
 
     if (Array.isArray(value)) {
       const rows = [{
@@ -96,7 +114,7 @@ function buildPropertyRows(entries, onNavigate, depth = 0, parentPath = '') {
             depth: depth + 1,
             value: <span className="prop-empty">-</span>,
           });
-          rows.push(...buildPropertyRows(Object.entries(item), onNavigate, depth + 2, itemPath));
+          rows.push(...buildPropertyRows(Object.entries(item), onNavigate, depth + 2, itemPath, propertyHints));
         } else {
           rows.push({
             key: `${itemPath}:value`,
@@ -111,6 +129,17 @@ function buildPropertyRows(entries, onNavigate, depth = 0, parentPath = '') {
     }
 
     if (value && typeof value === 'object' && !('display' in value)) {
+      if (hint?.as === 'inline') {
+        return [
+          { key: rowKey, label: key, depth, value: <span className="prop-empty">-</span> },
+          ...Object.entries(value).map(([childKey, childValue], childIndex) => ({
+            key: `${rowPath}.${childKey}:${childIndex}`,
+            label: childKey,
+            depth: depth + 1,
+            value: <InlineObjectValue value={childValue} />,
+          })),
+        ];
+      }
       return [
         {
           key: rowKey,
@@ -118,7 +147,7 @@ function buildPropertyRows(entries, onNavigate, depth = 0, parentPath = '') {
           depth,
           value: <span className="prop-empty">-</span>,
         },
-        ...buildPropertyRows(Object.entries(value), onNavigate, depth + 1, rowPath),
+        ...buildPropertyRows(Object.entries(value), onNavigate, depth + 1, rowPath, propertyHints),
       ];
     }
 
@@ -131,9 +160,9 @@ function buildPropertyRows(entries, onNavigate, depth = 0, parentPath = '') {
   });
 }
 
-function PropertiesTable({ properties, onNavigate }) {
+function PropertiesTable({ properties, onNavigate, propertyHints = {} }) {
   const entries = Object.entries(properties ?? {});
-  const rows = buildPropertyRows(entries, onNavigate);
+  const rows = buildPropertyRows(entries, onNavigate, 0, '', propertyHints);
   if (entries.length === 0) {
     return <p className="label-sm" style={{ padding: '10px 14px' }}>No properties.</p>;
   }

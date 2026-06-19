@@ -451,7 +451,11 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
         <div className="card">
           <div className="card-head">Properties</div>
           <div className="card-body">
-            <PropertiesTable properties={root.properties} onNavigate={handlePropertyNavigate} />
+            <PropertiesTable
+              properties={root.properties}
+              onNavigate={handlePropertyNavigate}
+              propertyHints={template?.ui?.propertyDisplay ?? {}}
+            />
           </div>
         </div>
       )}
