@@ -824,7 +824,7 @@ describe('web server', () => {
 
     it('primitives: buildPropertyRows uses depth for nested row indentation', () => {
       assert.match(primitives, /function buildPropertyRows\(entries, onNavigate, depth = 0/)
-      assert.match(primitives, /const rows = buildPropertyRows\(entries, onNavigate\);/)
+      assert.match(primitives, /const rows = buildPropertyRows\(entries, onNavigate, 0, '', propertyHints\);/)
       assert.match(primitives, /className=\{`prop-row\$\{row\.depth > 0 \? ' nested' : ''\}`\}/)
       assert.match(primitives, /className="mono prop-key-cell">/)
       assert.match(primitives, /<span className="prop-key-label" style=\{\{ '--prop-depth': row\.depth \}\}>/)
