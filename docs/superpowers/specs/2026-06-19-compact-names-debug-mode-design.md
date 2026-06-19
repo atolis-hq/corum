@@ -18,7 +18,7 @@ All places that currently show a qualified name display only the final/local seg
 | Type column (`fieldType`) | `orders.DomainModel.order.schemas.OrderItem` | `OrderItem` |
 | Details column (`fieldDetails`) | `ref orders.DomainModel.order.schemas.OrderItem` | `ref OrderItem` |
 | Schema ref inside link summary | already local via `fieldLocalName` — no change | — |
-| Nested field prefix (`address.street.city`) | already uses local segments — no change | — |
+| Nested field prefix (`address.street.city`) | `address.street.city` | `city` (final segment only; depth indent conveys nesting) |
 | Schema section header subtitle | `orders.DomainModel.order.schemas.Order` (small mono) | unchanged — small enough to read as metadata |
 
 The `title` attribute is set on every shortened element so the full qualified ID is visible on native hover.
@@ -34,8 +34,7 @@ When active:
 
 ### What does not change
 
-- Nested field name prefix accumulation (`address.street.city`, `items[].name`) — already uses local segments; no change in either mode
-- Array/map suffixes (`[]`, `{}`, `{[]}`) — part of the prefix/type logic, unaffected
+- Array/map suffixes on nested field names (`[]`, `{}`, `{[]}`) — these remain on the final segment in both modes (e.g. compact shows `items[]` not `orders.items[]`)
 - Schema section header subtitle showing `schema.id` in small mono text — kept in both modes (it is small enough not to be noisy)
 - Nav rail node labels — already use `displayName` (final segment); no change
 
@@ -43,6 +42,7 @@ When active:
 
 - A `useDebugMode()` hook (or a simple `useState` + `localStorage` read) at the `App` level, passed down via props or a React context.
 - `refName()` and `fieldType()` gain a `compact` boolean parameter (or the debug flag is threaded through). When `compact = true`, extract the final segment from a qualified ref string the same way `refLocalSchemaName` does.
+- `SchemaFieldRows` passes `compact` down; when `compact = true`, the `prefix` prop is not rendered — only `name` (plus its array/map suffix) is shown in the name cell. The visual depth indent already communicates nesting.
 - The nav rail toggle button sits below the existing nav items, visually separated (bottom of `NavRail`).
 
 ## Out of scope
