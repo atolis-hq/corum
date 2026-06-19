@@ -219,9 +219,23 @@ function clusterNodeId(nodeId) {
   return nodeId.replace(/\.(fields|values)\.[^.]+$/, '');
 }
 
-function refName(ref) {
-  if (typeof ref === 'string') return ref.replace(/^#\/(schemas|enums)\//, '');
-  if (ref && typeof ref === 'object' && 'display' in ref) return ref.display;
+function refName(ref, compact = false) {
+  if (typeof ref === 'string') {
+    const full = ref.replace(/^#\/(schemas|enums)\//, '');
+    if (compact) {
+      const dot = full.lastIndexOf('.');
+      return dot >= 0 ? full.slice(dot + 1) : full;
+    }
+    return full;
+  }
+  if (ref && typeof ref === 'object' && 'display' in ref) {
+    const display = String(ref.display);
+    if (compact) {
+      const dot = display.lastIndexOf('.');
+      return dot >= 0 ? display.slice(dot + 1) : display;
+    }
+    return display;
+  }
   return String(ref);
 }
 
@@ -240,12 +254,12 @@ function refLocalSchemaName(ref) {
   return lastDot >= 0 ? ref.slice(lastDot + 1) : null;
 }
 
-function fieldType(properties) {
+function fieldType(properties, compact = false) {
   const c = properties?.collection;
   const suffix = c === 'array' ? '[]' : c === 'map' ? '{}' : c === 'map-of-map' ? '{{}}' : c === 'map-of-array' ? '{[]}' : '';
   if (properties?.type) return `${properties.type}${suffix}`;
   const ref = properties?.['$ref'];
-  if (ref) return `${refName(ref)}${suffix}`;
+  if (ref) return `${refName(ref, compact)}${suffix}`;
   return suffix ? `unknown${suffix}` : 'unknown';
 }
 
@@ -259,10 +273,10 @@ function fieldCardinality(properties) {
   return properties?.collection ?? 'one';
 }
 
-function fieldDetails(properties) {
+function fieldDetails(properties, compact = false) {
   const parts = [];
   const ref = properties?.['$ref'];
-  if (ref) parts.push(`ref ${refName(ref)}`);
+  if (ref) parts.push(`ref ${refName(ref, compact)}`);
   if (properties?.description) parts.push(properties.description);
   return parts.length > 0 ? parts.join(' · ') : '-';
 }
@@ -339,7 +353,8 @@ function buildSchemaModel(schemaNodes, allNodes) {
   };
 }
 
-function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = new Set(), edges = [], overlayFields, overlayRefs }) {
+function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = new Set(), edges = [], overlayFields, overlayRefs, compact = false }) {
+  const [collapsed, setCollapsed] = React.useState(new Set());
   const fields = model.fieldsBySchema.get(schemaName) ?? [];
   if (fields.length === 0) {
     return (
@@ -374,12 +389,25 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
           && e.type !== 'has-value',
         );
 
+        const isCollapsed = collapsed.has(field.id);
+        const typeDisplay = fieldType(field.properties, compact);
+        const typeFull = compact ? fieldType(field.properties, false) : null;
         return (
           <React.Fragment key={field.id}>
             <div className={`field-row${depth > 0 ? ' nested' : ''}`} style={{ '--field-depth': depth }}>
-              <div className="gutter">{canExpand && <Icon name="caret-down" size={11} />}</div>
-              <div className="name">{prefix}{name}</div>
-              <div className="type">{fieldType(field.properties)}</div>
+              <div
+                className="gutter"
+                style={canExpand ? { cursor: 'pointer' } : undefined}
+                onClick={canExpand ? () => setCollapsed(prev => {
+                  const next = new Set(prev);
+                  next.has(field.id) ? next.delete(field.id) : next.add(field.id);
+                  return next;
+                }) : undefined}
+              >
+                {canExpand && <Icon name={isCollapsed ? 'caret-right' : 'caret-down'} size={11} />}
+              </div>
+              <div className="name">{compact ? name : `${prefix}${name}`}</div>
+              <div className="type" title={typeFull !== typeDisplay ? typeFull : undefined}>{typeDisplay}</div>
               <div className="cardinality">{fieldCardinality(field.properties)}</div>
               <div className="req">{fieldRequirement(field.properties)}</div>
               <div className="state"><StateTag state={field.state} /></div>
@@ -400,10 +428,10 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
                         </React.Fragment>
                       );
                     })
-                  : fieldDetails(field.properties)}
+                  : fieldDetails(field.properties, compact)}
               </div>
             </div>
-            {canExpand && (
+            {canExpand && !isCollapsed && (
               <>
                 <SchemaFieldRows
                   schemaName={localRef}
@@ -414,9 +442,10 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
                   edges={edges}
                   overlayFields={overlayFields}
                   overlayRefs={overlayRefs}
+                  compact={compact}
                 />
                 {childGhostFields.length > 0 && (
-                  <GhostFieldRows fields={childGhostFields} overlayRefs={overlayRefs} prefix={childPrefix} depth={depth + 1} />
+                  <GhostFieldRows fields={childGhostFields} overlayRefs={overlayRefs} prefix={childPrefix} depth={depth + 1} compact={compact} />
                 )}
               </>
             )}
@@ -440,15 +469,15 @@ function overlayFieldsForSchema(overlayFields, schemaNodeId) {
   return overlayFields.filter(field => field.id.startsWith(prefix));
 }
 
-function GhostFieldRows({ fields, overlayRefs, prefix = '', depth = 0 }) {
+function GhostFieldRows({ fields, overlayRefs, prefix = '', depth = 0, compact = false }) {
   return (
     <>
       {fields.map(field => {
         const isConflict = field.ghostState === 'ghost-conflict' || field.ghostState === 'local-modified';
         const refIndex = overlayRefs ? overlayRefs.indexOf(field.sourceRef) : 0;
         const stripeClass = isConflict ? 'overlay-conflict' : ghostStripeClass(Math.max(0, refIndex));
-        const name = prefix + (fieldLocalName(field.id));
-        const type = field.node.properties?.type || (field.node.properties?.['$ref'] ? String(field.node.properties['$ref']).replace(/^#\/(schemas|enums)\//, '') : '-');
+        const name = compact ? fieldLocalName(field.id) : prefix + fieldLocalName(field.id);
+        const type = field.node.properties?.type || (field.node.properties?.['$ref'] ? refName(field.node.properties['$ref'], compact) : '-');
         return (
           <div
             key={field.id}
@@ -502,7 +531,7 @@ function OverlayLegend({ overlayRefs }) {
   );
 }
 
-function SchemaCard({ title, nodes, allNodes, edges, anchorIdForNode, overlayFields, overlayRefs, isShared }) {
+function SchemaCard({ title, nodes, allNodes, edges, anchorIdForNode, overlayFields, overlayRefs, isShared, compact = false }) {
   if (!nodes || nodes.length === 0) return null;
 
   if (title === 'EnumDefinition') {
@@ -593,9 +622,10 @@ function SchemaCard({ title, nodes, allNodes, edges, anchorIdForNode, overlayFie
                   edges={edges ?? []}
                   overlayFields={overlayFields}
                   overlayRefs={overlayRefs}
+                  compact={compact}
                 />
                 {ghostFields.length > 0 && (
-                  <GhostFieldRows fields={ghostFields} overlayRefs={overlayRefs} />
+                  <GhostFieldRows fields={ghostFields} overlayRefs={overlayRefs} compact={compact} />
                 )}
               </div>
             );
