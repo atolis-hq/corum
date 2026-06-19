@@ -1,0 +1,21 @@
+id: items.APIEndpoint.getItemById
+template: APIEndpoint
+schemaVersion: '1'
+metadata:
+  component: items
+  state: implemented
+  stability: unstable
+  lastModifiedAt: <date>
+  extractedFrom: <spec>
+  derivation: determined
+  derivedBy: adapter:openapi
+properties:
+  method: GET
+  path: /items/{itemId}
+  description: Get item by ID
+  parameters:
+    itemId:
+      location: path
+      type: uuid
+      required: true
+      cardinality: one
