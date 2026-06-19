@@ -105,7 +105,7 @@ nodes:
     derivation: determined       # see Companion decision
     properties: { ... }
     fields:                         # owned children -> has-field implied (ADR-004b)
-      - { name: id, type: uuid, nullable: false, cardinality: one, derivation: determined }
+      - { name: id, type: uuid, nullable: false, derivation: determined }
 edges: []                           # node-first producers usually emit none
 ```
 
@@ -153,6 +153,37 @@ This architecture assumes nodes and edges carry a **`derivation`** axis (`determ
 - External, proprietary, or cross-language tools can populate the graph through the contract without the engine ever learning their native formats (preserving the agnostic core).
 - Confidence (`derivation`) flows from producer to emitted cluster file, enabling the linter and consumers to treat `inferred` data distinctly.
 - Extraction can run agent-side in CI (§7) and push contracts to the graph repo, keeping the engine free of language runtimes.
+
+---
+
+## Amendment: 2026-06-19 — OpenAPI adapter referential model constraint and gap policy
+
+**Added:** The OpenAPI `SpecAdapter` enforces a named-nodes-only constraint and documents a gap policy for structural patterns it cannot faithfully represent.
+
+**Referential model constraint:** Corum's graph requires every type to be a named node with a resolvable ID. OpenAPI's structural model allows types to be described inline and recursively without names. The adapter bridges this by:
+
+- Inlining anonymous objects (when inside an endpoint context) as sibling `Schema` nodes with auto-generated IDs registered in `localSchemas`
+- Promoting schemas referenced by 2+ operations to shared `Schema` nodes in a `shared` component
+- Transitively promoting schemas referenced by shared schemas (BFS closure over `$ref` links)
+
+**Gap categories and fallback policy:** When a structural pattern cannot be faithfully represented as named nodes and typed fields, the adapter emits a `warning`-severity diagnostic and uses the best-effort fallback:
+
+| Pattern | Fallback | Note |
+|---|---|---|
+| `oneOf` / `anyOf` union | `type: string` | No union type on `Field`; open gap |
+| Anonymous inline object inside a shared schema (no endpoint `rootId`) | `type: string` | Cannot attach sibling `Schema` without context; open gap |
+| Triple-nested or untyped `additionalProperties` | `type: string, collection: map-of-map` | Inner value unresolvable; warning emitted |
+
+The following are **handled without warnings** (not gaps):
+
+- `collection: map-of-array` with scalar or `$ref` items — items type resolved from inner `additionalProperties.items`
+- `collection: map-of-map` with scalar or `$ref` inner value — value type resolved from inner `additionalProperties`
+- `allOf: [{$ref}]` nullable pattern — unwrapped by `resolveAllOfRef` before field processing
+- Recursive / self-referential schemas — handled by pre-registering `localSchemas` before `emitFields`
+
+The complete gap taxonomy is maintained in `docs/tasks/openapi-gaps.md`.
+
+**Also amended:** the ingestion contract YAML example in the Decision section above removes `cardinality: one` — the Field model no longer uses `cardinality` (see ADR-003b amendment 2026-06-19).
 
 ---
 

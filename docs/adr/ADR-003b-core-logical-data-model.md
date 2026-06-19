@@ -85,7 +85,7 @@ Template types specialise the universal node with additional required or optiona
 | `IntegrationEvent` | false | Cross-service published event; extends Event | inherits payload schema; cross-boundary contract |
 | `ReadModel` | false | Derived query projection | owns `fields`; declared as derived from source nodes via edges |
 | `ValueObject` | false | Shared type with no independent identity | owns `fields`; used when a type is shared across multiple models |
-| `Field` | false | Named property within a schema | `type`, `nullable`, `cardinality` — see Field entity below |
+| `Field` | false | Named property within a schema | `type`, `nullable`, `collection` — see Field entity below |
 | `EnumDefinition` | false | Named set of values | owns `values`; referenced by Field nodes by ID |
 | `EnumValue` | false | One member of an enum | `description`, `state`, `stability` |
 | `Invariant` | false | Business rule that must always hold | `description`, `state` |
@@ -105,7 +105,7 @@ Fields are the most granular node type and the primary unit of field-level linea
 | `scalarType` | string | oneOf | Primitive scalar: `uuid` \| `string` \| `integer` \| `decimal` \| `boolean` \| `datetime` \| `date` \| `time`. Mutually exclusive with `objectRef`. |
 | `objectRef` | string | oneOf | Local schema name, local enum name, or global node ID defining the field's type. Resolved local-first. Mutually exclusive with `scalarType`. |
 | `nullable` | boolean | yes | Whether this field may be absent or null |
-| `cardinality` | enum | yes | `one` \| `many` |
+| `collection` | enum | no | Collection shape. Absent = single value (default). Values: `array` (ordered list), `map` (string-keyed dictionary), `map-of-map` (nested dictionary), `map-of-array` (dictionary of arrays). `type`/`objectRef` describes the element type after all traversals. |
 
 Field IDs extend their owner's ID via the section path: `orders.DomainModel.order.schemas.order.fields.customerId`, `orders.APIEndpoint.create-order.schemas.create-order-request.fields.customerId`.
 
@@ -254,6 +254,30 @@ These are constraints that any implementation of this model must maintain, regar
 **YAML placement:** `extractedFrom`, `derivation`, and `derivedBy` all live inside the `metadata` block in cluster YAML files, alongside `state`, `stability`, and `lastModifiedAt`. `metadata` is the complete node classification block — lifecycle, ownership, and provenance. `node.schema.yaml` in the core pack is updated accordingly.
 
 **Prior text amended:** the universal node property table and the edge entity table now include `derivation` and `derivedBy`. References throughout to "every node carries `state`, `stability`, …" should be read to include `derivation`.
+
+---
+
+## Amendment: 2026-06-19 — replace `cardinality` with `collection` on Field
+
+**Changed:** The Field entity's `cardinality: enum, required, one | many` property is removed and replaced by `collection: enum, optional`.
+
+**Reason:** `cardinality: one | many` was insufficient to express the range of collection shapes that appear in practice. `many` conflated ordered lists, string-keyed dictionaries, nested dictionaries, and dictionaries of lists — all meaningfully distinct structures. A secondary `keyed: boolean` flag was introduced to distinguish maps but still could not capture `map-of-map` or `map-of-array`. Both properties are replaced by a single, explicitly-named `collection` enum.
+
+**The property is optional.** Absence means a single value (the common case), eliminating noise in the overwhelming majority of fields.
+
+| `collection` value | Meaning |
+|---|---|
+| *(absent)* | Single value — default |
+| `array` | Ordered list |
+| `map` | String-keyed dictionary |
+| `map-of-map` | Nested string-keyed dictionary (`Map<K, Map<K, V>>`) |
+| `map-of-array` | String-keyed dictionary of arrays (`Map<K, V[]>`) |
+
+For `array`, `map`, `map-of-map`, and `map-of-array`, the `type` or `objectRef` property describes the **element type** — the scalar or referenced node type of a single item after all collection traversals.
+
+The `APIEndpoint` template's inline parameter entries use the same `collection` property (values `one | array` only) for consistency with Field.
+
+**Prior text amended:** the Field entity table above and the node types table's Field row now reflect `collection` instead of `cardinality`. ADR-003c is amended separately.
 
 ---
 
