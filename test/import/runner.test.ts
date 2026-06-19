@@ -159,6 +159,17 @@ describe('import runner — shared-error.yaml', () => {
   })
 })
 
+describe('import runner — schema-features.yaml', () => {
+  it('unwraps allOf:[{$ref}], inlines anonymous objects, marks keyed maps, and shares multi-use schemas', async () => {
+    const { graphDir, cleanup } = await runAgainstFixture('schema-features.yaml')
+    try {
+      assertMatchesExpected(graphDir, 'schema-features')
+    } finally {
+      cleanup()
+    }
+  })
+})
+
 describe('import runner — orphan removal', () => {
   it('marks a previously imported endpoint as removed when absent from updated spec', async () => {
     const { graphDir, cleanup } = await setupGraphDir()

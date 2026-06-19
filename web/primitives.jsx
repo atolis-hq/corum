@@ -197,17 +197,28 @@ function refName(ref) {
 }
 
 function refLocalSchemaName(ref) {
-  if (typeof ref === 'string') return ref.startsWith('#/schemas/') ? ref.slice(10) : null;
-  if (ref && typeof ref === 'object' && 'display' in ref) return ref.display;
-  return null;
+  if (typeof ref !== 'string') {
+    if (ref && typeof ref === 'object' && 'display' in ref) {
+      const d = String(ref.display);
+      const dot = d.lastIndexOf('.');
+      return dot >= 0 ? d.slice(dot + 1) : d;
+    }
+    return null;
+  }
+  if (ref.startsWith('#/schemas/')) return ref.slice(10);
+  // Global node ID (e.g. "component.Schema.TypeName") — local name is the final segment
+  const lastDot = ref.lastIndexOf('.');
+  return lastDot >= 0 ? ref.slice(lastDot + 1) : null;
 }
 
 function fieldType(properties) {
-  const cardinality = properties?.cardinality === 'many' ? '[]' : '';
-  if (properties?.type) return `${properties.type}${cardinality}`;
+  const suffix = properties?.cardinality === 'many'
+    ? (properties?.keyed ? '{}' : '[]')
+    : '';
+  if (properties?.type) return `${properties.type}${suffix}`;
   const ref = properties?.['$ref'];
-  if (ref) return `${refName(ref)}${cardinality}`;
-  return cardinality ? `unknown${cardinality}` : 'unknown';
+  if (ref) return `${refName(ref)}${suffix}`;
+  return suffix ? `unknown${suffix}` : 'unknown';
 }
 
 function fieldRequirement(properties) {
@@ -253,7 +264,11 @@ function enumValueEnumName(nodeId) {
   const valueMarker = '.values.';
   const enumIdx = nodeId.indexOf(enumMarker);
   const valueIdx = nodeId.indexOf(valueMarker);
-  if (enumIdx < 0 || valueIdx < 0) return null;
+  if (valueIdx < 0) return null;
+  if (enumIdx < 0) {
+    // Standalone EnumDefinition node: e.g. component.EnumDefinition.Name.values.X → 'Name'
+    return nodeId.slice(0, valueIdx).split('.').pop() ?? null;
+  }
   return nodeId.slice(enumIdx + enumMarker.length, valueIdx);
 }
 
@@ -266,7 +281,11 @@ function enumValueDescription(node) {
 }
 
 function buildSchemaModel(schemaNodes, allNodes) {
-  const schemasByName = new Map(schemaNodes.map(node => [localSchemaName(node.id), node]));
+  // Include all Schema nodes from allNodes so canExpand works for included/referenced schemas
+  const allSchemaNodes = (allNodes ?? []).filter(n => n.template === 'Schema');
+  const schemasByName = new Map(allSchemaNodes.map(node => [localSchemaName(node.id), node]));
+  // Ensure the primary schemaNodes are always present (they may not be in allNodes)
+  for (const node of schemaNodes) schemasByName.set(localSchemaName(node.id), node);
   const fieldsBySchema = new Map();
   const referencedSchemas = new Set();
 
@@ -454,7 +473,7 @@ function OverlayLegend({ overlayRefs }) {
   );
 }
 
-function SchemaCard({ title, nodes, allNodes, edges, anchorIdForNode, overlayFields, overlayRefs }) {
+function SchemaCard({ title, nodes, allNodes, edges, anchorIdForNode, overlayFields, overlayRefs, isShared }) {
   if (!nodes || nodes.length === 0) return null;
 
   if (title === 'EnumDefinition') {
@@ -469,7 +488,7 @@ function SchemaCard({ title, nodes, allNodes, edges, anchorIdForNode, overlayFie
 
     return (
       <div className="card enum-card">
-        <div className="card-head">Enums</div>
+        <div className="card-head">{isShared ? 'Shared Enums' : 'Enums'}</div>
         <div className="card-body">
           {nodes.map(enumNode => {
             const enumName = localEnumName(enumNode.id);
@@ -513,7 +532,7 @@ function SchemaCard({ title, nodes, allNodes, edges, anchorIdForNode, overlayFie
     const model = buildSchemaModel(nodes, allNodes ?? nodes);
     return (
       <div className="card schema-card">
-        <div className="card-head">Schemas</div>
+        <div className="card-head">{isShared ? 'Shared Schemas' : 'Schemas'}</div>
         <div className="card-body">
           {model.topSchemas.map(schema => {
             const schemaName = localSchemaName(schema.id);
@@ -521,8 +540,9 @@ function SchemaCard({ title, nodes, allNodes, edges, anchorIdForNode, overlayFie
             return (
               <div key={schema.id} className="schema-section" id={anchorIdForNode ? anchorIdForNode(schema.id) : undefined}>
                 <div className="schema-section-head">
-                  <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div className="schema-title">{schemaName}</div>
+                    {isShared && <span className="tag" style={{ fontSize: 10, padding: '1px 6px', background: 'var(--ink-4)', color: 'var(--bg)' }}>shared</span>}
                     {schema.properties?.description && <div className="label-sm">{schema.properties.description}</div>}
                   </div>
                   <div className="label-sm mono">{schema.id}</div>

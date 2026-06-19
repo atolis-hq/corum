@@ -14,11 +14,21 @@ properties:
   path: /orders/create
   request: '#/schemas/createOrder-request'
   responses:
-    '201': orders.Schema.OrderSummary
+    '201': '#/schemas/OrderSummary'
 schemas:
   createOrder-request:
     fields:
       customerId:
         type: uuid
         nullable: true
+        cardinality: one
+  OrderSummary:
+    fields:
+      orderId:
+        type: uuid
+        nullable: false
+        cardinality: one
+      status:
+        $ref: orders.EnumDefinition.OrderStatus
+        nullable: false
         cardinality: one

@@ -1,8 +1,8 @@
-id: orders.Schema.OrderSummary
+id: items.Schema.SharedError
 template: Schema
 schemaVersion: '1'
 metadata:
-  component: orders
+  component: items
   state: implemented
   stability: unstable
   lastModifiedAt: <date>
@@ -10,11 +10,11 @@ metadata:
   derivation: determined
   derivedBy: adapter:openapi
 fields:
-  orderId:
-    type: uuid
+  code:
+    type: integer
     nullable: false
     cardinality: one
-  status:
-    $ref: orders.EnumDefinition.OrderStatus
+  message:
+    type: string
     nullable: false
     cardinality: one

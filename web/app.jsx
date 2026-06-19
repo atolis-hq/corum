@@ -376,7 +376,7 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
     const overlayParam = overlayRefs && overlayRefs.length > 0
       ? '&' + overlayRefs.map(ref => `overlayRefs=${encodeURIComponent(ref)}`).join('&')
       : '';
-    fetch(`/api/cluster?nodeId=${encodeURIComponent(nodeId)}&includeEdges=maps-to${refParam}${overlayParam}`)
+    fetch(`/api/cluster?nodeId=${encodeURIComponent(nodeId)}&includeEdges=maps-to,reads${refParam}${overlayParam}`)
       .then(response => response.ok ? response.json() : Promise.reject(response.status))
       .then(setCluster)
       .catch(err => setError(String(err)));
@@ -402,12 +402,15 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
   const displayedNodeIds = new Set([
     root.id,
     ...Array.from(displayChildren.values()).reduce((all, group) => all.concat(group), []).map(child => child.id),
+    ...includedNodes.map(n => n.id),
   ]);
   const rootSpecializedTemplates = new Set(['Schema', 'EnumDefinition']);
   const rootSpecializedNodes = rootSpecializedTemplates.has(root.template) ? [[root.template, [root]]] : [];
   const childDisplayEntries = [...displayChildren.entries()]
     .filter(([templateName]) => templateName !== 'Field' && templateName !== 'EnumValue');
   const displayEntries = [...rootSpecializedNodes, ...childDisplayEntries];
+  const includedSchemaNodes = includedNodes.filter(n => n.template === 'Schema');
+  const includedEnumNodes = includedNodes.filter(n => n.template === 'EnumDefinition');
 
   function handlePropertyNavigate(targetNodeId) {
     if (displayedNodeIds.has(targetNodeId)) {
@@ -465,6 +468,28 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
             overlayRefs={cluster.overlay ? cluster.overlay.overlayRefs : null}
           />
         ))}
+      {includedSchemaNodes.length > 0 && (
+        <SchemaCard
+          key="__shared-schemas__"
+          title="Schema"
+          nodes={includedSchemaNodes}
+          allNodes={[root, ...descendants, ...includedNodes]}
+          edges={edges}
+          anchorIdForNode={anchorIdForNode}
+          isShared={true}
+        />
+      )}
+      {includedEnumNodes.length > 0 && (
+        <SchemaCard
+          key="__shared-enums__"
+          title="EnumDefinition"
+          nodes={includedEnumNodes}
+          allNodes={[root, ...descendants, ...includedNodes]}
+          edges={edges}
+          anchorIdForNode={anchorIdForNode}
+          isShared={true}
+        />
+      )}
     </div>
   );
 }

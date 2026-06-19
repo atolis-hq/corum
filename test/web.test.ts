@@ -862,7 +862,7 @@ describe('web server', () => {
       assert.match(app, /const refreshAllData = useCallback\(\(\) => \{/)
       assert.match(app, /eventSource\.addEventListener\('graph-reloaded', refreshAllData\)/)
       assert.match(app, /refreshToken/)
-      assert.match(app, /fetch\(`\/api\/cluster\?nodeId=\$\{encodeURIComponent\(nodeId\)\}&includeEdges=maps-to\$\{refParam\}\$\{overlayParam\}`\)/)
+      assert.match(app, /fetch\(`\/api\/cluster\?nodeId=\$\{encodeURIComponent\(nodeId\)\}&includeEdges=maps-to,reads\$\{refParam\}\$\{overlayParam\}`\)/)
     })
 
     it('app: SchemaCard receives allNodes including includedNodes', () => {
@@ -895,7 +895,7 @@ describe('web server', () => {
 
     it('app: anchorIdForNode enables scroll-to navigation within the page', () => {
       assert.match(app, /function anchorIdForNode\(nodeId\)/)
-      assert.match(app, /const displayedNodeIds = new Set\(\[\s*root\.id,\s*\.\.\.Array\.from\(displayChildren\.values\(\)\)\.reduce\(\(all, group\) => all\.concat\(group\), \[\]\)\.map\(child => child\.id\),\s*\]\);/)
+      assert.match(app, /const displayedNodeIds = new Set\(\[\s*root\.id,\s*\.\.\.Array\.from\(displayChildren\.values\(\)\)\.reduce\(\(all, group\) => all\.concat\(group\), \[\]\)\.map\(child => child\.id\),\s*\.\.\.includedNodes\.map\(n => n\.id\),\s*\]\);/)
       assert.match(app, /document\.getElementById\(anchorIdForNode\(targetNodeId\)\)\?\.scrollIntoView\(\{ behavior: 'smooth', block: 'start' }\);/)
       assert.match(app, /anchorIdForNode=\{anchorIdForNode\}/)
     })

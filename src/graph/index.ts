@@ -82,16 +82,33 @@ export function getClusterView(graph: Graph, nodeId: string, includeEdgeTypes: E
 
   const clusterIds = new Set([cluster.root.id, ...cluster.children.map(node => node.id)])
   const requestedTypes = new Set(includeEdgeTypes)
+  // reads edges are directional (consumer → type); only follow outbound so viewing a shared
+  // Schema doesn't pull in every endpoint that references it
+  const inboundTypes = new Set([...requestedTypes].filter(t => t !== 'reads') as EdgeType[])
   const includedNodeIds = new Set<string>()
   const edges = [...cluster.edges]
   const seen = new Set(cluster.edges.map(edge => edge.id))
 
   for (const id of clusterIds) {
     for (const edge of graph.edgesByFrom.get(id) ?? []) {
-      collectIncludedEdge(edge, requestedTypes, clusterIds, includedNodeIds, edges, seen)
+      collectIncludedEdge(edge, requestedTypes, clusterIds, includedNodeIds, edges, seen, graph)
     }
     for (const edge of graph.edgesByTo.get(id) ?? []) {
-      collectIncludedEdge(edge, requestedTypes, clusterIds, includedNodeIds, edges, seen)
+      collectIncludedEdge(edge, inboundTypes, clusterIds, includedNodeIds, edges, seen, graph)
+    }
+  }
+
+  // BFS over included nodes (outbound only) to transitively pull in referenced schemas
+  const processedOutbound = new Set<string>(clusterIds)
+  let prevSize = 0
+  while (includedNodeIds.size > prevSize) {
+    prevSize = includedNodeIds.size
+    for (const id of includedNodeIds) {
+      if (processedOutbound.has(id)) continue
+      processedOutbound.add(id)
+      for (const edge of graph.edgesByFrom.get(id) ?? []) {
+        collectIncludedEdge(edge, requestedTypes, clusterIds, includedNodeIds, edges, seen, graph)
+      }
     }
   }
 
@@ -152,12 +169,19 @@ function collectIncludedEdge(
   includedNodeIds: Set<string>,
   edges: Edge[],
   seen: Set<string>,
+  graph: Graph,
 ): void {
   if (!requestedTypes.has(edge.type) || seen.has(edge.id)) return
   edges.push(edge)
   seen.add(edge.id)
-  if (!clusterIds.has(edge.from)) includedNodeIds.add(edge.from)
-  if (!clusterIds.has(edge.to)) includedNodeIds.add(edge.to)
+  for (const endId of [edge.from, edge.to]) {
+    if (clusterIds.has(endId)) continue
+    includedNodeIds.add(endId)
+    const prefix = `${endId}.`
+    for (const id of graph.nodesById.keys()) {
+      if (id.startsWith(prefix)) includedNodeIds.add(id)
+    }
+  }
 }
 
 const OVERLAY_EXCLUDED: ReadonlySet<GhostState> = new Set(['local', 'shared'])
