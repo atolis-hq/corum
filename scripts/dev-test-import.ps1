@@ -7,12 +7,14 @@
 #   .\scripts\dev-test-import.ps1
 #   .\scripts\dev-test-import.ps1 -Spec path\to\spec.yaml
 #   .\scripts\dev-test-import.ps1 -Spec path\to\spec.yaml -Segment 1
+#   .\scripts\dev-test-import.ps1 -Port 4000
 #   .\scripts\dev-test-import.ps1 -SkipBuild
 #   .\scripts\dev-test-import.ps1 -NoWeb
 
 param(
     [string]$Spec    = "$PSScriptRoot\..\docs\spec-examples\openapi\petstore.openapi.3.0.yaml",
     [int]$Segment    = 0,
+    [int]$Port       = 0,
     [switch]$SkipBuild,
     [switch]$NoWeb
 )
@@ -80,7 +82,8 @@ Write-Host "Graph directory: $TestDir\.corum\graph" -ForegroundColor DarkGray
 if (-not $NoWeb) {
     Write-Host ""
     Write-Host "Starting web UI (Ctrl+C to stop)..." -ForegroundColor Cyan
+    $portFlag = if ($Port -gt 0) { " --port $Port" } else { "" }
     Push-Location $TestDir
-    Invoke-Expression "$Corum web"
+    Invoke-Expression "$Corum web$portFlag"
     Pop-Location
 }
