@@ -12,7 +12,7 @@ Add a `parameters` property to `APIEndpoint` nodes to represent HTTP operation p
 - **Parameters are not independently addressable nodes** — inline map property, not an owned section, no child nodes, no structural edges.
 - **All three locations are modelled**: `path`, `query`, `header`. Path parameters are included because the path string gives only the name, not the type.
 - **Single `parameters` map** keyed by parameter name, with `location` as a field on each entry — mirrors the `responses` map pattern exactly. Parameter names are unique within an operation (OpenAPI requirement), so the name is a safe key.
-- **`$defs`** defines the parameter shape once within the `APIEndpoint.yaml` properties schema; `query` and `headers` reference it via `$ref: '#/$defs/Parameter'`. Avoids duplication, stays standard JSON Schema.
+- **`$defs`** defines the parameter shape once within the `APIEndpoint.yaml` properties schema; the `parameters` property references it via `$ref: '#/$defs/Parameter'`. Avoids duplication, stays standard JSON Schema.
 - **Enum-constrained parameters map to `type: string`** — enum values are a validation concern in the source spec, not the graph model.
 - **`required: boolean`** rather than `nullable: boolean` (as on `Field`) — semantically correct for parameters ("must the caller supply this").
 - **Type vocabulary identical to `Field`**: same scalar type enum, same `cardinality` values.
