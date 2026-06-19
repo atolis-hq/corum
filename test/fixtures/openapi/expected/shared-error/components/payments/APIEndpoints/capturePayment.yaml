@@ -21,4 +21,3 @@ schemas:
       paymentId:
         type: uuid
         nullable: false
-        cardinality: one

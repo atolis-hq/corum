@@ -21,14 +21,11 @@ schemas:
       amount:
         type: decimal
         nullable: false
-        cardinality: one
       orderId:
         type: uuid
         nullable: false
-        cardinality: one
   capturePayment-response-200:
     fields:
       paymentId:
         type: uuid
         nullable: false
-        cardinality: one

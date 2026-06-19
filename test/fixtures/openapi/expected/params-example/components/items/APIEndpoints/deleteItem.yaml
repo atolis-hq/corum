@@ -18,9 +18,7 @@ properties:
       location: path
       type: uuid
       required: true
-      cardinality: one
     X-Api-Key:
       location: header
       type: string
       required: true
-      cardinality: one

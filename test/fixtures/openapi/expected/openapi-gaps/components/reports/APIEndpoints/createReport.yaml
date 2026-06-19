@@ -1,18 +1,15 @@
-id: shared.Schema.ApiError
-template: Schema
+id: reports.APIEndpoint.createReport
+template: APIEndpoint
 schemaVersion: '1'
 metadata:
-  component: shared
+  component: reports
   state: implemented
   stability: unstable
   lastModifiedAt: <date>
   extractedFrom: <spec>
   derivation: determined
   derivedBy: adapter:openapi
-fields:
-  code:
-    type: integer
-    nullable: false
-  message:
-    type: string
-    nullable: false
+properties:
+  method: POST
+  path: /reports
+  request: reports.Schema.ReportSummary

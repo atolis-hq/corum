@@ -21,4 +21,3 @@ schemas:
       name:
         type: string
         nullable: true
-        cardinality: one

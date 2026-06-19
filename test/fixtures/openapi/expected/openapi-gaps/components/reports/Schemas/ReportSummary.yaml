@@ -1,0 +1,26 @@
+id: reports.Schema.ReportSummary
+template: Schema
+schemaVersion: '1'
+metadata:
+  component: reports
+  state: implemented
+  stability: unstable
+  lastModifiedAt: <date>
+  extractedFrom: <spec>
+  derivation: determined
+  derivedBy: adapter:openapi
+fields:
+  groupedMetrics:
+    type: string
+    nullable: true
+    collection: map
+  location:
+    type: string
+    nullable: true
+  perPersonBreakdown:
+    type: string
+    nullable: true
+    collection: map-of-map
+  primaryMetric:
+    type: string
+    nullable: true

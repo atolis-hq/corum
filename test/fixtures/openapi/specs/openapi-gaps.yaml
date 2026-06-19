@@ -1,0 +1,68 @@
+openapi: '3.0.3'
+info:
+  title: OpenAPI Gap Tests
+  version: '1.0'
+# Tests: oneOf → string fallback, double-nested map → map-of-map,
+#        map-of-array → map, anonymous object in shared schema → string.
+
+components:
+  schemas:
+    Metric:
+      type: object
+      properties:
+        value:
+          type: number
+        label:
+          type: string
+    ReportSummary:
+      type: object
+      properties:
+        # gap: double-nested map Map<string, Map<string, integer>>
+        perPersonBreakdown:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties:
+              type: integer
+        # gap: map-of-array Map<string, Metric[]>
+        groupedMetrics:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: '#/components/schemas/Metric'
+        # gap: anonymous inline object in shared schema (no endpoint context)
+        location:
+          type: object
+          properties:
+            lat:
+              type: number
+            lng:
+              type: number
+        # gap: oneOf union field
+        primaryMetric:
+          oneOf:
+            - $ref: '#/components/schemas/Metric'
+            - type: string
+
+paths:
+  /reports:
+    get:
+      operationId: listReports
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportSummary'
+    post:
+      operationId: createReport
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportSummary'
+      responses:
+        '201':
+          description: Created

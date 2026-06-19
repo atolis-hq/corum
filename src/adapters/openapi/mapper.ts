@@ -271,17 +271,15 @@ function extractParameters(
     if (!schema) continue
 
     let type: string
-    let cardinality: 'one' | 'many'
+    let collection: 'one' | 'array' | undefined
 
     if (schema.type === 'array') {
-      cardinality = 'many'
+      collection = 'array'
       const items = schema.items as OpenAPIV3.SchemaObject | undefined
       type = deriveScalarType(items?.type ?? 'string', items?.format, packConfig.scalarTypes) ?? 'string'
     } else if (schema.enum) {
-      cardinality = 'one'
       type = 'string'
     } else {
-      cardinality = 'one'
       const derived = deriveScalarType(schema.type ?? 'string', schema.format, packConfig.scalarTypes)
       if (!derived) {
         diagnostics.push({ severity: 'warning', file: specPath, message: `Unknown type for parameter ${name}: ${schema.type}/${schema.format}, defaulting to string` })
@@ -295,7 +293,7 @@ function extractParameters(
       location: param.in as 'path' | 'query' | 'header',
       type,
       required: param.required ?? false,
-      cardinality,
+      ...(collection ? { collection } : {}),
     }
   }
 
@@ -387,8 +385,7 @@ function createInlineSchema(
 
 function resolveFieldRef(
   schemaName: string,
-  cardinality: 'one' | 'many',
-  keyed: boolean,
+  collection: 'one' | 'array' | 'map' | 'map-of-map',
   required: boolean,
   rootId: string | undefined,
   readsSource: string,
@@ -402,8 +399,8 @@ function resolveFieldRef(
   sourceSchemas: Map<string, OpenAPIV3.SchemaObject>,
   localSchemas: Map<string, string>,
 ): Record<string, unknown> {
-  const extra: Record<string, unknown> = { nullable: !required, cardinality }
-  if (keyed) extra.keyed = true
+  const extra: Record<string, unknown> = { nullable: !required }
+  if (collection !== 'one') extra.collection = collection
 
   const globalId = sharedSchemas.get(schemaName)
   if (globalId) {
@@ -446,7 +443,7 @@ function emitFields(
 
     if (isRefSchema(fieldSchema)) {
       fieldNode.properties = resolveFieldRef(
-        refName(fieldSchema.$ref), 'one', false, required, rootId, readsSource,
+        refName(fieldSchema.$ref), 'one', required, rootId, readsSource,
         fieldSchema as OpenAPIV3.ReferenceObject,
         packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas,
       )
@@ -455,65 +452,68 @@ function emitFields(
 
       if (fs.enum && fs.type !== 'object') {
         const enumRef = sharedSchemas.get(fieldName)
-        fieldNode.properties = { ...(enumRef ? { $ref: enumRef } : { type: 'string' }), nullable: !required, cardinality: 'one' }
+        fieldNode.properties = { ...(enumRef ? { $ref: enumRef } : { type: 'string' }), nullable: !required }
       } else if (fs.type === 'array') {
         const rawItems = fs.items as OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject | undefined
         const items = rawItems ? resolveAllOfRef(rawItems) : undefined
 
         if (!items) {
-          fieldNode.properties = { type: 'string', nullable: !required, cardinality: 'many' }
+          fieldNode.properties = { type: 'string', nullable: !required, collection: 'array' }
         } else if (isRefSchema(items)) {
           fieldNode.properties = resolveFieldRef(
-            refName(items.$ref), 'many', false, required, rootId, readsSource,
+            refName(items.$ref), 'array', required, rootId, readsSource,
             items as OpenAPIV3.ReferenceObject,
             packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas,
           )
         } else {
           const itemType = deriveScalarType((items as OpenAPIV3.SchemaObject).type ?? 'string', (items as OpenAPIV3.SchemaObject).format, packConfig.scalarTypes)
-          fieldNode.properties = { type: itemType ?? 'string', nullable: !required, cardinality: 'many' }
+          fieldNode.properties = { type: itemType ?? 'string', nullable: !required, collection: 'array' }
         }
       } else if (fs.type === 'object' && fs.properties) {
         // Anonymous object with named properties → inline as sibling schema
         if (rootId) {
           const localRef = emitSchemaNode(fs, fieldName, rootId, 'schemas', rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas)
           fieldNode.properties = localRef
-            ? { $ref: localRef, nullable: !required, cardinality: 'one' }
-            : { type: 'string', nullable: !required, cardinality: 'one' }
+            ? { $ref: localRef, nullable: !required }
+            : { type: 'string', nullable: !required }
         } else {
           diagnostics.push({ severity: 'warning', file: specPath, message: `Inline object for field ${fieldId} has no endpoint context; treating as string` })
-          fieldNode.properties = { type: 'string', nullable: !required, cardinality: 'one' }
+          fieldNode.properties = { type: 'string', nullable: !required }
         }
       } else if (fs.type === 'object' && fs.additionalProperties) {
         // Map/dictionary: keyed collection
         const addlRaw = fs.additionalProperties
         if (typeof addlRaw === 'boolean') {
-          fieldNode.properties = { type: 'string', nullable: !required, cardinality: 'many', keyed: true }
+          fieldNode.properties = { type: 'string', nullable: !required, collection: 'map' }
         } else {
           const addlSchema = resolveAllOfRef(addlRaw as OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject)
           if (isRefSchema(addlSchema)) {
             fieldNode.properties = resolveFieldRef(
-              refName(addlSchema.$ref), 'many', true, required, rootId, readsSource,
+              refName(addlSchema.$ref), 'map', required, rootId, readsSource,
               addlSchema as OpenAPIV3.ReferenceObject,
               packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas,
             )
           } else {
             const addlObj = addlSchema as OpenAPIV3.SchemaObject
             if (addlObj.type === 'object') {
-              diagnostics.push({ severity: 'warning', file: specPath, message: `Double-nested map for field ${fieldId}; value type represented as string` })
-              fieldNode.properties = { type: 'string', nullable: !required, cardinality: 'many', keyed: true }
+              diagnostics.push({ severity: 'warning', file: specPath, message: `[WARN] Double-nested map for field ${fieldId}; value type represented as string` })
+              fieldNode.properties = { type: 'string', nullable: !required, collection: 'map-of-map' }
+            } else if (addlObj.type === 'array') {
+              diagnostics.push({ severity: 'warning', file: specPath, message: `[WARN] Map-of-array for field ${fieldId}; value array type not representable, using map` })
+              fieldNode.properties = { type: 'string', nullable: !required, collection: 'map' }
             } else {
               const scalarType = deriveScalarType(addlObj.type ?? 'string', addlObj.format, packConfig.scalarTypes)
-              fieldNode.properties = { type: scalarType ?? 'string', nullable: !required, cardinality: 'many', keyed: true }
+              fieldNode.properties = { type: scalarType ?? 'string', nullable: !required, collection: 'map' }
             }
           }
         }
       } else {
         const scalarType = deriveScalarType(fs.type ?? 'string', fs.format, packConfig.scalarTypes)
         if (scalarType) {
-          fieldNode.properties = { type: scalarType, nullable: !required, cardinality: 'one' }
+          fieldNode.properties = { type: scalarType, nullable: !required }
         } else {
           diagnostics.push({ severity: 'warning', file: specPath, message: `Unknown type for field ${fieldId}: ${fs.type}/${fs.format}` })
-          fieldNode.properties = { type: 'string', nullable: !required, cardinality: 'one' }
+          fieldNode.properties = { type: 'string', nullable: !required }
         }
       }
     }

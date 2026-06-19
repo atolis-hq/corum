@@ -22,16 +22,12 @@ schemas:
       orderId:
         type: uuid
         nullable: false
-        cardinality: one
       customerId:
         type: uuid
         nullable: false
-        cardinality: one
       status:
         $ref: orders.DomainModel.order.enums.order-status
         nullable: false
-        cardinality: one
       totalAmount:
         type: decimal
         nullable: false
-        cardinality: one

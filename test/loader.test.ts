@@ -275,7 +275,7 @@ describe('cluster loader', () => {
     assert.equal(field.component, 'orders')
     assert.equal(field.properties.type, 'uuid')
     assert.equal(field.properties.nullable, false)
-    assert.equal(field.properties.cardinality, 'one')
+    assert.equal(field.properties.collection, undefined)
   })
 })
 

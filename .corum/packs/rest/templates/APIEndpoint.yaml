@@ -72,7 +72,6 @@ properties:
         required:
           - location
           - required
-          - cardinality
         properties:
           location:
             type: string
@@ -93,11 +92,12 @@ properties:
               - time
           required:
             type: boolean
-          cardinality:
+          collection:
             type: string
             enum:
               - one
-              - many
+              - array
+            description: "Collection shape. Defaults to 'one' when absent."
 
     request:
       type: string

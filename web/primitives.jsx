@@ -212,9 +212,8 @@ function refLocalSchemaName(ref) {
 }
 
 function fieldType(properties) {
-  const suffix = properties?.cardinality === 'many'
-    ? (properties?.keyed ? '{}' : '[]')
-    : '';
+  const c = properties?.collection;
+  const suffix = c === 'array' ? '[]' : c === 'map' ? '{}' : c === 'map-of-map' ? '{{}}' : '';
   if (properties?.type) return `${properties.type}${suffix}`;
   const ref = properties?.['$ref'];
   if (ref) return `${refName(ref)}${suffix}`;
@@ -228,7 +227,7 @@ function fieldRequirement(properties) {
 }
 
 function fieldCardinality(properties) {
-  return properties?.cardinality ?? '-';
+  return properties?.collection ?? 'one';
 }
 
 function fieldDetails(properties) {
@@ -336,7 +335,8 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
         const canExpand = localRef !== null && model.schemasByName.has(localRef) && !visited.has(localRef);
         const childSchemaNode = canExpand ? model.schemasByName.get(localRef) : null;
         const childGhostFields = childSchemaNode ? overlayFieldsForSchema(overlayFields, childSchemaNode.id) : [];
-        const childPrefix = `${prefix}${name}${field.properties?.cardinality === 'many' ? '[].' : '.'}`;
+        const c = field.properties?.collection;
+        const childPrefix = `${prefix}${name}${(c === 'array' || c === 'map' || c === 'map-of-map') ? '[].' : '.'}`;
         const nextVisited = new Set(visited);
         nextVisited.add(schemaName);
         const links = edges.filter(e =>
@@ -552,7 +552,7 @@ function SchemaCard({ title, nodes, allNodes, edges, anchorIdForNode, overlayFie
                   <div />
                   <div className="label-xs">Name</div>
                   <div className="label-xs">Type</div>
-                  <div className="label-xs">Cardinality</div>
+                  <div className="label-xs">Collection</div>
                   <div className="label-xs">Req</div>
                   <div className="label-xs">State</div>
                   <div className="label-xs">Links</div>
