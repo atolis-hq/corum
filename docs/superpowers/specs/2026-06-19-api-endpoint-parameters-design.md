@@ -18,6 +18,7 @@ Add a `parameters` property to `APIEndpoint` nodes to represent HTTP operation p
 - **Type vocabulary identical to `Field`**: same scalar type enum, same `cardinality` values.
 - **No server-side transformation** — structured `{ location, type, required, cardinality }` preserved in API and MCP responses. Keeps data editable in a future edit mode and consistent across all consumers.
 - **UI** renders via the existing generic `PropertiesTable` (nested object expansion). No UI changes required.
+- **`$defs` requires no runtime support** — the properties schema is not validated at runtime (no JSON Schema validator in the loader). The only place `template.properties` is touched at runtime is the `allOf` merge for template inheritance in `pack-loader.ts`, which is transparent to `$defs`. The schema is otherwise stored as a blob and served as-is via `get_template` and `/api/templates`.
 
 ## Template: APIEndpoint.yaml
 
