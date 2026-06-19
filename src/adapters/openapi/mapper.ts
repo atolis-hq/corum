@@ -391,6 +391,7 @@ function resolveFieldRef(
   keyed: boolean,
   required: boolean,
   rootId: string | undefined,
+  readsSource: string,
   refSchema: OpenAPIV3.ReferenceObject,
   packConfig: AdapterPackConfig,
   specPath: string,
@@ -406,7 +407,7 @@ function resolveFieldRef(
 
   const globalId = sharedSchemas.get(schemaName)
   if (globalId) {
-    if (rootId) emitReadsEdge(rootId, globalId, edges)
+    emitReadsEdge(readsSource, globalId, edges)
     return { $ref: globalId, ...extra }
   }
 
@@ -434,6 +435,8 @@ function emitFields(
   sourceSchemas: Map<string, OpenAPIV3.SchemaObject>,
   localSchemas: Map<string, string>,
 ): void {
+  // readsSource: when in endpoint context use rootId, otherwise use the schema itself
+  const readsSource = rootId ?? parentId
   for (const [fieldName, rawFieldSchema] of Object.entries(schema.properties ?? {})) {
     const fieldSchema = resolveAllOfRef(rawFieldSchema as OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject)
     const fieldId = deriveNodeId('field', undefined, fieldName, parentId, section)
@@ -443,7 +446,7 @@ function emitFields(
 
     if (isRefSchema(fieldSchema)) {
       fieldNode.properties = resolveFieldRef(
-        refName(fieldSchema.$ref), 'one', false, required, rootId,
+        refName(fieldSchema.$ref), 'one', false, required, rootId, readsSource,
         fieldSchema as OpenAPIV3.ReferenceObject,
         packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas,
       )
@@ -461,7 +464,7 @@ function emitFields(
           fieldNode.properties = { type: 'string', nullable: !required, cardinality: 'many' }
         } else if (isRefSchema(items)) {
           fieldNode.properties = resolveFieldRef(
-            refName(items.$ref), 'many', false, required, rootId,
+            refName(items.$ref), 'many', false, required, rootId, readsSource,
             items as OpenAPIV3.ReferenceObject,
             packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas,
           )
@@ -489,7 +492,7 @@ function emitFields(
           const addlSchema = resolveAllOfRef(addlRaw as OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject)
           if (isRefSchema(addlSchema)) {
             fieldNode.properties = resolveFieldRef(
-              refName(addlSchema.$ref), 'many', true, required, rootId,
+              refName(addlSchema.$ref), 'many', true, required, rootId, readsSource,
               addlSchema as OpenAPIV3.ReferenceObject,
               packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas,
             )

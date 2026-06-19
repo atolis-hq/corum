@@ -82,6 +82,9 @@ export function getClusterView(graph: Graph, nodeId: string, includeEdgeTypes: E
 
   const clusterIds = new Set([cluster.root.id, ...cluster.children.map(node => node.id)])
   const requestedTypes = new Set(includeEdgeTypes)
+  // reads edges are directional (consumer → type); only follow outbound so viewing a shared
+  // Schema doesn't pull in every endpoint that references it
+  const inboundTypes = new Set([...requestedTypes].filter(t => t !== 'reads') as EdgeType[])
   const includedNodeIds = new Set<string>()
   const edges = [...cluster.edges]
   const seen = new Set(cluster.edges.map(edge => edge.id))
@@ -91,7 +94,21 @@ export function getClusterView(graph: Graph, nodeId: string, includeEdgeTypes: E
       collectIncludedEdge(edge, requestedTypes, clusterIds, includedNodeIds, edges, seen, graph)
     }
     for (const edge of graph.edgesByTo.get(id) ?? []) {
-      collectIncludedEdge(edge, requestedTypes, clusterIds, includedNodeIds, edges, seen, graph)
+      collectIncludedEdge(edge, inboundTypes, clusterIds, includedNodeIds, edges, seen, graph)
+    }
+  }
+
+  // BFS over included nodes (outbound only) to transitively pull in referenced schemas
+  const processedOutbound = new Set<string>(clusterIds)
+  let prevSize = 0
+  while (includedNodeIds.size > prevSize) {
+    prevSize = includedNodeIds.size
+    for (const id of includedNodeIds) {
+      if (processedOutbound.has(id)) continue
+      processedOutbound.add(id)
+      for (const edge of graph.edgesByFrom.get(id) ?? []) {
+        collectIncludedEdge(edge, requestedTypes, clusterIds, includedNodeIds, edges, seen, graph)
+      }
     }
   }
 

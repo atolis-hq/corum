@@ -197,9 +197,18 @@ function refName(ref) {
 }
 
 function refLocalSchemaName(ref) {
-  if (typeof ref === 'string') return ref.startsWith('#/schemas/') ? ref.slice(10) : null;
-  if (ref && typeof ref === 'object' && 'display' in ref) return ref.display;
-  return null;
+  if (typeof ref !== 'string') {
+    if (ref && typeof ref === 'object' && 'display' in ref) {
+      const d = String(ref.display);
+      const dot = d.lastIndexOf('.');
+      return dot >= 0 ? d.slice(dot + 1) : d;
+    }
+    return null;
+  }
+  if (ref.startsWith('#/schemas/')) return ref.slice(10);
+  // Global node ID (e.g. "component.Schema.TypeName") — local name is the final segment
+  const lastDot = ref.lastIndexOf('.');
+  return lastDot >= 0 ? ref.slice(lastDot + 1) : null;
 }
 
 function fieldType(properties) {
@@ -255,7 +264,11 @@ function enumValueEnumName(nodeId) {
   const valueMarker = '.values.';
   const enumIdx = nodeId.indexOf(enumMarker);
   const valueIdx = nodeId.indexOf(valueMarker);
-  if (enumIdx < 0 || valueIdx < 0) return null;
+  if (valueIdx < 0) return null;
+  if (enumIdx < 0) {
+    // Standalone EnumDefinition node: e.g. component.EnumDefinition.Name.values.X → 'Name'
+    return nodeId.slice(0, valueIdx).split('.').pop() ?? null;
+  }
   return nodeId.slice(enumIdx + enumMarker.length, valueIdx);
 }
 
@@ -268,7 +281,11 @@ function enumValueDescription(node) {
 }
 
 function buildSchemaModel(schemaNodes, allNodes) {
-  const schemasByName = new Map(schemaNodes.map(node => [localSchemaName(node.id), node]));
+  // Include all Schema nodes from allNodes so canExpand works for included/referenced schemas
+  const allSchemaNodes = (allNodes ?? []).filter(n => n.template === 'Schema');
+  const schemasByName = new Map(allSchemaNodes.map(node => [localSchemaName(node.id), node]));
+  // Ensure the primary schemaNodes are always present (they may not be in allNodes)
+  for (const node of schemaNodes) schemasByName.set(localSchemaName(node.id), node);
   const fieldsBySchema = new Map();
   const referencedSchemas = new Set();
 
