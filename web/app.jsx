@@ -46,7 +46,7 @@ function TopBar() {
   );
 }
 
-function NavRail({ activeSection, onSection }) {
+function NavRail({ activeSection, onSection, debugMode, onDebugMode }) {
   const items = [
     { id: 'dashboard', icon: 'grip', label: 'Dashboard' },
     { id: 'components', icon: 'circle-nodes', label: 'Models' },
@@ -66,6 +66,19 @@ function NavRail({ activeSection, onSection }) {
           <span>{item.label}</span>
         </button>
       ))}
+      <button
+        className="nav-rail-item"
+        onClick={onDebugMode}
+        title="Debug mode: show fully qualified names"
+        type="button"
+        style={{
+          marginTop: 'auto',
+          ...(debugMode ? { background: 'var(--paper-3)', color: 'var(--ink)', borderColor: 'var(--rule-2)' } : {}),
+        }}
+      >
+        <Icon name="code" size={16} />
+        <span>Debug</span>
+      </button>
     </div>
   );
 }
@@ -364,7 +377,7 @@ function ComponentsPage() {
   return <div className="content"><h1>Components</h1></div>;
 }
 
-function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, overlayRefs }) {
+function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, overlayRefs, compact = true }) {
   const [cluster, setCluster] = useState(null);
   const [error, setError] = useState(null);
 
@@ -470,6 +483,7 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
             anchorIdForNode={anchorIdForNode}
             overlayFields={cluster.overlay ? cluster.overlay.fields : null}
             overlayRefs={cluster.overlay ? cluster.overlay.overlayRefs : null}
+            compact={compact}
           />
         ))}
       {includedSchemaNodes.length > 0 && (
@@ -481,6 +495,7 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
           edges={edges}
           anchorIdForNode={anchorIdForNode}
           isShared={true}
+          compact={compact}
         />
       )}
       {includedEnumNodes.length > 0 && (
@@ -492,6 +507,7 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
           edges={edges}
           anchorIdForNode={anchorIdForNode}
           isShared={true}
+          compact={compact}
         />
       )}
     </div>
@@ -525,6 +541,17 @@ function App() {
   const [overlayRefs, setOverlayRefs] = useState([]);
   const [overlayMode, setOverlayMode] = useState('single');
   const [overlayIndicatorIds, setOverlayIndicatorIds] = useState(new Set());
+  const [debugMode, setDebugMode] = useState(() => {
+    try { return localStorage.getItem('corum:debugMode') === 'true'; } catch { return false; }
+  });
+
+  function handleDebugMode() {
+    setDebugMode(prev => {
+      const next = !prev;
+      try { localStorage.setItem('corum:debugMode', String(next)); } catch {}
+      return next;
+    });
+  }
 
   const refreshGraphData = useCallback((targetViewingRef = viewingRef) => {
     setError(null);
@@ -648,6 +675,7 @@ function App() {
         refreshToken={refreshToken}
         viewingRef={viewingRef}
         overlayRefs={activeOverlayRefs}
+        compact={!debugMode}
       />
     );
   } else {
@@ -678,7 +706,7 @@ function App() {
                     />
                   )}
       <div className="main">
-        <NavRail activeSection={activeSection} onSection={handleSection} />
+        <NavRail activeSection={activeSection} onSection={handleSection} debugMode={debugMode} onDebugMode={handleDebugMode} />
         {showTree && !loading && !error && (
           <NavTree
             navTree={navTree}
