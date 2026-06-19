@@ -336,7 +336,7 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
         const childSchemaNode = canExpand ? model.schemasByName.get(localRef) : null;
         const childGhostFields = childSchemaNode ? overlayFieldsForSchema(overlayFields, childSchemaNode.id) : [];
         const c = field.properties?.collection;
-        const childPrefix = `${prefix}${name}${(c === 'array' || c === 'map' || c === 'map-of-map' || c === 'map-of-array') ? '[].' : '.'}`;
+        const childPrefix = `${prefix}${name}${c === 'map-of-map' || c === 'map-of-array' ? '[][].' : c === 'array' || c === 'map' ? '[].' : '.'}`;
         const nextVisited = new Set(visited);
         nextVisited.add(schemaName);
         const links = edges.filter(e =>
