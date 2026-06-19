@@ -21,14 +21,11 @@ schemas:
       customerId:
         type: uuid
         nullable: true
-        cardinality: one
   OrderSummary:
     fields:
       orderId:
         type: uuid
         nullable: false
-        cardinality: one
       status:
         $ref: orders.EnumDefinition.OrderStatus
         nullable: false
-        cardinality: one

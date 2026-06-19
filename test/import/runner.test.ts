@@ -236,6 +236,17 @@ describe('import runner — params-example.yaml', () => {
   })
 })
 
+describe('import runner — openapi-gaps.yaml', () => {
+  it('maps map-of-array to collection:map-of-array and documents fallback for oneOf, double-nested map, and inline object in shared schema', async () => {
+    const { graphDir, cleanup } = await runAgainstFixture('openapi-gaps.yaml')
+    try {
+      assertMatchesExpected(graphDir, 'openapi-gaps')
+    } finally {
+      cleanup()
+    }
+  })
+})
+
 describe('import runner — existing tests unaffected', () => {
   it('existing fixture graph still loads with expected node count', async () => {
     const graph = await loadGraph({ graphPath: fixtureGraphDir })

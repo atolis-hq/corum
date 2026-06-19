@@ -95,7 +95,7 @@ It is deliberately narrow:
 - A `Schema` node does not carry arbitrary inline properties describing nested structure
 - All actual properties of the shape are represented as owned `Field` nodes
 - Nested object structure is represented by a `Field.fieldType` reference to another `Schema`, `ValueObject`, `DomainModel`, or other valid structured node type
-- Collections are represented through `Field.cardinality`, not through inline array schemas
+- Collections are represented through `Field.collection`, not through inline array schemas
 
 This means the graph models object structure through nodes and edges, not through embedded documents.
 
@@ -200,7 +200,7 @@ request:
       name: customerId
       fieldType: uuid
       nullable: false
-      cardinality: one
+
 
 responses:
   "201":
@@ -211,7 +211,7 @@ responses:
         name: orderId
         fieldType: uuid
         nullable: false
-        cardinality: one
+  
 ```
 
 The request and response objects in the file are serialised forms of owned `Schema` nodes. Their fields are owned `Field` nodes and become first-class runtime nodes when the cluster is loaded.
@@ -265,6 +265,16 @@ From this ADR, the linter and runtime should converge toward the following rules
 - Field mappings and lineage operate over those `Field` node IDs exactly as they do elsewhere
 
 Exact enforcement details remain the responsibility of ADR-006 and implementation work.
+
+---
+
+## Amendment: 2026-06-19 — update `cardinality` references to `collection`
+
+**Changed:** All references to `Field.cardinality` in this document are updated to `Field.collection`. The YAML examples previously included `cardinality: one` on field entries.
+
+**Reason:** See ADR-003b amendment (2026-06-19). The `cardinality` property no longer exists. It is replaced by the optional `collection` property, absent by default (meaning single value). YAML examples are corrected to omit `collection` on single-value fields, which is now the idiomatic representation.
+
+**Prior text amended:** rule text and YAML examples above now reflect `collection` and omit the property entirely for the single-value (default) case.
 
 ---
 

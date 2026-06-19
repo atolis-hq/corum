@@ -1,8 +1,8 @@
-id: shared.Schema.ApiError
+id: reports.Schema.Metric
 template: Schema
 schemaVersion: '1'
 metadata:
-  component: shared
+  component: reports
   state: implemented
   stability: unstable
   lastModifiedAt: <date>
@@ -10,9 +10,9 @@ metadata:
   derivation: determined
   derivedBy: adapter:openapi
 fields:
-  code:
-    type: integer
-    nullable: false
-  message:
+  label:
     type: string
-    nullable: false
+    nullable: true
+  value:
+    type: decimal
+    nullable: true

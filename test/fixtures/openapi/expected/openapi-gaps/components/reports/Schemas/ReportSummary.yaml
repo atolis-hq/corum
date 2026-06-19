@@ -1,0 +1,42 @@
+id: reports.Schema.ReportSummary
+template: Schema
+schemaVersion: '1'
+metadata:
+  component: reports
+  state: implemented
+  stability: unstable
+  lastModifiedAt: <date>
+  extractedFrom: <spec>
+  derivation: determined
+  derivedBy: adapter:openapi
+fields:
+  groupedMetrics:
+    $ref: reports.Schema.Metric
+    nullable: true
+    collection: map-of-array
+  labelsByGroup:
+    type: string
+    nullable: true
+    collection: map-of-array
+  location:
+    type: string
+    nullable: true
+  metricList:
+    $ref: reports.Schema.Metric
+    nullable: true
+    collection: array
+  metricsByCategory:
+    $ref: reports.Schema.Metric
+    nullable: true
+    collection: map
+  nestedMetrics:
+    $ref: reports.Schema.Metric
+    nullable: true
+    collection: map-of-map
+  perPersonBreakdown:
+    type: integer
+    nullable: true
+    collection: map-of-map
+  primaryMetric:
+    type: string
+    nullable: true

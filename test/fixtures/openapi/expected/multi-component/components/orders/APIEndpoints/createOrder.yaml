@@ -21,10 +21,8 @@ schemas:
       customerId:
         type: uuid
         nullable: false
-        cardinality: one
   createOrder-response-201:
     fields:
       orderId:
         type: uuid
         nullable: false
-        cardinality: one

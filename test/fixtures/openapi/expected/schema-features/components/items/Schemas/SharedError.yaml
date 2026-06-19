@@ -13,8 +13,6 @@ fields:
   code:
     type: integer
     nullable: false
-    cardinality: one
   message:
     type: string
     nullable: false
-    cardinality: one

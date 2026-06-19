@@ -15,16 +15,12 @@ fields:
   type:
     type: string
     nullable: false
-    cardinality: one
   title:
     type: string
     nullable: false
-    cardinality: one
   status:
     type: integer
     nullable: false
-    cardinality: one
   detail:
     type: string
     nullable: true
-    cardinality: one

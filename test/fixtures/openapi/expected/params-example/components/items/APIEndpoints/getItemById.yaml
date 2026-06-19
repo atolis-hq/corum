@@ -18,4 +18,3 @@ properties:
       location: path
       type: uuid
       required: true
-      cardinality: one

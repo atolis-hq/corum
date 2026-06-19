@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test'
+﻿import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { deriveComponent, deriveScalarType, isRefSchema, deriveNodeId, mapDocument } from '../../../src/adapters/openapi/mapper.js'
 import type { OpenAPIV3 } from 'openapi-types'
@@ -112,7 +112,7 @@ function makeDoc(paths: Record<string, OpenAPIV3.PathItemObject>): OpenAPIV3.Doc
   return { openapi: '3.0.0', info: { title: 'Test', version: '1.0' }, paths }
 }
 
-describe('mapDocument — parameters', () => {
+describe('mapDocument â€” parameters', () => {
   it('maps a query parameter with scalar type', () => {
     const doc = makeDoc({
       '/items/search': {
@@ -127,11 +127,11 @@ describe('mapDocument — parameters', () => {
     const endpoint = nodes.find(n => n.id === 'items.APIEndpoint.searchItems')
     assert.ok(endpoint)
     assert.deepEqual(endpoint.properties.parameters, {
-      limit: { location: 'query', type: 'integer', required: true, cardinality: 'one' },
+      limit: { location: 'query', type: 'integer', required: true },
     })
   })
 
-  it('maps an array query parameter as cardinality many', () => {
+  it('maps an array query parameter as collection array', () => {
     const doc = makeDoc({
       '/items': {
         get: {
@@ -145,7 +145,7 @@ describe('mapDocument — parameters', () => {
     const endpoint = nodes.find(n => n.id === 'items.APIEndpoint.listItems')
     assert.ok(endpoint)
     assert.deepEqual(endpoint.properties.parameters, {
-      tags: { location: 'query', type: 'string', required: false, cardinality: 'many' },
+      tags: { location: 'query', type: 'string', required: false, collection: 'array' },
     })
   })
 
@@ -163,7 +163,7 @@ describe('mapDocument — parameters', () => {
     const endpoint = nodes.find(n => n.id === 'items.APIEndpoint.listItems')
     assert.ok(endpoint)
     assert.deepEqual(endpoint.properties.parameters, {
-      status: { location: 'query', type: 'string', required: false, cardinality: 'one' },
+      status: { location: 'query', type: 'string', required: false },
     })
   })
 
@@ -181,7 +181,7 @@ describe('mapDocument — parameters', () => {
     const endpoint = nodes.find(n => n.id === 'items.APIEndpoint.getItemById')
     assert.ok(endpoint)
     assert.deepEqual(endpoint.properties.parameters, {
-      itemId: { location: 'path', type: 'uuid', required: true, cardinality: 'one' },
+      itemId: { location: 'path', type: 'uuid', required: true },
     })
   })
 
@@ -202,8 +202,8 @@ describe('mapDocument — parameters', () => {
     const endpoint = nodes.find(n => n.id === 'items.APIEndpoint.deleteItem')
     assert.ok(endpoint)
     assert.deepEqual(endpoint.properties.parameters, {
-      itemId: { location: 'path', type: 'uuid', required: true, cardinality: 'one' },
-      'X-Api-Key': { location: 'header', type: 'string', required: true, cardinality: 'one' },
+      itemId: { location: 'path', type: 'uuid', required: true },
+      'X-Api-Key': { location: 'header', type: 'string', required: true },
     })
   })
 
@@ -238,7 +238,7 @@ describe('mapDocument — parameters', () => {
     const endpoint = nodes.find(n => n.id === 'items.APIEndpoint.getItemById')
     assert.ok(endpoint)
     assert.deepEqual(endpoint.properties.parameters, {
-      itemId: { location: 'path', type: 'uuid', required: true, cardinality: 'one' },
+      itemId: { location: 'path', type: 'uuid', required: true },
     })
   })
 

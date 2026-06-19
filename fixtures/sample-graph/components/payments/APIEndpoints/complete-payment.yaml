@@ -24,20 +24,15 @@ schemas:
       id:
         type: uuid
         nullable: false
-        cardinality: one
       orderId:
         type: uuid
         nullable: false
-        cardinality: one
       amount:
         type: decimal
         nullable: false
-        cardinality: one
       status:
         $ref: payments.DomainModel.payment.enums.payment-status
         nullable: false
-        cardinality: one
       capturedAt:
         type: datetime
         nullable: false
-        cardinality: one

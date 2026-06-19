@@ -21,4 +21,3 @@ schemas:
       id:
         type: uuid
         nullable: false
-        cardinality: one

@@ -18,14 +18,12 @@ properties:
       location: query
       type: integer
       required: true
-      cardinality: one
     tags:
       location: query
       type: string
       required: false
-      cardinality: many
+      collection: array
     status:
       location: query
       type: string
       required: false
-      cardinality: one

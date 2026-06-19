@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test'
+﻿import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { diffNodes } from '../../src/reconcile/index.js'
 import type { Node } from '../../src/schema/index.js'
@@ -79,7 +79,7 @@ describe('diffNodes', () => {
     assert.equal(toUpdate[0].derivation, 'determined')
   })
 
-  it('for determined nodes, incoming properties replace current — non-human current-only props are dropped', () => {
+  it('for determined nodes, incoming properties replace current â€” non-human current-only props are dropped', () => {
     const original = makeNode('orders.APIEndpoint.create', { properties: { method: 'GET', displayName: 'Create Order' } })
     const incoming = makeNode('orders.APIEndpoint.create', { properties: { method: 'POST' } })
     const existing = new Map([[original.id, original]])
@@ -89,10 +89,10 @@ describe('diffNodes', () => {
   })
 
   it('for determined nodes, parameters property is updated on re-import', () => {
-    const oldParams = { status: { location: 'query', type: 'string', required: false, cardinality: 'one' } }
+    const oldParams = { status: { location: 'query', type: 'string', required: false } }
     const newParams = {
-      status: { location: 'query', type: 'string', required: false, cardinality: 'one' },
-      limit: { location: 'query', type: 'integer', required: true, cardinality: 'one' },
+      status: { location: 'query', type: 'string', required: false },
+      limit: { location: 'query', type: 'integer', required: true },
     }
     const original = makeNode('items.APIEndpoint.searchItems', { properties: { method: 'GET', parameters: oldParams } })
     const incoming = makeNode('items.APIEndpoint.searchItems', { properties: { method: 'GET', parameters: newParams } })
