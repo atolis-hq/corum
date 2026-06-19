@@ -1,0 +1,26 @@
+id: items.APIEndpoint.deleteItem
+template: APIEndpoint
+schemaVersion: '1'
+metadata:
+  component: items
+  state: implemented
+  stability: unstable
+  lastModifiedAt: <date>
+  extractedFrom: <spec>
+  derivation: determined
+  derivedBy: adapter:openapi
+properties:
+  method: DELETE
+  path: /items/{itemId}
+  description: Delete item
+  parameters:
+    itemId:
+      location: path
+      type: uuid
+      required: true
+      cardinality: one
+    X-Api-Key:
+      location: header
+      type: string
+      required: true
+      cardinality: one

@@ -44,6 +44,7 @@ async function runAgainstFixture(specFile: string): Promise<{ graphDir: string; 
 
 function normalizeYaml(content: string): string {
   return content
+    .replace(/\r\n/g, '\n')
     .replace(/lastModifiedAt: .+/g, 'lastModifiedAt: <date>')
     .replace(/extractedFrom: .+/g, 'extractedFrom: <spec>')
 }
@@ -209,6 +210,17 @@ describe('import runner — invalid spec', () => {
       assert.equal(graph.nodesById.size, originalGraph.nodesById.size)
     } finally {
       cleanupInvalid()
+    }
+  })
+})
+
+describe('import runner — params-example.yaml', () => {
+  it('maps path, query, and header parameters into endpoint properties', async () => {
+    const { graphDir, cleanup } = await runAgainstFixture('params-example.yaml')
+    try {
+      assertMatchesExpected(graphDir, 'params-example')
+    } finally {
+      cleanup()
     }
   })
 })

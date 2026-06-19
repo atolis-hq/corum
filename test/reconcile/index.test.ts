@@ -79,12 +79,26 @@ describe('diffNodes', () => {
     assert.equal(toUpdate[0].derivation, 'determined')
   })
 
-  it('preserves unknown/custom properties on update — only adapter-owned keys are overwritten', () => {
+  it('for determined nodes, incoming properties replace current — non-human current-only props are dropped', () => {
     const original = makeNode('orders.APIEndpoint.create', { properties: { method: 'GET', displayName: 'Create Order' } })
     const incoming = makeNode('orders.APIEndpoint.create', { properties: { method: 'POST' } })
     const existing = new Map([[original.id, original]])
     const { toUpdate } = diffNodes([incoming], existing, './specs/orders.yaml')
     assert.equal(toUpdate[0].properties.method, 'POST')
-    assert.equal(toUpdate[0].properties.displayName, 'Create Order')
+    assert.equal(toUpdate[0].properties.displayName, undefined)
+  })
+
+  it('for determined nodes, parameters property is updated on re-import', () => {
+    const oldParams = { status: { location: 'query', type: 'string', required: false, cardinality: 'one' } }
+    const newParams = {
+      status: { location: 'query', type: 'string', required: false, cardinality: 'one' },
+      limit: { location: 'query', type: 'integer', required: true, cardinality: 'one' },
+    }
+    const original = makeNode('items.APIEndpoint.searchItems', { properties: { method: 'GET', parameters: oldParams } })
+    const incoming = makeNode('items.APIEndpoint.searchItems', { properties: { method: 'GET', parameters: newParams } })
+    const existing = new Map([[original.id, original]])
+    const { toUpdate } = diffNodes([incoming], existing, './specs/orders.yaml')
+    assert.equal(toUpdate.length, 1)
+    assert.deepEqual(toUpdate[0].properties.parameters, newParams)
   })
 })

@@ -120,6 +120,9 @@ export function mapDocument(
       }
       nodes.push(endpointNode)
 
+      const parameters = extractParameters(pathItem, operation, packConfig, entry.spec, diagnostics)
+      if (parameters) endpointNode.properties.parameters = parameters
+
       const requestBody = operation.requestBody as OpenAPIV3.RequestBodyObject | undefined
       if (requestBody?.content) {
         const jsonContent = requestBody.content['application/json']
@@ -143,6 +146,63 @@ export function mapDocument(
   }
 
   return { nodes, edges, diagnostics }
+}
+
+function extractParameters(
+  pathItem: OpenAPIV3.PathItemObject,
+  operation: OpenAPIV3.OperationObject,
+  packConfig: AdapterPackConfig,
+  specPath: string,
+  diagnostics: Diagnostic[],
+): Record<string, unknown> | undefined {
+  const pathItemParams = (pathItem.parameters ?? []) as (OpenAPIV3.ParameterObject | OpenAPIV3.ReferenceObject)[]
+  const operationParams = (operation.parameters ?? []) as (OpenAPIV3.ParameterObject | OpenAPIV3.ReferenceObject)[]
+
+  const merged = new Map<string, OpenAPIV3.ParameterObject>()
+  for (const param of [...pathItemParams, ...operationParams]) {
+    if (isRefSchema(param)) continue
+    const p = param as OpenAPIV3.ParameterObject
+    if (p.in === 'cookie') continue
+    merged.set(p.name, p)
+  }
+
+  if (merged.size === 0) return undefined
+
+  const parameters: Record<string, unknown> = {}
+  for (const [name, param] of merged) {
+    const schema = param.schema as OpenAPIV3.SchemaObject | undefined
+    if (!schema) continue
+
+    let type: string
+    let cardinality: 'one' | 'many'
+
+    if (schema.type === 'array') {
+      cardinality = 'many'
+      const items = schema.items as OpenAPIV3.SchemaObject | undefined
+      type = deriveScalarType(items?.type ?? 'string', items?.format, packConfig.scalarTypes) ?? 'string'
+    } else if (schema.enum) {
+      cardinality = 'one'
+      type = 'string'
+    } else {
+      cardinality = 'one'
+      const derived = deriveScalarType(schema.type ?? 'string', schema.format, packConfig.scalarTypes)
+      if (!derived) {
+        diagnostics.push({ severity: 'warning', file: specPath, message: `Unknown type for parameter ${name}: ${schema.type}/${schema.format}, defaulting to string` })
+        type = 'string'
+      } else {
+        type = derived
+      }
+    }
+
+    parameters[name] = {
+      location: param.in as 'path' | 'query' | 'header',
+      type,
+      required: param.required ?? false,
+      cardinality,
+    }
+  }
+
+  return Object.keys(parameters).length > 0 ? parameters : undefined
 }
 
 function makeNode(template: string, component: string, specPath: string, id: string): Node {

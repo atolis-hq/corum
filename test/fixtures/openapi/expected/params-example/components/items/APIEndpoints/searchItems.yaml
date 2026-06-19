@@ -1,0 +1,31 @@
+id: items.APIEndpoint.searchItems
+template: APIEndpoint
+schemaVersion: '1'
+metadata:
+  component: items
+  state: implemented
+  stability: unstable
+  lastModifiedAt: <date>
+  extractedFrom: <spec>
+  derivation: determined
+  derivedBy: adapter:openapi
+properties:
+  method: GET
+  path: /items/search
+  description: Search items
+  parameters:
+    limit:
+      location: query
+      type: integer
+      required: true
+      cardinality: one
+    tags:
+      location: query
+      type: string
+      required: false
+      cardinality: many
+    status:
+      location: query
+      type: string
+      required: false
+      cardinality: one

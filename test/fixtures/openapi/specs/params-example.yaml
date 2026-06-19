@@ -1,0 +1,60 @@
+openapi: '3.0.3'
+info:
+  title: Items API
+  version: '1.0'
+paths:
+  /items/search:
+    get:
+      operationId: searchItems
+      summary: Search items
+      parameters:
+        - name: limit
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: tags
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - active
+              - inactive
+              - pending
+      responses:
+        '200':
+          description: OK
+  /items/{itemId}:
+    parameters:
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getItemById
+      summary: Get item by ID
+      responses:
+        '200':
+          description: OK
+    delete:
+      operationId: deleteItem
+      summary: Delete item
+      parameters:
+        - name: X-Api-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
