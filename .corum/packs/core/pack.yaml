@@ -2,6 +2,7 @@ name: core
 version: "1.0.0"
 description: "Core templates required by all graphs"
 templates:
+  - _base
   - Schema
   - Field
   - EnumDefinition
