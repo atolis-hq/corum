@@ -354,6 +354,7 @@ function buildSchemaModel(schemaNodes, allNodes) {
 }
 
 function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = new Set(), edges = [], overlayFields, overlayRefs, compact = false }) {
+  const [collapsed, setCollapsed] = React.useState(new Set());
   const fields = model.fieldsBySchema.get(schemaName) ?? [];
   if (fields.length === 0) {
     return (
@@ -388,12 +389,23 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
           && e.type !== 'has-value',
         );
 
+        const isCollapsed = collapsed.has(field.id);
         const typeDisplay = fieldType(field.properties, compact);
         const typeFull = compact ? fieldType(field.properties, false) : null;
         return (
           <React.Fragment key={field.id}>
             <div className={`field-row${depth > 0 ? ' nested' : ''}`} style={{ '--field-depth': depth }}>
-              <div className="gutter">{canExpand && <Icon name="caret-down" size={11} />}</div>
+              <div
+                className="gutter"
+                style={canExpand ? { cursor: 'pointer' } : undefined}
+                onClick={canExpand ? () => setCollapsed(prev => {
+                  const next = new Set(prev);
+                  next.has(field.id) ? next.delete(field.id) : next.add(field.id);
+                  return next;
+                }) : undefined}
+              >
+                {canExpand && <Icon name={isCollapsed ? 'caret-right' : 'caret-down'} size={11} />}
+              </div>
               <div className="name">{compact ? name : `${prefix}${name}`}</div>
               <div className="type" title={typeFull !== typeDisplay ? typeFull : undefined}>{typeDisplay}</div>
               <div className="cardinality">{fieldCardinality(field.properties)}</div>
@@ -419,7 +431,7 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
                   : fieldDetails(field.properties, compact)}
               </div>
             </div>
-            {canExpand && (
+            {canExpand && !isCollapsed && (
               <>
                 <SchemaFieldRows
                   schemaName={localRef}
