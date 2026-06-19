@@ -6,7 +6,6 @@ export interface DiffResult {
   toRemove: Node[]
 }
 
-const ADAPTER_OWNED = new Set(['method', 'path', 'operationId', 'type', 'nullable', 'cardinality', '$ref'])
 const HUMAN_OWNED = new Set(['state', 'stability', 'notes'])
 
 export function diffNodes(
@@ -27,7 +26,7 @@ export function diffNodes(
 
     const merged: Node = {
       ...current,
-      properties: mergeProperties(current.properties, node.properties),
+      properties: mergeProperties(current.properties, node.properties, node.derivation),
       extractedFrom: node.extractedFrom,
       derivation: node.derivation,
       derivedBy: node.derivedBy,
@@ -54,14 +53,15 @@ export function diffNodes(
 function mergeProperties(
   current: Record<string, unknown>,
   incoming: Record<string, unknown>,
+  derivation: string | undefined,
 ): Record<string, unknown> {
-  const merged = { ...current }
-  for (const [key, value] of Object.entries(incoming)) {
-    if (ADAPTER_OWNED.has(key)) {
-      merged[key] = value
-    }
+  if (derivation === 'determined') {
+    const humanValues = Object.fromEntries(
+      Object.entries(current).filter(([k]) => HUMAN_OWNED.has(k)),
+    )
+    return { ...incoming, ...humanValues }
   }
-  return merged
+  return { ...current, ...incoming }
 }
 
 function nodesEqual(a: Node, b: Node): boolean {
