@@ -25,16 +25,12 @@ The `title` attribute is set on every shortened element so the full qualified ID
 
 ### Debug mode
 
-A toggle button lives in the **bottom of the nav rail** (low-traffic, but findable). State is persisted in `localStorage` under the key `corum:debugMode`. A subtle visual indicator (the button stays highlighted) shows debug mode is active.
+A toggle button lives at the **bottom of the left nav rail** (below the Dashboard/Models buttons). This is where a settings menu will eventually live; the debug toggle is a natural placeholder for it. State is persisted in `localStorage` under the key `corum:debugMode`. A subtle visual indicator (the button stays highlighted) shows debug mode is active.
 
 When active:
 
 - All qualified names render in full (the compact truncation is skipped)
-- A **copy-to-clipboard button** appears next to:
-  - The node page `h1` (copies `root.id`)
-  - Each schema section header (copies `schema.id`)
-  - Each enum section header (copies `enumNode.id`)
-- Copy button uses `navigator.clipboard.writeText`. After copy, the button shows a brief checkmark (e.g. 1.5 s) then resets.
+- Full node IDs are visible as plain selectable text — no copy button needed
 
 ### What does not change
 
@@ -47,11 +43,10 @@ When active:
 
 - A `useDebugMode()` hook (or a simple `useState` + `localStorage` read) at the `App` level, passed down via props or a React context.
 - `refName()` and `fieldType()` gain a `compact` boolean parameter (or the debug flag is threaded through). When `compact = true`, extract the final segment from a qualified ref string the same way `refLocalSchemaName` does.
-- The copy button is a small inline component: `<CopyButton value={nodeId} />` — renders an icon, handles click, manages the transient checkmark state locally.
-- The nav rail toggle button sits below the existing nav items, visually separated.
+- The nav rail toggle button sits below the existing nav items, visually separated (bottom of `NavRail`).
 
 ## Out of scope
 
 - Keyboard shortcut for debug toggle (can be added later)
-- Showing field-level copy buttons (schema/cluster ID is sufficient to locate a field in the source files)
+- Copy buttons — selectable text in debug mode is sufficient
 - Any change to the MCP serialisation layer — this is purely a display concern
