@@ -33,6 +33,39 @@ properties:
     - method
     - path
     - responses
+  $defs:
+    Parameter:
+      type: object
+      additionalProperties: false
+      required:
+        - location
+        - required
+        - cardinality
+      properties:
+        location:
+          type: string
+          enum:
+            - path
+            - query
+            - header
+        type:
+          type: string
+          enum:
+            - uuid
+            - string
+            - integer
+            - decimal
+            - boolean
+            - datetime
+            - date
+            - time
+        required:
+          type: boolean
+        cardinality:
+          type: string
+          enum:
+            - one
+            - many
   properties:
 
     method:
@@ -59,6 +92,15 @@ properties:
     description:
       type: string
       description: "Human-readable summary of what this operation does"
+
+    parameters:
+      type: object
+      description: |
+        Map of parameter name to parameter definition. Covers path, query,
+        and header parameters. Location (path/query/header) is declared on
+        each entry. Cookie parameters are not modelled.
+      additionalProperties:
+        $ref: '#/$defs/Parameter'
 
     request:
       type: string
