@@ -56,7 +56,8 @@ properties:
         - array
         - map
         - map-of-map
-      description: "Collection shape. Defaults to 'one' when absent. 'array' = ordered list, 'map' = string-keyed dictionary, 'map-of-map' = nested string-keyed dictionary."
+        - map-of-array
+      description: "Collection shape. Defaults to 'one' when absent. 'array' = ordered list, 'map' = string-keyed dictionary, 'map-of-map' = nested string-keyed dictionary, 'map-of-array' = string-keyed dictionary of arrays (type/$ref describes array element)."
   oneOf:
     - required:
         - type

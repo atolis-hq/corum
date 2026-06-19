@@ -40,19 +40,22 @@ field:
       type: integer
 ```
 
-**Current behaviour:** warning emitted, field rendered as
-`collection: map-of-map, type: string` (value type lost).
+**Current behaviour:** field rendered as `collection: map-of-map` with `type`
+or `$ref` resolved from the inner `additionalProperties` value. Scalar inner
+types (e.g. `integer`) and `$ref` inner types are both resolved correctly.
+A warning is only emitted when the inner value is a further-nested object that
+cannot be represented.
 
-**`collection: map-of-map`** was added specifically to represent this shape,
-preserving that the field is a nested map even when the value type cannot be
-named.
+**`collection: map-of-map`** was added to represent this shape; the value type
+is now resolved from the inner `additionalProperties`, consistent with how all
+other collection types carry their element type.
 
 **Fixture:** `test/fixtures/openapi/specs/openapi-gaps.yaml` —
 `perPersonBreakdown` field.
 
 ---
 
-### 3. Map-of-array (`Map<K, V[]>`) — LOW PRIORITY
+### 3. Map-of-array (`Map<K, V[]>`) — ADDRESSED
 
 **OpenAPI:**
 ```yaml
@@ -64,11 +67,12 @@ field:
       $ref: '#/components/schemas/Metric'
 ```
 
-**Current behaviour:** warning emitted, field rendered as
-`collection: map, type: string` (array shape and value type both lost).
+**Current behaviour:** field rendered as `collection: map-of-array` with `$ref`
+(or `type`) pointing to the array element type. No information lost.
 
-**Full support:** would require `collection: map-of-array` and a separate
-ref for the array item type.
+**`collection: map-of-array`** was added to represent this shape. The `type`
+or `$ref` property describes the array element, consistent with how `collection:
+array` works.
 
 **Fixture:** `test/fixtures/openapi/specs/openapi-gaps.yaml` —
 `groupedMetrics` field.
@@ -122,3 +126,4 @@ field on `ReportSummary`.
 | `array`            | Ordered list                     | `type: array, items: ...`                  |
 | `map`              | String-keyed dictionary          | `type: object, additionalProperties: ...`  |
 | `map-of-map`       | Nested string-keyed dictionary   | nested `additionalProperties`              |
+| `map-of-array`     | String-keyed dictionary of arrays | `additionalProperties: {type: array, items: ...}` |

@@ -11,14 +11,30 @@ metadata:
   derivedBy: adapter:openapi
 fields:
   groupedMetrics:
+    $ref: reports.Schema.Metric
+    nullable: true
+    collection: map-of-array
+  labelsByGroup:
     type: string
     nullable: true
-    collection: map
+    collection: map-of-array
   location:
     type: string
     nullable: true
+  metricList:
+    $ref: reports.Schema.Metric
+    nullable: true
+    collection: array
+  metricsByCategory:
+    $ref: reports.Schema.Metric
+    nullable: true
+    collection: map
+  nestedMetrics:
+    $ref: reports.Schema.Metric
+    nullable: true
+    collection: map-of-map
   perPersonBreakdown:
-    type: string
+    type: integer
     nullable: true
     collection: map-of-map
   primaryMetric:

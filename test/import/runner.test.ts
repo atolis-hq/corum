@@ -237,7 +237,7 @@ describe('import runner — params-example.yaml', () => {
 })
 
 describe('import runner — openapi-gaps.yaml', () => {
-  it('documents fallback behaviour for oneOf, double-nested map, map-of-array, and inline object in shared schema', async () => {
+  it('maps map-of-array to collection:map-of-array and documents fallback for oneOf, double-nested map, and inline object in shared schema', async () => {
     const { graphDir, cleanup } = await runAgainstFixture('openapi-gaps.yaml')
     try {
       assertMatchesExpected(graphDir, 'openapi-gaps')

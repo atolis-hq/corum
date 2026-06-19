@@ -24,7 +24,7 @@ components:
             type: object
             additionalProperties:
               type: integer
-        # gap: map-of-array Map<string, Metric[]>
+        # map-of-array: Map<string, Metric[]> — represented as collection: map-of-array, $ref: Metric
         groupedMetrics:
           type: object
           additionalProperties:
@@ -44,6 +44,30 @@ components:
           oneOf:
             - $ref: '#/components/schemas/Metric'
             - type: string
+        # array + $ref item: List<Metric>
+        metricList:
+          type: array
+          items:
+            $ref: '#/components/schemas/Metric'
+        # map + $ref value: Map<string, Metric>
+        metricsByCategory:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Metric'
+        # map-of-map + $ref value: Map<string, Map<string, Metric>>
+        nestedMetrics:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties:
+              $ref: '#/components/schemas/Metric'
+        # map-of-array + scalar item: Map<string, string[]>
+        labelsByGroup:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
 
 paths:
   /reports:

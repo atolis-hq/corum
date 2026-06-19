@@ -385,7 +385,7 @@ function createInlineSchema(
 
 function resolveFieldRef(
   schemaName: string,
-  collection: 'one' | 'array' | 'map' | 'map-of-map',
+  collection: 'one' | 'array' | 'map' | 'map-of-map' | 'map-of-array',
   required: boolean,
   rootId: string | undefined,
   readsSource: string,
@@ -496,11 +496,41 @@ function emitFields(
           } else {
             const addlObj = addlSchema as OpenAPIV3.SchemaObject
             if (addlObj.type === 'object') {
-              diagnostics.push({ severity: 'warning', file: specPath, message: `[WARN] Double-nested map for field ${fieldId}; value type represented as string` })
-              fieldNode.properties = { type: 'string', nullable: !required, collection: 'map-of-map' }
+              const innerAddl = addlObj.additionalProperties
+              if (!innerAddl || typeof innerAddl === 'boolean') {
+                fieldNode.properties = { type: 'string', nullable: !required, collection: 'map-of-map' }
+              } else {
+                const innerSchema = resolveAllOfRef(innerAddl as OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject)
+                if (isRefSchema(innerSchema)) {
+                  fieldNode.properties = resolveFieldRef(
+                    refName(innerSchema.$ref), 'map-of-map', required, rootId, readsSource,
+                    innerSchema as OpenAPIV3.ReferenceObject,
+                    packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas,
+                  )
+                } else {
+                  const inner = innerSchema as OpenAPIV3.SchemaObject
+                  const scalarType = deriveScalarType(inner.type ?? 'string', inner.format, packConfig.scalarTypes)
+                  if (scalarType) {
+                    fieldNode.properties = { type: scalarType, nullable: !required, collection: 'map-of-map' }
+                  } else {
+                    diagnostics.push({ severity: 'warning', file: specPath, message: `[WARN] Double-nested map for field ${fieldId}; inner value type not representable, using string` })
+                    fieldNode.properties = { type: 'string', nullable: !required, collection: 'map-of-map' }
+                  }
+                }
+              }
             } else if (addlObj.type === 'array') {
-              diagnostics.push({ severity: 'warning', file: specPath, message: `[WARN] Map-of-array for field ${fieldId}; value array type not representable, using map` })
-              fieldNode.properties = { type: 'string', nullable: !required, collection: 'map' }
+              const rawItems = addlObj.items as OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject | undefined
+              const items = rawItems ? resolveAllOfRef(rawItems) : undefined
+              if (items && isRefSchema(items)) {
+                fieldNode.properties = resolveFieldRef(
+                  refName(items.$ref), 'map-of-array', required, rootId, readsSource,
+                  items as OpenAPIV3.ReferenceObject,
+                  packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas,
+                )
+              } else {
+                const scalarType = items ? deriveScalarType((items as OpenAPIV3.SchemaObject).type ?? 'string', (items as OpenAPIV3.SchemaObject).format, packConfig.scalarTypes) : undefined
+                fieldNode.properties = { type: scalarType ?? 'string', nullable: !required, collection: 'map-of-array' }
+              }
             } else {
               const scalarType = deriveScalarType(addlObj.type ?? 'string', addlObj.format, packConfig.scalarTypes)
               fieldNode.properties = { type: scalarType ?? 'string', nullable: !required, collection: 'map' }
