@@ -1,6 +1,6 @@
 /* Main app: router, nav shell, data loading, and node pages. */
 
-const { useState, useEffect, useCallback } = React;
+const { useState, useEffect, useCallback, useMemo } = React;
 const {
   navigate,
   BrandMark,
@@ -628,9 +628,11 @@ function App() {
   const activeSection = activeNodeId ? 'components' : (route.pathname.slice(1) || 'dashboard');
   const navTree = buildNavTree(nodes, templates);
   const showTree = activeSection === 'components' || activeNodeId;
-  const activeOverlayRefs = overlayMode === 'single' ? [] :
+  const activeOverlayRefs = useMemo(() =>
+    overlayMode === 'single' ? [] :
     overlayMode === 'consolidated' ? branches.filter(branch => branch.ref !== viewingRef).map(branch => branch.ref) :
-    overlayRefs;
+    overlayRefs,
+  [overlayMode, branches, viewingRef, overlayRefs]);
 
   useEffect(() => {
     setOverlayRefs(prev => prev.filter(ref => ref !== viewingRef && branches.some(branch => branch.ref === ref)));

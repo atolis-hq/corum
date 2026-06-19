@@ -228,7 +228,14 @@ function refName(ref, compact = false) {
     }
     return full;
   }
-  if (ref && typeof ref === 'object' && 'display' in ref) return ref.display;
+  if (ref && typeof ref === 'object' && 'display' in ref) {
+    const display = String(ref.display);
+    if (compact) {
+      const dot = display.lastIndexOf('.');
+      return dot >= 0 ? display.slice(dot + 1) : display;
+    }
+    return display;
+  }
   return String(ref);
 }
 
