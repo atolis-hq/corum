@@ -1,6 +1,9 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { deriveComponent, deriveScalarType, isRefSchema, deriveNodeId } from '../../../src/adapters/openapi/mapper.js'
+import { deriveComponent, deriveScalarType, isRefSchema, deriveNodeId, mapDocument } from '../../../src/adapters/openapi/mapper.js'
+import type { OpenAPIV3 } from 'openapi-types'
+import type { AdapterPackConfig } from '../../../src/adapters/index.js'
+import type { OpenAPIImportEntry } from '../../../src/import/config.js'
 
 describe('deriveComponent', () => {
   it('extracts component from URI by segment index', () => {
@@ -74,5 +77,183 @@ describe('deriveNodeId', () => {
       deriveNodeId('field', undefined, 'customerId', 'orders.APIEndpoint.createOrder.schemas.create-order-request', 'fields'),
       'orders.APIEndpoint.createOrder.schemas.create-order-request.fields.customerId'
     )
+  })
+})
+
+const PACK_CONFIG: AdapterPackConfig = {
+  adapter: 'openapi',
+  version: '1.0',
+  constructs: {
+    operation: { template: 'APIEndpoint' },
+    requestSchema: { template: 'Schema', section: 'schemas' },
+    responseSchema: { template: 'Schema', section: 'schemas' },
+    schemaProperty: { template: 'Field', section: 'fields' },
+    enumDefinition: { template: 'EnumDefinition', section: 'enums' },
+    enumValue: { template: 'EnumValue', section: 'values' },
+  },
+  scalarTypes: {
+    string: 'string',
+    'string/uuid': 'uuid',
+    'string/date': 'date',
+    'string/date-time': 'datetime',
+    integer: 'integer',
+    number: 'decimal',
+    boolean: 'boolean',
+  },
+}
+
+const ENTRY: OpenAPIImportEntry = {
+  adapter: 'openapi',
+  spec: 'test.yaml',
+  componentMapping: { strategy: 'uri-segment', segment: 0 },
+}
+
+function makeDoc(paths: Record<string, OpenAPIV3.PathItemObject>): OpenAPIV3.Document {
+  return { openapi: '3.0.0', info: { title: 'Test', version: '1.0' }, paths }
+}
+
+describe('mapDocument — parameters', () => {
+  it('maps a query parameter with scalar type', () => {
+    const doc = makeDoc({
+      '/items/search': {
+        get: {
+          operationId: 'searchItems',
+          parameters: [{ name: 'limit', in: 'query', required: true, schema: { type: 'integer' } }],
+          responses: { '200': { description: 'OK' } },
+        },
+      },
+    })
+    const { nodes } = mapDocument(doc, ENTRY, PACK_CONFIG)
+    const endpoint = nodes.find(n => n.id === 'items.APIEndpoint.searchItems')
+    assert.ok(endpoint)
+    assert.deepEqual(endpoint.properties.parameters, {
+      limit: { location: 'query', type: 'integer', required: true, cardinality: 'one' },
+    })
+  })
+
+  it('maps an array query parameter as cardinality many', () => {
+    const doc = makeDoc({
+      '/items': {
+        get: {
+          operationId: 'listItems',
+          parameters: [{ name: 'tags', in: 'query', required: false, schema: { type: 'array', items: { type: 'string' } } }],
+          responses: { '200': { description: 'OK' } },
+        },
+      },
+    })
+    const { nodes } = mapDocument(doc, ENTRY, PACK_CONFIG)
+    const endpoint = nodes.find(n => n.id === 'items.APIEndpoint.listItems')
+    assert.ok(endpoint)
+    assert.deepEqual(endpoint.properties.parameters, {
+      tags: { location: 'query', type: 'string', required: false, cardinality: 'many' },
+    })
+  })
+
+  it('maps an enum-constrained query parameter as type string', () => {
+    const doc = makeDoc({
+      '/items': {
+        get: {
+          operationId: 'listItems',
+          parameters: [{ name: 'status', in: 'query', required: false, schema: { type: 'string', enum: ['active', 'inactive'] } }],
+          responses: { '200': { description: 'OK' } },
+        },
+      },
+    })
+    const { nodes } = mapDocument(doc, ENTRY, PACK_CONFIG)
+    const endpoint = nodes.find(n => n.id === 'items.APIEndpoint.listItems')
+    assert.ok(endpoint)
+    assert.deepEqual(endpoint.properties.parameters, {
+      status: { location: 'query', type: 'string', required: false, cardinality: 'one' },
+    })
+  })
+
+  it('maps a path parameter with location path', () => {
+    const doc = makeDoc({
+      '/items/{itemId}': {
+        get: {
+          operationId: 'getItemById',
+          parameters: [{ name: 'itemId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+          responses: { '200': { description: 'OK' } },
+        },
+      },
+    })
+    const { nodes } = mapDocument(doc, ENTRY, PACK_CONFIG)
+    const endpoint = nodes.find(n => n.id === 'items.APIEndpoint.getItemById')
+    assert.ok(endpoint)
+    assert.deepEqual(endpoint.properties.parameters, {
+      itemId: { location: 'path', type: 'uuid', required: true, cardinality: 'one' },
+    })
+  })
+
+  it('maps a header parameter with location header', () => {
+    const doc = makeDoc({
+      '/items/{itemId}': {
+        delete: {
+          operationId: 'deleteItem',
+          parameters: [
+            { name: 'itemId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+            { name: 'X-Api-Key', in: 'header', required: true, schema: { type: 'string' } },
+          ],
+          responses: { '200': { description: 'OK' } },
+        },
+      },
+    })
+    const { nodes } = mapDocument(doc, ENTRY, PACK_CONFIG)
+    const endpoint = nodes.find(n => n.id === 'items.APIEndpoint.deleteItem')
+    assert.ok(endpoint)
+    assert.deepEqual(endpoint.properties.parameters, {
+      itemId: { location: 'path', type: 'uuid', required: true, cardinality: 'one' },
+      'X-Api-Key': { location: 'header', type: 'string', required: true, cardinality: 'one' },
+    })
+  })
+
+  it('skips cookie parameters', () => {
+    const doc = makeDoc({
+      '/items': {
+        get: {
+          operationId: 'listItems',
+          parameters: [{ name: 'session', in: 'cookie', required: false, schema: { type: 'string' } }],
+          responses: { '200': { description: 'OK' } },
+        },
+      },
+    })
+    const { nodes } = mapDocument(doc, ENTRY, PACK_CONFIG)
+    const endpoint = nodes.find(n => n.id === 'items.APIEndpoint.listItems')
+    assert.ok(endpoint)
+    assert.equal(endpoint.properties.parameters, undefined)
+  })
+
+  it('inherits path-item-level parameters, operation-level overrides same name', () => {
+    const doc = makeDoc({
+      '/items/{itemId}': {
+        parameters: [{ name: 'itemId', in: 'path', required: true, schema: { type: 'string' } }],
+        get: {
+          operationId: 'getItemById',
+          parameters: [{ name: 'itemId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+          responses: { '200': { description: 'OK' } },
+        },
+      },
+    })
+    const { nodes } = mapDocument(doc, ENTRY, PACK_CONFIG)
+    const endpoint = nodes.find(n => n.id === 'items.APIEndpoint.getItemById')
+    assert.ok(endpoint)
+    assert.deepEqual(endpoint.properties.parameters, {
+      itemId: { location: 'path', type: 'uuid', required: true, cardinality: 'one' },
+    })
+  })
+
+  it('does not set parameters property when operation has no parameters', () => {
+    const doc = makeDoc({
+      '/items': {
+        post: {
+          operationId: 'createItem',
+          responses: { '201': { description: 'Created' } },
+        },
+      },
+    })
+    const { nodes } = mapDocument(doc, ENTRY, PACK_CONFIG)
+    const endpoint = nodes.find(n => n.id === 'items.APIEndpoint.createItem')
+    assert.ok(endpoint)
+    assert.equal(endpoint.properties.parameters, undefined)
   })
 })
