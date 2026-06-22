@@ -1,0 +1,18 @@
+id: inventory.EnumDefinition.AdjustmentReason
+template: EnumDefinition
+schemaVersion: '1'
+metadata:
+  component: inventory
+  state: implemented
+  stability: unstable
+  lastModifiedAt: <date>
+  extractedFrom: <spec>
+  derivation: determined
+  derivedBy: adapter:asyncapi
+values:
+  damaged:
+    name: damaged
+  recount:
+    name: recount
+  returned:
+    name: returned

@@ -1,0 +1,33 @@
+asyncapi: 3.0.0
+info:
+  title: With Headers
+  version: 1.0.0
+channels:
+  notifications.alert-sent:
+    address: notifications.alert-sent
+    messages:
+      event:
+        name: AlertSent
+        headers:
+          type: object
+          required: [correlationId]
+          properties:
+            correlationId:
+              type: string
+              format: uuid
+            retryCount:
+              type: integer
+        payload:
+          type: object
+          required: [alertId]
+          properties:
+            alertId:
+              type: string
+              format: uuid
+operations:
+  alert-sent:
+    action: receive
+    channel:
+      $ref: '#/channels/notifications.alert-sent'
+    messages:
+      - $ref: '#/channels/notifications.alert-sent/messages/event'

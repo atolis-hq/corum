@@ -1,0 +1,22 @@
+id: inventory.IntegrationEvent.stock-adjusted
+template: IntegrationEvent
+schemaVersion: '1'
+metadata:
+  component: inventory
+  state: implemented
+  stability: unstable
+  lastModifiedAt: <date>
+  extractedFrom: <spec>
+  derivation: determined
+  derivedBy: adapter:asyncapi
+properties:
+  topic: inventory.stock-adjusted
+schemas:
+  stock-adjusted:
+    fields:
+      itemId:
+        type: uuid
+        nullable: false
+      reason:
+        $ref: inventory.EnumDefinition.AdjustmentReason
+        nullable: false

@@ -112,22 +112,47 @@ export function deriveNodeId(
   return `${opts!.parentId}.${opts!.section}.${name}`
 }
 
+// Extract the original component schema name from a resolved schema object.
+// @asyncapi/parser resolves $refs inline but tags each resolved object with
+// x-parser-schema-id equal to the component schema name (non-anonymous schemas
+// have a plain name; anonymous ones get "<anonymous-schema-N>").
+// Falls back to parsing a literal $ref string for test mocks that don't resolve.
+function componentSchemaIdOf(obj: unknown): string | undefined {
+  if (!obj || typeof obj !== 'object') return undefined
+  const o = obj as Record<string, unknown>
+  const xId = o['x-parser-schema-id']
+  if (typeof xId === 'string' && !xId.startsWith('<')) return xId
+  const ref = o['$ref']
+  if (typeof ref === 'string' && ref.startsWith('#/components/schemas/')) return ref.slice('#/components/schemas/'.length)
+  return undefined
+}
+
 export function countMessageSchemaUsage(document: AsyncAPIDocumentInterface): Map<string, number> {
   const rawDoc = document.json() as { components?: { schemas?: Record<string, unknown> } }
-  const schemaNames = Object.keys(rawDoc.components?.schemas ?? {})
+  const componentSchemaNames = new Set(Object.keys(rawDoc.components?.schemas ?? {}))
   const schemaToMessages = new Map<string, Set<string>>()
+
+  function register(schemaName: string, msgName: string) {
+    if (!componentSchemaNames.has(schemaName)) return
+    if (!schemaToMessages.has(schemaName)) schemaToMessages.set(schemaName, new Set())
+    schemaToMessages.get(schemaName)!.add(msgName)
+  }
+
+  function collectRefs(obj: unknown, msgName: string) {
+    if (!obj || typeof obj !== 'object') return
+    const id = componentSchemaIdOf(obj)
+    if (id) register(id, msgName)
+    const o = obj as Record<string, unknown>
+    if (o.properties) for (const v of Object.values(o.properties as Record<string, unknown>)) collectRefs(v, msgName)
+    if (o.items) collectRefs(o.items, msgName)
+  }
 
   for (const operation of document.allOperations()) {
     for (const message of operation.messages().all()) {
       const msgName = message.name() ?? message.id()
       if (!msgName) continue
-      const msgJson = JSON.stringify((message as unknown as { json(): unknown }).json())
-      for (const name of schemaNames) {
-        if (msgJson.includes(`"#/components/schemas/${name}"`)) {
-          if (!schemaToMessages.has(name)) schemaToMessages.set(name, new Set())
-          schemaToMessages.get(name)!.add(msgName)
-        }
-      }
+      const msgJson = (message as unknown as { json(): Record<string, unknown> }).json()
+      if (msgJson.payload) collectRefs(msgJson.payload, msgName)
     }
   }
 
@@ -147,6 +172,21 @@ export function collectSharedSchemaNames(
     if (count >= 2) shared.add(name)
   }
 
+  function schemaReferences(schema: unknown, names: Set<string>): Set<string> {
+    const refs = new Set<string>()
+    function walk(obj: unknown) {
+      if (!obj || typeof obj !== 'object') return
+      const id = componentSchemaIdOf(obj)
+      if (id && names.has(id)) refs.add(id)
+      const o = obj as Record<string, unknown>
+      if (o.properties) for (const v of Object.values(o.properties as Record<string, unknown>)) walk(v)
+      if (o.items) walk(o.items)
+    }
+    walk(schema)
+    return refs
+  }
+
+  const candidateNames = new Set(Object.keys(rawDoc.components?.schemas ?? {}))
   let changed = true
   while (changed) {
     changed = false
@@ -154,7 +194,8 @@ export function collectSharedSchemaNames(
       if (shared.has(candidateName)) continue
       for (const sharedName of shared) {
         const sharedSchema = rawDoc.components?.schemas?.[sharedName]
-        if (JSON.stringify(sharedSchema).includes(`"#/components/schemas/${candidateName}"`)) {
+        const refs = schemaReferences(sharedSchema, candidateNames)
+        if (refs.has(candidateName)) {
           shared.add(candidateName)
           changed = true
           break
@@ -223,17 +264,23 @@ export function mapDocument(
       if (!component) continue
       const msgName = message.name() ?? message.id()
       if (!msgName) continue
-      const msgJson = JSON.stringify((message as unknown as { json(): unknown }).json())
-      for (const schemaName of sharedSchemaNames) {
-        if (msgJson.includes(`"#/components/schemas/${schemaName}"`)) {
-          const existing = schemaComponents.get(schemaName)
-          if (!existing) {
-            schemaComponents.set(schemaName, component)
-          } else if (existing !== component) {
-            schemaComponents.set(schemaName, 'shared')
-          }
+      const msgJson = (message as unknown as { json(): Record<string, unknown> }).json()
+      const resolvedComponent = component
+
+      function walkForComponent(obj: unknown) {
+        if (!obj || typeof obj !== 'object') return
+        const id = componentSchemaIdOf(obj)
+        if (id && sourceSchemas.has(id)) {
+          const existing = schemaComponents.get(id)
+          if (!existing) schemaComponents.set(id, resolvedComponent)
+          else if (existing !== resolvedComponent) schemaComponents.set(id, 'shared')
         }
+        const o = obj as Record<string, unknown>
+        if (o.properties) for (const v of Object.values(o.properties as Record<string, unknown>)) walkForComponent(v)
+        if (o.items) walkForComponent(o.items)
       }
+
+      if (msgJson.payload) walkForComponent(msgJson.payload)
     }
   }
 
@@ -329,9 +376,7 @@ export function mapDocument(
       const rawPayload = msgRaw.payload as Record<string, unknown> | undefined
       if (!rawPayload) continue
 
-      const payloadStr = JSON.stringify(rawPayload)
-      const refMatch = payloadStr.match(/"#\/components\/schemas\/([^"]+)"/)
-      const payloadSchemaName = refMatch?.[1]
+      const payloadSchemaName = componentSchemaIdOf(rawPayload)
 
       if (payloadSchemaName) {
         const globalId = sharedSchemas.get(payloadSchemaName)
@@ -416,12 +461,41 @@ function emitFields(
   const [component] = parentId.split('.')
 
   for (const [fieldName, rawFieldSchema] of Object.entries(schema.properties ?? {})) {
+    // Check if this field's schema is a reference to a named component schema (resolved or literal $ref)
+    const resolvedSchemaId = componentSchemaIdOf(rawFieldSchema)
     const fieldSchema = resolveAllOfRef(rawFieldSchema)
     const fieldId = deriveNodeId('field', component, fieldName, { parentId, section })
     const fieldNode = makeNode(packConfig.constructs['payloadField']?.template ?? 'Field', component, specPath, fieldId)
     const required = Array.isArray(schema.required) && schema.required.includes(fieldName)
 
-    if (isRefSchema(fieldSchema)) {
+    if (resolvedSchemaId && (sharedSchemas.has(resolvedSchemaId) || sourceSchemas.has(resolvedSchemaId))) {
+      // Field points to a known component schema
+      const schemaName = resolvedSchemaId
+      const globalId = sharedSchemas.get(schemaName)
+      if (globalId) {
+        emitReadsEdge(readsSource, globalId, edges)
+        fieldNode.properties = { $ref: globalId, nullable: !required }
+      } else if (localSchemas.has(schemaName)) {
+        fieldNode.properties = { $ref: localSchemas.get(schemaName)!, nullable: !required }
+      } else if (rootId) {
+        const src = sourceSchemas.get(schemaName) as { properties?: Record<string, unknown>; required?: string[] } | undefined
+        if (src) {
+          const inlineId = deriveNodeId('schema', component, schemaName, { parentId: rootId, section: 'schemas' })
+          if (!nodes.some(n => n.id === inlineId)) {
+            nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, specPath, inlineId))
+            edges.push({ id: `${rootId}__has-field__${inlineId}`, from: rootId, to: inlineId, type: 'has-field', state: 'implemented', stability: 'unstable' })
+            const localRef = `#/schemas/${schemaName}`
+            localSchemas.set(schemaName, localRef)
+            emitFields(src, inlineId, 'fields', rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas)
+          }
+          fieldNode.properties = { $ref: localSchemas.get(schemaName) ?? `#/schemas/${schemaName}`, nullable: !required }
+        } else {
+          fieldNode.properties = { $ref: schemaName, nullable: !required }
+        }
+      } else {
+        fieldNode.properties = { $ref: schemaName, nullable: !required }
+      }
+    } else if (isRefSchema(fieldSchema)) {
       const schemaName = refName((fieldSchema as { $ref: string }).$ref)
       const globalId = sharedSchemas.get(schemaName)
       if (globalId) {

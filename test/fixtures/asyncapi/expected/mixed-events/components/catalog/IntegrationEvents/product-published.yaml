@@ -1,0 +1,19 @@
+id: catalog.IntegrationEvent.product-published
+template: IntegrationEvent
+schemaVersion: '1'
+metadata:
+  component: catalog
+  state: implemented
+  stability: unstable
+  lastModifiedAt: <date>
+  extractedFrom: <spec>
+  derivation: determined
+  derivedBy: adapter:asyncapi
+properties:
+  topic: catalog.product-published
+schemas:
+  product-published:
+    fields:
+      productId:
+        type: uuid
+        nullable: false

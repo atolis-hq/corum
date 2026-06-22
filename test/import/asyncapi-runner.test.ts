@@ -8,7 +8,7 @@ import { loadGraph } from '../../src/loader/index.js'
 import { saveGraph } from '../../src/writer/graph-writer.js'
 import { runImport } from '../../src/import/runner.js'
 import { createGraphRuntimeConfig } from '../../src/source/config.js'
-import type { ImportConfig } from '../../src/import/config.js'
+import type { ImportConfig, AsyncAPIImportEntry } from '../../src/import/config.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..', '..', '..')
@@ -66,6 +66,20 @@ function assertMatchesExpected(graphDir: string, goldenSubdir: string): void {
   }
 }
 
+async function runFixture(specFile: string, entry: Omit<AsyncAPIImportEntry, 'spec'>) {
+  const { graphDir, cleanup } = await setupGraphDir()
+  try {
+    const config: ImportConfig = {
+      imports: [{ spec: path.join(specsDir, specFile), ...entry }],
+    }
+    await runImport(config, makeRuntimeConfig(graphDir))
+    return { graphDir, cleanup }
+  } catch (err) {
+    cleanup()
+    throw err
+  }
+}
+
 describe('asyncapi import runner — simple-events.yaml', () => {
   it('output matches golden files', async () => {
     const { graphDir, cleanup } = await setupGraphDir()
@@ -101,6 +115,78 @@ describe('asyncapi import runner — simple-events.yaml', () => {
       await runImport(config, runtimeConfig)
       const after = await loadGraph({ graphPath: graphDir })
       assert.equal(after.nodesById.size, beforeCount)
+    } finally {
+      cleanup()
+    }
+  })
+})
+
+describe('asyncapi import runner — mixed-events.yaml', () => {
+  it('output matches golden files', async () => {
+    const { graphDir, cleanup } = await runFixture('mixed-events.yaml', {
+      adapter: 'asyncapi',
+      componentMapping: { strategy: 'channel-segment', separator: '.', segment: 0 },
+      eventClassification: { from: { strategy: 'tag' }, domainValue: 'domain' },
+    })
+    try {
+      assertMatchesExpected(graphDir, 'mixed-events')
+    } finally {
+      cleanup()
+    }
+  })
+})
+
+describe('asyncapi import runner — with-enums.yaml', () => {
+  it('output matches golden files', async () => {
+    const { graphDir, cleanup } = await runFixture('with-enums.yaml', {
+      adapter: 'asyncapi',
+      componentMapping: { strategy: 'channel-segment', separator: '.', segment: 0 },
+    })
+    try {
+      assertMatchesExpected(graphDir, 'with-enums')
+    } finally {
+      cleanup()
+    }
+  })
+})
+
+describe('asyncapi import runner — shared-payload.yaml', () => {
+  it('output matches golden files', async () => {
+    const { graphDir, cleanup } = await runFixture('shared-payload.yaml', {
+      adapter: 'asyncapi',
+      componentMapping: { strategy: 'channel-segment', separator: '.', segment: 0 },
+    })
+    try {
+      assertMatchesExpected(graphDir, 'shared-payload')
+    } finally {
+      cleanup()
+    }
+  })
+})
+
+describe('asyncapi import runner — with-headers.yaml', () => {
+  it('output matches golden files', async () => {
+    const { graphDir, cleanup } = await runFixture('with-headers.yaml', {
+      adapter: 'asyncapi',
+      componentMapping: { strategy: 'channel-segment', separator: '.', segment: 0 },
+    })
+    try {
+      assertMatchesExpected(graphDir, 'with-headers')
+    } finally {
+      cleanup()
+    }
+  })
+})
+
+describe('asyncapi import runner — message-naming.yaml', () => {
+  it('output matches golden files', async () => {
+    const { graphDir, cleanup } = await runFixture('message-naming.yaml', {
+      adapter: 'asyncapi',
+      componentMapping: { strategy: 'channel-segment', separator: '.', segment: 0 },
+      messageNaming: { strategy: 'name-segment', separator: '.', segment: 0 },
+    })
+    try {
+      assertMatchesExpected(graphDir, 'message-naming')
     } finally {
       cleanup()
     }
