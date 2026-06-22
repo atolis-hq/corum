@@ -411,8 +411,12 @@ export function mapDocument(
 
 function makeNode(template: string, component: string, specPath: string, id: string): Node {
   return {
-    id, template, component,
-    state: 'implemented', stability: 'unstable', schemaVersion: '1',
+    id,
+    template,
+    component,
+    state: 'implemented',
+    stability: 'unstable',
+    schemaVersion: '1',
     lastModifiedAt: new Date().toISOString().split('T')[0],
     extractedFrom: specPath,
     derivation: 'determined',
@@ -443,6 +447,51 @@ function resolveAllOfRef(schema: unknown): unknown {
   return schema
 }
 
+function resolveSchemaRef(
+  schemaName: string,
+  nullable: boolean,
+  collection: 'array' | undefined,
+  readsSource: string,
+  rootId: string | undefined,
+  component: string,
+  packConfig: AdapterPackConfig,
+  specPath: string,
+  nodes: Node[],
+  edges: Edge[],
+  diagnostics: Diagnostic[],
+  sharedSchemas: Map<string, string>,
+  sourceSchemas: Map<string, unknown>,
+  localSchemas: Map<string, string>,
+): Record<string, unknown> {
+  const extra: Record<string, unknown> = { nullable }
+  if (collection) extra.collection = collection
+
+  const globalId = sharedSchemas.get(schemaName)
+  if (globalId) {
+    emitReadsEdge(readsSource, globalId, edges)
+    return { $ref: globalId, ...extra }
+  }
+
+  if (localSchemas.has(schemaName)) return { $ref: localSchemas.get(schemaName)!, ...extra }
+
+  if (rootId) {
+    const src = sourceSchemas.get(schemaName) as { properties?: Record<string, unknown>; required?: string[] } | undefined
+    if (src) {
+      const inlineId = deriveNodeId('schema', component, schemaName, { parentId: rootId, section: 'schemas' })
+      if (!nodes.some(n => n.id === inlineId)) {
+        nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, specPath, inlineId))
+        edges.push({ id: `${rootId}__has-field__${inlineId}`, from: rootId, to: inlineId, type: 'has-field', state: 'implemented', stability: 'unstable' })
+        const localRef = `#/schemas/${schemaName}`
+        localSchemas.set(schemaName, localRef)
+        emitFields(src, inlineId, 'fields', rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas)
+      }
+      return { $ref: localSchemas.get(schemaName) ?? `#/schemas/${schemaName}`, ...extra }
+    }
+  }
+
+  return { $ref: schemaName, ...extra }
+}
+
 function emitFields(
   schema: { properties?: Record<string, unknown>; required?: string[] },
   parentId: string,
@@ -461,68 +510,24 @@ function emitFields(
   const [component] = parentId.split('.')
 
   for (const [fieldName, rawFieldSchema] of Object.entries(schema.properties ?? {})) {
-    // Check if this field's schema is a reference to a named component schema (resolved or literal $ref)
     const resolvedSchemaId = componentSchemaIdOf(rawFieldSchema)
     const fieldSchema = resolveAllOfRef(rawFieldSchema)
     const fieldId = deriveNodeId('field', component, fieldName, { parentId, section })
     const fieldNode = makeNode(packConfig.constructs['payloadField']?.template ?? 'Field', component, specPath, fieldId)
     const required = Array.isArray(schema.required) && schema.required.includes(fieldName)
 
-    if (resolvedSchemaId && (sharedSchemas.has(resolvedSchemaId) || sourceSchemas.has(resolvedSchemaId))) {
-      // Field points to a known component schema
-      const schemaName = resolvedSchemaId
-      const globalId = sharedSchemas.get(schemaName)
-      if (globalId) {
-        emitReadsEdge(readsSource, globalId, edges)
-        fieldNode.properties = { $ref: globalId, nullable: !required }
-      } else if (localSchemas.has(schemaName)) {
-        fieldNode.properties = { $ref: localSchemas.get(schemaName)!, nullable: !required }
-      } else if (rootId) {
-        const src = sourceSchemas.get(schemaName) as { properties?: Record<string, unknown>; required?: string[] } | undefined
-        if (src) {
-          const inlineId = deriveNodeId('schema', component, schemaName, { parentId: rootId, section: 'schemas' })
-          if (!nodes.some(n => n.id === inlineId)) {
-            nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, specPath, inlineId))
-            edges.push({ id: `${rootId}__has-field__${inlineId}`, from: rootId, to: inlineId, type: 'has-field', state: 'implemented', stability: 'unstable' })
-            const localRef = `#/schemas/${schemaName}`
-            localSchemas.set(schemaName, localRef)
-            emitFields(src, inlineId, 'fields', rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas)
-          }
-          fieldNode.properties = { $ref: localSchemas.get(schemaName) ?? `#/schemas/${schemaName}`, nullable: !required }
-        } else {
-          fieldNode.properties = { $ref: schemaName, nullable: !required }
-        }
-      } else {
-        fieldNode.properties = { $ref: schemaName, nullable: !required }
-      }
-    } else if (isRefSchema(fieldSchema)) {
-      const schemaName = refName((fieldSchema as { $ref: string }).$ref)
-      const globalId = sharedSchemas.get(schemaName)
-      if (globalId) {
-        emitReadsEdge(readsSource, globalId, edges)
-        fieldNode.properties = { $ref: globalId, nullable: !required }
-      } else if (localSchemas.has(schemaName)) {
-        fieldNode.properties = { $ref: localSchemas.get(schemaName)!, nullable: !required }
-      } else if (rootId) {
-        const src = sourceSchemas.get(schemaName) as { properties?: Record<string, unknown>; required?: string[] } | undefined
-        if (src) {
-          const inlineId = deriveNodeId('schema', component, schemaName, { parentId: rootId, section: 'schemas' })
-          if (!nodes.some(n => n.id === inlineId)) {
-            nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, specPath, inlineId))
-            edges.push({ id: `${rootId}__has-field__${inlineId}`, from: rootId, to: inlineId, type: 'has-field', state: 'implemented', stability: 'unstable' })
-            const localRef = `#/schemas/${schemaName}`
-            localSchemas.set(schemaName, localRef)
-            emitFields(src, inlineId, 'fields', rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas)
-          }
-          fieldNode.properties = { $ref: localSchemas.get(schemaName) ?? `#/schemas/${schemaName}`, nullable: !required }
-        } else {
-          fieldNode.properties = { $ref: schemaName, nullable: !required }
-        }
-      } else {
-        fieldNode.properties = { $ref: schemaName, nullable: !required }
-      }
+    // Resolve reference: prefer x-parser-schema-id (resolved by @asyncapi/parser), fall back to literal $ref
+    const schemaName = (resolvedSchemaId !== undefined && (sharedSchemas.has(resolvedSchemaId) || sourceSchemas.has(resolvedSchemaId)))
+      ? resolvedSchemaId
+      : (isRefSchema(fieldSchema) ? refName((fieldSchema as { $ref: string }).$ref) : undefined)
+
+    if (schemaName !== undefined) {
+      fieldNode.properties = resolveSchemaRef(
+        schemaName, !required, undefined, readsSource, rootId, component,
+        packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas,
+      )
     } else {
-      const fs = fieldSchema as { type?: string | string[]; format?: string; enum?: unknown[]; items?: unknown; properties?: Record<string, unknown>; additionalProperties?: unknown }
+      const fs = fieldSchema as { type?: string | string[]; format?: string; enum?: unknown[]; items?: unknown; properties?: Record<string, unknown> }
       const rawType = Array.isArray(fs.type) ? (fs.type.find(t => t !== 'null') ?? 'string') : (fs.type ?? 'string')
       const isNullableArray = Array.isArray(fs.type) && fs.type.includes('null')
       const nullable = !required || isNullableArray
@@ -536,31 +541,11 @@ function emitFields(
         if (!items) {
           fieldNode.properties = { type: 'string', nullable, collection: 'array' }
         } else if (isRefSchema(items)) {
-          const sn = refName((items as { $ref: string }).$ref)
-          const gId = sharedSchemas.get(sn)
-          if (gId) {
-            emitReadsEdge(readsSource, gId, edges)
-            fieldNode.properties = { $ref: gId, nullable, collection: 'array' }
-          } else if (localSchemas.has(sn)) {
-            fieldNode.properties = { $ref: localSchemas.get(sn)!, nullable, collection: 'array' }
-          } else if (rootId) {
-            const src = sourceSchemas.get(sn) as { properties?: Record<string, unknown>; required?: string[] } | undefined
-            if (src) {
-              const inlineId = deriveNodeId('schema', component, sn, { parentId: rootId, section: 'schemas' })
-              if (!nodes.some(n => n.id === inlineId)) {
-                nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, specPath, inlineId))
-                edges.push({ id: `${rootId}__has-field__${inlineId}`, from: rootId, to: inlineId, type: 'has-field', state: 'implemented', stability: 'unstable' })
-                const localRef = `#/schemas/${sn}`
-                localSchemas.set(sn, localRef)
-                emitFields(src, inlineId, 'fields', rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas)
-              }
-              fieldNode.properties = { $ref: localSchemas.get(sn) ?? `#/schemas/${sn}`, nullable, collection: 'array' }
-            } else {
-              fieldNode.properties = { type: 'string', nullable, collection: 'array' }
-            }
-          } else {
-            fieldNode.properties = { type: 'string', nullable, collection: 'array' }
-          }
+          fieldNode.properties = resolveSchemaRef(
+            refName((items as { $ref: string }).$ref), nullable, 'array', readsSource, rootId, component,
+            packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas,
+          )
+          if (!fieldNode.properties.$ref) fieldNode.properties = { type: 'string', nullable, collection: 'array' }
         } else {
           const it = items as { type?: string; format?: string }
           fieldNode.properties = { type: deriveScalarType(it.type ?? 'string', it.format, packConfig.scalarTypes) ?? 'string', nullable, collection: 'array' }
