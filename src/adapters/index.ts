@@ -44,3 +44,6 @@ export function getAdapter(adapterId: string): SpecAdapter {
 
 import { OpenAPIAdapter } from './openapi/index.js'
 registerAdapter(new OpenAPIAdapter())
+
+import { AsyncAPIAdapter } from './asyncapi/index.js'
+registerAdapter(new AsyncAPIAdapter())

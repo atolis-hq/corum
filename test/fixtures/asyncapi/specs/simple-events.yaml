@@ -1,0 +1,27 @@
+asyncapi: 3.0.0
+info:
+  title: Simple Events
+  version: 1.0.0
+channels:
+  logistics.shipment-dispatched:
+    address: logistics.shipment-dispatched
+    messages:
+      event:
+        name: ShipmentDispatched
+        payload:
+          type: object
+          required:
+            - shipmentId
+          properties:
+            shipmentId:
+              type: string
+              format: uuid
+            notes:
+              type: string
+operations:
+  shipment-dispatched:
+    action: receive
+    channel:
+      $ref: '#/channels/logistics.shipment-dispatched'
+    messages:
+      - $ref: '#/channels/logistics.shipment-dispatched/messages/event'
