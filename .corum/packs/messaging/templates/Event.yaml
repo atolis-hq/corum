@@ -6,7 +6,6 @@ info:
   description: |
     Abstract base for all event types. Defines the shared payload schema.
     Use DomainEvent for internal facts; IntegrationEvent for cross-service contracts.
-    correlationId is transport-level metadata — model it in headers, not as a payload field.
 
 properties:
   type: object
