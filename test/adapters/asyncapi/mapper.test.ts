@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { extractValue, deriveScalarType, deriveMessageName, classifyEvent, deriveNodeId, toKebabCase } from '../../../src/adapters/asyncapi/mapper.js'
+import { extractValue, deriveScalarType, deriveMessageName, classifyEvent, deriveNodeId, toKebabCase, countMessageSchemaUsage, collectSharedSchemaNames, extractHeaders } from '../../../src/adapters/asyncapi/mapper.js'
 
 const SCALAR_TYPES: Record<string, string> = {
   string: 'string', integer: 'integer', boolean: 'boolean', number: 'decimal',
@@ -218,5 +218,109 @@ describe('deriveNodeId', () => {
       }),
       'orders.IntegrationEvent.order-placed.schemas.order-placed.fields.orderId',
     )
+  })
+})
+
+function makeDoc(schemaNames: string[], messages: Array<{ name: string; payloadRef?: string }>) {
+  const ops = messages.map(m => ({
+    messages: () => ({
+      all: () => [{
+        name: () => m.name,
+        id: () => m.name,
+        json: () => m.payloadRef ? { payload: { $ref: `#/components/schemas/${m.payloadRef}` } } : {},
+      }],
+    }),
+    channels: () => ({ all: () => [{ address: () => 'test.channel' }] }),
+  }))
+  return {
+    allOperations: () => ops,
+    json: () => ({ components: { schemas: Object.fromEntries(schemaNames.map(n => [n, { type: 'object' }])) } }),
+  }
+}
+
+describe('countMessageSchemaUsage', () => {
+  it('counts 1 when one unique message name references a schema', () => {
+    const doc = makeDoc(['Order'], [{ name: 'OrderPlaced', payloadRef: 'Order' }])
+    assert.equal(countMessageSchemaUsage(doc as any).get('Order'), 1)
+  })
+
+  it('counts 1 when two messages with the same name reference the same schema', () => {
+    const doc = makeDoc(['Pet'], [{ name: 'Pet', payloadRef: 'Pet' }, { name: 'Pet', payloadRef: 'Pet' }])
+    assert.equal(countMessageSchemaUsage(doc as any).get('Pet'), 1)
+  })
+
+  it('counts 2 when two differently-named messages reference the same schema', () => {
+    const doc = makeDoc(['Payload'], [{ name: 'EventA', payloadRef: 'Payload' }, { name: 'EventB', payloadRef: 'Payload' }])
+    assert.equal(countMessageSchemaUsage(doc as any).get('Payload'), 2)
+  })
+
+  it('returns undefined for schemas not referenced by any message', () => {
+    const doc = makeDoc(['Unused'], [{ name: 'Event', payloadRef: undefined }])
+    assert.equal(countMessageSchemaUsage(doc as any).get('Unused'), undefined)
+  })
+})
+
+describe('collectSharedSchemaNames', () => {
+  it('marks schemas with count >= 2 as shared', () => {
+    const doc = makeDoc(['Shared', 'Owned'], [])
+    const shared = collectSharedSchemaNames(doc as any, new Map([['Shared', 2], ['Owned', 1]]))
+    assert.equal(shared.has('Shared'), true)
+    assert.equal(shared.has('Owned'), false)
+  })
+
+  it('promotes schemas referenced by shared schemas (BFS closure)', () => {
+    const doc = {
+      allOperations: () => [],
+      json: () => ({
+        components: {
+          schemas: {
+            Shared: { type: 'object', properties: { child: { $ref: '#/components/schemas/Child' } } },
+            Child: { type: 'object' },
+          },
+        },
+      }),
+    }
+    const shared = collectSharedSchemaNames(doc as any, new Map([['Shared', 2]]))
+    assert.equal(shared.has('Shared'), true)
+    assert.equal(shared.has('Child'), true)
+  })
+})
+
+describe('extractHeaders', () => {
+  const ST = { string: 'string', integer: 'integer', 'string/uuid': 'uuid' }
+
+  it('maps flat header properties to Corum header shape', () => {
+    const raw = {
+      type: 'object',
+      properties: { correlationId: { type: 'string', format: 'uuid' }, retryCount: { type: 'integer' } },
+      required: ['correlationId'],
+    }
+    const result = extractHeaders(raw, ST, 'spec.yaml')
+    assert.ok(result)
+    assert.deepEqual(result.headers, {
+      correlationId: { type: 'uuid', required: true },
+      retryCount: { type: 'integer', required: false },
+    })
+    assert.equal(result.diagnostics.length, 0)
+  })
+
+  it('skips nested object headers with a warning', () => {
+    const raw = { type: 'object', properties: { nested: { type: 'object', properties: { x: { type: 'string' } } } } }
+    const result = extractHeaders(raw, ST, 'spec.yaml')
+    assert.ok(result)
+    assert.equal(Object.keys(result.headers).length, 0)
+    assert.equal(result.diagnostics.filter((d: { severity: string }) => d.severity === 'warning').length, 1)
+  })
+
+  it('handles type: [string, null] nullable pattern', () => {
+    const raw = { type: 'object', properties: { name: { type: ['string', 'null'] } } }
+    const result = extractHeaders(raw, ST, 'spec.yaml')
+    assert.ok(result)
+    assert.equal((result.headers.name as any).type, 'string')
+  })
+
+  it('returns null for falsy input', () => {
+    assert.equal(extractHeaders(null, ST, 'spec.yaml'), null)
+    assert.equal(extractHeaders(undefined, ST, 'spec.yaml'), null)
   })
 })

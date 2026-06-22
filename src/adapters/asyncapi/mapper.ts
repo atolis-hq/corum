@@ -112,6 +112,90 @@ export function deriveNodeId(
   return `${opts!.parentId}.${opts!.section}.${name}`
 }
 
+export function countMessageSchemaUsage(document: AsyncAPIDocumentInterface): Map<string, number> {
+  const rawDoc = document.json() as { components?: { schemas?: Record<string, unknown> } }
+  const schemaNames = Object.keys(rawDoc.components?.schemas ?? {})
+  const schemaToMessages = new Map<string, Set<string>>()
+
+  for (const operation of document.allOperations()) {
+    for (const message of operation.messages().all()) {
+      const msgName = message.name() ?? message.id()
+      if (!msgName) continue
+      const msgJson = JSON.stringify((message as unknown as { json(): unknown }).json())
+      for (const name of schemaNames) {
+        if (msgJson.includes(`"#/components/schemas/${name}"`)) {
+          if (!schemaToMessages.has(name)) schemaToMessages.set(name, new Set())
+          schemaToMessages.get(name)!.add(msgName)
+        }
+      }
+    }
+  }
+
+  const counts = new Map<string, number>()
+  for (const [name, names] of schemaToMessages) counts.set(name, names.size)
+  return counts
+}
+
+export function collectSharedSchemaNames(
+  document: AsyncAPIDocumentInterface,
+  counts: Map<string, number>,
+): Set<string> {
+  const rawDoc = document.json() as { components?: { schemas?: Record<string, unknown> } }
+  const shared = new Set<string>()
+
+  for (const [name, count] of counts) {
+    if (count >= 2) shared.add(name)
+  }
+
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const [candidateName] of Object.entries(rawDoc.components?.schemas ?? {})) {
+      if (shared.has(candidateName)) continue
+      for (const sharedName of shared) {
+        const sharedSchema = rawDoc.components?.schemas?.[sharedName]
+        if (JSON.stringify(sharedSchema).includes(`"#/components/schemas/${candidateName}"`)) {
+          shared.add(candidateName)
+          changed = true
+          break
+        }
+      }
+    }
+  }
+  return shared
+}
+
+export function extractHeaders(
+  rawHeaders: unknown,
+  scalarTypes: Record<string, string>,
+  specPath: string,
+): { headers: Record<string, unknown>; diagnostics: Diagnostic[] } | null {
+  if (!rawHeaders || typeof rawHeaders !== 'object') return null
+  const h = rawHeaders as { type?: string; properties?: Record<string, unknown>; required?: string[] }
+  if (!h.properties || Object.keys(h.properties).length === 0) return null
+
+  const headers: Record<string, unknown> = {}
+  const diagnostics: Diagnostic[] = []
+
+  for (const [name, rawDef] of Object.entries(h.properties)) {
+    const def = rawDef as { type?: string | string[]; format?: string; description?: string }
+    const rawType = Array.isArray(def.type) ? (def.type.find(t => t !== 'null') ?? 'string') : (def.type ?? 'string')
+
+    if (rawType === 'object') {
+      diagnostics.push({ severity: 'warning', file: specPath, message: `Header "${name}" is a nested object — skipping` })
+      continue
+    }
+
+    const scalarType = deriveScalarType(rawType, def.format, scalarTypes) ?? 'string'
+    const required = Array.isArray(h.required) && h.required.includes(name)
+    const entry: Record<string, unknown> = { type: scalarType, required }
+    if (def.description) entry.description = def.description
+    headers[name] = entry
+  }
+
+  return { headers, diagnostics }
+}
+
 // Placeholder — completed in Task 7
 export function mapDocument(
   _document: AsyncAPIDocumentInterface,
