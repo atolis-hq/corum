@@ -60,6 +60,58 @@ export function deriveScalarType(
   return scalarTypes[type]
 }
 
+export function toKebabCase(str: string): string {
+  return str
+    .replace(/([A-Z])/g, '-$1')
+    .toLowerCase()
+    .replace(/^-/, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
+export function deriveMessageName(
+  message: MessageInterface,
+  namingCtx: { strategy: FieldStrategy; operation: OperationInterface } | undefined,
+  _specPath: string,
+): { name: string } | null {
+  const rawName = message.name()
+  const rawId = message.id()
+
+  if (!rawName && (!rawId || rawId.startsWith('<anonymous'))) return null
+  if (!rawName && !namingCtx) return null
+
+  const extracted = namingCtx
+    ? extractValue(namingCtx.strategy, namingCtx.operation, message)
+    : rawName
+
+  if (!extracted) return null
+  return { name: toKebabCase(extracted) }
+}
+
+export function classifyEvent(
+  classification: AsyncAPIImportEntry['eventClassification'],
+  operation: OperationInterface,
+  message: MessageInterface,
+): 'IntegrationEvent' | 'DomainEvent' {
+  if (!classification) return 'IntegrationEvent'
+  if (!('from' in classification)) {
+    return classification.strategy === 'always-domain' ? 'DomainEvent' : 'IntegrationEvent'
+  }
+  const value = extractValue(classification.from, operation, message)
+  return value === classification.domainValue ? 'DomainEvent' : 'IntegrationEvent'
+}
+
+export function deriveNodeId(
+  kind: 'event' | 'schema' | 'field' | 'enum' | 'enumValue',
+  component: string,
+  name: string,
+  opts?: { template?: string; parentId?: string; section?: string },
+): string {
+  if (kind === 'event') return `${component}.${opts?.template ?? 'IntegrationEvent'}.${name}`
+  return `${opts!.parentId}.${opts!.section}.${name}`
+}
+
 // Placeholder — completed in Task 7
 export function mapDocument(
   _document: AsyncAPIDocumentInterface,

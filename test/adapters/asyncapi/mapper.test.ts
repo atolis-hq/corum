@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { extractValue, deriveScalarType } from '../../../src/adapters/asyncapi/mapper.js'
+import { extractValue, deriveScalarType, deriveMessageName, classifyEvent, deriveNodeId, toKebabCase } from '../../../src/adapters/asyncapi/mapper.js'
 
 const SCALAR_TYPES: Record<string, string> = {
   string: 'string', integer: 'integer', boolean: 'boolean', number: 'decimal',
@@ -117,5 +117,106 @@ describe('deriveScalarType', () => {
   it('returns undefined for unknown types', () => {
     assert.equal(deriveScalarType('object', undefined, SCALAR_TYPES), undefined)
     assert.equal(deriveScalarType('array', undefined, SCALAR_TYPES), undefined)
+  })
+})
+
+describe('toKebabCase', () => {
+  it('converts PascalCase to kebab-case', () => {
+    assert.equal(toKebabCase('OrderPlaced'), 'order-placed')
+    assert.equal(toKebabCase('DomainEvent'), 'domain-event')
+  })
+  it('passes through already-kebab strings', () => {
+    assert.equal(toKebabCase('order-placed'), 'order-placed')
+  })
+  it('normalises multiple separators', () => {
+    assert.equal(toKebabCase('Order__Placed'), 'order-placed')
+  })
+})
+
+describe('deriveMessageName', () => {
+  it('returns kebab-case of message.name() when no messageNaming config', () => {
+    const msg = makeMsg('OrderPlaced')
+    assert.deepEqual(deriveMessageName(msg as any, undefined, 'spec.yaml'), { name: 'order-placed' })
+  })
+
+  it('applies messageNaming strategy to message name', () => {
+    const op = makeOp('any')
+    const msg = makeMsg('OrderPlaced.v2')
+    const result = deriveMessageName(
+      msg as any,
+      { strategy: { strategy: 'name-segment', separator: '.', segment: 0 }, operation: op as any },
+      'spec.yaml',
+    )
+    assert.deepEqual(result, { name: 'order-placed' })
+  })
+
+  it('returns null when name is absent and no messageNaming config', () => {
+    const msg = makeMsg(undefined, 'some-id')
+    assert.equal(deriveMessageName(msg as any, undefined, 'spec.yaml'), null)
+  })
+
+  it('returns null for anonymous message (no name, no id)', () => {
+    const msg = makeMsg(undefined, '')
+    assert.equal(deriveMessageName(msg as any, undefined, 'spec.yaml'), null)
+  })
+})
+
+describe('classifyEvent', () => {
+  it('returns IntegrationEvent when classification is absent', () => {
+    assert.equal(classifyEvent(undefined, makeOp('any') as any, makeMsg('OrderPlaced') as any), 'IntegrationEvent')
+  })
+
+  it('returns IntegrationEvent for always-integration', () => {
+    assert.equal(classifyEvent({ strategy: 'always-integration' }, makeOp('any') as any, makeMsg('OrderPlaced') as any), 'IntegrationEvent')
+  })
+
+  it('returns DomainEvent for always-domain', () => {
+    assert.equal(classifyEvent({ strategy: 'always-domain' }, makeOp('any') as any, makeMsg('OrderPlaced') as any), 'DomainEvent')
+  })
+
+  it('returns DomainEvent when extracted value matches domainValue', () => {
+    const classification = { from: { strategy: 'channel-segment' as const, separator: '.', segment: 0 }, domainValue: 'internal' }
+    assert.equal(classifyEvent(classification, makeOp('internal.orders') as any, makeMsg('OrderPlaced') as any), 'DomainEvent')
+  })
+
+  it('returns IntegrationEvent when extracted value does not match domainValue', () => {
+    const classification = { from: { strategy: 'channel-segment' as const, separator: '.', segment: 0 }, domainValue: 'internal' }
+    assert.equal(classifyEvent(classification, makeOp('external.orders') as any, makeMsg('OrderPlaced') as any), 'IntegrationEvent')
+  })
+})
+
+describe('deriveNodeId', () => {
+  it('builds IntegrationEvent root node ID', () => {
+    assert.equal(
+      deriveNodeId('event', 'orders', 'order-placed', { template: 'IntegrationEvent' }),
+      'orders.IntegrationEvent.order-placed',
+    )
+  })
+
+  it('builds DomainEvent root node ID', () => {
+    assert.equal(
+      deriveNodeId('event', 'orders', 'order-created', { template: 'DomainEvent' }),
+      'orders.DomainEvent.order-created',
+    )
+  })
+
+  it('builds Schema child node ID from parent and section', () => {
+    assert.equal(
+      deriveNodeId('schema', 'orders', 'order-placed', {
+        parentId: 'orders.IntegrationEvent.order-placed',
+        section: 'schemas',
+      }),
+      'orders.IntegrationEvent.order-placed.schemas.order-placed',
+    )
+  })
+
+  it('builds Field child node ID', () => {
+    assert.equal(
+      deriveNodeId('field', 'orders', 'orderId', {
+        parentId: 'orders.IntegrationEvent.order-placed.schemas.order-placed',
+        section: 'fields',
+      }),
+      'orders.IntegrationEvent.order-placed.schemas.order-placed.fields.orderId',
+    )
   })
 })
