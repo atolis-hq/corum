@@ -6,14 +6,34 @@ info:
   description: |
     Abstract base for all event types. Defines the shared payload schema.
     Use DomainEvent for internal facts; IntegrationEvent for cross-service contracts.
+    correlationId is transport-level metadata — model it in headers, not as a payload field.
 
 properties:
   type: object
   additionalProperties: false
   properties:
-    correlationId:
+    topic:
       type: string
-      description: "Optional correlation ID for tracing event chains"
+      description: "The channel address (topic/queue/stream) this event is published on."
+    description:
+      type: string
+      description: "Human-readable description of what this event represents."
+    headers:
+      type: object
+      description: "Map of header name to header definition. Carries message-level metadata (correlationId, traceId, etc.) separate from the payload."
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        required:
+          - type
+        properties:
+          type:
+            type: string
+            enum: [uuid, string, integer, decimal, boolean, datetime, date]
+          required:
+            type: boolean
+          description:
+            type: string
 
 edges:
   outgoing:
