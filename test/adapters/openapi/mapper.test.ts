@@ -257,3 +257,32 @@ describe('mapDocument â€” parameters', () => {
     assert.equal(endpoint.properties.parameters, undefined)
   })
 })
+
+describe('mapDocument — componentNameReplacements', () => {
+  it('rewrites extracted component name in endpoint node ID', () => {
+    const doc = makeDoc({
+      '/ordershipping/create': {
+        post: {
+          operationId: 'createShipment',
+          responses: { '200': { description: 'OK' } },
+        },
+      },
+    })
+    const { nodes } = mapDocument(doc, ENTRY, PACK_CONFIG, [{ from: 'ordershipping', to: 'order-shipping' }])
+    assert.ok(nodes.some(n => n.id === 'order-shipping.APIEndpoint.createShipment'), 'expected canonical component name in node ID')
+    assert.ok(!nodes.some(n => n.id.startsWith('ordershipping.')), 'expected raw component name to be absent')
+  })
+
+  it('does not affect names with no matching replacement', () => {
+    const doc = makeDoc({
+      '/payments/capture': {
+        post: {
+          operationId: 'capturePayment',
+          responses: { '200': { description: 'OK' } },
+        },
+      },
+    })
+    const { nodes } = mapDocument(doc, ENTRY, PACK_CONFIG, [{ from: 'ordershipping', to: 'order-shipping' }])
+    assert.ok(nodes.some(n => n.id === 'payments.APIEndpoint.capturePayment'))
+  })
+})
