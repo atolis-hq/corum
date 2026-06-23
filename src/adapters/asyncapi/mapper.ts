@@ -259,8 +259,9 @@ export function mapDocument(
   const schemaComponents = new Map<string, string>()
   for (const operation of document.allOperations()) {
     for (const message of operation.messages().all()) {
-      const component = extractValue(entry.componentMapping, operation, message)
-      if (!component) continue
+      const rawComponent = extractValue(entry.componentMapping, operation, message)
+      if (!rawComponent) continue
+      const component = applyComponentNameReplacements(rawComponent, componentNameReplacements)
       const msgName = message.name() ?? message.id()
       if (!msgName) continue
       const msgJson = (message as unknown as { json(): Record<string, unknown> }).json()
@@ -325,11 +326,12 @@ export function mapDocument(
     const channelAddress = operation.channels().all()[0]?.address() ?? ''
 
     for (const message of operation.messages().all()) {
-      const component = extractValue(entry.componentMapping, operation, message)
-      if (!component) {
+      const rawComponent = extractValue(entry.componentMapping, operation, message)
+      if (!rawComponent) {
         diagnostics.push({ severity: 'warning', file: entry.spec, message: `Cannot derive component for message on channel "${channelAddress}" — skipping` })
         continue
       }
+      const component = applyComponentNameReplacements(rawComponent, componentNameReplacements)
 
       const namingCtx = entry.messageNaming ? { strategy: entry.messageNaming, operation } : undefined
       const nameResult = deriveMessageName(message, namingCtx, entry.spec)
