@@ -131,6 +131,25 @@ Options:
   --graph <path>                    Override the graph directory
 ```
 
+#### `corum import asyncapi <spec>`
+
+Import an AsyncAPI spec directly.
+
+```bash
+corum import asyncapi <spec> [options]
+
+Options:
+  --component-strategy <strategy>   Component mapping: channel-segment (default), channel-pattern,
+                                    name-segment, name-pattern, tag, hardcoded
+  --separator <char>                Separator for segment strategies (default: .)
+  --segment <n>                     Segment index (negative counts from end)
+  --pattern <regex>                 Regex pattern for pattern strategies
+  --component <name>                Component name (hardcoded strategy)
+  --event-classification <mode>     always-integration (default) or always-domain
+  --include-consumed                Also import receive (consumed) operations
+  --graph <path>                    Override the graph directory
+```
+
 ## Configuration
 
 Run `corum init` to generate a `.corum/config.yaml` with all available options. Corum walks up from the current directory to find it, so you can place it at your project root.
