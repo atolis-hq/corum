@@ -1,0 +1,33 @@
+asyncapi: '3.0.0'
+info:
+  title: Fulfillment Service
+  version: '1.0.0'
+channels:
+  fulfillment.order-placed:
+    address: fulfillment.order-placed
+    messages:
+      OrderPlaced:
+        payload:
+          schemaFormat: application/vnd.aai.asyncapi+json;version=3.0.0
+          schema:
+            $ref: '#/components/schemas/OrderPlaced'
+        name: OrderPlaced
+operations:
+  PublishOrderPlaced:
+    action: send
+    channel:
+      $ref: '#/channels/fulfillment.order-placed'
+    messages:
+      - $ref: '#/channels/fulfillment.order-placed/messages/OrderPlaced'
+components:
+  schemas:
+    OrderPlaced:
+      type: object
+      required:
+        - orderId
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        total:
+          type: number

@@ -1,8 +1,8 @@
-id: logistics.IntegrationEvent.shipment-dispatched
-template: IntegrationEvent
+id: catalog.DomainEvent.ProductCreated
+template: DomainEvent
 schemaVersion: '1'
 metadata:
-  component: logistics
+  component: catalog
   state: implemented
   stability: unstable
   lastModifiedAt: <date>
@@ -10,13 +10,11 @@ metadata:
   derivation: determined
   derivedBy: adapter:asyncapi
 properties:
-  topic: logistics.shipment-dispatched
+  topic: catalog.product-created
+  payload: '#/schemas/ProductCreated'
 schemas:
-  shipment-dispatched:
+  ProductCreated:
     fields:
-      notes:
-        type: string
-        nullable: true
-      shipmentId:
+      productId:
         type: uuid
         nullable: false

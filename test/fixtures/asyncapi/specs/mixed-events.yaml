@@ -1,4 +1,4 @@
-asyncapi: 3.0.0
+﻿asyncapi: 3.0.0
 info:
   title: Mixed Events
   version: 1.0.0
@@ -33,13 +33,13 @@ channels:
               format: uuid
 operations:
   product-published:
-    action: receive
+    action: send
     channel:
       $ref: '#/channels/catalog.product-published'
     messages:
       - $ref: '#/channels/catalog.product-published/messages/event'
   product-created:
-    action: receive
+    action: send
     channel:
       $ref: '#/channels/catalog.product-created'
     messages:

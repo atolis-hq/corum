@@ -1,8 +1,8 @@
-id: subscriptions.IntegrationEvent.subscription-renewed
+id: logistics.IntegrationEvent.ShipmentDispatched
 template: IntegrationEvent
 schemaVersion: '1'
 metadata:
-  component: subscriptions
+  component: logistics
   state: implemented
   stability: unstable
   lastModifiedAt: <date>
@@ -10,10 +10,14 @@ metadata:
   derivation: determined
   derivedBy: adapter:asyncapi
 properties:
-  topic: subscriptions.subscription-renewed
+  topic: logistics.shipment-dispatched
+  payload: '#/schemas/ShipmentDispatched'
 schemas:
-  subscription-renewed:
+  ShipmentDispatched:
     fields:
-      subscriptionId:
+      notes:
+        type: string
+        nullable: true
+      shipmentId:
         type: uuid
         nullable: false

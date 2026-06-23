@@ -198,6 +198,7 @@ importCmd
   .option('--pattern <regex>', 'Regex pattern for pattern strategies')
   .option('--component <name>', 'Component name (hardcoded strategy)')
   .option('--event-classification <mode>', 'Event classification: always-integration, always-domain', 'always-integration')
+  .option('--include-consumed', 'Also import receive (consumed) operations', false)
   .option('--graph <path>', 'Override CORUM_GRAPH_PATH')
   .action(async (spec: string, opts) => {
     try {
@@ -210,6 +211,9 @@ importCmd
       })
       if (opts.eventClassification === 'always-domain') {
         entry.eventClassification = { strategy: 'always-domain' }
+      }
+      if (opts.includeConsumed) {
+        entry.includeConsumed = true
       }
       const result = await runImport({ imports: [entry] }, runtimeConfig)
       reportDiagnostics(result.diagnostics)

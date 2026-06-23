@@ -1,4 +1,4 @@
-id: billing.IntegrationEvent.invoice-created
+id: billing.IntegrationEvent.InvoiceSent
 template: IntegrationEvent
 schemaVersion: '1'
 metadata:
@@ -10,4 +10,5 @@ metadata:
   derivation: determined
   derivedBy: adapter:asyncapi
 properties:
-  topic: billing.invoice-created
+  topic: billing.invoice-sent
+  payload: billing.Schema.InvoicePayload

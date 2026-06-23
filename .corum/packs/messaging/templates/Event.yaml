@@ -17,6 +17,10 @@ properties:
     description:
       type: string
       description: "Human-readable description of what this event represents."
+    payload:
+      type: string
+      format: node-ref
+      description: "Local schema name ('#/schemas/<name>') or global Schema node ID describing the event payload."
     headers:
       type: object
       description: "Map of header name to header definition. Carries message-level metadata (correlationId, traceId, etc.) separate from the payload."

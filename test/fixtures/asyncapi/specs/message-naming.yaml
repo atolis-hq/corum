@@ -1,4 +1,4 @@
-asyncapi: 3.0.0
+﻿asyncapi: 3.0.0
 info:
   title: Message Naming
   version: 1.0.0
@@ -17,7 +17,7 @@ channels:
               format: uuid
 operations:
   subscription-renewed:
-    action: receive
+    action: send
     channel:
       $ref: '#/channels/subscriptions.subscription-renewed'
     messages:

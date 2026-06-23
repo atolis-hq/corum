@@ -1,8 +1,8 @@
-id: catalog.DomainEvent.product-created
-template: DomainEvent
+id: subscriptions.IntegrationEvent.SubscriptionRenewed
+template: IntegrationEvent
 schemaVersion: '1'
 metadata:
-  component: catalog
+  component: subscriptions
   state: implemented
   stability: unstable
   lastModifiedAt: <date>
@@ -10,10 +10,11 @@ metadata:
   derivation: determined
   derivedBy: adapter:asyncapi
 properties:
-  topic: catalog.product-created
+  topic: subscriptions.subscription-renewed
+  payload: '#/schemas/SubscriptionRenewed'
 schemas:
-  product-created:
+  SubscriptionRenewed:
     fields:
-      productId:
+      subscriptionId:
         type: uuid
         nullable: false

@@ -51,6 +51,13 @@ export function extractValue(
   }
 }
 
+function unwrapPayload(payload: unknown): unknown {
+  if (!payload || typeof payload !== 'object') return payload
+  const p = payload as Record<string, unknown>
+  if (p.schemaFormat !== undefined && p.schema !== undefined && typeof p.schema === 'object') return p.schema
+  return payload
+}
+
 export function deriveScalarType(
   type: string,
   format: string | undefined,
@@ -58,16 +65,6 @@ export function deriveScalarType(
 ): string | undefined {
   if (format && scalarTypes[`${type}/${format}`]) return scalarTypes[`${type}/${format}`]
   return scalarTypes[type]
-}
-
-export function toKebabCase(str: string): string {
-  return str
-    .replace(/([A-Z])/g, '-$1')
-    .toLowerCase()
-    .replace(/^-/, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
 }
 
 export function deriveMessageName(
@@ -86,7 +83,7 @@ export function deriveMessageName(
     : rawName
 
   if (!extracted) return null
-  return { name: toKebabCase(extracted) }
+  return { name: extracted }
 }
 
 export function classifyEvent(
@@ -152,7 +149,7 @@ export function countMessageSchemaUsage(document: AsyncAPIDocumentInterface): Ma
       const msgName = message.name() ?? message.id()
       if (!msgName) continue
       const msgJson = (message as unknown as { json(): Record<string, unknown> }).json()
-      if (msgJson.payload) collectRefs(msgJson.payload, msgName)
+      if (msgJson.payload) collectRefs(unwrapPayload(msgJson.payload), msgName)
     }
   }
 
@@ -280,7 +277,7 @@ export function mapDocument(
         if (o.items) walkForComponent(o.items)
       }
 
-      if (msgJson.payload) walkForComponent(msgJson.payload)
+      if (msgJson.payload) walkForComponent(unwrapPayload(msgJson.payload))
     }
   }
 
@@ -319,8 +316,10 @@ export function mapDocument(
   }
 
   const seenMessages = new Map<string, string>()
+  const allOperations = document.allOperations().all()
+  const operations = entry.includeConsumed ? allOperations : allOperations.filter(op => op.action() === 'send')
 
-  for (const operation of document.allOperations()) {
+  for (const operation of operations) {
     const channelAddress = operation.channels().all()[0]?.address() ?? ''
 
     for (const message of operation.messages().all()) {
@@ -361,6 +360,39 @@ export function mapDocument(
       const properties: Record<string, unknown> = { topic: channelAddress }
       if (msgRaw.description) properties.description = String(msgRaw.description)
 
+      const rawPayload = unwrapPayload(msgRaw.payload) as Record<string, unknown> | undefined
+      if (rawPayload) {
+        const payloadSchemaName = componentSchemaIdOf(rawPayload)
+        if (payloadSchemaName) {
+          const globalId = sharedSchemas.get(payloadSchemaName)
+          if (globalId) {
+            emitReadsEdge(eventId, globalId, edges)
+            properties.payload = globalId
+          } else {
+            const sourceSchema = sourceSchemas.get(payloadSchemaName) as { properties?: Record<string, unknown>; required?: string[] } | undefined
+            if (sourceSchema) {
+              const schemaKey = payloadSchemaName
+              const schemaId = deriveNodeId('schema', component, schemaKey, { parentId: eventId, section: 'schemas' })
+              nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, entry.spec, schemaId))
+              edges.push({ id: `${eventId}__has-field__${schemaId}`, from: eventId, to: schemaId, type: 'has-field', state: 'implemented', stability: 'unstable' })
+              emitFields(sourceSchema, schemaId, 'fields', eventId, packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, new Map())
+              properties.payload = `#/schemas/${schemaKey}`
+            }
+          }
+        } else if (rawPayload.type === 'object' && rawPayload.properties) {
+          const schemaId = deriveNodeId('schema', component, messageName, { parentId: eventId, section: 'schemas' })
+          nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, entry.spec, schemaId))
+          edges.push({ id: `${eventId}__has-field__${schemaId}`, from: eventId, to: schemaId, type: 'has-field', state: 'implemented', stability: 'unstable' })
+          emitFields(rawPayload as { properties?: Record<string, unknown>; required?: string[] }, schemaId, 'fields', eventId, packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, new Map())
+          properties.payload = `#/schemas/${messageName}`
+        } else {
+          const primitiveType = Array.isArray(rawPayload.type) ? rawPayload.type.find(t => t !== 'null') : rawPayload.type
+          if (primitiveType && primitiveType !== 'object') {
+            diagnostics.push({ severity: 'warning', file: entry.spec, message: `Message "${messageName}" has scalar payload (type: ${primitiveType}) — Event created with no schemas section` })
+          }
+        }
+      }
+
       if (message.hasHeaders()) {
         const rawHeaders = msgRaw.headers ?? null
         const headerResult = extractHeaders(rawHeaders, packConfig.scalarTypes, entry.spec)
@@ -372,37 +404,6 @@ export function mapDocument(
 
       eventNode.properties = properties
       nodes.push(eventNode)
-
-      const rawPayload = msgRaw.payload as Record<string, unknown> | undefined
-      if (!rawPayload) continue
-
-      const payloadSchemaName = componentSchemaIdOf(rawPayload)
-
-      if (payloadSchemaName) {
-        const globalId = sharedSchemas.get(payloadSchemaName)
-        if (globalId) {
-          emitReadsEdge(eventId, globalId, edges)
-        } else {
-          const sourceSchema = sourceSchemas.get(payloadSchemaName) as { properties?: Record<string, unknown>; required?: string[] } | undefined
-          if (sourceSchema) {
-            const schemaKey = toKebabCase(payloadSchemaName)
-            const schemaId = deriveNodeId('schema', component, schemaKey, { parentId: eventId, section: 'schemas' })
-            nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, entry.spec, schemaId))
-            edges.push({ id: `${eventId}__has-field__${schemaId}`, from: eventId, to: schemaId, type: 'has-field', state: 'implemented', stability: 'unstable' })
-            emitFields(sourceSchema, schemaId, 'fields', eventId, packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, new Map())
-          }
-        }
-      } else if (rawPayload.type === 'object' && rawPayload.properties) {
-        const schemaId = deriveNodeId('schema', component, messageName, { parentId: eventId, section: 'schemas' })
-        nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, entry.spec, schemaId))
-        edges.push({ id: `${eventId}__has-field__${schemaId}`, from: eventId, to: schemaId, type: 'has-field', state: 'implemented', stability: 'unstable' })
-        emitFields(rawPayload as { properties?: Record<string, unknown>; required?: string[] }, schemaId, 'fields', eventId, packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, new Map())
-      } else {
-        const primitiveType = Array.isArray(rawPayload.type) ? rawPayload.type.find(t => t !== 'null') : rawPayload.type
-        if (primitiveType && primitiveType !== 'object') {
-          diagnostics.push({ severity: 'warning', file: entry.spec, message: `Message "${messageName}" has scalar payload (type: ${primitiveType}) — Event created with no schemas section` })
-        }
-      }
     }
   }
 

@@ -1,8 +1,8 @@
-id: catalog.IntegrationEvent.product-published
+id: fulfillment.IntegrationEvent.OrderPlaced
 template: IntegrationEvent
 schemaVersion: '1'
 metadata:
-  component: catalog
+  component: fulfillment
   state: implemented
   stability: unstable
   lastModifiedAt: <date>
@@ -10,10 +10,14 @@ metadata:
   derivation: determined
   derivedBy: adapter:asyncapi
 properties:
-  topic: catalog.product-published
+  topic: fulfillment.order-placed
+  payload: '#/schemas/OrderPlaced'
 schemas:
-  product-published:
+  OrderPlaced:
     fields:
-      productId:
+      orderId:
         type: uuid
         nullable: false
+      total:
+        type: decimal
+        nullable: true

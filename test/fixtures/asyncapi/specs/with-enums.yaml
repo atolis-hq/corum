@@ -1,4 +1,4 @@
-asyncapi: 3.0.0
+﻿asyncapi: 3.0.0
 info:
   title: With Enums
   version: 1.0.0
@@ -19,7 +19,7 @@ channels:
               $ref: '#/components/schemas/AdjustmentReason'
 operations:
   stock-adjusted:
-    action: receive
+    action: send
     channel:
       $ref: '#/channels/inventory.stock-adjusted'
     messages:

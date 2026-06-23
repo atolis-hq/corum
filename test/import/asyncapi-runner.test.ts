@@ -192,3 +192,17 @@ describe('asyncapi import runner — message-naming.yaml', () => {
     }
   })
 })
+
+describe('asyncapi import runner — wrapped-payload.yaml', () => {
+  it('output matches golden files', async () => {
+    const { graphDir, cleanup } = await runFixture('wrapped-payload.yaml', {
+      adapter: 'asyncapi',
+      componentMapping: { strategy: 'channel-segment', separator: '.', segment: 0 },
+    })
+    try {
+      assertMatchesExpected(graphDir, 'wrapped-payload')
+    } finally {
+      cleanup()
+    }
+  })
+})

@@ -30,6 +30,7 @@ export interface AsyncAPIImportEntry {
     | { strategy: 'always-integration' }
     | { strategy: 'always-domain' }
     | { from: FieldStrategy; domainValue: string }
+  includeConsumed?: boolean
 }
 
 export type ImportEntry = OpenAPIImportEntry | AsyncAPIImportEntry

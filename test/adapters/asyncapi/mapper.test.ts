@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { extractValue, deriveScalarType, deriveMessageName, classifyEvent, deriveNodeId, toKebabCase, countMessageSchemaUsage, collectSharedSchemaNames, extractHeaders } from '../../../src/adapters/asyncapi/mapper.js'
+import { extractValue, deriveScalarType, deriveMessageName, classifyEvent, deriveNodeId, countMessageSchemaUsage, collectSharedSchemaNames, extractHeaders } from '../../../src/adapters/asyncapi/mapper.js'
 
 const SCALAR_TYPES: Record<string, string> = {
   string: 'string', integer: 'integer', boolean: 'boolean', number: 'decimal',
@@ -120,23 +120,11 @@ describe('deriveScalarType', () => {
   })
 })
 
-describe('toKebabCase', () => {
-  it('converts PascalCase to kebab-case', () => {
-    assert.equal(toKebabCase('OrderPlaced'), 'order-placed')
-    assert.equal(toKebabCase('DomainEvent'), 'domain-event')
-  })
-  it('passes through already-kebab strings', () => {
-    assert.equal(toKebabCase('order-placed'), 'order-placed')
-  })
-  it('normalises multiple separators', () => {
-    assert.equal(toKebabCase('Order__Placed'), 'order-placed')
-  })
-})
 
 describe('deriveMessageName', () => {
-  it('returns kebab-case of message.name() when no messageNaming config', () => {
+  it('returns message.name() as-is when no messageNaming config', () => {
     const msg = makeMsg('OrderPlaced')
-    assert.deepEqual(deriveMessageName(msg as any, undefined, 'spec.yaml'), { name: 'order-placed' })
+    assert.deepEqual(deriveMessageName(msg as any, undefined, 'spec.yaml'), { name: 'OrderPlaced' })
   })
 
   it('applies messageNaming strategy to message name', () => {
@@ -147,7 +135,7 @@ describe('deriveMessageName', () => {
       { strategy: { strategy: 'name-segment', separator: '.', segment: 0 }, operation: op as any },
       'spec.yaml',
     )
-    assert.deepEqual(result, { name: 'order-placed' })
+    assert.deepEqual(result, { name: 'OrderPlaced' })
   })
 
   it('returns null when name is absent and no messageNaming config', () => {

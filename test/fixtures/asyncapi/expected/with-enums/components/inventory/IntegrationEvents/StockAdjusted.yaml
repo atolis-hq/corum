@@ -1,4 +1,4 @@
-id: inventory.IntegrationEvent.stock-adjusted
+id: inventory.IntegrationEvent.StockAdjusted
 template: IntegrationEvent
 schemaVersion: '1'
 metadata:
@@ -11,8 +11,9 @@ metadata:
   derivedBy: adapter:asyncapi
 properties:
   topic: inventory.stock-adjusted
+  payload: '#/schemas/StockAdjusted'
 schemas:
-  stock-adjusted:
+  StockAdjusted:
     fields:
       itemId:
         type: uuid

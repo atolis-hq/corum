@@ -1,4 +1,4 @@
-id: notifications.IntegrationEvent.alert-sent
+id: notifications.IntegrationEvent.AlertSent
 template: IntegrationEvent
 schemaVersion: '1'
 metadata:
@@ -11,6 +11,7 @@ metadata:
   derivedBy: adapter:asyncapi
 properties:
   topic: notifications.alert-sent
+  payload: '#/schemas/AlertSent'
   headers:
     correlationId:
       type: uuid
@@ -19,7 +20,7 @@ properties:
       type: integer
       required: false
 schemas:
-  alert-sent:
+  AlertSent:
     fields:
       alertId:
         type: uuid

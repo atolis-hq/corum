@@ -1,4 +1,4 @@
-asyncapi: 3.0.0
+﻿asyncapi: 3.0.0
 info:
   title: Shared Payload
   version: 1.0.0
@@ -19,13 +19,13 @@ channels:
           $ref: '#/components/schemas/InvoicePayload'
 operations:
   invoice-created:
-    action: receive
+    action: send
     channel:
       $ref: '#/channels/billing.invoice-created'
     messages:
       - $ref: '#/channels/billing.invoice-created/messages/event'
   invoice-sent:
-    action: receive
+    action: send
     channel:
       $ref: '#/channels/billing.invoice-sent'
     messages:
