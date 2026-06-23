@@ -5,7 +5,7 @@
 
 ## Problem
 
-When importing from multiple sources (OpenAPI and AsyncAPI), the same logical component can be extracted with different names depending on the source convention. For example, `employer-liabilities` from a hyphenated URI segment and `employerliabilities` from a concatenated topic/event name. These become different node ID prefixes in the graph, breaking cross-adapter linking.
+When importing from multiple sources (OpenAPI and AsyncAPI), the same logical component can be extracted with different names depending on the source convention. For example, `order-shipping` from a hyphenated URI segment and `ordershipping` from a concatenated topic/event name. These become different node ID prefixes in the graph, breaking cross-adapter linking.
 
 ## Solution
 
@@ -15,15 +15,15 @@ A global `componentNameReplacements` list in `ImportConfig` that maps raw extrac
 
 ```yaml
 componentNameReplacements:
-  - from: employerliabilities
-    to: employer-liabilities
+  - from: ordershipping
+    to: order-shipping
 
 imports:
   - adapter: openapi
-    spec: employer-liabilities.openapi.yaml
+    spec: order-shipping.openapi.yaml
     componentMapping: ...
   - adapter: asyncapi
-    spec: employer-liabilities.asyncapi.yaml
+    spec: order-shipping.asyncapi.yaml
     componentMapping: ...
 ```
 
