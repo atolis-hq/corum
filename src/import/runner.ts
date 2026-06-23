@@ -33,7 +33,11 @@ export async function runImport(config: ImportConfig, runtimeConfig: GraphRuntim
     const specPath = path.resolve(entry.spec)
     const resolvedEntry = { ...entry, spec: specPath }
     const adapter = getAdapter(resolvedEntry.adapter)
-    const result = await adapter.import(resolvedEntry, { packConfig, templates: graph.templates })
+    const result = await adapter.import(resolvedEntry, {
+      packConfig,
+      templates: graph.templates,
+      componentNameReplacements: config.componentNameReplacements ?? [],
+    })
     allDiagnostics.push(...result.diagnostics)
 
     if (result.diagnostics.some(d => d.severity === 'error')) continue

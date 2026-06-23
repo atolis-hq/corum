@@ -116,6 +116,39 @@ Import specifications into the graph.
 corum import --config <path>    Import using a config YAML file
 ```
 
+#### Import config file
+
+The `--config` flag accepts a YAML file that can combine multiple imports in a single run and configure cross-adapter options:
+
+```yaml
+# Optional: remap extracted component names before node IDs are built.
+# Useful when the same component appears under different names in different specs
+# (e.g. "order-shipping" from a URI segment vs "ordershipping" from a topic name).
+componentNameReplacements:
+  - from: ordershipping
+    to: order-shipping
+
+imports:
+  - adapter: openapi
+    spec: ./specs/order-shipping.openapi.yaml
+    componentMapping:
+      strategy: uri-segment
+      segment: 0
+
+  - adapter: asyncapi
+    spec: ./specs/order-shipping.asyncapi.yaml
+    componentMapping:
+      strategy: channel-segment
+      separator: "."
+      segment: 0
+    messageNaming:
+      strategy: name-segment
+      separator: "."
+      segment: -1
+```
+
+Replacements are applied in order; the first matching `from` wins. Unmatched names are passed through unchanged.
+
 #### `corum import openapi <spec>`
 
 Import an OpenAPI spec directly.

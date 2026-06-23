@@ -206,3 +206,27 @@ describe('asyncapi import runner — wrapped-payload.yaml', () => {
     }
   })
 })
+
+describe('runImport — componentNameReplacements', () => {
+  it('rewrites extracted AsyncAPI component name in event node ID', async () => {
+    const { graphDir, cleanup } = await setupGraphDir()
+    try {
+      const config: ImportConfig = {
+        componentNameReplacements: [{ from: 'logistics', to: 'order-logistics' }],
+        imports: [{
+          adapter: 'asyncapi',
+          spec: path.join(specsDir, 'simple-events.yaml'),
+          componentMapping: { strategy: 'channel-segment', separator: '.', segment: 0 },
+        } as AsyncAPIImportEntry],
+      }
+      const runtimeConfig = makeRuntimeConfig(graphDir)
+      await runImport(config, runtimeConfig)
+      const eventPath = path.join(graphDir, 'components', 'order-logistics', 'IntegrationEvents', 'ShipmentDispatched.yaml')
+      assert.ok(fs.existsSync(eventPath), `expected node file at ${eventPath}`)
+      const rawPath = path.join(graphDir, 'components', 'logistics', 'IntegrationEvents', 'ShipmentDispatched.yaml')
+      assert.ok(!fs.existsSync(rawPath), 'expected raw component name to be absent')
+    } finally {
+      cleanup()
+    }
+  })
+})

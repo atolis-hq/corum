@@ -1,6 +1,11 @@
 import { readFileSync } from 'node:fs'
 import { parse as parseYaml } from 'yaml'
 
+export interface ComponentNameReplacement {
+  from: string
+  to: string
+}
+
 export type FieldStrategy =
   | { strategy: 'channel-segment'; separator: string; segment: number }
   | { strategy: 'channel-pattern'; pattern: string }
@@ -36,6 +41,7 @@ export interface AsyncAPIImportEntry {
 export type ImportEntry = OpenAPIImportEntry | AsyncAPIImportEntry
 
 export interface ImportConfig {
+  componentNameReplacements?: ComponentNameReplacement[]
   imports: ImportEntry[]
 }
 
@@ -49,7 +55,20 @@ export function loadImportConfig(filePath: string): ImportConfig {
   if (!isImportConfig(raw)) {
     throw new Error(`Invalid import config: must have an "imports" array`)
   }
-  return raw
+  const cfg = raw as ImportConfig
+  for (const replacement of cfg.componentNameReplacements ?? []) {
+    if (!replacement.from || !replacement.to) {
+      throw new Error(`Invalid import config: componentNameReplacements entries must have non-empty "from" and "to"`)
+    }
+  }
+  return cfg
+}
+
+export function applyComponentNameReplacements(
+  name: string,
+  replacements: ComponentNameReplacement[],
+): string {
+  return replacements.find(r => r.from === name)?.to ?? name
 }
 
 function isImportConfig(value: unknown): value is ImportConfig {

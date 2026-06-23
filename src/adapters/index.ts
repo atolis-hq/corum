@@ -1,5 +1,5 @@
 import type { Diagnostic, Edge, Node, Template } from '../schema/index.js'
-import type { ImportEntry } from '../import/config.js'
+import type { ImportEntry, ComponentNameReplacement } from '../import/config.js'
 
 export interface AdapterPackConfig {
   adapter: string
@@ -17,6 +17,7 @@ export interface ConstructMapping {
 export interface AdapterContext {
   packConfig: AdapterPackConfig
   templates: Map<string, Template>
+  componentNameReplacements: ComponentNameReplacement[]
 }
 
 export interface AdapterResult {

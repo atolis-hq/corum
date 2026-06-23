@@ -1,7 +1,8 @@
 import type { OpenAPIV3 } from 'openapi-types'
 import type { Node, Edge, Diagnostic } from '../../schema/index.js'
 import type { AdapterPackConfig } from '../index.js'
-import type { ComponentMapping, OpenAPIImportEntry } from '../../import/config.js'
+import type { ComponentMapping, OpenAPIImportEntry, ComponentNameReplacement } from '../../import/config.js'
+import { applyComponentNameReplacements } from '../../import/config.js'
 
 export interface MapResult {
   nodes: Node[]
@@ -71,6 +72,7 @@ export function mapDocument(
   document: OpenAPIV3.Document,
   entry: OpenAPIImportEntry,
   packConfig: AdapterPackConfig,
+  componentNameReplacements: ComponentNameReplacement[] = [],
 ): MapResult {
   const nodes: Node[] = []
   const edges: Edge[] = []
@@ -92,7 +94,7 @@ export function mapDocument(
     for (const [name, schema] of Object.entries(document.components.schemas)) {
       if (isRefSchema(schema)) continue
       const s = schema as OpenAPIV3.SchemaObject
-      const component = deriveComponentForSchema(name, document, entry)
+      const component = deriveComponentForSchema(name, document, entry, componentNameReplacements)
       if (!component) continue
       if (s.type !== 'object' && s.enum) {
         sharedSchemas.set(name, `${component}.EnumDefinition.${name}`)
@@ -146,9 +148,12 @@ export function mapDocument(
       if (!operation) continue
 
       const operationId = operation.operationId ?? `${method}-${urlPath.replace(/\//g, '-').replace(/^-/, '')}`
-      const component = entry.componentMapping.strategy === 'tag'
+      const rawComponent = entry.componentMapping.strategy === 'tag'
         ? operation.tags?.[0]
         : deriveComponent(urlPath, entry.componentMapping)
+      const component = rawComponent !== undefined
+        ? applyComponentNameReplacements(rawComponent, componentNameReplacements)
+        : undefined
 
       if (!component) {
         diagnostics.push({ severity: 'warning', file: entry.spec, message: `Cannot derive component for ${method.toUpperCase()} ${urlPath}, skipping` })
@@ -553,7 +558,7 @@ function emitFields(
   }
 }
 
-function deriveComponentForSchema(name: string, document: OpenAPIV3.Document, entry: OpenAPIImportEntry, visited: Set<string> = new Set()): string | undefined {
+function deriveComponentForSchema(name: string, document: OpenAPIV3.Document, entry: OpenAPIImportEntry, componentNameReplacements: ComponentNameReplacement[], visited: Set<string> = new Set()): string | undefined {
   if (visited.has(name)) return undefined
   visited.add(name)
   const directComponents = new Set<string>()
@@ -564,10 +569,10 @@ function deriveComponentForSchema(name: string, document: OpenAPIV3.Document, en
       const operation = (pathItem as Record<string, unknown>)[method] as OpenAPIV3.OperationObject | undefined
       if (!operation) continue
       if (referencesSchema(operation, name)) {
-        const component = entry.componentMapping.strategy === 'tag'
+        const rawComponent = entry.componentMapping.strategy === 'tag'
           ? operation.tags?.[0]
           : deriveComponent(urlPath, entry.componentMapping)
-        if (component) directComponents.add(component)
+        if (rawComponent) directComponents.add(applyComponentNameReplacements(rawComponent, componentNameReplacements))
       }
     }
   }
@@ -576,7 +581,7 @@ function deriveComponentForSchema(name: string, document: OpenAPIV3.Document, en
   for (const [schemaName, schema] of Object.entries(document.components?.schemas ?? {})) {
     if (schemaName === name || isRefSchema(schema)) continue
     if (JSON.stringify(schema).includes(`"#/components/schemas/${name}"`)) {
-      const comp = deriveComponentForSchema(schemaName, document, entry, visited)
+      const comp = deriveComponentForSchema(schemaName, document, entry, componentNameReplacements, visited)
       if (comp) return comp
     }
   }
