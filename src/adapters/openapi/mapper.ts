@@ -1,7 +1,8 @@
 import type { OpenAPIV3 } from 'openapi-types'
 import type { Node, Edge, Diagnostic } from '../../schema/index.js'
 import type { AdapterPackConfig } from '../index.js'
-import type { ComponentMapping, OpenAPIImportEntry } from '../../import/config.js'
+import type { ComponentMapping, OpenAPIImportEntry, ComponentNameReplacement } from '../../import/config.js'
+import { applyComponentNameReplacements } from '../../import/config.js'
 
 export interface MapResult {
   nodes: Node[]
@@ -71,6 +72,7 @@ export function mapDocument(
   document: OpenAPIV3.Document,
   entry: OpenAPIImportEntry,
   packConfig: AdapterPackConfig,
+  componentNameReplacements: ComponentNameReplacement[] = [],
 ): MapResult {
   const nodes: Node[] = []
   const edges: Edge[] = []

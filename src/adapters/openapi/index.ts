@@ -10,7 +10,7 @@ export class OpenAPIAdapter implements SpecAdapter<OpenAPIImportEntry> {
     const { document, diagnostics } = await parseSpec(entry.spec)
     if (!document) return { nodes: [], edges: [], diagnostics }
 
-    const { nodes, edges, diagnostics: mapDiagnostics } = mapDocument(document, entry, context.packConfig)
+    const { nodes, edges, diagnostics: mapDiagnostics } = mapDocument(document, entry, context.packConfig, context.componentNameReplacements)
     return { nodes, edges, diagnostics: [...diagnostics, ...mapDiagnostics] }
   }
 }

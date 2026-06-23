@@ -1,7 +1,8 @@
 import type { OperationInterface, MessageInterface, AsyncAPIDocumentInterface } from '@asyncapi/parser'
 import type { Node, Edge, Diagnostic } from '../../schema/index.js'
 import type { AdapterPackConfig } from '../index.js'
-import type { AsyncAPIImportEntry, FieldStrategy } from '../../import/config.js'
+import type { AsyncAPIImportEntry, FieldStrategy, ComponentNameReplacement } from '../../import/config.js'
+import { applyComponentNameReplacements } from '../../import/config.js'
 
 export interface MapResult {
   nodes: Node[]
@@ -238,6 +239,7 @@ export function mapDocument(
   document: AsyncAPIDocumentInterface,
   entry: AsyncAPIImportEntry,
   packConfig: AdapterPackConfig,
+  componentNameReplacements: ComponentNameReplacement[] = [],
 ): MapResult {
   const nodes: Node[] = []
   const edges: Edge[] = []
