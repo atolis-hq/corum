@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { loadImportConfig, buildOpenAPIConfig, buildAsyncAPIConfig } from '../../src/import/config.js'
+import { loadImportConfig, buildOpenAPIConfig, buildAsyncAPIConfig, applyComponentNameReplacements } from '../../src/import/config.js'
 
 describe('loadImportConfig', () => {
   it('parses a valid config file', () => {
@@ -36,6 +36,51 @@ imports:
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-config-'))
     const filePath = path.join(tmpDir, 'bad.yaml')
     fs.writeFileSync(filePath, `name: foo`)
+    assert.throws(() => loadImportConfig(filePath), /Invalid import config/)
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  it('parses config with componentNameReplacements', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-config-'))
+    const filePath = path.join(tmpDir, 'imports.yaml')
+    fs.writeFileSync(filePath, `
+componentNameReplacements:
+  - from: ordershipping
+    to: order-shipping
+imports:
+  - adapter: openapi
+    spec: ./orders.yaml
+    componentMapping:
+      strategy: uri-segment
+      segment: 0
+`)
+    const config = loadImportConfig(filePath)
+    assert.deepEqual(config.componentNameReplacements, [{ from: 'ordershipping', to: 'order-shipping' }])
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  it('throws when a replacement has empty from', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-config-'))
+    const filePath = path.join(tmpDir, 'bad.yaml')
+    fs.writeFileSync(filePath, `
+componentNameReplacements:
+  - from: ''
+    to: order-shipping
+imports: []
+`)
+    assert.throws(() => loadImportConfig(filePath), /Invalid import config/)
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  it('throws when a replacement has empty to', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-config-'))
+    const filePath = path.join(tmpDir, 'bad.yaml')
+    fs.writeFileSync(filePath, `
+componentNameReplacements:
+  - from: ordershipping
+    to: ''
+imports: []
+`)
     assert.throws(() => loadImportConfig(filePath), /Invalid import config/)
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
@@ -104,5 +149,27 @@ describe('buildAsyncAPIConfig', () => {
 
   it('throws when hardcoded strategy missing value', () => {
     assert.throws(() => buildAsyncAPIConfig('./events.yaml', 'hardcoded', {}), /--component required/)
+  })
+})
+
+describe('applyComponentNameReplacements', () => {
+  it('returns the canonical name when from matches', () => {
+    const result = applyComponentNameReplacements('ordershipping', [{ from: 'ordershipping', to: 'order-shipping' }])
+    assert.equal(result, 'order-shipping')
+  })
+
+  it('returns the original name when no replacement matches', () => {
+    const result = applyComponentNameReplacements('payments', [{ from: 'ordershipping', to: 'order-shipping' }])
+    assert.equal(result, 'payments')
+  })
+
+  it('returns the original name when replacements list is empty', () => {
+    const result = applyComponentNameReplacements('payments', [])
+    assert.equal(result, 'payments')
+  })
+
+  it('applies the first matching replacement', () => {
+    const result = applyComponentNameReplacements('a', [{ from: 'a', to: 'b' }, { from: 'a', to: 'c' }])
+    assert.equal(result, 'b')
   })
 })
