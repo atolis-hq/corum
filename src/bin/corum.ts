@@ -26,6 +26,7 @@ program
   .name('corum')
   .description('Corum graph CLI')
   .version(version)
+  .addHelpText('after', '\nFull documentation: https://github.com/atolis-hq/corum#readme')
 
 program
   .command('mcp')
@@ -151,6 +152,7 @@ const importCmd = program.command('import')
   .description('Import specifications into the graph')
   .option('--config <path>', 'Path to import config YAML')
   .option('--graph <path>', 'Override CORUM_GRAPH_PATH')
+  .addHelpText('after', '\nFor import config file format and options, see: https://github.com/atolis-hq/corum#readme')
   .action(async (opts) => {
     if (!opts.config) {
       importCmd.help()
