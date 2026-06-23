@@ -1,0 +1,20 @@
+id: subscriptions.IntegrationEvent.SubscriptionRenewed
+template: IntegrationEvent
+schemaVersion: '1'
+metadata:
+  component: subscriptions
+  state: implemented
+  stability: unstable
+  lastModifiedAt: <date>
+  extractedFrom: <spec>
+  derivation: determined
+  derivedBy: adapter:asyncapi
+properties:
+  topic: subscriptions.subscription-renewed
+  payload: '#/schemas/SubscriptionRenewed'
+schemas:
+  SubscriptionRenewed:
+    fields:
+      subscriptionId:
+        type: uuid
+        nullable: false

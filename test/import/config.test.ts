@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { loadImportConfig, buildOpenAPIConfig } from '../../src/import/config.js'
+import { loadImportConfig, buildOpenAPIConfig, buildAsyncAPIConfig } from '../../src/import/config.js'
 
 describe('loadImportConfig', () => {
   it('parses a valid config file', () => {
@@ -71,5 +71,38 @@ describe('buildOpenAPIConfig', () => {
 
   it('throws when hardcoded strategy missing component', () => {
     assert.throws(() => buildOpenAPIConfig('./spec.yaml', 'hardcoded'), /--component required/)
+  })
+})
+
+describe('buildAsyncAPIConfig', () => {
+  it('builds channel-segment config', () => {
+    const entry = buildAsyncAPIConfig('./events.yaml', 'channel-segment', { separator: '.', segment: 0 })
+    assert.deepEqual(entry, {
+      adapter: 'asyncapi',
+      spec: './events.yaml',
+      componentMapping: { strategy: 'channel-segment', separator: '.', segment: 0 },
+    })
+  })
+
+  it('builds hardcoded config', () => {
+    const entry = buildAsyncAPIConfig('./events.yaml', 'hardcoded', { value: 'orders' })
+    assert.deepEqual(entry, {
+      adapter: 'asyncapi',
+      spec: './events.yaml',
+      componentMapping: { strategy: 'hardcoded', value: 'orders' },
+    })
+  })
+
+  it('builds channel-pattern config', () => {
+    const entry = buildAsyncAPIConfig('./events.yaml', 'channel-pattern', { pattern: '^([a-z]+)\\.' })
+    assert.deepEqual(entry, {
+      adapter: 'asyncapi',
+      spec: './events.yaml',
+      componentMapping: { strategy: 'channel-pattern', pattern: '^([a-z]+)\\.' },
+    })
+  })
+
+  it('throws when hardcoded strategy missing value', () => {
+    assert.throws(() => buildAsyncAPIConfig('./events.yaml', 'hardcoded', {}), /--component required/)
   })
 })

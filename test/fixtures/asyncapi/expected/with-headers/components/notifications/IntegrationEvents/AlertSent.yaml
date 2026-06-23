@@ -1,0 +1,27 @@
+id: notifications.IntegrationEvent.AlertSent
+template: IntegrationEvent
+schemaVersion: '1'
+metadata:
+  component: notifications
+  state: implemented
+  stability: unstable
+  lastModifiedAt: <date>
+  extractedFrom: <spec>
+  derivation: determined
+  derivedBy: adapter:asyncapi
+properties:
+  topic: notifications.alert-sent
+  payload: '#/schemas/AlertSent'
+  headers:
+    correlationId:
+      type: uuid
+      required: true
+    retryCount:
+      type: integer
+      required: false
+schemas:
+  AlertSent:
+    fields:
+      alertId:
+        type: uuid
+        nullable: false

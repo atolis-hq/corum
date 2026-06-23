@@ -1,0 +1,23 @@
+id: logistics.IntegrationEvent.ShipmentDispatched
+template: IntegrationEvent
+schemaVersion: '1'
+metadata:
+  component: logistics
+  state: implemented
+  stability: unstable
+  lastModifiedAt: <date>
+  extractedFrom: <spec>
+  derivation: determined
+  derivedBy: adapter:asyncapi
+properties:
+  topic: logistics.shipment-dispatched
+  payload: '#/schemas/ShipmentDispatched'
+schemas:
+  ShipmentDispatched:
+    fields:
+      notes:
+        type: string
+        nullable: true
+      shipmentId:
+        type: uuid
+        nullable: false

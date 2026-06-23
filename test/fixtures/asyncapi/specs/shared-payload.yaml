@@ -1,0 +1,41 @@
+﻿asyncapi: 3.0.0
+info:
+  title: Shared Payload
+  version: 1.0.0
+channels:
+  billing.invoice-created:
+    address: billing.invoice-created
+    messages:
+      event:
+        name: InvoiceCreated
+        payload:
+          $ref: '#/components/schemas/InvoicePayload'
+  billing.invoice-sent:
+    address: billing.invoice-sent
+    messages:
+      event:
+        name: InvoiceSent
+        payload:
+          $ref: '#/components/schemas/InvoicePayload'
+operations:
+  invoice-created:
+    action: send
+    channel:
+      $ref: '#/channels/billing.invoice-created'
+    messages:
+      - $ref: '#/channels/billing.invoice-created/messages/event'
+  invoice-sent:
+    action: send
+    channel:
+      $ref: '#/channels/billing.invoice-sent'
+    messages:
+      - $ref: '#/channels/billing.invoice-sent/messages/event'
+components:
+  schemas:
+    InvoicePayload:
+      type: object
+      required: [invoiceId]
+      properties:
+        invoiceId:
+          type: string
+          format: uuid

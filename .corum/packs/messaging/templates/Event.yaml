@@ -11,9 +11,32 @@ properties:
   type: object
   additionalProperties: false
   properties:
-    correlationId:
+    topic:
       type: string
-      description: "Optional correlation ID for tracing event chains"
+      description: "The channel address (topic/queue/stream) this event is published on."
+    description:
+      type: string
+      description: "Human-readable description of what this event represents."
+    payload:
+      type: string
+      format: node-ref
+      description: "Local schema name ('#/schemas/<name>') or global Schema node ID describing the event payload."
+    headers:
+      type: object
+      description: "Map of header name to header definition. Carries message-level metadata (correlationId, traceId, etc.) separate from the payload."
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        required:
+          - type
+        properties:
+          type:
+            type: string
+            enum: [uuid, string, integer, decimal, boolean, datetime, date]
+          required:
+            type: boolean
+          description:
+            type: string
 
 edges:
   outgoing:

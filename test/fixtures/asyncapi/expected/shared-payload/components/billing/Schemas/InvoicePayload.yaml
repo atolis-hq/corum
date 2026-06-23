@@ -1,0 +1,15 @@
+id: billing.Schema.InvoicePayload
+template: Schema
+schemaVersion: '1'
+metadata:
+  component: billing
+  state: implemented
+  stability: unstable
+  lastModifiedAt: <date>
+  extractedFrom: <spec>
+  derivation: determined
+  derivedBy: adapter:asyncapi
+fields:
+  invoiceId:
+    type: uuid
+    nullable: false

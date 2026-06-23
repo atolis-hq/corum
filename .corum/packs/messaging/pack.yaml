@@ -7,3 +7,5 @@ templates:
   - Event
   - DomainEvent
   - IntegrationEvent
+files:
+  - adapters/asyncapi.yaml

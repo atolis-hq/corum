@@ -1,6 +1,14 @@
 import { readFileSync } from 'node:fs'
 import { parse as parseYaml } from 'yaml'
 
+export type FieldStrategy =
+  | { strategy: 'channel-segment'; separator: string; segment: number }
+  | { strategy: 'channel-pattern'; pattern: string }
+  | { strategy: 'name-segment'; separator: string; segment: number }
+  | { strategy: 'name-pattern'; pattern: string }
+  | { strategy: 'tag' }
+  | { strategy: 'hardcoded'; value: string }
+
 export type ComponentMapping =
   | { strategy: 'uri-segment'; segment: number }
   | { strategy: 'uri-segment'; pattern: string }
@@ -16,9 +24,13 @@ export interface OpenAPIImportEntry {
 export interface AsyncAPIImportEntry {
   adapter: 'asyncapi'
   spec: string
-  componentMapping:
-    | { strategy: 'channel' }
-    | { strategy: 'hardcoded'; component: string }
+  componentMapping: FieldStrategy
+  messageNaming?: FieldStrategy
+  eventClassification?:
+    | { strategy: 'always-integration' }
+    | { strategy: 'always-domain' }
+    | { from: FieldStrategy; domainValue: string }
+  includeConsumed?: boolean
 }
 
 export type ImportEntry = OpenAPIImportEntry | AsyncAPIImportEntry
@@ -68,4 +80,27 @@ export function buildOpenAPIConfig(
     componentMapping = { strategy: 'uri-segment', segment: segment ?? 0 }
   }
   return { adapter: 'openapi', spec, componentMapping }
+}
+
+export function buildAsyncAPIConfig(
+  spec: string,
+  strategy: string,
+  opts: { separator?: string; segment?: number; pattern?: string; value?: string } = {},
+): AsyncAPIImportEntry {
+  let componentMapping: FieldStrategy
+  if (strategy === 'hardcoded') {
+    if (!opts.value) throw new Error('--component required for hardcoded strategy')
+    componentMapping = { strategy: 'hardcoded', value: opts.value }
+  } else if (strategy === 'tag') {
+    componentMapping = { strategy: 'tag' }
+  } else if (strategy === 'channel-pattern') {
+    componentMapping = { strategy: 'channel-pattern', pattern: opts.pattern ?? '' }
+  } else if (strategy === 'name-pattern') {
+    componentMapping = { strategy: 'name-pattern', pattern: opts.pattern ?? '' }
+  } else if (strategy === 'name-segment') {
+    componentMapping = { strategy: 'name-segment', separator: opts.separator ?? '.', segment: opts.segment ?? 0 }
+  } else {
+    componentMapping = { strategy: 'channel-segment', separator: opts.separator ?? '.', segment: opts.segment ?? 0 }
+  }
+  return { adapter: 'asyncapi', spec, componentMapping }
 }

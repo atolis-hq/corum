@@ -1,0 +1,20 @@
+id: catalog.DomainEvent.ProductCreated
+template: DomainEvent
+schemaVersion: '1'
+metadata:
+  component: catalog
+  state: implemented
+  stability: unstable
+  lastModifiedAt: <date>
+  extractedFrom: <spec>
+  derivation: determined
+  derivedBy: adapter:asyncapi
+properties:
+  topic: catalog.product-created
+  payload: '#/schemas/ProductCreated'
+schemas:
+  ProductCreated:
+    fields:
+      productId:
+        type: uuid
+        nullable: false

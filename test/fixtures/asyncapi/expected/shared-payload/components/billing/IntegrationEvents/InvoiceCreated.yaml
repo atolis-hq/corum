@@ -1,0 +1,14 @@
+id: billing.IntegrationEvent.InvoiceCreated
+template: IntegrationEvent
+schemaVersion: '1'
+metadata:
+  component: billing
+  state: implemented
+  stability: unstable
+  lastModifiedAt: <date>
+  extractedFrom: <spec>
+  derivation: determined
+  derivedBy: adapter:asyncapi
+properties:
+  topic: billing.invoice-created
+  payload: billing.Schema.InvoicePayload

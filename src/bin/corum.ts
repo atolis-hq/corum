@@ -5,7 +5,7 @@ import { readFile as fsReadFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
-import { buildOpenAPIConfig, loadImportConfig } from '../import/config.js'
+import { buildAsyncAPIConfig, buildOpenAPIConfig, loadImportConfig } from '../import/config.js'
 import { runImport } from '../import/runner.js'
 import { loadGraph } from '../loader/index.js'
 import { startMcpServer } from '../mcp/index.js'
@@ -180,6 +180,41 @@ importCmd
     try {
       const runtimeConfig = buildRuntimeConfig(opts.graph)
       const entry = buildOpenAPIConfig(spec, opts.componentStrategy, opts.segment, opts.pattern, opts.component)
+      const result = await runImport({ imports: [entry] }, runtimeConfig)
+      reportDiagnostics(result.diagnostics)
+      if (result.diagnostics.some(d => d.severity === 'error')) process.exit(1)
+    } catch (err) {
+      process.stderr.write(`[ERROR] ${err instanceof Error ? err.message : String(err)}\n`)
+      process.exit(2)
+    }
+  })
+
+importCmd
+  .command('asyncapi <spec>')
+  .description('Import an AsyncAPI spec into the graph')
+  .option('--component-strategy <strategy>', 'Component mapping: channel-segment, channel-pattern, name-segment, name-pattern, tag, hardcoded', 'channel-segment')
+  .option('--separator <char>', 'Separator for segment strategies', '.')
+  .option('--segment <n>', 'Segment index for segment strategies', parseInt)
+  .option('--pattern <regex>', 'Regex pattern for pattern strategies')
+  .option('--component <name>', 'Component name (hardcoded strategy)')
+  .option('--event-classification <mode>', 'Event classification: always-integration, always-domain', 'always-integration')
+  .option('--include-consumed', 'Also import receive (consumed) operations', false)
+  .option('--graph <path>', 'Override CORUM_GRAPH_PATH')
+  .action(async (spec: string, opts) => {
+    try {
+      const runtimeConfig = buildRuntimeConfig(opts.graph)
+      const entry = buildAsyncAPIConfig(spec, opts.componentStrategy, {
+        separator: opts.separator,
+        segment: opts.segment,
+        pattern: opts.pattern,
+        value: opts.component,
+      })
+      if (opts.eventClassification === 'always-domain') {
+        entry.eventClassification = { strategy: 'always-domain' }
+      }
+      if (opts.includeConsumed) {
+        entry.includeConsumed = true
+      }
       const result = await runImport({ imports: [entry] }, runtimeConfig)
       reportDiagnostics(result.diagnostics)
       if (result.diagnostics.some(d => d.severity === 'error')) process.exit(1)

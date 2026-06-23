@@ -1,0 +1,23 @@
+id: fulfillment.IntegrationEvent.OrderPlaced
+template: IntegrationEvent
+schemaVersion: '1'
+metadata:
+  component: fulfillment
+  state: implemented
+  stability: unstable
+  lastModifiedAt: <date>
+  extractedFrom: <spec>
+  derivation: determined
+  derivedBy: adapter:asyncapi
+properties:
+  topic: fulfillment.order-placed
+  payload: '#/schemas/OrderPlaced'
+schemas:
+  OrderPlaced:
+    fields:
+      orderId:
+        type: uuid
+        nullable: false
+      total:
+        type: decimal
+        nullable: true

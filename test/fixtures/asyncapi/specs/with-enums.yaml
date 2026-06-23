@@ -1,0 +1,31 @@
+﻿asyncapi: 3.0.0
+info:
+  title: With Enums
+  version: 1.0.0
+channels:
+  inventory.stock-adjusted:
+    address: inventory.stock-adjusted
+    messages:
+      event:
+        name: StockAdjusted
+        payload:
+          type: object
+          required: [itemId, reason]
+          properties:
+            itemId:
+              type: string
+              format: uuid
+            reason:
+              $ref: '#/components/schemas/AdjustmentReason'
+operations:
+  stock-adjusted:
+    action: send
+    channel:
+      $ref: '#/channels/inventory.stock-adjusted'
+    messages:
+      - $ref: '#/channels/inventory.stock-adjusted/messages/event'
+components:
+  schemas:
+    AdjustmentReason:
+      type: string
+      enum: [damaged, returned, recount]

@@ -1,0 +1,46 @@
+﻿asyncapi: 3.0.0
+info:
+  title: Mixed Events
+  version: 1.0.0
+channels:
+  catalog.product-published:
+    address: catalog.product-published
+    messages:
+      event:
+        name: ProductPublished
+        tags:
+          - name: integration
+        payload:
+          type: object
+          required: [productId]
+          properties:
+            productId:
+              type: string
+              format: uuid
+  catalog.product-created:
+    address: catalog.product-created
+    messages:
+      event:
+        name: ProductCreated
+        tags:
+          - name: domain
+        payload:
+          type: object
+          required: [productId]
+          properties:
+            productId:
+              type: string
+              format: uuid
+operations:
+  product-published:
+    action: send
+    channel:
+      $ref: '#/channels/catalog.product-published'
+    messages:
+      - $ref: '#/channels/catalog.product-published/messages/event'
+  product-created:
+    action: send
+    channel:
+      $ref: '#/channels/catalog.product-created'
+    messages:
+      - $ref: '#/channels/catalog.product-created/messages/event'

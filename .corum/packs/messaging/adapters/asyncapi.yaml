@@ -1,0 +1,32 @@
+adapter: asyncapi
+version: '1.0'
+
+constructs:
+  message:
+    integrationTemplate: IntegrationEvent
+    domainTemplate: DomainEvent
+
+  payloadSchema:
+    template: Schema
+    section: schemas
+
+  payloadField:
+    template: Field
+    section: fields
+
+  enumDefinition:
+    template: EnumDefinition
+    section: enums
+
+  enumValue:
+    template: EnumValue
+    section: values
+
+scalarTypes:
+  string: string
+  string/uuid: uuid
+  string/date: date
+  string/date-time: datetime
+  integer: integer
+  number: decimal
+  boolean: boolean
