@@ -370,7 +370,6 @@ export function mapDocument(
         if (payloadSchemaName) {
           const globalId = sharedSchemas.get(payloadSchemaName)
           if (globalId) {
-            emitReadsEdge(eventId, globalId, edges)
             properties.payload = globalId
           } else {
             const sourceSchema = sourceSchemas.get(payloadSchemaName) as { properties?: Record<string, unknown>; required?: string[] } | undefined
@@ -430,13 +429,6 @@ function makeNode(template: string, component: string, specPath: string, id: str
   }
 }
 
-function emitReadsEdge(from: string, to: string, edges: Edge[]): void {
-  const id = `${from}__reads__${to}`
-  if (!edges.some(e => e.id === id)) {
-    edges.push({ id, from, to, type: 'reads', state: 'implemented', stability: 'unstable' })
-  }
-}
-
 function refName(ref: string): string {
   return ref.split('/').pop() ?? ref
 }
@@ -456,7 +448,6 @@ function resolveSchemaRef(
   schemaName: string,
   nullable: boolean,
   collection: 'array' | undefined,
-  readsSource: string,
   rootId: string | undefined,
   component: string,
   packConfig: AdapterPackConfig,
@@ -474,7 +465,6 @@ function resolveSchemaRef(
 
   const globalId = sharedSchemas.get(schemaName)
   if (globalId) {
-    emitReadsEdge(readsSource, globalId, edges)
     return { $ref: globalId, ...extra }
   }
 
@@ -572,7 +562,6 @@ function emitFields(
   localSchemas: Map<string, string>,
   localMappings: Map<string, string>,
 ): void {
-  const readsSource = rootId ?? parentId
   const [component] = parentId.split('.')
 
   for (const [fieldName, rawFieldSchema] of Object.entries(schema.properties ?? {})) {
@@ -589,7 +578,7 @@ function emitFields(
 
     if (schemaName !== undefined) {
       fieldNode.properties = resolveSchemaRef(
-        schemaName, !required, undefined, readsSource, rootId, component,
+        schemaName, !required, undefined, rootId, component,
         packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings,
       )
     } else {
@@ -608,7 +597,7 @@ function emitFields(
           fieldNode.properties = { type: 'string', nullable, collection: 'array' }
         } else if (isRefSchema(items)) {
           fieldNode.properties = resolveSchemaRef(
-            refName((items as { $ref: string }).$ref), nullable, 'array', readsSource, rootId, component,
+            refName((items as { $ref: string }).$ref), nullable, 'array', rootId, component,
             packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings,
           )
           if (!fieldNode.properties.$ref) fieldNode.properties = { type: 'string', nullable, collection: 'array' }
