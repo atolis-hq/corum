@@ -226,6 +226,23 @@ importCmd
     }
   })
 
+importCmd
+  .command('corum <spec>')
+  .description('Import a corum interchange file into the graph')
+  .option('--graph <path>', 'Override CORUM_GRAPH_PATH')
+  .action(async (spec: string, opts) => {
+    try {
+      const runtimeConfig = buildRuntimeConfig(opts.graph)
+      const entry = { adapter: 'corum' as const, spec: path.resolve(spec) }
+      const result = await runImport({ imports: [entry] }, runtimeConfig)
+      reportDiagnostics(result.diagnostics)
+      if (result.diagnostics.some(d => d.severity === 'error')) process.exit(1)
+    } catch (err) {
+      process.stderr.write(`[ERROR] ${err instanceof Error ? err.message : String(err)}\n`)
+      process.exit(2)
+    }
+  })
+
 const packCmd = program.command('pack').description('Manage template packs')
 
 packCmd
