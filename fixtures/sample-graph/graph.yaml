@@ -10,3 +10,5 @@ templatePacks:
     path: ../../.corum/packs/domain
   - name: messaging
     path: ../../.corum/packs/messaging
+  - name: extract
+    path: ../../.corum/packs/extract

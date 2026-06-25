@@ -1,0 +1,20 @@
+id: orders.DomainEvent.OrderPlacedDomainEvent
+template: DomainEvent
+schemaVersion: '1'
+metadata:
+  component: orders
+  state: implemented
+  stability: unstable
+  lastModifiedAt: 2026-06-25
+  extractedFrom: C:\git\atolis-hq\corum\test\fixtures\corum\specs\basic.corum.yaml
+  derivation: determined
+  derivedBy: adapter:corum/treesitter
+properties:
+  schema: OrderPlacedDomainEvent
+schemas:
+  OrderPlacedDomainEvent:
+    fields:
+      OrderId:
+        nullable: false
+        collection: one
+        type: uuid

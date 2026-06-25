@@ -173,3 +173,20 @@ describe('applyComponentNameReplacements', () => {
     assert.equal(result, 'b')
   })
 })
+
+describe('CorumImportEntry', () => {
+  it('parses a corum import entry from config file', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-config-'))
+    const filePath = path.join(tmpDir, 'imports.yaml')
+    fs.writeFileSync(filePath, `
+imports:
+  - adapter: corum
+    spec: ./output.corum.yaml
+`)
+    const config = loadImportConfig(filePath)
+    assert.equal(config.imports.length, 1)
+    assert.equal(config.imports[0].adapter, 'corum')
+    assert.equal(config.imports[0].spec, './output.corum.yaml')
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
+})

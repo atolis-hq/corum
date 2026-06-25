@@ -1,0 +1,5 @@
+name: extract
+version: '1.0.0'
+description: >-
+  Corum extraction tooling support. Provides the interchange format schema
+  and import adapter for corum-extract tools (treesitter, etc.).

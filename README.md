@@ -98,6 +98,7 @@ Examples:
 ```bash
 corum pack install domain
 corum pack install domain@v0.1.5
+corum pack install extract   # required for corum-extract import adapter
 ```
 
 ### `corum pack list`
@@ -181,6 +182,34 @@ Options:
   --event-classification <mode>     always-integration (default) or always-domain
   --include-consumed                Also import receive (consumed) operations
   --graph <path>                    Override the graph directory
+```
+
+#### `corum import corum <spec>`
+
+Import a corum interchange file (`*.corum.yaml`) produced by `corum-extract` or compatible extraction tooling.
+
+```bash
+corum import corum <spec> [options]
+
+Options:
+  --graph <path>    Override the graph directory
+```
+
+The interchange format is self-describing — no component mapping strategy is needed. Node IDs, template names, and field references are already corum-native. Gaps reported by the extractor (unresolved types, name collisions) are surfaced as warnings.
+
+Requires the `extract` pack to be active in your graph:
+
+```bash
+corum pack install extract
+```
+
+You can also configure corum imports in a config file:
+
+```yaml
+# .corum/imports.yaml
+imports:
+  - adapter: corum
+    spec: path/to/output.corum.yaml
 ```
 
 ## Configuration

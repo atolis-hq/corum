@@ -1,0 +1,4 @@
+adapter: corum
+version: '1.0'
+constructs: {}
+scalarTypes: {}
