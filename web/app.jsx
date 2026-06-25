@@ -83,23 +83,63 @@ function NavRail({ activeSection, onSection, debugMode, onDebugMode }) {
   );
 }
 
+function entryKey(entry) {
+  return entry.kind === 'group' ? entry.groupTemplateName : entry.templateName;
+}
+
 function NavTree({ navTree, templates, activeNodeId, onNode, overlayIndicatorIds }) {
   const sortedComponents = [...navTree.keys()].sort((a, b) => a.localeCompare(b));
   const [openComponent, setOpenComponent] = useState();
+  const [openEntryKeys, setOpenEntryKeys] = useState(new Set());
   const templateMap = new Map(templates.map(template => [template.name, template]));
 
+  function openComponentWithEntries(component) {
+    setOpenComponent(component);
+    if (!component) { setOpenEntryKeys(new Set()); return; }
+    const entries = navTree.get(component) ?? [];
+    setOpenEntryKeys(entries.length === 1 ? new Set([entryKey(entries[0])]) : new Set());
+  }
+
+  // Initialise / recover openComponent when the tree first loads or the open component disappears.
   useEffect(() => {
-    if (openComponent === undefined) {
-      setOpenComponent(sortedComponents[0] ?? null);
-      return;
-    }
-    if (openComponent !== null && !navTree.has(openComponent)) {
-      setOpenComponent(sortedComponents[0] ?? null);
-    }
+    const autoOpen = sortedComponents.length === 1 ? sortedComponents[0] : null;
+    if (openComponent === undefined) { openComponentWithEntries(autoOpen); return; }
+    if (openComponent !== null && !navTree.has(openComponent)) { openComponentWithEntries(autoOpen); }
   }, [navTree, openComponent, sortedComponents]);
 
+  // When navigating directly to a node (e.g. via link), open its component and entry.
+  useEffect(() => {
+    if (!activeNodeId || !navTree.size) return;
+    for (const [component, entries] of navTree.entries()) {
+      for (const entry of entries) {
+        const eKey = entryKey(entry);
+        let found = false;
+        if (entry.kind === 'group') {
+          found = entry.children.some(child => child.nodes.some(n => n.id === activeNodeId));
+        } else {
+          found = entry.nodes.some(n => n.id === activeNodeId) ||
+            entry.nodes.some(n => (n.navChildren ?? []).some(g => g.nodes.some(c => c.id === activeNodeId)));
+        }
+        if (found) {
+          setOpenComponent(component);
+          setOpenEntryKeys(new Set([eKey]));
+          return;
+        }
+      }
+    }
+  }, [activeNodeId, navTree]);
+
   function toggleComponent(component) {
-    setOpenComponent(prev => prev === component ? null : component);
+    if (openComponent === component) { openComponentWithEntries(null); }
+    else { openComponentWithEntries(component); }
+  }
+
+  function toggleEntry(key) {
+    setOpenEntryKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
   }
 
   if (navTree.size === 0) {
@@ -118,9 +158,11 @@ function NavTree({ navTree, templates, activeNodeId, onNode, overlayIndicatorIds
             </div>
             {openComponent === component && entries.map(entry => {
               if (entry.kind === 'group') {
+                const gKey = entryKey(entry);
+                const gOpen = openEntryKeys.has(gKey);
                 return (
                   <div key={entry.groupTemplateName}>
-                    <div className="nav-template-head">
+                    <div className="nav-template-head" onClick={() => toggleEntry(gKey)} style={{ cursor: 'pointer' }}>
                       {entry.icon && (
                         <i
                           className={`fa-solid fa-${entry.icon}`}
@@ -128,8 +170,9 @@ function NavTree({ navTree, templates, activeNodeId, onNode, overlayIndicatorIds
                         />
                       )}
                       <span>{entry.label}</span>
+                      <Icon name={gOpen ? 'chevron-down' : 'chevron-right'} size={10} />
                     </div>
-                    {entry.children.map(child => (
+                    {gOpen && entry.children.map(child => (
                       <div key={child.templateName}>
                         <div className="nav-subtype-head">
                           {child.icon && (
@@ -167,16 +210,19 @@ function NavTree({ navTree, templates, activeNodeId, onNode, overlayIndicatorIds
 
               const template = templateMap.get(entry.templateName);
               const colour = template?.ui?.colour ?? 'var(--ink-4)';
+              const tKey = entryKey(entry);
+              const tOpen = openEntryKeys.has(tKey);
               return (
                 <div key={entry.templateName}>
-                  <div className="nav-template-head">
+                  <div className="nav-template-head" onClick={() => toggleEntry(tKey)} style={{ cursor: 'pointer' }}>
                     <i
                       className={`fa-solid fa-${template?.ui?.icon ?? 'circle'}`}
                       style={{ fontSize: 12, width: 14, textAlign: 'center', flexShrink: 0 }}
                     />
                     <span>{templateDisplayName(template)}</span>
+                    <Icon name={tOpen ? 'chevron-down' : 'chevron-right'} size={10} />
                   </div>
-                  {entry.nodes.map(node => {
+                  {tOpen && entry.nodes.map(node => {
                     const isActive = node.id === activeNodeId;
                     return (
                       <div key={node.id}>
@@ -626,7 +672,7 @@ function App() {
 
   const activeNodeId = route.pathname === '/node' ? route.params.get('id') : null;
   const activeSection = activeNodeId ? 'components' : (route.pathname.slice(1) || 'dashboard');
-  const navTree = buildNavTree(nodes, templates);
+  const navTree = useMemo(() => buildNavTree(nodes, templates), [nodes, templates]);
   const showTree = activeSection === 'components' || activeNodeId;
   const activeOverlayRefs = useMemo(() =>
     overlayMode === 'single' ? [] :
