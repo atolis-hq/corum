@@ -1,0 +1,74 @@
+name: Mapping
+info:
+  version: "1.0.0"
+  core: true
+  abstract: false
+  description: |
+    A keyed collection type: associates keys of a specific type with values of
+    a specific type. Language-agnostic equivalent of Dictionary<K,V>, Map<K,V>,
+    or similar constructs.
+
+    Key type is either a primitive scalar (key-type) or a reference to an
+    EnumDefinition node (key-ref). These are mutually exclusive. When both
+    are absent, the key is implicitly string.
+
+    Value type is either a primitive scalar (value-type) or a reference to
+    another node (value-ref): Schema, EnumDefinition, Mapping, ValueObject,
+    or DomainModel. These are mutually exclusive.
+
+    value-collection controls cardinality of the value: 'one' (default) means
+    a single value per key; 'array' means each key maps to a list of values
+    (equivalent to Map<K, T[]>).
+
+    A Field references a Mapping via $ref. The Field's collection property
+    describes the cardinality of the Mapping itself: 'one' means a single
+    mapping instance, 'array' means a list of mapping instances (rare).
+
+properties:
+  type: object
+  additionalProperties: false
+  properties:
+    key-type:
+      type: string
+      enum:
+        - string
+        - uuid
+        - integer
+      description: "Primitive scalar key type. Mutually exclusive with key-ref. Defaults to 'string' when both are absent."
+    key-ref:
+      type: string
+      format: node-ref
+      description: "Reference to the EnumDefinition node whose values are the key set. Mutually exclusive with key-type."
+    value-type:
+      type: string
+      enum:
+        - string
+        - uuid
+        - integer
+        - decimal
+        - boolean
+        - datetime
+        - date
+        - time
+      description: "Primitive scalar value type. Mutually exclusive with value-ref."
+    value-ref:
+      type: string
+      format: node-ref
+      description: "Reference to the node defining the value type. Accepts: Schema, EnumDefinition, Mapping, ValueObject, DomainModel. Mutually exclusive with value-type."
+    value-collection:
+      type: string
+      enum:
+        - one
+        - array
+      description: "Cardinality of the value. Defaults to 'one'. Use 'array' for Map<K, T[]> shapes."
+
+ui:
+  icon: table
+  colour: "#7A6C9E"
+  displayName: Mapping
+  displayProperties:
+    - key-type
+    - key-ref
+    - value-type
+    - value-ref
+    - value-collection
