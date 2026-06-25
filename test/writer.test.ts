@@ -112,7 +112,7 @@ describe('graph writer', () => {
       assert.ok(writtenEndpoint)
       assert.equal(writtenEndpoint.properties.path, '/v2/orders')
       assert.equal(writtenGraph.nodesById.size, 151)
-      assert.equal([...writtenGraph.edgesByFrom.values()].flat().length, 173)
+      assert.equal([...writtenGraph.edgesByFrom.values()].flat().length, 178)
     } finally {
       fs.rmSync(outputGraphDir, { recursive: true, force: true })
     }

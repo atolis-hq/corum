@@ -292,8 +292,8 @@ function NavTree({ navTree, templates, activeNodeId, onNode, overlayIndicatorIds
                                   return next;
                                 })}
                               >
-                                <Icon name={groupOpen ? 'chevron-down' : 'chevron-right'} size={10} />
                                 {group.label}
+                                <Icon name={groupOpen ? 'chevron-down' : 'chevron-right'} size={10} />
                               </div>
                               {groupOpen && group.nodes.map(child => {
                                 const childTemplate = templateMap.get(child.template);

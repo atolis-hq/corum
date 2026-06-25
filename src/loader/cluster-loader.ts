@@ -64,6 +64,19 @@ export function loadClusters(
     }
 
     addNode(result, root, key, diagnostics)
+    const rootTemplate = templates.get(root.template)
+    if (rootTemplate) {
+      for (const target of getNodeRefTargets(root, rootTemplate)) {
+        const readsId = `${root.id}__reads__${target}`
+        const existingFrom = result.edgesByFrom.get(root.id) ?? []
+        if (!existingFrom.some(e => e.id === readsId)) {
+          addEdge(result, {
+            id: readsId, from: root.id, to: target, type: 'reads',
+            state: root.state, stability: root.stability, generated: true,
+          })
+        }
+      }
+    }
     materialiseChildren(result, root, root, record, templates, key, diagnostics)
   }
 
@@ -89,9 +102,23 @@ function getNodeRefTargets(node: Node, template: Template): string[] {
   const propSchemas = getPropertySchemasFromTemplate(template.properties as Record<string, unknown>)
   const targets: string[] = []
   for (const [key, schema] of Object.entries(propSchemas)) {
-    if ((schema as Record<string, unknown>).format !== 'node-ref') continue
-    const value = node.properties[key]
-    if (typeof value === 'string' && !value.startsWith('#/')) targets.push(value)
+    const s = schema as Record<string, unknown>
+    if (s.format === 'node-ref') {
+      const value = node.properties[key]
+      if (typeof value === 'string' && !value.startsWith('#/')) targets.push(value)
+    } else if (
+      s.type === 'object' &&
+      typeof s.additionalProperties === 'object' &&
+      s.additionalProperties !== null &&
+      (s.additionalProperties as Record<string, unknown>).format === 'node-ref'
+    ) {
+      const map = node.properties[key]
+      if (typeof map === 'object' && map !== null && !Array.isArray(map)) {
+        for (const value of Object.values(map as Record<string, unknown>)) {
+          if (typeof value === 'string' && !value.startsWith('#/')) targets.push(value)
+        }
+      }
+    }
   }
   return targets
 }

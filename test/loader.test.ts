@@ -341,11 +341,11 @@ describe('edge loader', () => {
 })
 
 describe('loadGraph', () => {
-  it('loads 151 nodes and 173 edges using FileGraphSource', async () => {
+  it('loads 151 nodes and 178 edges using FileGraphSource', async () => {
     const source = new FileGraphSource({ graphDir: fixtureGraphDir })
     const graph = await loadGraph({ source })
     assert.equal(graph.nodesById.size, 151)
-    assert.equal([...graph.edgesByFrom.values()].flat().length, 173)
+    assert.equal([...graph.edgesByFrom.values()].flat().length, 178)
   })
 
   it('loads packsPath when graph.yaml is absent', async () => {
@@ -370,12 +370,12 @@ describe('loadGraph', () => {
     }
   })
 
-  it('loads full sample-graph with 151 nodes and 173 edges', async () => {
+  it('loads full sample-graph with 151 nodes and 178 edges', async () => {
     const graph = await loadGraph({ graphPath: fixtureGraphDir })
 
     assert.equal(graph.nodesById.size, 151, `expected 151 nodes, got ${graph.nodesById.size}`)
     const allEdges = [...graph.edgesByFrom.values()].flat()
-    assert.equal(allEdges.length, 173, `expected 173 edges, got ${allEdges.length}`)
+    assert.equal(allEdges.length, 178, `expected 178 edges, got ${allEdges.length}`)
   })
 
   it('does not throw in strict mode for the valid fixture', async () => {
