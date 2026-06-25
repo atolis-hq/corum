@@ -1,0 +1,56 @@
+corumInterchange: '1.0'
+source:
+  analyser: corum-extract
+  version: 0.1.0
+  language: csharp
+  repo: ../test-repo
+nodes:
+  - id: orders.DomainEvent.OrderPlacedDomainEvent
+    template: DomainEvent
+    properties:
+      schema: OrderPlacedDomainEvent
+    provenance:
+      derivation: resolved
+      by: treesitter
+  - id: orders.DomainEvent.OrderPlacedDomainEvent.schemas.OrderPlacedDomainEvent
+    template: Schema
+    properties: {}
+    provenance:
+      derivation: resolved
+      by: treesitter
+  - id: orders.DomainEvent.OrderPlacedDomainEvent.schemas.OrderPlacedDomainEvent.fields.OrderId
+    template: Field
+    properties:
+      nullable: false
+      collection: one
+      type: uuid
+    provenance:
+      derivation: resolved
+      by: treesitter
+  - id: orders.DomainModel.OrderAggregate
+    template: DomainModel
+    properties:
+      description: OrderAggregate
+    provenance:
+      derivation: resolved
+      by: treesitter
+  - id: orders.DomainModel.OrderAggregate.operations.Place
+    template: DomainOperation
+    properties:
+      description: Place
+    provenance:
+      derivation: inferred
+      confidence: 0.9
+      by: treesitter
+edges:
+  - from: orders.DomainModel.OrderAggregate.operations.Place
+    to: orders.DomainEvent.OrderPlacedDomainEvent
+    type: produces
+    provenance:
+      derivation: inferred
+      confidence: 0.9
+      by: treesitter
+gaps:
+  - kind: unresolved-field-type
+    nodeId: orders.SomeNode.fields.SomeField
+    reason: MissingType
