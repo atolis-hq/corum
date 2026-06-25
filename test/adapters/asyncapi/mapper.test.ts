@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { extractValue, deriveScalarType, deriveMessageName, classifyEvent, deriveNodeId, countMessageSchemaUsage, collectSharedSchemaNames, extractHeaders } from '../../../src/adapters/asyncapi/mapper.js'
+import { extractValue, deriveScalarType, deriveMessageName, classifyEvent, deriveNodeId, countMessageSchemaUsage, collectSharedSchemaNames, extractHeaders, mapDocument } from '../../../src/adapters/asyncapi/mapper.js'
 
 const SCALAR_TYPES: Record<string, string> = {
   string: 'string', integer: 'integer', boolean: 'boolean', number: 'decimal',
@@ -310,5 +310,89 @@ describe('extractHeaders', () => {
   it('returns null for falsy input', () => {
     assert.equal(extractHeaders(null, ST, 'spec.yaml'), null)
     assert.equal(extractHeaders(undefined, ST, 'spec.yaml'), null)
+  })
+})
+
+const PACK_CONFIG = {
+  scalarTypes: { string: 'string', integer: 'integer', boolean: 'boolean', number: 'decimal', 'string/uuid': 'uuid', 'string/date-time': 'datetime' },
+  constructs: {
+    payloadSchema: { template: 'Schema' },
+    payloadField: { template: 'Field' },
+  },
+} as any
+
+function makeCollection<T>(items: T[]) {
+  return { all: () => items, [Symbol.iterator]: function* () { yield* items } }
+}
+
+function makeAsyncAPIDoc(payloadProperties: Record<string, unknown>): any {
+  const payload = { type: 'object', properties: payloadProperties }
+  const message = {
+    name: () => 'OrderPlaced',
+    id: () => 'OrderPlaced',
+    tags: () => makeCollection([]),
+    hasHeaders: () => false,
+    json: () => ({ payload }),
+  }
+  const op = {
+    action: () => 'send',
+    channels: () => makeCollection([{ address: () => 'orders.v1.order-placed' }]),
+    messages: () => makeCollection([message]),
+  }
+  return {
+    json: () => ({ components: { schemas: {} } }),
+    allOperations: () => makeCollection([op]),
+  }
+}
+
+const ASYNCAPI_ENTRY = {
+  spec: 'test.yaml',
+  componentMapping: { strategy: 'channel-segment' as const, separator: '.', segment: 0 },
+  includeConsumed: false,
+} as any
+
+describe('mapDocument — additionalProperties (Mapping nodes)', () => {
+  it('string-valued additionalProperties emits Mapping node with value-type string', () => {
+    const doc = makeAsyncAPIDoc({ data: { type: 'object', additionalProperties: { type: 'string' } } })
+    const { nodes, diagnostics } = mapDocument(doc, ASYNCAPI_ENTRY, PACK_CONFIG)
+    assert.equal(diagnostics.length, 0)
+
+    const field = nodes.find(n => n.id.endsWith('.fields.data'))
+    assert.ok(field, 'data field exists')
+    assert.equal(field!.properties['$ref'], '#/mappings/data')
+    assert.equal(field!.properties['collection'], undefined)
+
+    const mapping = nodes.find(n => n.id.endsWith('.mappings.data'))
+    assert.ok(mapping, 'mapping node exists')
+    assert.equal(mapping!.template, 'Mapping')
+    assert.equal(mapping!.properties['value-type'], 'string')
+  })
+
+  it('array-valued additionalProperties emits Mapping with value-collection array', () => {
+    const doc = makeAsyncAPIDoc({ items: { type: 'object', additionalProperties: { type: 'array', items: { type: 'integer' } } } })
+    const { nodes } = mapDocument(doc, ASYNCAPI_ENTRY, PACK_CONFIG)
+
+    const mapping = nodes.find(n => n.id.endsWith('.mappings.items'))
+    assert.ok(mapping, 'mapping node exists')
+    assert.equal(mapping!.properties['value-type'], 'integer')
+    assert.equal(mapping!.properties['value-collection'], 'array')
+  })
+
+  it('nested additionalProperties (map-of-map) emits two Mapping nodes', () => {
+    const doc = makeAsyncAPIDoc({
+      nested: { type: 'object', additionalProperties: { type: 'object', additionalProperties: { type: 'integer' } } },
+    })
+    const { nodes } = mapDocument(doc, ASYNCAPI_ENTRY, PACK_CONFIG)
+
+    const outer = nodes.find(n => n.id.endsWith('.mappings.nested'))
+    assert.ok(outer, 'outer mapping node exists')
+
+    const inner = nodes.find(n => n.id.endsWith('.mappings.nested-values'))
+    assert.ok(inner, 'inner mapping node exists')
+    assert.equal(inner!.properties['value-type'], 'integer')
+    assert.ok(
+      String(outer!.properties['value-ref']).endsWith('.mappings.nested-values'),
+      `outer value-ref should end with .mappings.nested-values, got: ${outer!.properties['value-ref']}`,
+    )
   })
 })
