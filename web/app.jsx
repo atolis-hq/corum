@@ -420,7 +420,7 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
   const rootSpecializedTemplates = new Set(['Schema', 'EnumDefinition']);
   const rootSpecializedNodes = rootSpecializedTemplates.has(root.template) ? [[root.template, [root]]] : [];
   const childDisplayEntries = [...displayChildren.entries()]
-    .filter(([templateName]) => templateName !== 'Field' && templateName !== 'EnumValue');
+    .filter(([templateName]) => templateName !== 'Field' && templateName !== 'EnumValue' && templateName !== 'Mapping');
   const displayEntries = [...rootSpecializedNodes, ...childDisplayEntries];
   const includedSchemaNodes = includedNodes.filter(n => n.template === 'Schema');
   const includedEnumNodes = includedNodes.filter(n => n.template === 'EnumDefinition');

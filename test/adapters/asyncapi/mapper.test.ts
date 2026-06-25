@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { extractValue, deriveScalarType, deriveMessageName, classifyEvent, deriveNodeId, countMessageSchemaUsage, collectSharedSchemaNames, extractHeaders } from '../../../src/adapters/asyncapi/mapper.js'
+import { extractValue, deriveScalarType, deriveMessageName, classifyEvent, deriveNodeId, countMessageSchemaUsage, collectSharedSchemaNames, extractHeaders, mapDocument } from '../../../src/adapters/asyncapi/mapper.js'
 
 const SCALAR_TYPES: Record<string, string> = {
   string: 'string', integer: 'integer', boolean: 'boolean', number: 'decimal',
@@ -310,5 +310,134 @@ describe('extractHeaders', () => {
   it('returns null for falsy input', () => {
     assert.equal(extractHeaders(null, ST, 'spec.yaml'), null)
     assert.equal(extractHeaders(undefined, ST, 'spec.yaml'), null)
+  })
+})
+
+const PACK_CONFIG = {
+  scalarTypes: { string: 'string', integer: 'integer', boolean: 'boolean', number: 'decimal', 'string/uuid': 'uuid', 'string/date-time': 'datetime' },
+  constructs: {
+    payloadSchema: { template: 'Schema' },
+    payloadField: { template: 'Field' },
+  },
+} as any
+
+function makeCollection<T>(items: T[]) {
+  return { all: () => items, [Symbol.iterator]: function* () { yield* items } }
+}
+
+function makeAsyncAPIDoc(payloadProperties: Record<string, unknown>): any {
+  const payload = { type: 'object', properties: payloadProperties }
+  const message = {
+    name: () => 'OrderPlaced',
+    id: () => 'OrderPlaced',
+    tags: () => makeCollection([]),
+    hasHeaders: () => false,
+    json: () => ({ payload }),
+  }
+  const op = {
+    action: () => 'send',
+    channels: () => makeCollection([{ address: () => 'orders.v1.order-placed' }]),
+    messages: () => makeCollection([message]),
+  }
+  return {
+    json: () => ({ components: { schemas: {} } }),
+    allOperations: () => makeCollection([op]),
+  }
+}
+
+const ASYNCAPI_ENTRY = {
+  spec: 'test.yaml',
+  componentMapping: { strategy: 'channel-segment' as const, separator: '.', segment: 0 },
+  includeConsumed: false,
+} as any
+
+describe('mapDocument — inline objects in shared component schemas', () => {
+  it('materialises sub-schema instead of warning when processing a shared schema', () => {
+    const sharedSchema = {
+      type: 'object',
+      properties: {
+        details: { type: 'object', properties: { amount: { type: 'number' } } },
+        name: { type: 'string' },
+      },
+    }
+    function makeSharedMsg(msgName: string) {
+      return {
+        name: () => msgName,
+        id: () => msgName,
+        tags: () => makeCollection([]),
+        hasHeaders: () => false,
+        json: () => ({ payload: { 'x-parser-schema-id': 'OrderData', ...sharedSchema } }),
+      }
+    }
+    const op = {
+      action: () => 'send',
+      channels: () => makeCollection([{ address: () => 'orders.v1' }]),
+      messages: () => makeCollection([makeSharedMsg('OrderCreated'), makeSharedMsg('OrderUpdated')]),
+    }
+    const doc = {
+      json: () => ({ components: { schemas: { OrderData: sharedSchema } } }),
+      allOperations: () => makeCollection([op]),
+    }
+
+    const { nodes, diagnostics } = mapDocument(doc as any, ASYNCAPI_ENTRY, PACK_CONFIG)
+
+    assert.equal(
+      diagnostics.filter(d => d.message.includes('no event context')).length,
+      0,
+      'no inline-object warning',
+    )
+
+    const detailsSchema = nodes.find(n => n.template === 'Schema' && n.id.endsWith('.schemas.details'))
+    assert.ok(detailsSchema, 'sub-schema node created for inline object field')
+
+    const detailsField = nodes.find(n => n.template === 'Field' && n.id.endsWith('.fields.details'))
+    assert.ok(detailsField, 'details Field node exists')
+    assert.equal(detailsField!.properties['$ref'], '#/schemas/details')
+  })
+})
+
+describe('mapDocument — additionalProperties (Mapping nodes)', () => {
+  it('string-valued additionalProperties emits Mapping node with type string', () => {
+    const doc = makeAsyncAPIDoc({ data: { type: 'object', additionalProperties: { type: 'string' } } })
+    const { nodes, diagnostics } = mapDocument(doc, ASYNCAPI_ENTRY, PACK_CONFIG)
+    assert.equal(diagnostics.length, 0)
+
+    const field = nodes.find(n => n.id.endsWith('.fields.data'))
+    assert.ok(field, 'data field exists')
+    assert.equal(field!.properties['$ref'], '#/mappings/data')
+    assert.equal(field!.properties['collection'], undefined)
+
+    const mapping = nodes.find(n => n.id.endsWith('.mappings.data'))
+    assert.ok(mapping, 'mapping node exists')
+    assert.equal(mapping!.template, 'Mapping')
+    assert.equal(mapping!.properties['type'], 'string')
+  })
+
+  it('array-valued additionalProperties emits Mapping with value-collection array', () => {
+    const doc = makeAsyncAPIDoc({ items: { type: 'object', additionalProperties: { type: 'array', items: { type: 'integer' } } } })
+    const { nodes } = mapDocument(doc, ASYNCAPI_ENTRY, PACK_CONFIG)
+
+    const mapping = nodes.find(n => n.id.endsWith('.mappings.items'))
+    assert.ok(mapping, 'mapping node exists')
+    assert.equal(mapping!.properties['type'], 'integer')
+    assert.equal(mapping!.properties['value-collection'], 'array')
+  })
+
+  it('nested additionalProperties (map-of-map) emits two Mapping nodes', () => {
+    const doc = makeAsyncAPIDoc({
+      nested: { type: 'object', additionalProperties: { type: 'object', additionalProperties: { type: 'integer' } } },
+    })
+    const { nodes } = mapDocument(doc, ASYNCAPI_ENTRY, PACK_CONFIG)
+
+    const outer = nodes.find(n => n.id.endsWith('.mappings.nested'))
+    assert.ok(outer, 'outer mapping node exists')
+
+    const inner = nodes.find(n => n.id.endsWith('.mappings.nested-values'))
+    assert.ok(inner, 'inner mapping node exists')
+    assert.equal(inner!.properties['type'], 'integer')
+    assert.ok(
+      String(outer!.properties['$ref']).endsWith('.mappings.nested-values'),
+      `outer $ref should end with .mappings.nested-values, got: ${outer!.properties['$ref']}`,
+    )
   })
 })

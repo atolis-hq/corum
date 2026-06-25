@@ -5,6 +5,7 @@ templates:
   - _base
   - Schema
   - Field
+  - Mapping
   - EnumDefinition
   - EnumValue
 files:
