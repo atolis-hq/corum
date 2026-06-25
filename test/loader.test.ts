@@ -10,7 +10,7 @@ import { loadEdges } from '../src/loader/edge-loader.js'
 import { loadGraph } from '../src/loader/index.js'
 import { VALID_EDGE_TYPE_SET } from '../src/loader/constants.js'
 import { LoadError } from '../src/schema/index.js'
-import type { Diagnostic, Node } from '../src/schema/index.js'
+import type { Diagnostic, Node, Template } from '../src/schema/index.js'
 import type { ContentMap } from '../src/source/index.js'
 import { FileGraphSource } from '../src/source/file-source.js'
 
@@ -407,5 +407,109 @@ describe('loadGraph', () => {
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true })
     }
+  })
+})
+
+describe('cluster loader — Mapping nodes', () => {
+  it('materialises Mapping nodes from a mappings section', () => {
+    const templates = new Map<string, Template>()
+    templates.set('DomainModel', {
+      name: 'DomainModel',
+      info: { version: '1.0.0' },
+      mappings: { 'item-template': 'Mapping' },
+      schemas: { 'item-template': 'Schema' },
+      enums: { 'item-template': 'EnumDefinition' },
+    } as unknown as Template)
+    templates.set('Mapping', {
+      name: 'Mapping',
+      info: { version: '1.0.0', core: true },
+    } as Template)
+
+    const clusterYaml = [
+      'id: orders.DomainModel.order',
+      'template: DomainModel',
+      'schemaVersion: "1"',
+      'metadata:',
+      '  component: orders',
+      '  state: agreed',
+      '  stability: stable',
+      '  lastModifiedAt: "2026-01-01"',
+      'mappings:',
+      '  surcharge-by-zone:',
+      '    key-ref: orders.DomainModel.order.enums.shipping-zone',
+      '    type: string',
+    ].join('\n')
+
+    const content: ContentMap = new Map([
+      ['components/orders/DomainModels/order.yaml', clusterYaml],
+    ])
+
+    const diagnostics: Diagnostic[] = []
+    const result = loadClusters(content, templates, diagnostics)
+
+    assert.equal(
+      diagnostics.filter(d => d.severity === 'error').length,
+      0,
+      `unexpected errors: ${JSON.stringify(diagnostics)}`,
+    )
+    assert.ok(result.nodes.has('orders.DomainModel.order'), 'root node exists')
+    assert.ok(
+      result.nodes.has('orders.DomainModel.order.mappings.surcharge-by-zone'),
+      'mapping node exists',
+    )
+
+    const mapping = result.nodes.get('orders.DomainModel.order.mappings.surcharge-by-zone')!
+    assert.equal(mapping.template, 'Mapping')
+    assert.equal(mapping.component, 'orders')
+    assert.equal(mapping.properties['key-ref'], 'orders.DomainModel.order.enums.shipping-zone')
+    assert.equal(mapping.properties['type'], 'string')
+  })
+
+  it('Mapping node inherits state and stability from parent', () => {
+    const templates = new Map<string, Template>()
+    templates.set('DomainModel', {
+      name: 'DomainModel',
+      info: { version: '1.0.0' },
+      mappings: { 'item-template': 'Mapping' },
+    } as unknown as Template)
+    templates.set('Mapping', {
+      name: 'Mapping',
+      info: { version: '1.0.0', core: true },
+    } as Template)
+
+    const clusterYaml = [
+      'id: payments.DomainModel.payment',
+      'template: DomainModel',
+      'schemaVersion: "1"',
+      'metadata:',
+      '  component: payments',
+      '  state: implemented',
+      '  stability: stable',
+      '  lastModifiedAt: "2026-01-01"',
+      'mappings:',
+      '  carrier-rates:',
+      '    type: decimal',
+    ].join('\n')
+
+    const content: ContentMap = new Map([
+      ['components/payments/DomainModels/payment.yaml', clusterYaml],
+    ])
+
+    const diagnostics: Diagnostic[] = []
+    const result = loadClusters(content, templates, diagnostics)
+
+    const mapping = result.nodes.get('payments.DomainModel.payment.mappings.carrier-rates')!
+    assert.ok(mapping, 'mapping node exists')
+    assert.equal(mapping.state, 'implemented', 'inherits state from parent')
+    assert.equal(mapping.stability, 'stable', 'inherits stability from parent')
+  })
+
+  it('pack loader includes Mapping template after loading core pack', async () => {
+    const diagnostics: Diagnostic[] = []
+    const templates = loadPacks(await buildPackContentMap(), diagnostics)
+    assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0)
+    assert.ok(templates.has('Mapping'), 'Mapping template loaded')
+    const mapping = templates.get('Mapping')!
+    assert.equal(mapping.info.core, true)
   })
 })

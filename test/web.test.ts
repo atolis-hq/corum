@@ -714,6 +714,86 @@ describe('web server', () => {
       })
     })
 
+    it('includes Mapping descendants and resolves #/mappings/ on a Field node to parent schema', async () => {
+      const mappingGraph: Graph = {
+        nodesById: new Map([
+          ['orders.Order', {
+            id: 'orders.Order', template: 'DomainModel', component: 'orders',
+            state: 'agreed' as const, stability: 'stable' as const,
+            schemaVersion: '1', lastModifiedAt: '2026-04-18',
+            properties: {},
+          }],
+          ['orders.Order.schemas.prices', {
+            id: 'orders.Order.schemas.prices', template: 'Schema', component: 'orders',
+            state: 'agreed' as const, stability: 'stable' as const,
+            schemaVersion: '1', lastModifiedAt: '2026-04-18',
+            properties: {},
+          }],
+          ['orders.Order.schemas.prices.fields.pricesByZone', {
+            id: 'orders.Order.schemas.prices.fields.pricesByZone', template: 'Field', component: 'orders',
+            state: 'agreed' as const, stability: 'stable' as const,
+            schemaVersion: '1', lastModifiedAt: '2026-04-18',
+            properties: { $ref: '#/mappings/pricesByZone', nullable: false },
+          }],
+          ['orders.Order.schemas.prices.mappings.pricesByZone', {
+            id: 'orders.Order.schemas.prices.mappings.pricesByZone', template: 'Mapping', component: 'orders',
+            state: 'agreed' as const, stability: 'stable' as const,
+            schemaVersion: '1', lastModifiedAt: '2026-04-18',
+            properties: { type: 'decimal' },
+          }],
+        ]),
+        edgesByFrom: new Map(),
+        edgesByTo: new Map(),
+        templates: new Map([
+          ['DomainModel', {
+            name: 'DomainModel',
+            info: { version: '1', core: false, description: 'A domain model' },
+            ui: { colour: '#4a90e2', displayName: 'Domain Model', icon: 'sitemap' },
+          }],
+          ['Schema', {
+            name: 'Schema',
+            info: { version: '1', core: true, description: 'A schema' },
+            ui: { displayName: 'Schema' },
+          }],
+          ['Field', {
+            name: 'Field',
+            info: { version: '1', core: true, description: 'A field' },
+            properties: { type: 'object', properties: { $ref: { type: 'string', format: 'node-ref' } } },
+            ui: { displayName: 'Field' },
+          }],
+          ['Mapping', {
+            name: 'Mapping',
+            info: { version: '1', core: true, description: 'A keyed collection' },
+            ui: { displayName: 'Mapping' },
+          }],
+        ]),
+        diagnostics: [],
+      }
+
+      const mappingHandle = await startWebServer(mappingGraph, { port: 0 })
+      try {
+        const res = await fetch(
+          `http://localhost:${mappingHandle.port}/api/cluster?nodeId=${encodeURIComponent('orders.Order')}`,
+        )
+        assert.equal(res.status, 200)
+        const body = await res.json() as {
+          descendants: Array<{ id: string; properties: Record<string, unknown> }>
+        }
+
+        assert.ok(
+          body.descendants.some(d => d.id === 'orders.Order.schemas.prices.mappings.pricesByZone'),
+          'Mapping node appears in cluster descendants',
+        )
+        const field = body.descendants.find(d => d.id === 'orders.Order.schemas.prices.fields.pricesByZone')
+        assert.deepEqual(field?.properties.$ref, {
+          display: 'pricesByZone',
+          nodeId: 'orders.Order.schemas.prices.mappings.pricesByZone',
+        })
+      } finally {
+        await mappingHandle.close()
+      }
+    })
+
     it('returns 404 for unknown nodeId', async () => {
       const res = await fetch(
         `http://localhost:${handle.port}/api/cluster?nodeId=nonexistent`,
@@ -871,7 +951,7 @@ describe('web server', () => {
 
     it('primitives: nested child schemas render overlay ghost rows in the recursive schema view', () => {
       assert.match(primitives, /function SchemaFieldRows\(\{ schemaName, model, prefix = '', depth = 0, visited = new Set\(\), edges = \[\], overlayFields, overlayRefs, compact = false \}\)/)
-      assert.match(primitives, /const childSchemaNode = canExpand \? model\.schemasByName\.get\(localRef\) : null;/)
+      assert.match(primitives, /const childSchemaNode = \(!canExpandMapping && localRef\) \? \(model\.schemasByName\.get\(localRef\) \?\? null\) : null;/)
       assert.match(primitives, /const childGhostFields = childSchemaNode \? overlayFieldsForSchema\(overlayFields, childSchemaNode\.id\) : \[\];/)
       assert.match(primitives, /<SchemaFieldRows[\s\S]*overlayFields=\{overlayFields\}[\s\S]*overlayRefs=\{overlayRefs\}/)
       assert.match(primitives, /\{childGhostFields\.length > 0 && \(\s*<GhostFieldRows fields=\{childGhostFields\} overlayRefs=\{overlayRefs\} prefix=\{childPrefix\} depth=\{depth \+ 1\} compact=\{compact\} \/>\s*\)\}/)

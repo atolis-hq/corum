@@ -113,16 +113,35 @@ function summarizeNodeForNavigation(graph: Graph, node: Node): Node & { parentId
 
 type NodeRefValue = { display: string; nodeId: string } | { display: string }
 
+function resolveLocalRef(graph: Graph, nodeId: string, section: string, name: string): string | undefined {
+  // Walk up the node ID hierarchy to find the nearest ancestor owning section.name.
+  // This handles refs on both root nodes and nested Field nodes correctly.
+  let ancestor = nodeId.replace(/\.fields\.[^.]+$/, '')
+  while (ancestor.length > 0) {
+    const candidate = `${ancestor}.${section}.${name}`
+    if (graph.nodesById.has(candidate)) return candidate
+    const dot = ancestor.lastIndexOf('.')
+    if (dot === -1) break
+    ancestor = ancestor.slice(0, dot)
+  }
+  return undefined
+}
+
 function resolveNodeRef(graph: Graph, node: Node, rawValue: string): NodeRefValue {
   if (rawValue.startsWith('#/schemas/')) {
     const name = rawValue.slice(10)
-    const id = `${node.id}.schemas.${name}`
-    return graph.nodesById.has(id) ? { display: name, nodeId: id } : { display: name }
+    const id = resolveLocalRef(graph, node.id, 'schemas', name)
+    return id ? { display: name, nodeId: id } : { display: name }
   }
   if (rawValue.startsWith('#/enums/')) {
     const name = rawValue.slice(8)
-    const id = `${node.id}.enums.${name}`
-    return graph.nodesById.has(id) ? { display: name, nodeId: id } : { display: name }
+    const id = resolveLocalRef(graph, node.id, 'enums', name)
+    return id ? { display: name, nodeId: id } : { display: name }
+  }
+  if (rawValue.startsWith('#/mappings/')) {
+    const name = rawValue.slice(11)
+    const id = resolveLocalRef(graph, node.id, 'mappings', name)
+    return id ? { display: name, nodeId: id } : { display: name }
   }
   if (graph.nodesById.has(rawValue)) return { display: rawValue, nodeId: rawValue }
   return { display: rawValue }

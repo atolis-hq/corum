@@ -27,6 +27,12 @@ fields:
     Owned Field nodes for this schema. Each entry becomes a Field node with
     ID {node-id}.fields.{field-name}. has-field edges are implied by position.
 
+mappings:
+  item-template: Mapping
+  description: |
+    Locally scoped Mapping nodes owned by this schema. Each entry becomes a
+    Mapping node with ID {node-id}.mappings.{local-name}.
+
 edge-types:
   outgoing:
     - has-field

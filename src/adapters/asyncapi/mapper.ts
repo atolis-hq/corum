@@ -315,7 +315,7 @@ export function mapDocument(
     if (!sharedSchemaNames.has(name)) continue
     const [component] = registeredId.split('.')
     nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, entry.spec, registeredId))
-    emitFields(s, registeredId, 'fields', undefined, packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, new Map())
+    emitFields(s, registeredId, 'fields', undefined, packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, new Map(), new Map())
   }
 
   const seenMessages = new Map<string, string>()
@@ -379,7 +379,7 @@ export function mapDocument(
               const schemaId = deriveNodeId('schema', component, schemaKey, { parentId: eventId, section: 'schemas' })
               nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, entry.spec, schemaId))
               edges.push({ id: `${eventId}__has-field__${schemaId}`, from: eventId, to: schemaId, type: 'has-field', state: 'implemented', stability: 'unstable' })
-              emitFields(sourceSchema, schemaId, 'fields', eventId, packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, new Map())
+              emitFields(sourceSchema, schemaId, 'fields', eventId, packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, new Map(), new Map())
               properties.payload = `#/schemas/${schemaKey}`
             }
           }
@@ -387,7 +387,7 @@ export function mapDocument(
           const schemaId = deriveNodeId('schema', component, messageName, { parentId: eventId, section: 'schemas' })
           nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, entry.spec, schemaId))
           edges.push({ id: `${eventId}__has-field__${schemaId}`, from: eventId, to: schemaId, type: 'has-field', state: 'implemented', stability: 'unstable' })
-          emitFields(rawPayload as { properties?: Record<string, unknown>; required?: string[] }, schemaId, 'fields', eventId, packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, new Map())
+          emitFields(rawPayload as { properties?: Record<string, unknown>; required?: string[] }, schemaId, 'fields', eventId, packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, new Map(), new Map())
           properties.payload = `#/schemas/${messageName}`
         } else {
           const primitiveType = Array.isArray(rawPayload.type) ? rawPayload.type.find(t => t !== 'null') : rawPayload.type
@@ -467,6 +467,7 @@ function resolveSchemaRef(
   sharedSchemas: Map<string, string>,
   sourceSchemas: Map<string, unknown>,
   localSchemas: Map<string, string>,
+  localMappings: Map<string, string>,
 ): Record<string, unknown> {
   const extra: Record<string, unknown> = { nullable }
   if (collection) extra.collection = collection
@@ -488,13 +489,72 @@ function resolveSchemaRef(
         edges.push({ id: `${rootId}__has-field__${inlineId}`, from: rootId, to: inlineId, type: 'has-field', state: 'implemented', stability: 'unstable' })
         const localRef = `#/schemas/${schemaName}`
         localSchemas.set(schemaName, localRef)
-        emitFields(src, inlineId, 'fields', rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas)
+        emitFields(src, inlineId, 'fields', rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
       }
       return { $ref: localSchemas.get(schemaName) ?? `#/schemas/${schemaName}`, ...extra }
     }
   }
 
   return { $ref: schemaName, ...extra }
+}
+
+function createMapping(
+  mappingName: string,
+  addlRaw: unknown,
+  parentId: string,
+  rootId: string | undefined,
+  component: string,
+  packConfig: AdapterPackConfig,
+  specPath: string,
+  nodes: Node[],
+  edges: Edge[],
+  diagnostics: Diagnostic[],
+  sharedSchemas: Map<string, string>,
+  sourceSchemas: Map<string, unknown>,
+  localSchemas: Map<string, string>,
+  localMappings: Map<string, string>,
+): string {
+  const existingId = localMappings.get(mappingName)
+  if (existingId) return existingId
+
+  const mappingId = `${parentId}.mappings.${mappingName}`
+  const mappingNode = makeNode('Mapping', component, specPath, mappingId)
+  const props: Record<string, unknown> = {}
+
+  if (!addlRaw || typeof addlRaw === 'boolean') {
+    props['type'] = 'string'
+  } else {
+    const addl = addlRaw as { type?: string; format?: string; items?: unknown; additionalProperties?: unknown; $ref?: string }
+    if (addl.$ref) {
+      const schemaName = refName(addl.$ref)
+      const globalId = sharedSchemas.get(schemaName)
+      props['$ref'] = globalId ?? schemaName
+    } else if (addl.type === 'array') {
+      props['value-collection'] = 'array'
+      const items = addl.items ? resolveAllOfRef(addl.items) : undefined
+      if (items && isRefSchema(items)) {
+        const schemaName = refName((items as { $ref: string }).$ref)
+        const globalId = sharedSchemas.get(schemaName)
+        props['$ref'] = globalId ?? schemaName
+      } else if (items) {
+        const it = items as { type?: string; format?: string }
+        props['type'] = deriveScalarType(it.type ?? 'string', it.format, packConfig.scalarTypes) ?? 'string'
+      } else {
+        props['type'] = 'string'
+      }
+    } else if (addl.type === 'object' && addl.additionalProperties) {
+      const innerName = `${mappingName}-values`
+      const innerId = createMapping(innerName, addl.additionalProperties, parentId, rootId, component, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
+      props['$ref'] = innerId
+    } else {
+      props['type'] = deriveScalarType(addl.type ?? 'string', addl.format, packConfig.scalarTypes) ?? 'string'
+    }
+  }
+
+  mappingNode.properties = props
+  nodes.push(mappingNode)
+  localMappings.set(mappingName, mappingId)
+  return mappingId
 }
 
 function emitFields(
@@ -510,6 +570,7 @@ function emitFields(
   sharedSchemas: Map<string, string>,
   sourceSchemas: Map<string, unknown>,
   localSchemas: Map<string, string>,
+  localMappings: Map<string, string>,
 ): void {
   const readsSource = rootId ?? parentId
   const [component] = parentId.split('.')
@@ -529,10 +590,10 @@ function emitFields(
     if (schemaName !== undefined) {
       fieldNode.properties = resolveSchemaRef(
         schemaName, !required, undefined, readsSource, rootId, component,
-        packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas,
+        packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings,
       )
     } else {
-      const fs = fieldSchema as { type?: string | string[]; format?: string; enum?: unknown[]; items?: unknown; properties?: Record<string, unknown> }
+      const fs = fieldSchema as { type?: string | string[]; format?: string; enum?: unknown[]; items?: unknown; properties?: Record<string, unknown>; additionalProperties?: unknown }
       const rawType = Array.isArray(fs.type) ? (fs.type.find(t => t !== 'null') ?? 'string') : (fs.type ?? 'string')
       const isNullableArray = Array.isArray(fs.type) && fs.type.includes('null')
       const nullable = !required || isNullableArray
@@ -548,7 +609,7 @@ function emitFields(
         } else if (isRefSchema(items)) {
           fieldNode.properties = resolveSchemaRef(
             refName((items as { $ref: string }).$ref), nullable, 'array', readsSource, rootId, component,
-            packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas,
+            packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings,
           )
           if (!fieldNode.properties.$ref) fieldNode.properties = { type: 'string', nullable, collection: 'array' }
         } else {
@@ -556,20 +617,20 @@ function emitFields(
           fieldNode.properties = { type: deriveScalarType(it.type ?? 'string', it.format, packConfig.scalarTypes) ?? 'string', nullable, collection: 'array' }
         }
       } else if (rawType === 'object' && fs.properties) {
-        if (rootId) {
-          const inlineId = deriveNodeId('schema', component, fieldName, { parentId: rootId, section: 'schemas' })
-          if (!nodes.some(n => n.id === inlineId)) {
-            nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, specPath, inlineId))
-            edges.push({ id: `${rootId}__has-field__${inlineId}`, from: rootId, to: inlineId, type: 'has-field', state: 'implemented', stability: 'unstable' })
-            const localRef = `#/schemas/${fieldName}`
-            localSchemas.set(fieldName, localRef)
-            emitFields(fs as { properties?: Record<string, unknown>; required?: string[] }, inlineId, 'fields', rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas)
-          }
-          fieldNode.properties = { $ref: localSchemas.get(fieldName) ?? `#/schemas/${fieldName}`, nullable }
-        } else {
-          diagnostics.push({ severity: 'warning', file: specPath, message: `Inline object field "${fieldId}" has no event context — treating as string` })
-          fieldNode.properties = { type: 'string', nullable }
+        const schemaParent = rootId ?? parentId
+        const inlineId = deriveNodeId('schema', component, fieldName, { parentId: schemaParent, section: 'schemas' })
+        if (!nodes.some(n => n.id === inlineId)) {
+          nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, specPath, inlineId))
+          edges.push({ id: `${schemaParent}__has-field__${inlineId}`, from: schemaParent, to: inlineId, type: 'has-field', state: 'implemented', stability: 'unstable' })
+          const localRef = `#/schemas/${fieldName}`
+          localSchemas.set(fieldName, localRef)
+          emitFields(fs as { properties?: Record<string, unknown>; required?: string[] }, inlineId, 'fields', rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
         }
+        fieldNode.properties = { $ref: localSchemas.get(fieldName) ?? `#/schemas/${fieldName}`, nullable }
+      } else if (rawType === 'object' && fs.additionalProperties) {
+        // Map/dictionary: emit a Mapping node scoped to the parent schema, ref it from the field
+        createMapping(fieldName, fs.additionalProperties, parentId, rootId, component, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
+        fieldNode.properties = { $ref: `#/mappings/${fieldName}`, nullable }
       } else {
         const scalarType = deriveScalarType(rawType, fs.format, packConfig.scalarTypes)
         if (scalarType) {
