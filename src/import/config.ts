@@ -38,7 +38,12 @@ export interface AsyncAPIImportEntry {
   includeConsumed?: boolean
 }
 
-export type ImportEntry = OpenAPIImportEntry | AsyncAPIImportEntry
+export interface CorumImportEntry {
+  adapter: 'corum'
+  spec: string
+}
+
+export type ImportEntry = OpenAPIImportEntry | AsyncAPIImportEntry | CorumImportEntry
 
 export interface ImportConfig {
   componentNameReplacements?: ComponentNameReplacement[]
