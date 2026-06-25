@@ -136,7 +136,7 @@ export function mapDocument(
       const [component] = schemaId.split('.')
       const node = makeNode(packConfig.constructs.requestSchema?.template ?? 'Schema', component, entry.spec, schemaId)
       nodes.push(node)
-      emitFields(s, schemaId, 'fields', undefined, packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, new Map())
+      emitFields(s, schemaId, 'fields', undefined, packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, new Map(), new Map())
     }
   }
 
@@ -173,6 +173,7 @@ export function mapDocument(
       if (parameters) endpointNode.properties.parameters = parameters
 
       const localSchemas = new Map<string, string>()
+      const localMappings = new Map<string, string>()
 
       const requestBody = operation.requestBody as OpenAPIV3.RequestBodyObject | undefined
       if (requestBody?.content) {
@@ -180,7 +181,7 @@ export function mapDocument(
         if (jsonContent?.schema) {
           const ref = emitSchemaNode(
             jsonContent.schema, `${operationId}-request`, endpointId, 'schemas', endpointId,
-            packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas,
+            packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings,
           )
           if (ref) endpointNode.properties.request = ref
         }
@@ -193,7 +194,7 @@ export function mapDocument(
         if (jsonContent?.schema) {
           const ref = emitSchemaNode(
             jsonContent.schema, `${operationId}-response-${status}`, endpointId, 'schemas', endpointId,
-            packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas,
+            packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings,
           )
           if (ref) responses[status] = ref
         }
@@ -335,6 +336,7 @@ function emitSchemaNode(
   sharedSchemas: Map<string, string>,
   sourceSchemas: Map<string, OpenAPIV3.SchemaObject>,
   localSchemas: Map<string, string>,
+  localMappings: Map<string, string>,
 ): string | undefined {
   schema = resolveAllOfRef(schema)
 
@@ -352,14 +354,14 @@ function emitSchemaNode(
     const sourceSchema = sourceSchemas.get(schemaName)
     if (sourceSchema) {
       const effectiveParent = rootId ?? parentId
-      return createInlineSchema(sourceSchema, schemaName, effectiveParent, section, rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas)
+      return createInlineSchema(sourceSchema, schemaName, effectiveParent, section, rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
     }
 
     return undefined
   }
 
   if (localSchemas.has(name)) return localSchemas.get(name)
-  return createInlineSchema(schema as OpenAPIV3.SchemaObject, name, parentId, section, rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas)
+  return createInlineSchema(schema as OpenAPIV3.SchemaObject, name, parentId, section, rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
 }
 
 function createInlineSchema(
@@ -376,6 +378,7 @@ function createInlineSchema(
   sharedSchemas: Map<string, string>,
   sourceSchemas: Map<string, OpenAPIV3.SchemaObject>,
   localSchemas: Map<string, string>,
+  localMappings: Map<string, string>,
 ): string {
   const schemaId = deriveNodeId('schema', undefined, name, parentId, section)
   const [component] = parentId.split('.')
@@ -384,13 +387,13 @@ function createInlineSchema(
   edges.push({ id: `${parentId}__has-field__${schemaId}`, from: parentId, to: schemaId, type: 'has-field', state: 'implemented', stability: 'unstable' })
   const localRef = `#/${section}/${name}`
   localSchemas.set(name, localRef)
-  emitFields(schema, schemaId, 'fields', rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas)
+  emitFields(schema, schemaId, 'fields', rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
   return localRef
 }
 
 function resolveFieldRef(
   schemaName: string,
-  collection: 'one' | 'array' | 'map' | 'map-of-map' | 'map-of-array',
+  collection: 'one' | 'array',
   required: boolean,
   rootId: string | undefined,
   readsSource: string,
@@ -403,6 +406,7 @@ function resolveFieldRef(
   sharedSchemas: Map<string, string>,
   sourceSchemas: Map<string, OpenAPIV3.SchemaObject>,
   localSchemas: Map<string, string>,
+  localMappings: Map<string, string>,
 ): Record<string, unknown> {
   const extra: Record<string, unknown> = { nullable: !required }
   if (collection !== 'one') extra.collection = collection
@@ -416,11 +420,98 @@ function resolveFieldRef(
   if (localSchemas.has(schemaName)) return { $ref: localSchemas.get(schemaName)!, ...extra }
 
   if (rootId) {
-    const localRef = emitSchemaNode(refSchema, schemaName, rootId, 'schemas', rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas)
+    const localRef = emitSchemaNode(refSchema, schemaName, rootId, 'schemas', rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
     if (localRef) return { $ref: localRef, ...extra }
   }
 
   return { $ref: schemaName, ...extra }
+}
+
+function createMapping(
+  mappingName: string,
+  addlRaw: OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject | boolean,
+  parentId: string,
+  rootId: string | undefined,
+  packConfig: AdapterPackConfig,
+  specPath: string,
+  nodes: Node[],
+  edges: Edge[],
+  diagnostics: Diagnostic[],
+  sharedSchemas: Map<string, string>,
+  sourceSchemas: Map<string, OpenAPIV3.SchemaObject>,
+  localSchemas: Map<string, string>,
+  localMappings: Map<string, string>,
+): string {
+  const existingId = localMappings.get(mappingName)
+  if (existingId) return existingId
+
+  const [component] = parentId.split('.')
+  const mappingId = `${parentId}.mappings.${mappingName}`
+  const mappingNode = makeNode('Mapping', component, specPath, mappingId)
+  const props: Record<string, unknown> = {}
+
+  if (typeof addlRaw === 'boolean' || addlRaw === undefined) {
+    props['value-type'] = 'string'
+  } else {
+    const addlSchema = resolveAllOfRef(addlRaw as OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject)
+    if (isRefSchema(addlSchema)) {
+      const valueSchemaName = refName(addlSchema.$ref)
+      const globalId = sharedSchemas.get(valueSchemaName)
+      if (globalId) {
+        props['value-ref'] = globalId
+      } else {
+        const localRef = localSchemas.get(valueSchemaName)
+        if (localRef) {
+          props['value-ref'] = localRef
+        } else if (rootId) {
+          const emitted = emitSchemaNode(addlSchema as OpenAPIV3.ReferenceObject, valueSchemaName, rootId, 'schemas', rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
+          props['value-ref'] = emitted ?? valueSchemaName
+        } else {
+          props['value-ref'] = valueSchemaName
+        }
+      }
+    } else {
+      const addlObj = addlSchema as OpenAPIV3.SchemaObject
+      if (addlObj.type === 'array') {
+        const rawItems = addlObj.items as OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject | undefined
+        const items = rawItems ? resolveAllOfRef(rawItems) : undefined
+        props['value-collection'] = 'array'
+        if (items && isRefSchema(items)) {
+          const valueSchemaName = refName(items.$ref)
+          const globalId = sharedSchemas.get(valueSchemaName)
+          if (globalId) {
+            props['value-ref'] = globalId
+          } else {
+            const localRef = localSchemas.get(valueSchemaName)
+            if (localRef) {
+              props['value-ref'] = localRef
+            } else if (rootId) {
+              const emitted = emitSchemaNode(items as OpenAPIV3.ReferenceObject, valueSchemaName, rootId, 'schemas', rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
+              props['value-ref'] = emitted ?? valueSchemaName
+            } else {
+              props['value-ref'] = valueSchemaName
+            }
+          }
+        } else {
+          const scalarType = items ? deriveScalarType((items as OpenAPIV3.SchemaObject).type ?? 'string', (items as OpenAPIV3.SchemaObject).format, packConfig.scalarTypes) : undefined
+          props['value-type'] = scalarType ?? 'string'
+        }
+      } else if (addlObj.type === 'object' && addlObj.additionalProperties) {
+        // map-of-map: inner additionalProperties → second Mapping node
+        const innerName = `${mappingName}-values`
+        const innerRef = createMapping(innerName, addlObj.additionalProperties as OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject | boolean, parentId, rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
+        props['value-ref'] = innerRef
+      } else {
+        const scalarType = deriveScalarType(addlObj.type ?? 'string', addlObj.format, packConfig.scalarTypes)
+        props['value-type'] = scalarType ?? 'string'
+      }
+    }
+  }
+
+  mappingNode.properties = props
+  nodes.push(mappingNode)
+  localMappings.set(mappingName, mappingId)
+  return mappingId
 }
 
 function emitFields(
@@ -436,6 +527,7 @@ function emitFields(
   sharedSchemas: Map<string, string>,
   sourceSchemas: Map<string, OpenAPIV3.SchemaObject>,
   localSchemas: Map<string, string>,
+  localMappings: Map<string, string>,
 ): void {
   // readsSource: when in endpoint context use rootId, otherwise use the schema itself
   const readsSource = rootId ?? parentId
@@ -450,7 +542,7 @@ function emitFields(
       fieldNode.properties = resolveFieldRef(
         refName(fieldSchema.$ref), 'one', required, rootId, readsSource,
         fieldSchema as OpenAPIV3.ReferenceObject,
-        packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas,
+        packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings,
       )
     } else {
       const fs = fieldSchema as OpenAPIV3.SchemaObject
@@ -468,7 +560,7 @@ function emitFields(
           fieldNode.properties = resolveFieldRef(
             refName(items.$ref), 'array', required, rootId, readsSource,
             items as OpenAPIV3.ReferenceObject,
-            packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas,
+            packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings,
           )
         } else {
           const itemType = deriveScalarType((items as OpenAPIV3.SchemaObject).type ?? 'string', (items as OpenAPIV3.SchemaObject).format, packConfig.scalarTypes)
@@ -477,7 +569,7 @@ function emitFields(
       } else if (fs.type === 'object' && fs.properties) {
         // Anonymous object with named properties → inline as sibling schema
         if (rootId) {
-          const localRef = emitSchemaNode(fs, fieldName, rootId, 'schemas', rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas)
+          const localRef = emitSchemaNode(fs, fieldName, rootId, 'schemas', rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
           fieldNode.properties = localRef
             ? { $ref: localRef, nullable: !required }
             : { type: 'string', nullable: !required }
@@ -486,62 +578,10 @@ function emitFields(
           fieldNode.properties = { type: 'string', nullable: !required }
         }
       } else if (fs.type === 'object' && fs.additionalProperties) {
-        // Map/dictionary: keyed collection
-        const addlRaw = fs.additionalProperties
-        if (typeof addlRaw === 'boolean') {
-          fieldNode.properties = { type: 'string', nullable: !required, collection: 'map' }
-        } else {
-          const addlSchema = resolveAllOfRef(addlRaw as OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject)
-          if (isRefSchema(addlSchema)) {
-            fieldNode.properties = resolveFieldRef(
-              refName(addlSchema.$ref), 'map', required, rootId, readsSource,
-              addlSchema as OpenAPIV3.ReferenceObject,
-              packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas,
-            )
-          } else {
-            const addlObj = addlSchema as OpenAPIV3.SchemaObject
-            if (addlObj.type === 'object') {
-              const innerAddl = addlObj.additionalProperties
-              if (!innerAddl || typeof innerAddl === 'boolean') {
-                fieldNode.properties = { type: 'string', nullable: !required, collection: 'map-of-map' }
-              } else {
-                const innerSchema = resolveAllOfRef(innerAddl as OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject)
-                if (isRefSchema(innerSchema)) {
-                  fieldNode.properties = resolveFieldRef(
-                    refName(innerSchema.$ref), 'map-of-map', required, rootId, readsSource,
-                    innerSchema as OpenAPIV3.ReferenceObject,
-                    packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas,
-                  )
-                } else {
-                  const inner = innerSchema as OpenAPIV3.SchemaObject
-                  const scalarType = deriveScalarType(inner.type ?? 'string', inner.format, packConfig.scalarTypes)
-                  if (scalarType) {
-                    fieldNode.properties = { type: scalarType, nullable: !required, collection: 'map-of-map' }
-                  } else {
-                    diagnostics.push({ severity: 'warning', file: specPath, message: `[WARN] Double-nested map for field ${fieldId}; inner value type not representable, using string` })
-                    fieldNode.properties = { type: 'string', nullable: !required, collection: 'map-of-map' }
-                  }
-                }
-              }
-            } else if (addlObj.type === 'array') {
-              const rawItems = addlObj.items as OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject | undefined
-              const items = rawItems ? resolveAllOfRef(rawItems) : undefined
-              if (items && isRefSchema(items)) {
-                fieldNode.properties = resolveFieldRef(
-                  refName(items.$ref), 'map-of-array', required, rootId, readsSource,
-                  items as OpenAPIV3.ReferenceObject,
-                  packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas,
-                )
-              } else {
-                const scalarType = items ? deriveScalarType((items as OpenAPIV3.SchemaObject).type ?? 'string', (items as OpenAPIV3.SchemaObject).format, packConfig.scalarTypes) : undefined
-                fieldNode.properties = { type: scalarType ?? 'string', nullable: !required, collection: 'map-of-array' }
-              }
-            } else {
-              const scalarType = deriveScalarType(addlObj.type ?? 'string', addlObj.format, packConfig.scalarTypes)
-              fieldNode.properties = { type: scalarType ?? 'string', nullable: !required, collection: 'map' }
-            }
-          }
-        }
+        // Map/dictionary: emit a Mapping node and ref it from the field
+        const mappingParent = rootId ?? parentId
+        createMapping(fieldName, fs.additionalProperties as OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject | boolean, mappingParent, rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
+        fieldNode.properties = { $ref: `#/mappings/${fieldName}`, nullable: !required }
       } else {
         const scalarType = deriveScalarType(fs.type ?? 'string', fs.format, packConfig.scalarTypes)
         if (scalarType) {

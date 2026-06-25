@@ -33,9 +33,8 @@ schemas:
         type: uuid
         nullable: false
       metadata:
-        type: string
+        $ref: '#/mappings/metadata'
         nullable: true
-        collection: map
       name:
         type: string
         nullable: false
@@ -46,3 +45,6 @@ schemas:
         type: string
         nullable: true
         collection: array
+mappings:
+  metadata:
+    value-type: string

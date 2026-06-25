@@ -286,3 +286,139 @@ describe('mapDocument — componentNameReplacements', () => {
     assert.ok(nodes.some(n => n.id === 'payments.APIEndpoint.capturePayment'))
   })
 })
+
+describe('mapDocument — additionalProperties (Mapping nodes)', () => {
+  function makeDocWithResponseSchema(schema: OpenAPIV3.SchemaObject): OpenAPIV3.Document {
+    return {
+      openapi: '3.0.0',
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/items': {
+          get: {
+            operationId: 'getItems',
+            responses: {
+              '200': {
+                description: 'OK',
+                content: {
+                  'application/json': {
+                    schema: { type: 'object', properties: { data: schema } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    }
+  }
+
+  it('string-valued additionalProperties emits Mapping node with value-type string', () => {
+    const doc = makeDocWithResponseSchema({ type: 'object', additionalProperties: { type: 'string' } })
+    const { nodes, diagnostics } = mapDocument(doc, ENTRY, PACK_CONFIG)
+    assert.equal(diagnostics.length, 0)
+
+    const field = nodes.find(n => n.id.endsWith('.fields.data'))
+    assert.ok(field, 'data field exists')
+    assert.equal(field!.properties['$ref'], '#/mappings/data')
+    assert.equal(field!.properties['collection'], undefined)
+
+    const mapping = nodes.find(n => n.id.endsWith('.mappings.data'))
+    assert.ok(mapping, 'mapping node exists')
+    assert.equal(mapping!.template, 'Mapping')
+    assert.equal(mapping!.properties['value-type'], 'string')
+    assert.equal(mapping!.properties['key-type'], undefined)
+  })
+
+  it('integer-valued additionalProperties emits Mapping node with value-type integer', () => {
+    const doc = makeDocWithResponseSchema({ type: 'object', additionalProperties: { type: 'integer' } })
+    const { nodes } = mapDocument(doc, ENTRY, PACK_CONFIG)
+
+    const mapping = nodes.find(n => n.id.endsWith('.mappings.data'))
+    assert.ok(mapping, 'mapping node exists')
+    assert.equal(mapping!.properties['value-type'], 'integer')
+  })
+
+  it('boolean additionalProperties (true) emits Mapping with value-type string', () => {
+    const doc = makeDocWithResponseSchema({ type: 'object', additionalProperties: true })
+    const { nodes } = mapDocument(doc, ENTRY, PACK_CONFIG)
+
+    const mapping = nodes.find(n => n.id.endsWith('.mappings.data'))
+    assert.ok(mapping, 'mapping node exists')
+    assert.equal(mapping!.properties['value-type'], 'string')
+  })
+
+  it('nested additionalProperties (map-of-map) emits two Mapping nodes', () => {
+    const doc = makeDocWithResponseSchema({
+      type: 'object',
+      additionalProperties: { type: 'object', additionalProperties: { type: 'integer' } },
+    })
+    const { nodes } = mapDocument(doc, ENTRY, PACK_CONFIG)
+
+    const outer = nodes.find(n => n.id.endsWith('.mappings.data'))
+    assert.ok(outer, 'outer mapping node exists')
+
+    const inner = nodes.find(n => n.id.endsWith('.mappings.data-values'))
+    assert.ok(inner, 'inner mapping node exists')
+    assert.equal(inner!.properties['value-type'], 'integer')
+    assert.ok(
+      String(outer!.properties['value-ref']).endsWith('.mappings.data-values'),
+      `outer value-ref should end with .mappings.data-values, got: ${outer!.properties['value-ref']}`,
+    )
+  })
+
+  it('array-valued additionalProperties (map-of-array) emits Mapping with value-collection array', () => {
+    const doc = makeDocWithResponseSchema({
+      type: 'object',
+      additionalProperties: { type: 'array', items: { type: 'string' } },
+    })
+    const { nodes } = mapDocument(doc, ENTRY, PACK_CONFIG)
+
+    const mapping = nodes.find(n => n.id.endsWith('.mappings.data'))
+    assert.ok(mapping, 'mapping node exists')
+    assert.equal(mapping!.properties['value-type'], 'string')
+    assert.equal(mapping!.properties['value-collection'], 'array')
+  })
+
+  it('$ref-valued additionalProperties emits Mapping with value-ref', () => {
+    const doc: OpenAPIV3.Document = {
+      openapi: '3.0.0',
+      info: { title: 'Test', version: '1.0' },
+      components: {
+        schemas: {
+          Tag: { type: 'string', enum: ['a', 'b'] },
+        },
+      },
+      paths: {
+        '/items': {
+          get: {
+            operationId: 'getItems',
+            responses: {
+              '200': {
+                description: 'OK',
+                content: {
+                  'application/json': {
+                    schema: {
+                      type: 'object',
+                      properties: {
+                        labels: { type: 'object', additionalProperties: { $ref: '#/components/schemas/Tag' } },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    }
+    const { nodes } = mapDocument(doc, ENTRY, PACK_CONFIG)
+
+    const field = nodes.find(n => n.id.endsWith('.fields.labels'))
+    assert.ok(field, 'labels field exists')
+    assert.equal(field!.properties['$ref'], '#/mappings/labels')
+
+    const mapping = nodes.find(n => n.id.endsWith('.mappings.labels'))
+    assert.ok(mapping, 'mapping node exists')
+    assert.ok(mapping!.properties['value-ref'], 'value-ref is set')
+  })
+})

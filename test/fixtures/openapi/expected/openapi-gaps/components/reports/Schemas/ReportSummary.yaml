@@ -11,13 +11,11 @@ metadata:
   derivedBy: adapter:openapi
 fields:
   groupedMetrics:
-    $ref: reports.Schema.Metric
+    $ref: '#/mappings/groupedMetrics'
     nullable: true
-    collection: map-of-array
   labelsByGroup:
-    type: string
+    $ref: '#/mappings/labelsByGroup'
     nullable: true
-    collection: map-of-array
   location:
     type: string
     nullable: true
@@ -26,17 +24,31 @@ fields:
     nullable: true
     collection: array
   metricsByCategory:
-    $ref: reports.Schema.Metric
+    $ref: '#/mappings/metricsByCategory'
     nullable: true
-    collection: map
   nestedMetrics:
-    $ref: reports.Schema.Metric
+    $ref: '#/mappings/nestedMetrics'
     nullable: true
-    collection: map-of-map
   perPersonBreakdown:
-    type: integer
+    $ref: '#/mappings/perPersonBreakdown'
     nullable: true
-    collection: map-of-map
   primaryMetric:
     type: string
     nullable: true
+mappings:
+  groupedMetrics:
+    value-collection: array
+    value-ref: reports.Schema.Metric
+  labelsByGroup:
+    value-collection: array
+    value-type: string
+  metricsByCategory:
+    value-ref: reports.Schema.Metric
+  nestedMetrics:
+    value-ref: reports.Schema.ReportSummary.mappings.nestedMetrics-values
+  nestedMetrics-values:
+    value-ref: reports.Schema.Metric
+  perPersonBreakdown:
+    value-ref: reports.Schema.ReportSummary.mappings.perPersonBreakdown-values
+  perPersonBreakdown-values:
+    value-type: integer

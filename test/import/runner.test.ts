@@ -160,7 +160,7 @@ describe('import runner — shared-error.yaml', () => {
 })
 
 describe('import runner — schema-features.yaml', () => {
-  it('unwraps allOf:[{$ref}], inlines anonymous objects, marks keyed maps, and shares multi-use schemas', async () => {
+  it('unwraps allOf:[{$ref}], inlines anonymous objects, emits Mapping nodes for keyed fields, and shares multi-use schemas', async () => {
     const { graphDir, cleanup } = await runAgainstFixture('schema-features.yaml')
     try {
       assertMatchesExpected(graphDir, 'schema-features')
@@ -237,7 +237,7 @@ describe('import runner — params-example.yaml', () => {
 })
 
 describe('import runner — openapi-gaps.yaml', () => {
-  it('maps map-of-array to collection:map-of-array and documents fallback for oneOf, double-nested map, and inline object in shared schema', async () => {
+  it('emits Mapping nodes for all additionalProperties shapes and handles oneOf fallback', async () => {
     const { graphDir, cleanup } = await runAgainstFixture('openapi-gaps.yaml')
     try {
       assertMatchesExpected(graphDir, 'openapi-gaps')
