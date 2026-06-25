@@ -212,7 +212,7 @@ function fieldLocalName(nodeId) {
 }
 
 function clusterNodeId(nodeId) {
-  const sectionMatch = nodeId.match(/\.(schemas|enums|operations)\./);
+  const sectionMatch = nodeId.match(/\.(schemas|enums|mappings|operations)\./);
   if (sectionMatch && sectionMatch.index !== undefined) {
     return nodeId.slice(0, sectionMatch.index);
   }
@@ -221,7 +221,7 @@ function clusterNodeId(nodeId) {
 
 function refName(ref, compact = false) {
   if (typeof ref === 'string') {
-    const full = ref.replace(/^#\/(schemas|enums)\//, '');
+    const full = ref.replace(/^#\/(schemas|enums|mappings)\//, '');
     if (compact) {
       const dot = full.lastIndexOf('.');
       return dot >= 0 ? full.slice(dot + 1) : full;
@@ -249,6 +249,7 @@ function refLocalSchemaName(ref) {
     return null;
   }
   if (ref.startsWith('#/schemas/')) return ref.slice(10);
+  if (ref.startsWith('#/mappings/')) return ref.slice(11);
   // Global node ID (e.g. "component.Schema.TypeName") — local name is the final segment
   const lastDot = ref.lastIndexOf('.');
   return lastDot >= 0 ? ref.slice(lastDot + 1) : null;
@@ -256,7 +257,7 @@ function refLocalSchemaName(ref) {
 
 function fieldType(properties, compact = false) {
   const c = properties?.collection;
-  const suffix = c === 'array' ? '[]' : c === 'map' ? '{}' : c === 'map-of-map' ? '{{}}' : c === 'map-of-array' ? '{[]}' : '';
+  const suffix = c === 'array' ? '[]' : '';
   if (properties?.type) return `${properties.type}${suffix}`;
   const ref = properties?.['$ref'];
   if (ref) return `${refName(ref, compact)}${suffix}`;
@@ -380,7 +381,7 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
         const childSchemaNode = canExpand ? model.schemasByName.get(localRef) : null;
         const childGhostFields = childSchemaNode ? overlayFieldsForSchema(overlayFields, childSchemaNode.id) : [];
         const c = field.properties?.collection;
-        const childPrefix = `${prefix}${name}${c === 'map-of-map' || c === 'map-of-array' ? '[][].' : c === 'array' || c === 'map' ? '[].' : '.'}`;
+        const childPrefix = `${prefix}${name}${c === 'array' ? '[].' : '.'}`;
         const nextVisited = new Set(visited);
         nextVisited.add(schemaName);
         const links = edges.filter(e =>

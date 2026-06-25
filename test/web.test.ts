@@ -714,6 +714,64 @@ describe('web server', () => {
       })
     })
 
+    it('includes Mapping descendants and resolves #/mappings/ node-refs', async () => {
+      const mappingGraph: Graph = {
+        nodesById: new Map([
+          ['orders.Order', {
+            id: 'orders.Order', template: 'DomainModel', component: 'orders',
+            state: 'agreed' as const, stability: 'stable' as const,
+            schemaVersion: '1', lastModifiedAt: '2026-04-18',
+            properties: { schema: '#/mappings/pricesMap' },
+          }],
+          ['orders.Order.mappings.pricesMap', {
+            id: 'orders.Order.mappings.pricesMap', template: 'Mapping', component: 'orders',
+            state: 'agreed' as const, stability: 'stable' as const,
+            schemaVersion: '1', lastModifiedAt: '2026-04-18',
+            properties: { 'value-type': 'decimal' },
+          }],
+        ]),
+        edgesByFrom: new Map(),
+        edgesByTo: new Map(),
+        templates: new Map([
+          ['DomainModel', {
+            name: 'DomainModel',
+            info: { version: '1', core: false, description: 'A domain model' },
+            properties: { type: 'object', properties: { schema: { type: 'string', format: 'node-ref' } } },
+            ui: { colour: '#4a90e2', displayName: 'Domain Model', icon: 'sitemap' },
+          }],
+          ['Mapping', {
+            name: 'Mapping',
+            info: { version: '1', core: true, description: 'A keyed collection' },
+            ui: { displayName: 'Mapping' },
+          }],
+        ]),
+        diagnostics: [],
+      }
+
+      const mappingHandle = await startWebServer(mappingGraph, { port: 0 })
+      try {
+        const res = await fetch(
+          `http://localhost:${mappingHandle.port}/api/cluster?nodeId=${encodeURIComponent('orders.Order')}`,
+        )
+        assert.equal(res.status, 200)
+        const body = await res.json() as {
+          root: { properties: Record<string, unknown> }
+          descendants: Array<{ id: string }>
+        }
+
+        assert.ok(
+          body.descendants.some(d => d.id === 'orders.Order.mappings.pricesMap'),
+          'Mapping node appears in cluster descendants',
+        )
+        assert.deepEqual(body.root.properties.schema, {
+          display: 'pricesMap',
+          nodeId: 'orders.Order.mappings.pricesMap',
+        })
+      } finally {
+        await mappingHandle.close()
+      }
+    })
+
     it('returns 404 for unknown nodeId', async () => {
       const res = await fetch(
         `http://localhost:${handle.port}/api/cluster?nodeId=nonexistent`,

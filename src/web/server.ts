@@ -124,6 +124,11 @@ function resolveNodeRef(graph: Graph, node: Node, rawValue: string): NodeRefValu
     const id = `${node.id}.enums.${name}`
     return graph.nodesById.has(id) ? { display: name, nodeId: id } : { display: name }
   }
+  if (rawValue.startsWith('#/mappings/')) {
+    const name = rawValue.slice(11)
+    const id = `${node.id}.mappings.${name}`
+    return graph.nodesById.has(id) ? { display: name, nodeId: id } : { display: name }
+  }
   if (graph.nodesById.has(rawValue)) return { display: rawValue, nodeId: rawValue }
   return { display: rawValue }
 }
