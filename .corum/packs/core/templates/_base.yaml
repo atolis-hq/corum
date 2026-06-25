@@ -3,7 +3,7 @@ info:
   version: "1.0.0"
   description: |
     Base template implicitly inherited by all templates. Declares the universal
-    owned sections available on every node type — schemas, enums, and mappings.
+    owned sections available on every node type — schemas and enums.
     These sections do not need to be re-declared in individual templates.
 
 schemas:
@@ -21,11 +21,3 @@ enums:
     becomes an EnumDefinition node with ID {node-id}.enums.{local-name}.
     Enums shared across multiple nodes should be standalone EnumDefinition
     cluster files referenced by global node ID.
-
-mappings:
-  item-template: Mapping
-  description: |
-    Locally scoped Mapping nodes owned by this node. Each entry becomes a
-    Mapping node with ID {node-id}.mappings.{local-name}. Mappings shared
-    across multiple nodes should be standalone Mapping cluster files
-    referenced by global node ID.

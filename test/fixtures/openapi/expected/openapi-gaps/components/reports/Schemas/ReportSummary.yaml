@@ -38,17 +38,17 @@ fields:
 mappings:
   groupedMetrics:
     value-collection: array
-    value-ref: reports.Schema.Metric
+    $ref: reports.Schema.Metric
   labelsByGroup:
     value-collection: array
-    value-type: string
+    type: string
   metricsByCategory:
-    value-ref: reports.Schema.Metric
+    $ref: reports.Schema.Metric
   nestedMetrics:
-    value-ref: reports.Schema.ReportSummary.mappings.nestedMetrics-values
+    $ref: reports.Schema.ReportSummary.mappings.nestedMetrics-values
   nestedMetrics-values:
-    value-ref: reports.Schema.Metric
+    $ref: reports.Schema.Metric
   perPersonBreakdown:
-    value-ref: reports.Schema.ReportSummary.mappings.perPersonBreakdown-values
+    $ref: reports.Schema.ReportSummary.mappings.perPersonBreakdown-values
   perPersonBreakdown-values:
-    value-type: integer
+    type: integer

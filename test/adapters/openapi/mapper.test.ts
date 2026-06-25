@@ -312,7 +312,7 @@ describe('mapDocument — additionalProperties (Mapping nodes)', () => {
     }
   }
 
-  it('string-valued additionalProperties emits Mapping node with value-type string', () => {
+  it('string-valued additionalProperties emits Mapping node with type string', () => {
     const doc = makeDocWithResponseSchema({ type: 'object', additionalProperties: { type: 'string' } })
     const { nodes, diagnostics } = mapDocument(doc, ENTRY, PACK_CONFIG)
     assert.equal(diagnostics.length, 0)
@@ -325,26 +325,26 @@ describe('mapDocument — additionalProperties (Mapping nodes)', () => {
     const mapping = nodes.find(n => n.id.endsWith('.mappings.data'))
     assert.ok(mapping, 'mapping node exists')
     assert.equal(mapping!.template, 'Mapping')
-    assert.equal(mapping!.properties['value-type'], 'string')
+    assert.equal(mapping!.properties['type'], 'string')
     assert.equal(mapping!.properties['key-type'], undefined)
   })
 
-  it('integer-valued additionalProperties emits Mapping node with value-type integer', () => {
+  it('integer-valued additionalProperties emits Mapping node with type integer', () => {
     const doc = makeDocWithResponseSchema({ type: 'object', additionalProperties: { type: 'integer' } })
     const { nodes } = mapDocument(doc, ENTRY, PACK_CONFIG)
 
     const mapping = nodes.find(n => n.id.endsWith('.mappings.data'))
     assert.ok(mapping, 'mapping node exists')
-    assert.equal(mapping!.properties['value-type'], 'integer')
+    assert.equal(mapping!.properties['type'], 'integer')
   })
 
-  it('boolean additionalProperties (true) emits Mapping with value-type string', () => {
+  it('boolean additionalProperties (true) emits Mapping with type string', () => {
     const doc = makeDocWithResponseSchema({ type: 'object', additionalProperties: true })
     const { nodes } = mapDocument(doc, ENTRY, PACK_CONFIG)
 
     const mapping = nodes.find(n => n.id.endsWith('.mappings.data'))
     assert.ok(mapping, 'mapping node exists')
-    assert.equal(mapping!.properties['value-type'], 'string')
+    assert.equal(mapping!.properties['type'], 'string')
   })
 
   it('nested additionalProperties (map-of-map) emits two Mapping nodes', () => {
@@ -359,10 +359,10 @@ describe('mapDocument — additionalProperties (Mapping nodes)', () => {
 
     const inner = nodes.find(n => n.id.endsWith('.mappings.data-values'))
     assert.ok(inner, 'inner mapping node exists')
-    assert.equal(inner!.properties['value-type'], 'integer')
+    assert.equal(inner!.properties['type'], 'integer')
     assert.ok(
-      String(outer!.properties['value-ref']).endsWith('.mappings.data-values'),
-      `outer value-ref should end with .mappings.data-values, got: ${outer!.properties['value-ref']}`,
+      String(outer!.properties['$ref']).endsWith('.mappings.data-values'),
+      `outer $ref should end with .mappings.data-values, got: ${outer!.properties['$ref']}`,
     )
   })
 
@@ -375,11 +375,11 @@ describe('mapDocument — additionalProperties (Mapping nodes)', () => {
 
     const mapping = nodes.find(n => n.id.endsWith('.mappings.data'))
     assert.ok(mapping, 'mapping node exists')
-    assert.equal(mapping!.properties['value-type'], 'string')
+    assert.equal(mapping!.properties['type'], 'string')
     assert.equal(mapping!.properties['value-collection'], 'array')
   })
 
-  it('$ref-valued additionalProperties emits Mapping with value-ref', () => {
+  it('$ref-valued additionalProperties emits Mapping with $ref', () => {
     const doc: OpenAPIV3.Document = {
       openapi: '3.0.0',
       info: { title: 'Test', version: '1.0' },
@@ -419,6 +419,6 @@ describe('mapDocument — additionalProperties (Mapping nodes)', () => {
 
     const mapping = nodes.find(n => n.id.endsWith('.mappings.labels'))
     assert.ok(mapping, 'mapping node exists')
-    assert.ok(mapping!.properties['value-ref'], 'value-ref is set')
+    assert.ok(mapping!.properties['$ref'], '$ref is set')
   })
 })

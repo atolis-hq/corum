@@ -45,6 +45,6 @@ schemas:
         type: string
         nullable: true
         collection: array
-mappings:
-  metadata:
-    value-type: string
+    mappings:
+      metadata:
+        type: string

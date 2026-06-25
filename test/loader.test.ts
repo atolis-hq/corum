@@ -437,7 +437,7 @@ describe('cluster loader — Mapping nodes', () => {
       'mappings:',
       '  surcharge-by-zone:',
       '    key-ref: orders.DomainModel.order.enums.shipping-zone',
-      '    value-type: string',
+      '    type: string',
     ].join('\n')
 
     const content: ContentMap = new Map([
@@ -462,7 +462,7 @@ describe('cluster loader — Mapping nodes', () => {
     assert.equal(mapping.template, 'Mapping')
     assert.equal(mapping.component, 'orders')
     assert.equal(mapping.properties['key-ref'], 'orders.DomainModel.order.enums.shipping-zone')
-    assert.equal(mapping.properties['value-type'], 'string')
+    assert.equal(mapping.properties['type'], 'string')
   })
 
   it('Mapping node inherits state and stability from parent', () => {
@@ -488,7 +488,7 @@ describe('cluster loader — Mapping nodes', () => {
       '  lastModifiedAt: "2026-01-01"',
       'mappings:',
       '  carrier-rates:',
-      '    value-type: decimal',
+      '    type: decimal',
     ].join('\n')
 
     const content: ContentMap = new Map([

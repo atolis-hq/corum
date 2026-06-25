@@ -12,8 +12,8 @@ info:
     EnumDefinition node (key-ref). These are mutually exclusive. When both
     are absent, the key is implicitly string.
 
-    Value type is either a primitive scalar (value-type) or a reference to
-    another node (value-ref): Schema, EnumDefinition, Mapping, ValueObject,
+    Value type is either a primitive scalar (type) or a reference to
+    another node ($ref): Schema, EnumDefinition, Mapping, ValueObject,
     or DomainModel. These are mutually exclusive.
 
     value-collection controls cardinality of the value: 'one' (default) means
@@ -39,7 +39,7 @@ properties:
       type: string
       format: node-ref
       description: "Reference to the EnumDefinition node whose values are the key set. Mutually exclusive with key-type."
-    value-type:
+    type:
       type: string
       enum:
         - string
@@ -50,11 +50,11 @@ properties:
         - datetime
         - date
         - time
-      description: "Primitive scalar value type. Mutually exclusive with value-ref."
-    value-ref:
+      description: "Primitive scalar value type. Mutually exclusive with $ref."
+    $ref:
       type: string
       format: node-ref
-      description: "Reference to the node defining the value type. Accepts: Schema, EnumDefinition, Mapping, ValueObject, DomainModel. Mutually exclusive with value-type."
+      description: "Reference to the node defining the value type. Accepts: Schema, EnumDefinition, Mapping, ValueObject, DomainModel. Mutually exclusive with type."
     value-collection:
       type: string
       enum:
@@ -69,6 +69,6 @@ ui:
   displayProperties:
     - key-type
     - key-ref
-    - value-type
-    - value-ref
+    - type
+    - $ref
     - value-collection

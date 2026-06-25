@@ -522,32 +522,32 @@ function createMapping(
   const props: Record<string, unknown> = {}
 
   if (!addlRaw || typeof addlRaw === 'boolean') {
-    props['value-type'] = 'string'
+    props['type'] = 'string'
   } else {
     const addl = addlRaw as { type?: string; format?: string; items?: unknown; additionalProperties?: unknown; $ref?: string }
     if (addl.$ref) {
       const schemaName = refName(addl.$ref)
       const globalId = sharedSchemas.get(schemaName)
-      props['value-ref'] = globalId ?? schemaName
+      props['$ref'] = globalId ?? schemaName
     } else if (addl.type === 'array') {
       props['value-collection'] = 'array'
       const items = addl.items ? resolveAllOfRef(addl.items) : undefined
       if (items && isRefSchema(items)) {
         const schemaName = refName((items as { $ref: string }).$ref)
         const globalId = sharedSchemas.get(schemaName)
-        props['value-ref'] = globalId ?? schemaName
+        props['$ref'] = globalId ?? schemaName
       } else if (items) {
         const it = items as { type?: string; format?: string }
-        props['value-type'] = deriveScalarType(it.type ?? 'string', it.format, packConfig.scalarTypes) ?? 'string'
+        props['type'] = deriveScalarType(it.type ?? 'string', it.format, packConfig.scalarTypes) ?? 'string'
       } else {
-        props['value-type'] = 'string'
+        props['type'] = 'string'
       }
     } else if (addl.type === 'object' && addl.additionalProperties) {
       const innerName = `${mappingName}-values`
       const innerId = createMapping(innerName, addl.additionalProperties, parentId, rootId, component, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
-      props['value-ref'] = innerId
+      props['$ref'] = innerId
     } else {
-      props['value-type'] = deriveScalarType(addl.type ?? 'string', addl.format, packConfig.scalarTypes) ?? 'string'
+      props['type'] = deriveScalarType(addl.type ?? 'string', addl.format, packConfig.scalarTypes) ?? 'string'
     }
   }
 
@@ -632,9 +632,8 @@ function emitFields(
           fieldNode.properties = { type: 'string', nullable }
         }
       } else if (rawType === 'object' && fs.additionalProperties) {
-        // Map/dictionary: emit a Mapping node and ref it from the field
-        const mappingParent = rootId ?? parentId
-        createMapping(fieldName, fs.additionalProperties, mappingParent, rootId, component, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
+        // Map/dictionary: emit a Mapping node scoped to the parent schema, ref it from the field
+        createMapping(fieldName, fs.additionalProperties, parentId, rootId, component, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
         fieldNode.properties = { $ref: `#/mappings/${fieldName}`, nullable }
       } else {
         const scalarType = deriveScalarType(rawType, fs.format, packConfig.scalarTypes)

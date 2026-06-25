@@ -451,23 +451,23 @@ function createMapping(
   const props: Record<string, unknown> = {}
 
   if (typeof addlRaw === 'boolean' || addlRaw === undefined) {
-    props['value-type'] = 'string'
+    props['type'] = 'string'
   } else {
     const addlSchema = resolveAllOfRef(addlRaw as OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject)
     if (isRefSchema(addlSchema)) {
       const valueSchemaName = refName(addlSchema.$ref)
       const globalId = sharedSchemas.get(valueSchemaName)
       if (globalId) {
-        props['value-ref'] = globalId
+        props['$ref'] = globalId
       } else {
         const localRef = localSchemas.get(valueSchemaName)
         if (localRef) {
-          props['value-ref'] = localRef
+          props['$ref'] = localRef
         } else if (rootId) {
           const emitted = emitSchemaNode(addlSchema as OpenAPIV3.ReferenceObject, valueSchemaName, rootId, 'schemas', rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
-          props['value-ref'] = emitted ?? valueSchemaName
+          props['$ref'] = emitted ?? valueSchemaName
         } else {
-          props['value-ref'] = valueSchemaName
+          props['$ref'] = valueSchemaName
         }
       }
     } else {
@@ -480,30 +480,30 @@ function createMapping(
           const valueSchemaName = refName(items.$ref)
           const globalId = sharedSchemas.get(valueSchemaName)
           if (globalId) {
-            props['value-ref'] = globalId
+            props['$ref'] = globalId
           } else {
             const localRef = localSchemas.get(valueSchemaName)
             if (localRef) {
-              props['value-ref'] = localRef
+              props['$ref'] = localRef
             } else if (rootId) {
               const emitted = emitSchemaNode(items as OpenAPIV3.ReferenceObject, valueSchemaName, rootId, 'schemas', rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
-              props['value-ref'] = emitted ?? valueSchemaName
+              props['$ref'] = emitted ?? valueSchemaName
             } else {
-              props['value-ref'] = valueSchemaName
+              props['$ref'] = valueSchemaName
             }
           }
         } else {
           const scalarType = items ? deriveScalarType((items as OpenAPIV3.SchemaObject).type ?? 'string', (items as OpenAPIV3.SchemaObject).format, packConfig.scalarTypes) : undefined
-          props['value-type'] = scalarType ?? 'string'
+          props['type'] = scalarType ?? 'string'
         }
       } else if (addlObj.type === 'object' && addlObj.additionalProperties) {
         // map-of-map: inner additionalProperties → second Mapping node
         const innerName = `${mappingName}-values`
         const innerRef = createMapping(innerName, addlObj.additionalProperties as OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject | boolean, parentId, rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
-        props['value-ref'] = innerRef
+        props['$ref'] = innerRef
       } else {
         const scalarType = deriveScalarType(addlObj.type ?? 'string', addlObj.format, packConfig.scalarTypes)
-        props['value-type'] = scalarType ?? 'string'
+        props['type'] = scalarType ?? 'string'
       }
     }
   }
@@ -578,9 +578,8 @@ function emitFields(
           fieldNode.properties = { type: 'string', nullable: !required }
         }
       } else if (fs.type === 'object' && fs.additionalProperties) {
-        // Map/dictionary: emit a Mapping node and ref it from the field
-        const mappingParent = rootId ?? parentId
-        createMapping(fieldName, fs.additionalProperties as OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject | boolean, mappingParent, rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
+        // Map/dictionary: emit a Mapping node scoped to the parent schema, ref it from the field
+        createMapping(fieldName, fs.additionalProperties as OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject | boolean, parentId, rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
         fieldNode.properties = { $ref: `#/mappings/${fieldName}`, nullable: !required }
       } else {
         const scalarType = deriveScalarType(fs.type ?? 'string', fs.format, packConfig.scalarTypes)

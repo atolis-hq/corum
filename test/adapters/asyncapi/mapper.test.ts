@@ -352,7 +352,7 @@ const ASYNCAPI_ENTRY = {
 } as any
 
 describe('mapDocument — additionalProperties (Mapping nodes)', () => {
-  it('string-valued additionalProperties emits Mapping node with value-type string', () => {
+  it('string-valued additionalProperties emits Mapping node with type string', () => {
     const doc = makeAsyncAPIDoc({ data: { type: 'object', additionalProperties: { type: 'string' } } })
     const { nodes, diagnostics } = mapDocument(doc, ASYNCAPI_ENTRY, PACK_CONFIG)
     assert.equal(diagnostics.length, 0)
@@ -365,7 +365,7 @@ describe('mapDocument — additionalProperties (Mapping nodes)', () => {
     const mapping = nodes.find(n => n.id.endsWith('.mappings.data'))
     assert.ok(mapping, 'mapping node exists')
     assert.equal(mapping!.template, 'Mapping')
-    assert.equal(mapping!.properties['value-type'], 'string')
+    assert.equal(mapping!.properties['type'], 'string')
   })
 
   it('array-valued additionalProperties emits Mapping with value-collection array', () => {
@@ -374,7 +374,7 @@ describe('mapDocument — additionalProperties (Mapping nodes)', () => {
 
     const mapping = nodes.find(n => n.id.endsWith('.mappings.items'))
     assert.ok(mapping, 'mapping node exists')
-    assert.equal(mapping!.properties['value-type'], 'integer')
+    assert.equal(mapping!.properties['type'], 'integer')
     assert.equal(mapping!.properties['value-collection'], 'array')
   })
 
@@ -389,10 +389,10 @@ describe('mapDocument — additionalProperties (Mapping nodes)', () => {
 
     const inner = nodes.find(n => n.id.endsWith('.mappings.nested-values'))
     assert.ok(inner, 'inner mapping node exists')
-    assert.equal(inner!.properties['value-type'], 'integer')
+    assert.equal(inner!.properties['type'], 'integer')
     assert.ok(
-      String(outer!.properties['value-ref']).endsWith('.mappings.nested-values'),
-      `outer value-ref should end with .mappings.nested-values, got: ${outer!.properties['value-ref']}`,
+      String(outer!.properties['$ref']).endsWith('.mappings.nested-values'),
+      `outer $ref should end with .mappings.nested-values, got: ${outer!.properties['$ref']}`,
     )
   })
 })

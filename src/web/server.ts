@@ -126,7 +126,9 @@ function resolveNodeRef(graph: Graph, node: Node, rawValue: string): NodeRefValu
   }
   if (rawValue.startsWith('#/mappings/')) {
     const name = rawValue.slice(11)
-    const id = `${node.id}.mappings.${name}`
+    // Field nodes carry #/mappings/ refs — strip .fields.<name> to reach the owning schema
+    const schemaId = node.id.replace(/\.fields\.[^.]+$/, '')
+    const id = `${schemaId}.mappings.${name}`
     return graph.nodesById.has(id) ? { display: name, nodeId: id } : { display: name }
   }
   if (graph.nodesById.has(rawValue)) return { display: rawValue, nodeId: rawValue }

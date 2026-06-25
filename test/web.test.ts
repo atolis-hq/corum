@@ -714,20 +714,32 @@ describe('web server', () => {
       })
     })
 
-    it('includes Mapping descendants and resolves #/mappings/ node-refs', async () => {
+    it('includes Mapping descendants and resolves #/mappings/ on a Field node to parent schema', async () => {
       const mappingGraph: Graph = {
         nodesById: new Map([
           ['orders.Order', {
             id: 'orders.Order', template: 'DomainModel', component: 'orders',
             state: 'agreed' as const, stability: 'stable' as const,
             schemaVersion: '1', lastModifiedAt: '2026-04-18',
-            properties: { schema: '#/mappings/pricesMap' },
+            properties: {},
           }],
-          ['orders.Order.mappings.pricesMap', {
-            id: 'orders.Order.mappings.pricesMap', template: 'Mapping', component: 'orders',
+          ['orders.Order.schemas.prices', {
+            id: 'orders.Order.schemas.prices', template: 'Schema', component: 'orders',
             state: 'agreed' as const, stability: 'stable' as const,
             schemaVersion: '1', lastModifiedAt: '2026-04-18',
-            properties: { 'value-type': 'decimal' },
+            properties: {},
+          }],
+          ['orders.Order.schemas.prices.fields.pricesByZone', {
+            id: 'orders.Order.schemas.prices.fields.pricesByZone', template: 'Field', component: 'orders',
+            state: 'agreed' as const, stability: 'stable' as const,
+            schemaVersion: '1', lastModifiedAt: '2026-04-18',
+            properties: { $ref: '#/mappings/pricesByZone', nullable: false },
+          }],
+          ['orders.Order.schemas.prices.mappings.pricesByZone', {
+            id: 'orders.Order.schemas.prices.mappings.pricesByZone', template: 'Mapping', component: 'orders',
+            state: 'agreed' as const, stability: 'stable' as const,
+            schemaVersion: '1', lastModifiedAt: '2026-04-18',
+            properties: { type: 'decimal' },
           }],
         ]),
         edgesByFrom: new Map(),
@@ -736,8 +748,18 @@ describe('web server', () => {
           ['DomainModel', {
             name: 'DomainModel',
             info: { version: '1', core: false, description: 'A domain model' },
-            properties: { type: 'object', properties: { schema: { type: 'string', format: 'node-ref' } } },
             ui: { colour: '#4a90e2', displayName: 'Domain Model', icon: 'sitemap' },
+          }],
+          ['Schema', {
+            name: 'Schema',
+            info: { version: '1', core: true, description: 'A schema' },
+            ui: { displayName: 'Schema' },
+          }],
+          ['Field', {
+            name: 'Field',
+            info: { version: '1', core: true, description: 'A field' },
+            properties: { type: 'object', properties: { $ref: { type: 'string', format: 'node-ref' } } },
+            ui: { displayName: 'Field' },
           }],
           ['Mapping', {
             name: 'Mapping',
@@ -755,17 +777,17 @@ describe('web server', () => {
         )
         assert.equal(res.status, 200)
         const body = await res.json() as {
-          root: { properties: Record<string, unknown> }
-          descendants: Array<{ id: string }>
+          descendants: Array<{ id: string; properties: Record<string, unknown> }>
         }
 
         assert.ok(
-          body.descendants.some(d => d.id === 'orders.Order.mappings.pricesMap'),
+          body.descendants.some(d => d.id === 'orders.Order.schemas.prices.mappings.pricesByZone'),
           'Mapping node appears in cluster descendants',
         )
-        assert.deepEqual(body.root.properties.schema, {
-          display: 'pricesMap',
-          nodeId: 'orders.Order.mappings.pricesMap',
+        const field = body.descendants.find(d => d.id === 'orders.Order.schemas.prices.fields.pricesByZone')
+        assert.deepEqual(field?.properties.$ref, {
+          display: 'pricesByZone',
+          nodeId: 'orders.Order.schemas.prices.mappings.pricesByZone',
         })
       } finally {
         await mappingHandle.close()
