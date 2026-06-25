@@ -490,7 +490,7 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
               </div>
               <div className="name">{compact ? name : `${prefix}${name}`}</div>
               <div className="type" title={typeFull !== typeDisplay ? typeFull : undefined}>{typeDisplay}</div>
-              <div className="cardinality">{fieldCardinality(field.properties)}</div>
+              <div className="cardinality">{canExpandMapping ? 'map' : fieldCardinality(field.properties)}</div>
               <div className="req">{fieldRequirement(field.properties)}</div>
               <div className="state"><StateTag state={field.state} /></div>
               <div className="lineage">
