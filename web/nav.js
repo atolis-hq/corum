@@ -46,10 +46,12 @@ function buildNavTree(nodes, templates) {
     if (nestedNodeIds.has(node.id)) continue;
     const template = templateMap.get(node.template);
     const navGroup = template?.ui?.nav?.navGroup;
-    const navChildren = [...(nestedByParent.get(node.id)?.values() ?? [])].map(group => ({
-      label: group.label,
-      nodes: group.nodes.sort((a, b) => a.id.localeCompare(b.id)),
-    }));
+    const navChildren = [...(nestedByParent.get(node.id)?.values() ?? [])]
+      .sort((a, b) => a.label.localeCompare(b.label))
+      .map(group => ({
+        label: group.label,
+        nodes: group.nodes.sort((a, b) => a.id.localeCompare(b.id)),
+      }));
     const nodeWithChildren = { ...node, navChildren };
 
     if (navGroup) {
