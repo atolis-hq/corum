@@ -30,7 +30,7 @@ export function serializeGraph(graph: Graph, options: SerializeGraphOptions = {}
   }
 
   const explicitEdges = getAllEdges(graph)
-    .filter(edge => !STRUCTURAL_EDGE_TYPES.has(edge.type))
+    .filter(edge => !STRUCTURAL_EDGE_TYPES.has(edge.type) && edge.generated !== true)
     .sort((a, b) => a.id.localeCompare(b.id))
 
   if (explicitEdges.length > 0) {

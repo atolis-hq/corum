@@ -6,6 +6,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadGraph } from '../src/loader/index.js'
 import { saveGraph, serializeGraph } from '../src/writer/graph-writer.js'
+import type { Edge } from '../src/schema/index.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..', '..')
@@ -57,6 +58,33 @@ describe('serializeGraph', () => {
       assert.equal(reloadedRoot.derivedBy, 'adapter:openapi')
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('excludes generated reads edges from edge file output', async () => {
+    const graph = await loadGraph({ graphPath: fixtureGraphDir })
+
+    const syntheticEdge: Edge = {
+      id: 'orders.DomainModel.order__reads__payments.DomainModel.payment',
+      from: 'orders.DomainModel.order',
+      to: 'payments.DomainModel.payment',
+      type: 'reads',
+      state: 'proposed',
+      stability: 'unstable',
+      generated: true,
+    }
+    const fromEdges = graph.edgesByFrom.get('orders.DomainModel.order') ?? []
+    graph.edgesByFrom.set('orders.DomainModel.order', [...fromEdges, syntheticEdge])
+
+    const map = serializeGraph(graph)
+    for (const [key, content] of map) {
+      if (!key.startsWith('edges/')) continue
+      // The root node 'payments.DomainModel.payment' (no child suffix) never appears as a to: target
+      // in real edges — only child field IDs do. Its presence here means a generated edge was written.
+      assert.ok(
+        !content.includes('to: payments.DomainModel.payment\n'),
+        `generated reads edge must not appear in edge file ${key}`,
+      )
     }
   })
 })
