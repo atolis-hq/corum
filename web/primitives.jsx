@@ -326,7 +326,9 @@ function enumValueDescription(node) {
 function buildSchemaModel(schemaNodes, allNodes) {
   // Include all Schema nodes from allNodes so canExpand works for included/referenced schemas
   const allSchemaNodes = (allNodes ?? []).filter(n => n.template === 'Schema');
+  const allMappingNodes = (allNodes ?? []).filter(n => n.template === 'Mapping');
   const schemasByName = new Map(allSchemaNodes.map(node => [localSchemaName(node.id), node]));
+  const mappingsByNodeId = new Map(allMappingNodes.map(node => [node.id, node]));
   // Ensure the primary schemaNodes are always present (they may not be in allNodes)
   for (const node of schemaNodes) schemasByName.set(localSchemaName(node.id), node);
   const fieldsBySchema = new Map();
@@ -349,9 +351,84 @@ function buildSchemaModel(schemaNodes, allNodes) {
   const topSchemas = schemaNodes.filter(node => !referencedSchemas.has(localSchemaName(node.id)));
   return {
     schemasByName,
+    mappingsByNodeId,
     fieldsBySchema,
     topSchemas: topSchemas.length > 0 ? topSchemas : schemaNodes,
   };
+}
+
+function MappingInlineRows({ mappingNode, depth, model, edges, compact, visited = new Set() }) {
+  const [valueCollapsed, setValueCollapsed] = React.useState(false);
+  const keyType = mappingNode.properties?.['key-type'];
+  const keyRef = mappingNode.properties?.['key-ref'];
+  const valueType = mappingNode.properties?.['type'];
+  const valueRef = mappingNode.properties?.['$ref'];
+  const valueRefNodeId = valueRef && typeof valueRef === 'object' && 'nodeId' in valueRef
+    ? valueRef.nodeId : null;
+  const valueLocalRef = valueRef ? refLocalSchemaName(valueRef) : null;
+  const valueSchema = (valueLocalRef && model.schemasByName.has(valueLocalRef))
+    ? model.schemasByName.get(valueLocalRef) : null;
+  const valueMappingNode = (valueRefNodeId && model.mappingsByNodeId?.has(valueRefNodeId))
+    ? model.mappingsByNodeId.get(valueRefNodeId) : null;
+  const valueCanExpandSchema = !!valueSchema && !visited.has(valueLocalRef);
+  const valueCanExpandMapping = !!valueMappingNode && !visited.has(valueRefNodeId);
+  const valueCanExpand = valueCanExpandSchema || valueCanExpandMapping;
+  const keyDisplay = keyType ?? (keyRef ? refName(keyRef, compact) : 'string');
+  const valueDisplay = valueType ?? (valueRef ? refName(valueRef, compact) : '-');
+  const valueCollection = mappingNode.properties?.['value-collection'];
+  const nextVisited = new Set(visited);
+  if (valueLocalRef) nextVisited.add(valueLocalRef);
+  if (valueRefNodeId) nextVisited.add(valueRefNodeId);
+
+  return (
+    <>
+      <div className="field-row nested mapping-meta" style={{ '--field-depth': depth }}>
+        <div className="gutter" />
+        <div className="name">_key</div>
+        <div className="type">{keyDisplay}</div>
+        <div className="cardinality">-</div>
+        <div className="req">-</div>
+        <div className="state" />
+        <div className="lineage" />
+      </div>
+      <div className="field-row nested mapping-meta" style={{ '--field-depth': depth }}>
+        <div
+          className="gutter"
+          style={valueCanExpand ? { cursor: 'pointer' } : undefined}
+          onClick={valueCanExpand ? () => setValueCollapsed(prev => !prev) : undefined}
+        >
+          {valueCanExpand && <Icon name={valueCollapsed ? 'caret-right' : 'caret-down'} size={11} />}
+        </div>
+        <div className="name">_value</div>
+        <div className="type">{valueDisplay}</div>
+        <div className="cardinality">{valueCollection ?? 'one'}</div>
+        <div className="req">-</div>
+        <div className="state" />
+        <div className="lineage" />
+      </div>
+      {valueCanExpand && !valueCollapsed && (
+        valueCanExpandSchema ? (
+          <SchemaFieldRows
+            schemaName={valueLocalRef}
+            model={model}
+            depth={depth + 1}
+            visited={nextVisited}
+            edges={edges}
+            compact={compact}
+          />
+        ) : (
+          <MappingInlineRows
+            mappingNode={valueMappingNode}
+            depth={depth + 1}
+            model={model}
+            edges={edges}
+            compact={compact}
+            visited={nextVisited}
+          />
+        )
+      )}
+    </>
+  );
 }
 
 function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = new Set(), edges = [], overlayFields, overlayRefs, compact = false }) {
@@ -377,8 +454,12 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
         const name = fieldLocalName(field.id);
         const ref = field.properties?.['$ref'];
         const localRef = refLocalSchemaName(ref);
-        const canExpand = localRef !== null && model.schemasByName.has(localRef) && !visited.has(localRef);
-        const childSchemaNode = canExpand ? model.schemasByName.get(localRef) : null;
+        const refNodeId = ref && typeof ref === 'object' && 'nodeId' in ref ? ref.nodeId : null;
+        const mappingNode = refNodeId ? (model.mappingsByNodeId?.get(refNodeId) ?? null) : null;
+        const canExpandMapping = !!mappingNode;
+        const childSchemaNode = (!canExpandMapping && localRef) ? (model.schemasByName.get(localRef) ?? null) : null;
+        const canExpand = !!childSchemaNode && !visited.has(localRef);
+        const isExpandable = canExpand || canExpandMapping;
         const childGhostFields = childSchemaNode ? overlayFieldsForSchema(overlayFields, childSchemaNode.id) : [];
         const c = field.properties?.collection;
         const childPrefix = `${prefix}${name}${c === 'array' ? '[].' : '.'}`;
@@ -398,14 +479,14 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
             <div className={`field-row${depth > 0 ? ' nested' : ''}`} style={{ '--field-depth': depth }}>
               <div
                 className="gutter"
-                style={canExpand ? { cursor: 'pointer' } : undefined}
-                onClick={canExpand ? () => setCollapsed(prev => {
+                style={isExpandable ? { cursor: 'pointer' } : undefined}
+                onClick={isExpandable ? () => setCollapsed(prev => {
                   const next = new Set(prev);
                   next.has(field.id) ? next.delete(field.id) : next.add(field.id);
                   return next;
                 }) : undefined}
               >
-                {canExpand && <Icon name={isCollapsed ? 'caret-right' : 'caret-down'} size={11} />}
+                {isExpandable && <Icon name={isCollapsed ? 'caret-right' : 'caret-down'} size={11} />}
               </div>
               <div className="name">{compact ? name : `${prefix}${name}`}</div>
               <div className="type" title={typeFull !== typeDisplay ? typeFull : undefined}>{typeDisplay}</div>
@@ -432,23 +513,33 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
                   : fieldDetails(field.properties, compact)}
               </div>
             </div>
-            {canExpand && !isCollapsed && (
-              <>
-                <SchemaFieldRows
-                  schemaName={localRef}
-                  model={model}
-                  prefix={childPrefix}
+            {isExpandable && !isCollapsed && (
+              canExpandMapping ? (
+                <MappingInlineRows
+                  mappingNode={mappingNode}
                   depth={depth + 1}
-                  visited={nextVisited}
+                  model={model}
                   edges={edges}
-                  overlayFields={overlayFields}
-                  overlayRefs={overlayRefs}
                   compact={compact}
                 />
-                {childGhostFields.length > 0 && (
-                  <GhostFieldRows fields={childGhostFields} overlayRefs={overlayRefs} prefix={childPrefix} depth={depth + 1} compact={compact} />
-                )}
-              </>
+              ) : (
+                <>
+                  <SchemaFieldRows
+                    schemaName={localRef}
+                    model={model}
+                    prefix={childPrefix}
+                    depth={depth + 1}
+                    visited={nextVisited}
+                    edges={edges}
+                    overlayFields={overlayFields}
+                    overlayRefs={overlayRefs}
+                    compact={compact}
+                  />
+                  {childGhostFields.length > 0 && (
+                    <GhostFieldRows fields={childGhostFields} overlayRefs={overlayRefs} prefix={childPrefix} depth={depth + 1} compact={compact} />
+                  )}
+                </>
+              )
             )}
           </React.Fragment>
         );
