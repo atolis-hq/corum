@@ -48,3 +48,6 @@ registerAdapter(new OpenAPIAdapter())
 
 import { AsyncAPIAdapter } from './asyncapi/index.js'
 registerAdapter(new AsyncAPIAdapter())
+
+import { CorumAdapter } from './corum/index.js'
+registerAdapter(new CorumAdapter())
