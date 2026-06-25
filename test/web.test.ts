@@ -983,8 +983,8 @@ describe('web server', () => {
     it('app: component nav behaves as a single-open accordion', () => {
       assert.match(app, /const sortedComponents = \[\.\.\.navTree\.keys\(\)\]\.sort\(\(a, b\) => a\.localeCompare\(b\)\);/)
       assert.match(app, /const \[openComponent, setOpenComponent\] = useState\(\);/)
-      assert.match(app, /if \(openComponent === undefined\) \{\s*setOpenComponent\(sortedComponents\[0\] \?\? null\);/)
-      assert.match(app, /setOpenComponent\(prev => prev === component \? null : component\);/)
+      assert.match(app, /if \(openComponent === undefined\) \{ openComponentWithEntries\(autoOpen\); return; \}/)
+      assert.match(app, /function toggleComponent\(component\) \{[\s\S]*openComponentWithEntries/)
       assert.doesNotMatch(app, /for \(const component of navTree\.keys\(\)\) initial\[component\] = true;/)
     })
 
