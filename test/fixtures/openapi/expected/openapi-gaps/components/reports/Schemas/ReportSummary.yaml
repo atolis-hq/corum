@@ -17,7 +17,7 @@ fields:
     $ref: '#/mappings/labelsByGroup'
     nullable: true
   location:
-    type: string
+    $ref: '#/schemas/location'
     nullable: true
   metricList:
     $ref: reports.Schema.Metric
@@ -52,3 +52,12 @@ mappings:
     $ref: reports.Schema.ReportSummary.mappings.perPersonBreakdown-values
   perPersonBreakdown-values:
     type: integer
+schemas:
+  location:
+    fields:
+      lat:
+        type: decimal
+        nullable: true
+      lng:
+        type: decimal
+        nullable: true

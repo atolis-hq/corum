@@ -617,20 +617,16 @@ function emitFields(
           fieldNode.properties = { type: deriveScalarType(it.type ?? 'string', it.format, packConfig.scalarTypes) ?? 'string', nullable, collection: 'array' }
         }
       } else if (rawType === 'object' && fs.properties) {
-        if (rootId) {
-          const inlineId = deriveNodeId('schema', component, fieldName, { parentId: rootId, section: 'schemas' })
-          if (!nodes.some(n => n.id === inlineId)) {
-            nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, specPath, inlineId))
-            edges.push({ id: `${rootId}__has-field__${inlineId}`, from: rootId, to: inlineId, type: 'has-field', state: 'implemented', stability: 'unstable' })
-            const localRef = `#/schemas/${fieldName}`
-            localSchemas.set(fieldName, localRef)
-            emitFields(fs as { properties?: Record<string, unknown>; required?: string[] }, inlineId, 'fields', rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
-          }
-          fieldNode.properties = { $ref: localSchemas.get(fieldName) ?? `#/schemas/${fieldName}`, nullable }
-        } else {
-          diagnostics.push({ severity: 'warning', file: specPath, message: `Inline object field "${fieldId}" has no event context — treating as string` })
-          fieldNode.properties = { type: 'string', nullable }
+        const schemaParent = rootId ?? parentId
+        const inlineId = deriveNodeId('schema', component, fieldName, { parentId: schemaParent, section: 'schemas' })
+        if (!nodes.some(n => n.id === inlineId)) {
+          nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, specPath, inlineId))
+          edges.push({ id: `${schemaParent}__has-field__${inlineId}`, from: schemaParent, to: inlineId, type: 'has-field', state: 'implemented', stability: 'unstable' })
+          const localRef = `#/schemas/${fieldName}`
+          localSchemas.set(fieldName, localRef)
+          emitFields(fs as { properties?: Record<string, unknown>; required?: string[] }, inlineId, 'fields', rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
         }
+        fieldNode.properties = { $ref: localSchemas.get(fieldName) ?? `#/schemas/${fieldName}`, nullable }
       } else if (rawType === 'object' && fs.additionalProperties) {
         // Map/dictionary: emit a Mapping node scoped to the parent schema, ref it from the field
         createMapping(fieldName, fs.additionalProperties, parentId, rootId, component, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)

@@ -568,15 +568,11 @@ function emitFields(
         }
       } else if (fs.type === 'object' && fs.properties) {
         // Anonymous object with named properties → inline as sibling schema
-        if (rootId) {
-          const localRef = emitSchemaNode(fs, fieldName, rootId, 'schemas', rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
-          fieldNode.properties = localRef
-            ? { $ref: localRef, nullable: !required }
-            : { type: 'string', nullable: !required }
-        } else {
-          diagnostics.push({ severity: 'warning', file: specPath, message: `Inline object for field ${fieldId} has no endpoint context; treating as string` })
-          fieldNode.properties = { type: 'string', nullable: !required }
-        }
+        const schemaParent = rootId ?? parentId
+        const localRef = emitSchemaNode(fs, fieldName, schemaParent, 'schemas', rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)
+        fieldNode.properties = localRef
+          ? { $ref: localRef, nullable: !required }
+          : { type: 'string', nullable: !required }
       } else if (fs.type === 'object' && fs.additionalProperties) {
         // Map/dictionary: emit a Mapping node scoped to the parent schema, ref it from the field
         createMapping(fieldName, fs.additionalProperties as OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject | boolean, parentId, rootId, packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings)

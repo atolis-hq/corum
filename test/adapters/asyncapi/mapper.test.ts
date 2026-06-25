@@ -351,6 +351,51 @@ const ASYNCAPI_ENTRY = {
   includeConsumed: false,
 } as any
 
+describe('mapDocument — inline objects in shared component schemas', () => {
+  it('materialises sub-schema instead of warning when processing a shared schema', () => {
+    const sharedSchema = {
+      type: 'object',
+      properties: {
+        details: { type: 'object', properties: { amount: { type: 'number' } } },
+        name: { type: 'string' },
+      },
+    }
+    function makeSharedMsg(msgName: string) {
+      return {
+        name: () => msgName,
+        id: () => msgName,
+        tags: () => makeCollection([]),
+        hasHeaders: () => false,
+        json: () => ({ payload: { 'x-parser-schema-id': 'OrderData', ...sharedSchema } }),
+      }
+    }
+    const op = {
+      action: () => 'send',
+      channels: () => makeCollection([{ address: () => 'orders.v1' }]),
+      messages: () => makeCollection([makeSharedMsg('OrderCreated'), makeSharedMsg('OrderUpdated')]),
+    }
+    const doc = {
+      json: () => ({ components: { schemas: { OrderData: sharedSchema } } }),
+      allOperations: () => makeCollection([op]),
+    }
+
+    const { nodes, diagnostics } = mapDocument(doc as any, ASYNCAPI_ENTRY, PACK_CONFIG)
+
+    assert.equal(
+      diagnostics.filter(d => d.message.includes('no event context')).length,
+      0,
+      'no inline-object warning',
+    )
+
+    const detailsSchema = nodes.find(n => n.template === 'Schema' && n.id.endsWith('.schemas.details'))
+    assert.ok(detailsSchema, 'sub-schema node created for inline object field')
+
+    const detailsField = nodes.find(n => n.template === 'Field' && n.id.endsWith('.fields.details'))
+    assert.ok(detailsField, 'details Field node exists')
+    assert.equal(detailsField!.properties['$ref'], '#/schemas/details')
+  })
+})
+
 describe('mapDocument — additionalProperties (Mapping nodes)', () => {
   it('string-valued additionalProperties emits Mapping node with type string', () => {
     const doc = makeAsyncAPIDoc({ data: { type: 'object', additionalProperties: { type: 'string' } } })
