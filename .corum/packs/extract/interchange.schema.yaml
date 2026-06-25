@@ -1,0 +1,153 @@
+$schema: 'https://json-schema.org/draft/2020-12/schema'
+$id: 'corum/interchange'
+title: Corum Interchange Format
+description: |
+  Output format produced by corum-extract tools (e.g. treesitter-based extractors).
+  Defines the envelope structure only — node properties are template-specific
+  and are validated by the graph loader after import, not here.
+
+  Extractors SHOULD validate their output against this schema before shipping.
+  The corum adapter validates the envelope at runtime using TypeScript type guards;
+  this schema is the shared tooling contract.
+
+type: object
+required:
+  - corumInterchange
+  - nodes
+
+properties:
+
+  corumInterchange:
+    type: string
+    description: Interchange format version. Currently "1.0".
+    example: '1.0'
+
+  targets:
+    type: array
+    description: Template packs this file's nodes and edges require to be meaningful.
+    items:
+      type: object
+      required: [pack, version]
+      properties:
+        pack:
+          type: string
+          description: Pack name (e.g. core, domain, messaging).
+        version:
+          type: string
+          description: Semver range (e.g. ^1.0.0).
+
+  source:
+    type: object
+    description: Metadata about the extraction tool that produced this file.
+    properties:
+      analyser:
+        type: string
+        description: Name of the extraction tool (e.g. corum-extract).
+      version:
+        type: string
+        description: Version of the extraction tool.
+      language:
+        type: string
+        description: Source language analysed (e.g. csharp, typescript).
+      repo:
+        type: string
+        description: Path or URL to the source repository.
+
+  nodes:
+    type: array
+    description: |
+      Flat list of all nodes, including structural children (Schema, Field,
+      EnumValue, DomainOperation, Invariant). The ID encodes the full ownership
+      hierarchy: component.Template.name.section.childname.
+    items:
+      type: object
+      required: [id, template, properties]
+      properties:
+        id:
+          type: string
+          description: |
+            Fully qualified corum node ID.
+            Root nodes: {component}.{Template}.{name}  (3 segments)
+            Child nodes: {root-id}.{section}.{child-name}  (5+ segments)
+        template:
+          type: string
+          description: |
+            Corum template name (e.g. Command, DomainModel, Schema, Field,
+            EnumDefinition, EnumValue, DomainOperation, Invariant, ValueObject,
+            IntegrationEvent, DomainEvent). Must match a template in the active packs.
+        properties:
+          type: object
+          description: Template-specific properties. May be empty ({}).
+        provenance:
+          type: object
+          description: How this node was established by the extraction tool.
+          properties:
+            derivation:
+              type: string
+              enum: [resolved, inferred]
+              description: |
+                resolved — authoritative extraction (static analysis confirmed it exists).
+                inferred — heuristic or probabilistic (name pattern, call graph, LLM).
+            confidence:
+              type: number
+              minimum: 0
+              maximum: 1
+              description: |
+                Extractor confidence (0–1). Only meaningful for derivation: inferred.
+                The corum importer does not filter on this value — confidence informed
+                which nodes the extractor chose to include.
+            by:
+              type: string
+              description: Extraction tool/method identifier (e.g. treesitter).
+
+  edges:
+    type: array
+    description: |
+      Explicit non-structural edges. Structural edges (has-field, has-value) are
+      implicit from the node ID hierarchy and should not be emitted here.
+    items:
+      type: object
+      required: [from, to, type]
+      properties:
+        from:
+          type: string
+          description: Source node ID.
+        to:
+          type: string
+          description: Target node ID.
+        type:
+          type: string
+          enum:
+            - triggers
+            - produces
+            - reads
+            - calls
+            - implements
+            - maps-to
+            - derived-from
+            - renamed-from
+          description: Edge type. Must be a valid corum EdgeType (excluding structural types).
+        provenance:
+          $ref: '#/properties/nodes/items/properties/provenance'
+
+  gaps:
+    type: array
+    description: |
+      Diagnostics from the extraction tool — things it could not resolve or
+      collapsed due to conflicts. Surfaced as warnings during import.
+    items:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          description: |
+            Gap category. Common values:
+              unresolved-field-type  — field type reference could not be resolved
+              duplicate-domain-type  — same-name type collision; first-wins applied
+        nodeId:
+          type: string
+          description: ID of the affected node (if applicable).
+        reason:
+          type: string
+          description: Human-readable explanation of the gap.
