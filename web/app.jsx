@@ -14,6 +14,22 @@ const {
 const { buildNavTree, buildOverlayIndicatorIds } = window.CorumNav;
 const { parseRoute, buildRoute } = window.CorumRouter;
 
+const PANEL_EDGE_TYPES = new Set(['triggers', 'produces', 'calls', 'implements']);
+
+function classifyEdges(edges, clusterIds) {
+  const inbound = [];
+  const outbound = [];
+  for (const edge of edges) {
+    if (!PANEL_EDGE_TYPES.has(edge.type)) continue;
+    if (clusterIds.has(edge.from) && !clusterIds.has(edge.to)) {
+      outbound.push(edge);
+    } else if (!clusterIds.has(edge.from) && clusterIds.has(edge.to)) {
+      inbound.push(edge);
+    }
+  }
+  return { inbound, outbound };
+}
+
 function displayName(id) {
   const parts = id.split('.');
   return parts[parts.length - 1];
@@ -435,7 +451,7 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
     const overlayParam = overlayRefs && overlayRefs.length > 0
       ? '&' + overlayRefs.map(ref => `overlayRefs=${encodeURIComponent(ref)}`).join('&')
       : '';
-    fetch(`/api/cluster?nodeId=${encodeURIComponent(nodeId)}&includeEdges=maps-to,reads${refParam}${overlayParam}`)
+    fetch(`/api/cluster?nodeId=${encodeURIComponent(nodeId)}&includeEdges=maps-to,reads,triggers,produces,calls,implements${refParam}${overlayParam}`)
       .then(response => response.ok ? response.json() : Promise.reject(response.status))
       .then(setCluster)
       .catch(err => setError(String(err)));
