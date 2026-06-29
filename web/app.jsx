@@ -476,9 +476,9 @@ function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate }) {
         title={linkedNodeId}
         style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', cursor: 'pointer' }}
       >
+        <span className="tag" style={EDGE_TYPE_STYLES[edge.type] ?? {}}>{edge.type}</span>
         <TemplateBadge name={tmpl?.ui?.displayName ?? node?.template ?? '?'} colour={colour} />
         <span style={{ fontWeight: 500, fontSize: 13 }}>{name}</span>
-        <span className="tag" style={EDGE_TYPE_STYLES[edge.type] ?? {}}>{edge.type}</span>
         {node && <StateTag state={node.state} />}
         {node && <StabilityTag stability={node.stability} />}
       </div>
@@ -587,6 +587,14 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
         <div className="label-sm mono">{root.id}</div>
       </div>
 
+      <EdgePanel
+        inbound={panelInbound}
+        outbound={panelOutbound}
+        allNodes={[root, ...descendants, ...includedNodes]}
+        templates={templates}
+        onNavigate={onNavigate}
+      />
+
       <div className="meta-strip">
         {[
           ['Component', root.component],
@@ -601,14 +609,6 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
           </div>
         ))}
       </div>
-
-      <EdgePanel
-        inbound={panelInbound}
-        outbound={panelOutbound}
-        allNodes={[root, ...descendants, ...includedNodes]}
-        templates={templates}
-        onNavigate={onNavigate}
-      />
 
       {Object.keys(root.properties ?? {}).length > 0 && (
         <div className="card">
