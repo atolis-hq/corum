@@ -331,11 +331,12 @@ describe('edge loader', () => {
     assert.equal(mapsToEdge.stability, 'unstable')
   })
 
-  it('strict: reports error for unresolved edge endpoint', async () => {
+  it('reports warning for unresolved edge endpoint', async () => {
     const diagnostics: Diagnostic[] = []
     loadEdges(await buildGraphContentMap(), new Map<string, Node>(), diagnostics)
-    const errors = diagnostics.filter(d => d.severity === 'error')
-    assert.ok(errors.length > 0, 'expected errors for unresolved endpoints')
+    const warnings = diagnostics.filter(d => d.severity === 'warning')
+    assert.ok(warnings.length > 0, 'expected warnings for unresolved endpoints')
+    assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0)
   })
 })
 
