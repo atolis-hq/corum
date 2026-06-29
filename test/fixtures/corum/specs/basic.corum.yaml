@@ -1,55 +1,46 @@
-corumInterchange: '1.0'
-source:
-  analyser: corum-extract
-  version: 0.1.0
-  language: csharp
-  repo: ../test-repo
+corum: '1.0'
+info:
+  source:
+    analyser: corum-extract
+    language: csharp
 nodes:
-  - id: orders.DomainEvent.OrderPlacedDomainEvent
-    template: DomainEvent
-    properties:
-      schema: OrderPlacedDomainEvent
+  orders.DomainEvent.OrderPlacedDomainEvent:
+    type: DomainEvent
+    title: OrderPlacedDomainEvent
+    schema:
+      $ref: '#/components/schemas/OrderPlacedDomainEvent'
     provenance:
-      derivation: resolved
-      by: treesitter
-  - id: orders.DomainEvent.OrderPlacedDomainEvent.schemas.OrderPlacedDomainEvent
-    template: Schema
-    properties: {}
+      derivation: determined
+      derivedBy: extractor:treesitter
+      extractedFrom: ../test-repo
+  orders.DomainModel.OrderAggregate:
+    type: DomainModel
+    title: OrderAggregate
     provenance:
-      derivation: resolved
-      by: treesitter
-  - id: orders.DomainEvent.OrderPlacedDomainEvent.schemas.OrderPlacedDomainEvent.fields.OrderId
-    template: Field
-    properties:
-      nullable: false
-      collection: one
-      type: uuid
-    provenance:
-      derivation: resolved
-      by: treesitter
-  - id: orders.DomainModel.OrderAggregate
-    template: DomainModel
-    properties:
-      description: OrderAggregate
-    provenance:
-      derivation: resolved
-      by: treesitter
-  - id: orders.DomainModel.OrderAggregate.operations.Place
-    template: DomainOperation
-    properties:
-      description: Place
+      derivation: determined
+      derivedBy: extractor:treesitter
+      extractedFrom: ../test-repo
+  orders.DomainModel.OrderAggregate.operations.Place:
+    type: DomainOperation
+    title: Place
     provenance:
       derivation: inferred
-      confidence: 0.9
-      by: treesitter
+      derivedBy: extractor:treesitter
+      extractedFrom: ../test-repo
+components:
+  schemas:
+    OrderPlacedDomainEvent:
+      type: object
+      required:
+        - OrderId
+      properties:
+        OrderId:
+          type: string
+          format: uuid
 edges:
-  - from: orders.DomainModel.OrderAggregate.operations.Place
+  - type: produces
+    from: orders.DomainModel.OrderAggregate.operations.Place
     to: orders.DomainEvent.OrderPlacedDomainEvent
-    type: produces
-    provenance:
-      derivation: inferred
-      confidence: 0.9
-      by: treesitter
 gaps:
   - kind: unresolved-field-type
     nodeId: orders.SomeNode.fields.SomeField

@@ -50,6 +50,7 @@ program
     let graph
     try {
       graph = await loadGraph({ source: config.source, strict: true })
+      reportGraphDiagnostics(graph.diagnostics)
     } catch (err) {
       process.stderr.write(`[ERROR] ${err instanceof Error ? err.message : String(err)}\n`)
       process.exit(2)
@@ -289,6 +290,16 @@ function reportDiagnostics(diagnostics: { severity: string; file: string; messag
   const errors = diagnostics.filter(d => d.severity === 'error').length
   const warnings = diagnostics.filter(d => d.severity === 'warning').length
   process.stdout.write(`Import complete. ${errors} error(s), ${warnings} warning(s).\n`)
+}
+
+function reportGraphDiagnostics(diagnostics: { severity: string; file?: string; message: string }[]): void {
+  const warnings = diagnostics.filter(d => d.severity === 'warning')
+  for (const d of warnings) {
+    process.stderr.write(`[WARN] ${d.file ?? 'graph'}: ${d.message}\n`)
+  }
+  if (warnings.length > 0) {
+    process.stderr.write(`Graph loaded with ${warnings.length} warning(s).\n`)
+  }
 }
 
 async function readPackRegistryUrl(cwd: string): Promise<string> {

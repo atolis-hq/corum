@@ -15,26 +15,24 @@ function writeTmp(content: string): { filePath: string; cleanup: () => void } {
 describe('parseSpec', () => {
   it('returns document for a valid interchange file', () => {
     const { filePath, cleanup } = writeTmp(`
-corumInterchange: "1.0"
+corum: "1.0"
 nodes:
-  - id: orders.DomainEvent.OrderPlaced
-    template: DomainEvent
-    properties: {}
+  orders.DomainEvent.OrderPlaced:
+    type: DomainEvent
 `)
     const { document, diagnostics } = parseSpec(filePath)
     assert.ok(document !== null)
-    assert.equal(document.corumInterchange, '1.0')
-    assert.equal(document.nodes.length, 1)
+    assert.equal(document.corum, '1.0')
+    assert.ok('orders.DomainEvent.OrderPlaced' in document.nodes)
     assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0)
     cleanup()
   })
 
-  it('returns null and error diagnostic when corumInterchange key is missing', () => {
+  it('returns null and error diagnostic when corum key is missing', () => {
     const { filePath, cleanup } = writeTmp(`
 nodes:
-  - id: orders.DomainEvent.OrderPlaced
-    template: DomainEvent
-    properties: {}
+  orders.DomainEvent.OrderPlaced:
+    type: DomainEvent
 `)
     const { document, diagnostics } = parseSpec(filePath)
     assert.equal(document, null)
@@ -43,7 +41,20 @@ nodes:
   })
 
   it('returns null and error diagnostic when nodes is missing', () => {
-    const { filePath, cleanup } = writeTmp(`corumInterchange: "1.0"`)
+    const { filePath, cleanup } = writeTmp(`corum: "1.0"`)
+    const { document, diagnostics } = parseSpec(filePath)
+    assert.equal(document, null)
+    assert.ok(diagnostics.some(d => d.severity === 'error'))
+    cleanup()
+  })
+
+  it('returns null and error diagnostic when nodes is an array (old format)', () => {
+    const { filePath, cleanup } = writeTmp(`
+corum: "1.0"
+nodes:
+  - id: orders.DomainEvent.OrderPlaced
+    type: DomainEvent
+`)
     const { document, diagnostics } = parseSpec(filePath)
     assert.equal(document, null)
     assert.ok(diagnostics.some(d => d.severity === 'error'))
@@ -52,8 +63,8 @@ nodes:
 
   it('returns document with warning for unknown version', () => {
     const { filePath, cleanup } = writeTmp(`
-corumInterchange: "2.0"
-nodes: []
+corum: "2.0"
+nodes: {}
 `)
     const { document, diagnostics } = parseSpec(filePath)
     assert.ok(document !== null)
@@ -73,5 +84,29 @@ nodes: []
     const { document, diagnostics } = parseSpec('/nonexistent/path.corum.yaml')
     assert.equal(document, null)
     assert.ok(diagnostics.some(d => d.severity === 'error'))
+  })
+
+  it('parses components.schemas when present', () => {
+    const { filePath, cleanup } = writeTmp(`
+corum: "1.0"
+nodes:
+  orders.Command.PlaceOrderCommand:
+    type: Command
+    schema:
+      $ref: '#/components/schemas/PlaceOrderCommand'
+components:
+  schemas:
+    PlaceOrderCommand:
+      type: object
+      properties:
+        OrderId:
+          type: string
+          format: uuid
+`)
+    const { document, diagnostics } = parseSpec(filePath)
+    assert.ok(document !== null)
+    assert.ok(document.components?.schemas?.['PlaceOrderCommand'] !== undefined)
+    assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0)
+    cleanup()
   })
 })

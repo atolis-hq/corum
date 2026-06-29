@@ -43,11 +43,11 @@ export function loadEdges(
 
       let unresolvedEndpoint = false
       if (!nodes.has(edgeRecord.from)) {
-        diagnostics.push({ severity: 'error', file: key, message: `edge from unresolved node: ${edgeRecord.from}` })
+        diagnostics.push({ severity: 'warning', file: key, message: `edge from unresolved node: ${edgeRecord.from}` })
         unresolvedEndpoint = true
       }
       if (!nodes.has(edgeRecord.to)) {
-        diagnostics.push({ severity: 'error', file: key, message: `edge to unresolved node: ${edgeRecord.to}` })
+        diagnostics.push({ severity: 'warning', file: key, message: `edge to unresolved node: ${edgeRecord.to}` })
         unresolvedEndpoint = true
       }
       if (unresolvedEndpoint) continue

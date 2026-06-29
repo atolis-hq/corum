@@ -2,7 +2,7 @@ $schema: 'https://json-schema.org/draft/2020-12/schema'
 $id: 'corum/interchange'
 title: Corum Interchange Format
 description: |
-  Output format produced by corum-extract tools (e.g. treesitter-based extractors).
+  Output format produced by corum-extract tools (e.g. Roslyn-based extractors).
   Defines the envelope structure only — node properties are template-specific
   and are validated by the graph loader after import, not here.
 
@@ -12,109 +12,102 @@ description: |
 
 type: object
 required:
-  - corumInterchange
+  - corum
   - nodes
 
 properties:
 
-  corumInterchange:
+  corum:
     type: string
     description: Interchange format version. Currently "1.0".
     example: '1.0'
 
-  targets:
-    type: array
-    description: Template packs this file's nodes and edges require to be meaningful.
-    items:
-      type: object
-      required: [pack, version]
-      properties:
-        pack:
-          type: string
-          description: Pack name (e.g. core, domain, messaging).
-        version:
-          type: string
-          description: Semver range (e.g. ^1.0.0).
-
-  source:
+  info:
     type: object
-    description: Metadata about the extraction tool that produced this file.
+    description: Metadata about the source and pack requirements.
     properties:
-      analyser:
+      title:
         type: string
-        description: Name of the extraction tool (e.g. corum-extract).
+        description: Human-readable name for this interchange file.
       version:
         type: string
-        description: Version of the extraction tool.
-      language:
-        type: string
-        description: Source language analysed (e.g. csharp, typescript).
-      repo:
-        type: string
-        description: Path or URL to the source repository.
+        description: Version of the service or module being described.
+      source:
+        type: object
+        description: Metadata about the extraction tool that produced this file.
+        properties:
+          analyser:
+            type: string
+            description: Name of the extraction tool (e.g. corum-extract).
+          language:
+            type: string
+            description: Source language analysed (e.g. csharp, typescript).
+      packs:
+        type: array
+        description: Template packs this file's nodes require to be meaningful.
+        items:
+          type: object
+          required: [name, version]
+          properties:
+            name:
+              type: string
+              description: Pack name (e.g. core, domain, messaging).
+            version:
+              type: string
+              description: Semver range (e.g. ^1.0.0).
 
   nodes:
-    type: array
+    type: object
     description: |
-      Flat list of all nodes, including structural children (Schema, Field,
-      EnumValue, DomainOperation, Invariant). The ID encodes the full ownership
-      hierarchy: component.Template.name.section.childname.
-    items:
+      Map of node ID → node entry. Key is the fully-qualified corum node ID.
+      Root nodes: {component}.{Template}.{name}
+      Child nodes (e.g. DomainOperation): {root-id}.{section}.{child-name}
+      Schema and Field nodes are NOT present here — they are derived from
+      components.schemas at import time.
+    additionalProperties:
       type: object
-      required: [id, template, properties]
+      required: [type]
       properties:
-        id:
+        type:
           type: string
           description: |
-            Fully qualified corum node ID.
-            Root nodes: {component}.{Template}.{name}  (3 segments)
-            Child nodes: {root-id}.{section}.{child-name}  (5+ segments)
-        template:
+            Corum template name (e.g. Command, DomainModel, APIEndpoint,
+            DomainOperation, DomainEvent, IntegrationEvent).
+        title:
           type: string
-          description: |
-            Corum template name (e.g. Command, DomainModel, Schema, Field,
-            EnumDefinition, EnumValue, DomainOperation, Invariant, ValueObject,
-            IntegrationEvent, DomainEvent). Must match a template in the active packs.
-        properties:
+          description: Human-readable name or display title for this node.
+        schema:
           type: object
-          description: Template-specific properties. May be empty ({}).
-        provenance:
-          type: object
-          description: How this node was established by the extraction tool.
+          description: Reference to the node's primary schema in components.schemas.
+          required: [$ref]
           properties:
-            derivation:
+            $ref:
               type: string
-              enum: [resolved, inferred]
-              description: |
-                resolved — authoritative extraction (static analysis confirmed it exists).
-                inferred — heuristic or probabilistic (name pattern, call graph, LLM).
-            confidence:
-              type: number
-              minimum: 0
-              maximum: 1
-              description: |
-                Extractor confidence (0–1). Only meaningful for derivation: inferred.
-                The corum importer does not filter on this value — confidence informed
-                which nodes the extractor chose to include.
-            by:
-              type: string
-              description: Extraction tool/method identifier (e.g. treesitter).
+              description: JSON Pointer to a schema in components.schemas (e.g. '#/components/schemas/MySchema').
+        provenance:
+          $ref: '#/$defs/provenance'
+
+  components:
+    type: object
+    description: Shared schema definitions.
+    properties:
+      schemas:
+        type: object
+        description: |
+          JSON Schema objects keyed by schema name. Referenced by node entries
+          via schema.$ref. The importer expands each schema into Schema and
+          Field nodes under the referencing root node.
+        additionalProperties:
+          type: object
 
   edges:
     type: array
     description: |
-      Explicit non-structural edges. Structural edges (has-field, has-value) are
-      implicit from the node ID hierarchy and should not be emitted here.
+      Explicit non-structural edges between nodes.
     items:
       type: object
-      required: [from, to, type]
+      required: [type, from, to]
       properties:
-        from:
-          type: string
-          description: Source node ID.
-        to:
-          type: string
-          description: Target node ID.
         type:
           type: string
           enum:
@@ -126,15 +119,20 @@ properties:
             - maps-to
             - derived-from
             - renamed-from
-          description: Edge type. Must be a valid corum EdgeType (excluding structural types).
+          description: Edge type.
+        from:
+          type: string
+          description: Source node ID.
+        to:
+          type: string
+          description: Target node ID.
         provenance:
-          $ref: '#/properties/nodes/items/properties/provenance'
+          $ref: '#/$defs/provenance'
 
   gaps:
     type: array
     description: |
-      Diagnostics from the extraction tool — things it could not resolve or
-      collapsed due to conflicts. Surfaced as warnings during import.
+      Diagnostics from the extraction tool — things it could not resolve.
     items:
       type: object
       required: [kind]
@@ -151,3 +149,24 @@ properties:
         reason:
           type: string
           description: Human-readable explanation of the gap.
+        file:
+          type: string
+          description: Source file path associated with this gap (if applicable).
+
+$defs:
+  provenance:
+    type: object
+    description: How this node or edge was established by the extraction tool.
+    properties:
+      derivation:
+        type: string
+        enum: [determined, inferred]
+        description: |
+          determined — authoritative extraction (static analysis confirmed it).
+          inferred — heuristic or probabilistic (name pattern, call graph, LLM).
+      derivedBy:
+        type: string
+        description: Qualified identifier for the extraction tool/method (e.g. extractor:roslyn).
+      extractedFrom:
+        type: string
+        description: Path to the source file this node was extracted from.

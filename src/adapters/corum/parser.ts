@@ -5,43 +5,39 @@ import type { Diagnostic } from '../../schema/index.js'
 const SUPPORTED_VERSION = '1.0'
 
 export interface CorumInterchangeProvenance {
-  derivation?: 'resolved' | 'inferred'
-  confidence?: number
-  by?: string
+  derivation?: 'determined' | 'inferred'
+  derivedBy?: string
+  extractedFrom?: string
 }
 
-export interface CorumInterchangeNode {
-  id: string
-  template: string
-  properties: Record<string, unknown>
+export interface CorumInterchangeNodeEntry {
+  type: string
+  title?: string
+  schema?: { $ref: string }
   provenance?: CorumInterchangeProvenance
 }
 
 export interface CorumInterchangeEdge {
+  type: string
   from: string
   to: string
-  type: string
   provenance?: CorumInterchangeProvenance
 }
 
-export interface CorumInterchangeGap {
-  kind: string
-  nodeId?: string
-  reason?: string
-}
-
 export interface CorumInterchangeDocument {
-  corumInterchange: string
-  targets?: Array<{ pack: string; version: string }>
-  source?: {
-    analyser?: string
+  corum: string
+  info?: {
+    title?: string
     version?: string
-    language?: string
-    repo?: string
+    source?: { analyser?: string; language?: string }
+    packs?: Array<{ name: string; version: string }>
   }
-  nodes: CorumInterchangeNode[]
+  nodes: Record<string, CorumInterchangeNodeEntry>
+  components?: {
+    schemas?: Record<string, unknown>
+  }
   edges?: CorumInterchangeEdge[]
-  gaps?: CorumInterchangeGap[]
+  gaps?: Array<{ kind: string; nodeId?: string; reason?: string; file?: string }>
 }
 
 export interface ParseResult {
@@ -68,18 +64,18 @@ export function parseSpec(specPath: string): ParseResult {
     diagnostics.push({
       severity: 'error',
       file: specPath,
-      message: 'Invalid corum interchange file: missing required "corumInterchange" key or "nodes" array',
+      message: 'Invalid corum interchange file: missing required "corum" key or "nodes" object',
     })
     return { document: null, diagnostics }
   }
 
   const doc = raw as CorumInterchangeDocument
 
-  if (doc.corumInterchange !== SUPPORTED_VERSION) {
+  if (doc.corum !== SUPPORTED_VERSION) {
     diagnostics.push({
       severity: 'warning',
       file: specPath,
-      message: `Unknown corumInterchange version "${doc.corumInterchange}" — expected "${SUPPORTED_VERSION}", continuing`,
+      message: `Unknown corum version "${doc.corum}" — expected "${SUPPORTED_VERSION}", continuing`,
     })
   }
 
@@ -89,5 +85,10 @@ export function parseSpec(specPath: string): ParseResult {
 function isCorumInterchangeDocument(value: unknown): value is CorumInterchangeDocument {
   if (typeof value !== 'object' || value === null) return false
   const v = value as Record<string, unknown>
-  return typeof v.corumInterchange === 'string' && Array.isArray(v.nodes)
+  return (
+    typeof v.corum === 'string' &&
+    typeof v.nodes === 'object' &&
+    v.nodes !== null &&
+    !Array.isArray(v.nodes)
+  )
 }
