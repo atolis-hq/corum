@@ -8,7 +8,7 @@ metadata:
   lastModifiedAt: 2026-06-25
   extractedFrom: C:\git\atolis-hq\corum\test\fixtures\corum\specs\basic.corum.yaml
   derivation: determined
-  derivedBy: adapter:corum/treesitter
+  derivedBy: extractor:treesitter
 properties:
   description: OrderAggregate
 operations:

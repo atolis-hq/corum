@@ -8,13 +8,13 @@ metadata:
   lastModifiedAt: 2026-06-25
   extractedFrom: C:\git\atolis-hq\corum\test\fixtures\corum\specs\basic.corum.yaml
   derivation: determined
-  derivedBy: adapter:corum/treesitter
+  derivedBy: extractor:treesitter
 properties:
   schema: OrderPlacedDomainEvent
 schemas:
   OrderPlacedDomainEvent:
     fields:
       OrderId:
+        type: uuid
         nullable: false
         collection: one
-        type: uuid
