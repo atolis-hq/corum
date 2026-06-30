@@ -92,6 +92,7 @@ function NavRail({ activeSection, onSection, debugMode, onDebugMode }) {
   const items = [
     { id: 'dashboard', icon: 'grip', label: 'Dashboard' },
     { id: 'components', icon: 'circle-nodes', label: 'Models' },
+    { id: 'graph', icon: 'diagram-project', label: 'Graph' },
   ];
 
   return (
@@ -501,7 +502,7 @@ function ComponentsPage() {
   return <div className="content"><h1>Components</h1></div>;
 }
 
-function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate }) {
+function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate, viewingRef }) {
   const { useState: useLocalState } = React;
   const [open, setOpen] = useLocalState(() => {
     try { return localStorage.getItem('corum:edgePanelOpen') === 'true'; } catch { return false; }
@@ -536,6 +537,14 @@ function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate }) {
         <span style={{ fontWeight: 500, fontSize: 13 }}>{name}</span>
         {node && <StateTag state={node.state} />}
         {node && <StabilityTag stability={node.stability} />}
+        <button
+          className="graph-nav-link"
+          title="View in graph"
+          onClick={e => { e.stopPropagation(); navigate(buildRoute({ pathname: '/graph', params: { focus: linkedNodeId }, branch: viewingRef })); }}
+          style={{ marginLeft: 'auto' }}
+        >
+          <Icon name="diagram-project" size={11} />
+        </button>
       </div>
     );
   }
@@ -638,6 +647,14 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
           <TemplateBadge name={templateDisplayName(template)} colour={colour} />
           <StateTag state={root.state} />
           <StabilityTag stability={root.stability} />
+          <button
+            className="graph-nav-link"
+            onClick={() => navigate(buildRoute({ pathname: '/graph', params: { focus: root.id }, branch: viewingRef }))}
+            title="View in graph"
+          >
+            <Icon name="diagram-project" size={11} />
+            <span>Graph</span>
+          </button>
         </div>
         <div className="label-sm mono">{root.id}</div>
       </div>
@@ -648,6 +665,7 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
         allNodes={[root, ...descendants, ...includedNodes]}
         templates={templates}
         onNavigate={onNavigate}
+        viewingRef={viewingRef}
       />
 
       <div className="meta-strip">
@@ -844,7 +862,7 @@ function App() {
   const activeNodeId = route.pathname === '/node' ? route.params.get('id') : null;
   const activeSection = activeNodeId ? 'components' : (route.pathname.slice(1) || 'dashboard');
   const navTree = useMemo(() => buildNavTree(nodes, templates), [nodes, templates]);
-  const showTree = activeSection === 'components' || activeNodeId;
+  const showTree = (activeSection === 'components' || activeNodeId) && activeSection !== 'graph';
   const activeOverlayRefs = useMemo(() =>
     overlayMode === 'single' ? [] :
     overlayMode === 'consolidated' ? branches.filter(branch => branch.ref !== viewingRef).map(branch => branch.ref) :
@@ -895,6 +913,14 @@ function App() {
         viewingRef={viewingRef}
         overlayRefs={activeOverlayRefs}
         compact={!debugMode}
+      />
+    );
+  } else if (route.pathname === '/graph') {
+    page = (
+      <window.CorumGraph.GraphView
+        route={route}
+        viewingRef={viewingRef}
+        templates={templates}
       />
     );
   } else {

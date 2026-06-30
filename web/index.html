@@ -10,6 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" />
+  <link rel="stylesheet" href="https://unpkg.com/reactflow@11.11.4/dist/style.css" crossorigin="anonymous" />
   <script>
     window.CorumPlugins = {};
   </script>
@@ -19,11 +20,15 @@
 
   <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/reactflow@11.11.4/dist/umd/index.js" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
   <script src="nav.js"></script>
   <script src="router.js"></script>
+  <script src="graph-utils.js"></script>
   <script type="text/babel" src="primitives.jsx"></script>
   <script type="text/babel" src="search.jsx"></script>
+  <script type="text/babel" src="graph.jsx"></script>
   <script type="text/babel">
     fetch('/api/plugins')
       .then(response => response.ok ? response.json() : [])

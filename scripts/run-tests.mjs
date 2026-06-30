@@ -12,6 +12,10 @@ function findTests(dir) {
   return results
 }
 
+// Run web unit tests (they use their own assertion framework, not Node --test)
+const webResult = spawnSync(process.execPath, [join('web', 'graph-utils.test.js')], { stdio: 'inherit' })
+if ((webResult.status ?? 1) !== 0) process.exit(webResult.status ?? 1)
+
 const files = findTests('dist/test')
 const result = spawnSync(process.execPath, ['--test', ...files], { stdio: 'inherit' })
 process.exit(result.status ?? 1)

@@ -807,6 +807,57 @@ describe('web server', () => {
     })
   })
 
+  describe('GET /api/graph', () => {
+    it('returns 200 with { nodes, edges } shape', async () => {
+      const res = await fetch(`http://localhost:${handle.port}/api/graph`)
+      assert.equal(res.status, 200)
+      const body = await res.json() as { nodes: unknown[]; edges: unknown[] }
+      assert.ok(Array.isArray(body.nodes), 'nodes is an array')
+      assert.ok(Array.isArray(body.edges), 'edges is an array')
+    })
+
+    it('excludes Schema, Field, EnumDefinition, EnumValue, Mapping template nodes', async () => {
+      const res = await fetch(`http://localhost:${handle.port}/api/graph`)
+      const body = await res.json() as { nodes: Array<{ id: string; template: string }> }
+      const excludedTemplates = new Set(['Schema', 'Field', 'EnumDefinition', 'EnumValue', 'Mapping'])
+      assert.ok(
+        body.nodes.every(n => !excludedTemplates.has(n.template)),
+        'no excluded-template nodes appear in graph response',
+      )
+      const ids = body.nodes.map(n => n.id).sort()
+      assert.deepEqual(ids, ['orders.CancelOrder', 'orders.Order', 'orders.Order.operations.cancel'])
+    })
+
+    it('only includes semantic edge types — structural types are absent', async () => {
+      const res = await fetch(`http://localhost:${handle.port}/api/graph`)
+      const body = await res.json() as { edges: Array<{ type: string }> }
+      const semanticTypes = new Set(['triggers', 'produces', 'reads', 'calls', 'implements', 'maps-to', 'derived-from'])
+      const structuralTypes = new Set(['has-field', 'has-value', 'renamed-from'])
+      assert.ok(
+        body.edges.every(e => semanticTypes.has(e.type) && !structuralTypes.has(e.type)),
+        'all edges use semantic types only',
+      )
+    })
+
+    it('edges have no dangling endpoints — both from and to must be in returned nodes', async () => {
+      const res = await fetch(`http://localhost:${handle.port}/api/graph`)
+      const body = await res.json() as { nodes: Array<{ id: string }>; edges: Array<{ from: string; to: string }> }
+      const nodeIds = new Set(body.nodes.map(n => n.id))
+      assert.ok(
+        body.edges.every(e => nodeIds.has(e.from) && nodeIds.has(e.to)),
+        'no dangling edge endpoints',
+      )
+    })
+
+    it('?ref= falls back gracefully for unknown ref — returns 200', async () => {
+      const res = await fetch(`http://localhost:${handle.port}/api/graph?ref=nonexistent-branch`)
+      assert.equal(res.status, 200)
+      const body = await res.json() as { nodes: unknown[]; edges: unknown[] }
+      assert.ok(Array.isArray(body.nodes))
+      assert.ok(Array.isArray(body.edges))
+    })
+  })
+
   describe('GET /api/plugins', () => {
     it('returns an array (empty when no plugins exist)', async () => {
       const res = await fetch(`http://localhost:${handle.port}/api/plugins`)
@@ -1008,7 +1059,7 @@ describe('web server', () => {
     it('app: components section navigation still routes through /components', () => {
       assert.match(app, /function handleSection\(section\) \{/)
       assert.match(app, /navigate\(buildRoute\(\{ pathname: `\/\$\{section\}`, params: \{\}, branch: viewingRef \}\)\);/)
-      assert.match(app, /const showTree = activeSection === 'components' \|\| activeNodeId;/)
+      assert.match(app, /const showTree = \(activeSection === 'components' \|\| activeNodeId\) && activeSection !== 'graph';/)
       assert.match(app, /} else if \(route\.pathname === '\/components'\) \{\s*page = <ComponentsPage \/>;/)
     })
 
