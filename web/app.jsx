@@ -494,8 +494,189 @@ function BranchBar({ branches, branchResults, viewingRef, overlayRefs, overlayMo
   );
 }
 
-function DashboardPage() {
-  return <div className="content"><h1>Dashboard</h1></div>;
+function HeroCard({ value, label }) {
+  return (
+    <div className="hero-card">
+      <div className="hero-number">{value}</div>
+      <div className="hero-label">{label}</div>
+    </div>
+  );
+}
+
+function DashboardPage({ nodes, templates, gitMode, viewingRef, branches, branchResults }) {
+  const [stats, setStats] = useState(null);
+  const [branchDiff, setBranchDiff] = useState(null);
+
+  const defaultBranchRef = branches.find(b => b.isDefault)?.ref ?? null;
+  const isOnNonDefaultBranch = gitMode && viewingRef && defaultBranchRef && viewingRef !== defaultBranchRef;
+
+  useEffect(() => {
+    const refParam = viewingRef ? `?ref=${encodeURIComponent(viewingRef)}` : '';
+    fetch(`/api/stats${refParam}`)
+      .then(res => res.ok ? res.json() : Promise.reject(res.status))
+      .then(setStats)
+      .catch(() => setStats(null));
+  }, [viewingRef]);
+
+  useEffect(() => {
+    if (!isOnNonDefaultBranch) { setBranchDiff(null); return; }
+    fetch(`/api/overlay/${encodeURIComponent(viewingRef)}`)
+      .then(res => res.ok ? res.json() : Promise.reject(res.status))
+      .then(data => {
+        const added = (data.nodes || []).filter(n => n.ghostState === 'local').length;
+        const removed = (data.nodes || []).filter(n => n.ghostState === 'default-only').length;
+        setBranchDiff({ added, removed, defaultBranch: defaultBranchRef });
+      })
+      .catch(() => setBranchDiff(null));
+  }, [isOnNonDefaultBranch, viewingRef, defaultBranchRef]);
+
+  const componentCount = new Set(nodes.map(n => n.component).filter(Boolean)).size;
+  const nodeCount = nodes.length;
+  const totalEdges = stats ? Object.values(stats.edgesByType).reduce((a, b) => a + b, 0) : '…';
+
+  const templateMap = new Map(templates.map(t => [t.name, t]));
+
+  const nodesByTemplate = [...nodes.reduce((acc, node) => {
+    acc.set(node.template, (acc.get(node.template) ?? 0) + 1);
+    return acc;
+  }, new Map()).entries()].sort((a, b) => b[1] - a[1]);
+
+  const nodesByState = [...nodes.reduce((acc, node) => {
+    acc.set(node.state, (acc.get(node.state) ?? 0) + 1);
+    return acc;
+  }, new Map()).entries()].sort((a, b) => b[1] - a[1]);
+
+  const nodesByStability = [...nodes.reduce((acc, node) => {
+    acc.set(node.stability, (acc.get(node.stability) ?? 0) + 1);
+    return acc;
+  }, new Map()).entries()].sort((a, b) => b[1] - a[1]);
+
+  const edgeRows = stats
+    ? Object.entries(stats.edgesByType).filter(([, count]) => count > 0).sort((a, b) => b[1] - a[1])
+    : [];
+
+  return (
+    <div className="content">
+      <div className="dashboard-hero">
+        <HeroCard value={componentCount} label="Components" />
+        <HeroCard value={nodeCount} label="Nodes" />
+        <HeroCard value={totalEdges} label="Edges" />
+        <HeroCard value={stats ? stats.orphanNodeCount : '…'} label="Orphan Nodes" />
+      </div>
+
+      {branchDiff && (
+        <div className="branch-diff-callout">
+          <span className="branch-diff-branch">⎇ {viewingRef}</span>
+          <span className="branch-diff-label">vs {branchDiff.defaultBranch}</span>
+          {branchDiff.added > 0 && <span className="branch-diff-added">+{branchDiff.added} added</span>}
+          {branchDiff.removed > 0 && <span className="branch-diff-removed">−{branchDiff.removed} removed</span>}
+          {branchDiff.added === 0 && branchDiff.removed === 0 && (
+            <span className="branch-diff-label">No changes</span>
+          )}
+        </div>
+      )}
+
+      <div className="dashboard-grid">
+        <div className="dashboard-panel">
+          <div className="card-head">Nodes by Type</div>
+          <div className="card-body" style={{ padding: '12px 16px' }}>
+            {nodesByTemplate.map(([name, count]) => {
+              const tmpl = templateMap.get(name);
+              const colour = tmpl?.ui?.colour ?? 'var(--ink-4)';
+              return (
+                <div key={name} className="stat-row">
+                  <span className="stat-row-label">
+                    <span className="stat-colour-dot" style={{ background: colour }} />
+                    {tmpl?.ui?.displayName ?? name}
+                  </span>
+                  <span className="stat-row-value">{count}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="dashboard-panel">
+          <div className="card-head">State Distribution</div>
+          <div className="card-body" style={{ padding: '12px 16px' }}>
+            {nodesByState.map(([state, count]) => (
+              <div key={state} className="stat-row">
+                <span className="stat-row-label"><StateTag state={state} /></span>
+                <span className="stat-row-value">{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="dashboard-panel">
+          <div className="card-head">Edge Types</div>
+          <div className="card-body" style={{ padding: '12px 16px' }}>
+            {stats === null && <div className="label-sm">Loading…</div>}
+            {stats !== null && edgeRows.length === 0 && <div className="label-sm">No semantic edges.</div>}
+            {edgeRows.map(([type, count]) => (
+              <div key={type} className="stat-row">
+                <span className="stat-row-label">
+                  <span className="tag" style={EDGE_TYPE_STYLES[type] ?? {}}>{type}</span>
+                </span>
+                <span className="stat-row-value">{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="dashboard-panel">
+          <div className="card-head">Stability</div>
+          <div className="card-body" style={{ padding: '12px 16px' }}>
+            {nodesByStability.map(([stability, count]) => (
+              <div key={stability} className="stat-row">
+                <span className="stat-row-label"><StabilityTag stability={stability} /></span>
+                <span className="stat-row-value">{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="dashboard-panel">
+          <div className="card-head">Diagnostics</div>
+          <div className="card-body" style={{ padding: '12px 16px' }}>
+            {stats === null && <div className="label-sm">Loading…</div>}
+            {stats !== null && stats.diagnosticCount > 0 && (
+              <span style={{ color: 'var(--warn)' }}>
+                {stats.diagnosticCount} load warning{stats.diagnosticCount !== 1 ? 's' : ''}
+              </span>
+            )}
+            {stats !== null && stats.diagnosticCount === 0 && (
+              <span style={{ color: 'var(--ok)' }}>No issues</span>
+            )}
+          </div>
+        </div>
+
+        {gitMode && (
+          <div className="dashboard-panel">
+            <div className="card-head">Branch Health</div>
+            <div className="card-body" style={{ padding: '12px 16px' }}>
+              {branchResults.map(result => (
+                <div key={result.ref} className="stat-row">
+                  <span className="stat-row-label">
+                    <Icon
+                      name={result.status === 'loaded' ? 'circle-check' : 'circle-xmark'}
+                      size={12}
+                    />
+                    <span>{result.ref}</span>
+                  </span>
+                  {result.status === 'failed' && (
+                    <span className="label-sm" style={{ color: 'var(--warn)', maxWidth: 200, textAlign: 'right' }}>
+                      {result.diagnostics?.[0]?.message ?? result.error ?? 'failed'}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function ComponentsPage() {
@@ -900,7 +1081,16 @@ function App() {
   } else if (error) {
     page = <div className="content"><p style={{ color: 'var(--warn)' }}>Error loading graph: {error}</p></div>;
   } else if (route.pathname === '/dashboard' || route.pathname === '/') {
-    page = <DashboardPage />;
+    page = (
+      <DashboardPage
+        nodes={nodes}
+        templates={templates}
+        gitMode={gitMode}
+        viewingRef={viewingRef}
+        branches={branches}
+        branchResults={branchResults}
+      />
+    );
   } else if (route.pathname === '/components') {
     page = <ComponentsPage />;
   } else if (route.pathname === '/node') {

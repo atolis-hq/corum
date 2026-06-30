@@ -1168,6 +1168,27 @@ describe('web server', () => {
       assert.match(app, /document\.addEventListener\('mousedown', handleClickOutside\)/)
       assert.match(app, /document\.removeEventListener\('mousedown', handleClickOutside\)/)
     })
+
+    it('app: DashboardPage receives graph data props from App', () => {
+      assert.match(app, /page = \(\s*<DashboardPage/)
+      assert.match(app, /nodes=\{nodes\}/)
+      assert.match(app, /gitMode=\{gitMode\}/)
+      assert.match(app, /viewingRef=\{viewingRef\}/)
+      assert.match(app, /branches=\{branches\}/)
+      assert.match(app, /branchResults=\{branchResults\}/)
+    })
+
+    it('app: DashboardPage fetches /api/stats and /api/overlay', () => {
+      assert.match(app, /\/api\/stats/)
+      assert.match(app, /\/api\/overlay\//)
+    })
+
+    it('style: dashboard hero and grid layout classes defined', () => {
+      assert.match(styles, /\.dashboard-hero\s*\{/)
+      assert.match(styles, /\.hero-card\s*\{/)
+      assert.match(styles, /\.dashboard-grid\s*\{[^}]*grid-template-columns:/)
+      assert.match(styles, /\.dashboard-panel\s*\{/)
+    })
   })
 })
 
