@@ -537,6 +537,14 @@ function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate }) {
         <span style={{ fontWeight: 500, fontSize: 13 }}>{name}</span>
         {node && <StateTag state={node.state} />}
         {node && <StabilityTag stability={node.stability} />}
+        <button
+          className="graph-nav-link"
+          title="View in graph"
+          onClick={e => { e.stopPropagation(); navigate(`#/graph?focus=${encodeURIComponent(linkedNodeId)}`); }}
+          style={{ marginLeft: 'auto' }}
+        >
+          <Icon name="diagram-project" size={11} />
+        </button>
       </div>
     );
   }
@@ -639,6 +647,14 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
           <TemplateBadge name={templateDisplayName(template)} colour={colour} />
           <StateTag state={root.state} />
           <StabilityTag stability={root.stability} />
+          <button
+            className="graph-nav-link"
+            onClick={() => navigate(`#/graph?focus=${encodeURIComponent(root.id)}`)}
+            title="View in graph"
+          >
+            <Icon name="diagram-project" size={11} />
+            <span>Graph</span>
+          </button>
         </div>
         <div className="label-sm mono">{root.id}</div>
       </div>
