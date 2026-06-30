@@ -502,7 +502,7 @@ function ComponentsPage() {
   return <div className="content"><h1>Components</h1></div>;
 }
 
-function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate }) {
+function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate, viewingRef }) {
   const { useState: useLocalState } = React;
   const [open, setOpen] = useLocalState(() => {
     try { return localStorage.getItem('corum:edgePanelOpen') === 'true'; } catch { return false; }
@@ -540,7 +540,7 @@ function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate }) {
         <button
           className="graph-nav-link"
           title="View in graph"
-          onClick={e => { e.stopPropagation(); navigate(`#/graph?focus=${encodeURIComponent(linkedNodeId)}`); }}
+          onClick={e => { e.stopPropagation(); navigate(buildRoute({ pathname: '/graph', params: { focus: linkedNodeId }, branch: viewingRef })); }}
           style={{ marginLeft: 'auto' }}
         >
           <Icon name="diagram-project" size={11} />
@@ -649,7 +649,7 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
           <StabilityTag stability={root.stability} />
           <button
             className="graph-nav-link"
-            onClick={() => navigate(`#/graph?focus=${encodeURIComponent(root.id)}`)}
+            onClick={() => navigate(buildRoute({ pathname: '/graph', params: { focus: root.id }, branch: viewingRef }))}
             title="View in graph"
           >
             <Icon name="diagram-project" size={11} />
@@ -665,6 +665,7 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
         allNodes={[root, ...descendants, ...includedNodes]}
         templates={templates}
         onNavigate={onNavigate}
+        viewingRef={viewingRef}
       />
 
       <div className="meta-strip">

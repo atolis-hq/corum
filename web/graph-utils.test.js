@@ -1,7 +1,7 @@
 // run with: node web/graph-utils.test.js
+const { buildComponentMap, buildFocusGraph, applyEdgeTypeFilter, getDisplayName } = require('./graph-utils.js');
 
 (async () => {
-  const { buildComponentMap, buildFocusGraph, applyEdgeTypeFilter, getDisplayName } = await import('./graph-utils.js');
 
   let passed = 0, failed = 0;
   function assert(condition, name) {

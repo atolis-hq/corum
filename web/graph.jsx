@@ -77,7 +77,7 @@ function makeRFEdge(edge, edgeStyles) {
   };
 }
 
-function buildRFNodesForNodes(graphNodes, templateMap, onNodeClick) {
+function buildRFNodesForNodes(graphNodes, templateMap, onNodeClick, viewingRef) {
   return graphNodes.map(n => {
     const tmpl = templateMap.get(n.template);
     const colour = tmpl?.ui?.colour ?? 'var(--ink-4)';
@@ -94,6 +94,7 @@ function buildRFNodesForNodes(graphNodes, templateMap, onNodeClick) {
         state: n.state,
         stability: n.stability,
         onClick: () => onNodeClick(n.id),
+        viewingRef,
       },
     };
   });
@@ -135,7 +136,7 @@ function NodeCardNode({ data }) {
         <button
           className="graph-node-card-link"
           title="View node details"
-          onClick={e => { e.stopPropagation(); navigate(`#/node?id=${encodeURIComponent(data.nodeId)}`); }}
+          onClick={e => { e.stopPropagation(); navigate(buildRoute({ pathname: '/node', params: { id: data.nodeId }, branch: data.viewingRef })); }}
         >
           <Icon name="arrow-up-right-from-square" size={11} />
         </button>
@@ -303,20 +304,20 @@ function GraphView({ route, viewingRef, templates }) {
   const level1 = useMemo(() => {
     if (!graphData) return null;
     const { nodes: cmNodes, edges: cmEdges } = buildComponentMap(graphData.nodes, graphData.edges);
-    const filteredEdges = applyEdgeTypeFilter(
-      cmEdges.map(e => ({ ...e, type: e.types[0] ?? 'calls' })),
-      visibleEdgeTypes
-    );
+    const filteredCmEdges = cmEdges.filter(e => e.types.some(t => visibleEdgeTypes.has(t)));
     const rfN = cmNodes.map(n => ({
       id: n.id,
       type: 'componentCard',
       position: { x: 0, y: 0 },
       data: { label: n.component, count: n.count, onClick: () => navToComponent(n.component) },
     }));
-    const rfE = filteredEdges.map(e => ({
-      ...makeRFEdge({ ...e, type: e.type }, EDGE_STYLES),
-      label: cmEdges.find(ce => ce.id === e.id)?.types.join(', ') ?? e.type,
-    }));
+    const rfE = filteredCmEdges.map(e => {
+      const repType = e.types.find(t => visibleEdgeTypes.has(t)) ?? e.types[0];
+      return {
+        ...makeRFEdge({ ...e, type: repType }, EDGE_STYLES),
+        label: e.types.join(', '),
+      };
+    });
     return { rfN: computeLayout(rfN, rfE, COMP_W, COMP_H), rfE };
   }, [graphData, visibleEdgeTypes, layoutKey, navToComponent]);
 
@@ -343,7 +344,7 @@ function GraphView({ route, viewingRef, templates }) {
     const externalNodes = graphData.nodes.filter(n => externalNodeIds.has(n.id));
     const allVisibleNodes = [...compNodes, ...externalNodes];
     const allVisibleEdges = [...internalEdges, ...crossEdges];
-    const rfN = buildRFNodesForNodes(allVisibleNodes, templateMap, navToFocus);
+    const rfN = buildRFNodesForNodes(allVisibleNodes, templateMap, navToFocus, viewingRef);
     const rfE = buildRFEdgesForEdges(allVisibleEdges, visibleEdgeTypes).map(e => {
       const isCross = crossEdges.some(ce => ce.id === e.id);
       return isCross ? { ...e, style: { ...e.style, opacity: 0.45 }, labelStyle: { ...e.labelStyle, opacity: 0.45 } } : e;
@@ -365,7 +366,7 @@ function GraphView({ route, viewingRef, templates }) {
     );
     const rfN = buildRFNodesForNodes(focusNodes, templateMap, nodeId => {
       navigate(buildRoute({ pathname: '/graph', params: { focus: nodeId }, branch: viewingRef }));
-    });
+    }, viewingRef);
     const rfE = buildRFEdgesForEdges(focusEdges, visibleEdgeTypes);
     const layoutedN = computeLayout(rfN, rfE, NODE_W, NODE_H);
     return {

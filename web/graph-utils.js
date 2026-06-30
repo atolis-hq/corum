@@ -66,8 +66,6 @@ function applyEdgeTypeFilter(edges, visibleTypes) {
   return edges.filter(e => visibleTypes.has(e.type));
 }
 
-export { buildComponentMap, buildFocusGraph, applyEdgeTypeFilter, getDisplayName };
-
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { buildComponentMap, buildFocusGraph, applyEdgeTypeFilter, getDisplayName };
 }
