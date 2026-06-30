@@ -13,6 +13,7 @@ const {
 } = window.CorumPrimitives;
 const { buildNavTree, buildOverlayIndicatorIds } = window.CorumNav;
 const { parseRoute, buildRoute } = window.CorumRouter;
+const { SearchModal } = window.CorumSearch;
 
 const PANEL_EDGE_TYPES = new Set(['triggers', 'produces', 'calls', 'implements']);
 
@@ -58,12 +59,30 @@ function summarizeBranchFailure(result) {
   return result?.error ?? 'Branch failed to load';
 }
 
-function TopBar() {
+function TopBar({ onSearchOpen }) {
+  const inputRef = React.useRef(null);
+
+  function handleFocus() {
+    inputRef.current?.blur();
+    onSearchOpen();
+  }
+
   return (
     <div className="topbar">
       <div className="brand">
         <BrandMark size={22} color="#fff" />
         <span>corum</span>
+      </div>
+      <div className="topbar-search-wrap">
+        <i className="fa-solid fa-magnifying-glass topbar-search-icon" aria-hidden="true" />
+        <input
+          ref={inputRef}
+          className="topbar-search"
+          placeholder="Search graph..."
+          onFocus={handleFocus}
+          readOnly
+        />
+        <span className="topbar-search-hint">⌘K</span>
       </div>
     </div>
   );
@@ -730,6 +749,7 @@ function App() {
   const [debugMode, setDebugMode] = useState(() => {
     try { return localStorage.getItem('corum:debugMode') === 'true'; } catch { return false; }
   });
+  const [searchOpen, setSearchOpen] = useState(false);
 
   function handleDebugMode() {
     setDebugMode(prev => {
@@ -810,6 +830,17 @@ function App() {
     return () => window.removeEventListener('hashchange', handler);
   }, []);
 
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const activeNodeId = route.pathname === '/node' ? route.params.get('id') : null;
   const activeSection = activeNodeId ? 'components' : (route.pathname.slice(1) || 'dashboard');
   const navTree = useMemo(() => buildNavTree(nodes, templates), [nodes, templates]);
@@ -872,7 +903,15 @@ function App() {
 
   return (
     <>
-      <TopBar />
+      {searchOpen && (
+        <SearchModal
+          nodes={nodes}
+          templates={templates}
+          onNavigate={handleNode}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
+      <TopBar onSearchOpen={() => setSearchOpen(true)} />
       {gitMode && (
         <BranchBar
           branches={branches}

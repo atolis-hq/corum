@@ -27,7 +27,7 @@ function searchNodes(nodes, templates, query) {
     results.push({ node, template: templateMap.get(node.template), score: match.score });
   }
   results.sort((a, b) => b.score - a.score || a.node.id.length - b.node.id.length);
-  return results.slice(0, 8);
+  return results.slice(0, 10);
 }
 
 function SearchModal({ nodes, templates, onNavigate, onClose }) {

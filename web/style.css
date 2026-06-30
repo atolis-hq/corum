@@ -940,7 +940,7 @@ button {
 
 .search-results {
   padding: 4px;
-  max-height: 320px;
+  max-height: 400px;
   overflow-y: auto;
 }
 
