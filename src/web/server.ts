@@ -208,13 +208,6 @@ function parseIncludeEdges(value: unknown): EdgeType[] {
   return [...new Set(types)]
 }
 
-const GRAPH_EXCLUDED_TEMPLATES = new Set([
-  'Schema', 'EnumDefinition', 'Field', 'EnumValue', 'Mapping',
-])
-const GRAPH_SEMANTIC_EDGE_TYPES = new Set([
-  'triggers', 'produces', 'reads', 'calls', 'implements', 'maps-to', 'derived-from',
-])
-
 function createReloadEvents(): ReloadEvents {
   const clients = new Set<Response>()
   let version = 0
@@ -425,35 +418,46 @@ export function createApp(
     res.json(nodes)
   })
 
+  const GRAPH_EXCLUDED_TEMPLATES = new Set([
+    'Schema', 'EnumDefinition', 'Field', 'EnumValue', 'Mapping',
+  ])
+  const GRAPH_SEMANTIC_EDGE_TYPES = new Set<EdgeType>([
+    'triggers', 'produces', 'reads', 'calls', 'implements', 'maps-to', 'derived-from',
+  ])
+
   app.get('/api/graph', async (req, res) => {
-    let targetGraph = graph
-    if (typeof req.query.ref === 'string' && multiCache) {
-      targetGraph = await getGraphForRef(req.query.ref, multiCache, graph)
-    }
-
-    const nodes = []
-    for (const node of targetGraph.nodesById.values()) {
-      if (GRAPH_EXCLUDED_TEMPLATES.has(node.template)) continue
-      nodes.push({
-        id: node.id,
-        template: node.template,
-        component: node.component,
-        state: node.state,
-        stability: node.stability,
-      })
-    }
-
-    const nodeIds = new Set(nodes.map(n => n.id))
-    const edges = []
-    for (const edgeList of targetGraph.edgesByFrom.values()) {
-      for (const edge of edgeList) {
-        if (!GRAPH_SEMANTIC_EDGE_TYPES.has(edge.type as string)) continue
-        if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) continue
-        edges.push({ id: edge.id, from: edge.from, to: edge.to, type: edge.type })
+    try {
+      let targetGraph = graph
+      if (typeof req.query.ref === 'string' && multiCache) {
+        targetGraph = await getGraphForRef(req.query.ref, multiCache, graph)
       }
-    }
 
-    res.json({ nodes, edges })
+      const nodes = []
+      for (const node of targetGraph.nodesById.values()) {
+        if (GRAPH_EXCLUDED_TEMPLATES.has(node.template)) continue
+        nodes.push({
+          id: node.id,
+          template: node.template,
+          component: node.component,
+          state: node.state,
+          stability: node.stability,
+        })
+      }
+
+      const nodeIds = new Set(nodes.map(n => n.id))
+      const edges = []
+      for (const edgeList of targetGraph.edgesByFrom.values()) {
+        for (const edge of edgeList) {
+          if (!GRAPH_SEMANTIC_EDGE_TYPES.has(edge.type)) continue
+          if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) continue
+          edges.push({ id: edge.id, from: edge.from, to: edge.to, type: edge.type })
+        }
+      }
+
+      res.json({ nodes, edges })
+    } catch (err) {
+      res.status(500).json({ error: String(err) })
+    }
   })
 
   app.get('/api/cluster', async (req, res) => {
