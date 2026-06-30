@@ -77,6 +77,32 @@ function makeRFEdge(edge, edgeStyles) {
   };
 }
 
+function buildRFNodesForNodes(graphNodes, templateMap, onNodeClick) {
+  return graphNodes.map(n => {
+    const tmpl = templateMap.get(n.template);
+    const colour = tmpl?.ui?.colour ?? 'var(--ink-4)';
+    return {
+      id: n.id,
+      type: 'nodeCard',
+      position: { x: 0, y: 0 },
+      data: {
+        nodeId: n.id,
+        label: getDisplayName(n.id),
+        component: n.component,
+        templateLabel: tmpl?.ui?.displayName ?? n.template,
+        colour,
+        state: n.state,
+        stability: n.stability,
+        onClick: () => onNodeClick(n.id),
+      },
+    };
+  });
+}
+
+function buildRFEdgesForEdges(edges, visibleEdgeTypes) {
+  return applyEdgeTypeFilter(edges, visibleEdgeTypes).map(e => makeRFEdge(e, EDGE_STYLES));
+}
+
 // Level 1: component card node
 function ComponentCardNode({ data }) {
   return (
@@ -89,7 +115,37 @@ function ComponentCardNode({ data }) {
   );
 }
 
-const nodeTypes = { componentCard: ComponentCardNode };
+// Level 2/3: node card node
+function NodeCardNode({ data }) {
+  const colour = data.colour ?? 'var(--ink-4)';
+  return (
+    <div className="graph-node-card" onClick={data.onClick}>
+      <RF.Handle type="target" position={RF.Position.Left} style={{ opacity: 0 }} />
+      <div className="graph-node-card-bar" style={{ background: colour }} />
+      <div className="graph-node-card-header">
+        <TemplateBadge name={data.templateLabel} colour={colour} />
+        <StateTag state={data.state} />
+      </div>
+      <div className="graph-node-card-body">
+        <div className="graph-node-card-name" title={data.nodeId}>{data.label}</div>
+        <div className="graph-node-card-component">{data.component}</div>
+      </div>
+      <div className="graph-node-card-footer">
+        <StabilityTag stability={data.stability} />
+        <button
+          className="graph-node-card-link"
+          title="View node details"
+          onClick={e => { e.stopPropagation(); navigate(`#/node?id=${encodeURIComponent(data.nodeId)}`); }}
+        >
+          <Icon name="arrow-up-right-from-square" size={11} />
+        </button>
+      </div>
+      <RF.Handle type="source" position={RF.Position.Right} style={{ opacity: 0 }} />
+    </div>
+  );
+}
+
+const nodeTypes = { componentCard: ComponentCardNode, nodeCard: NodeCardNode };
 
 function GraphBreadcrumb({ level, selectedComponent, focalNodeId, onNavigateToRoot, onNavigateToComponent }) {
   return (
@@ -269,6 +325,63 @@ function GraphView({ route, viewingRef, templates }) {
     setRfNodes(level1.rfN);
     setRfEdges(level1.rfE);
   }, [level, level1]);
+
+  // Level 2: component interior
+  const level2 = useMemo(() => {
+    if (!graphData || !selectedComponent) return null;
+    const compNodes = graphData.nodes.filter(n => n.component === selectedComponent);
+    const compNodeIds = new Set(compNodes.map(n => n.id));
+    const internalEdges = graphData.edges.filter(e => compNodeIds.has(e.from) && compNodeIds.has(e.to));
+    const crossEdges = graphData.edges.filter(e =>
+      (compNodeIds.has(e.from) && !compNodeIds.has(e.to)) ||
+      (!compNodeIds.has(e.from) && compNodeIds.has(e.to))
+    );
+    const externalNodeIds = new Set([
+      ...crossEdges.map(e => e.from).filter(id => !compNodeIds.has(id)),
+      ...crossEdges.map(e => e.to).filter(id => !compNodeIds.has(id)),
+    ]);
+    const externalNodes = graphData.nodes.filter(n => externalNodeIds.has(n.id));
+    const allVisibleNodes = [...compNodes, ...externalNodes];
+    const allVisibleEdges = [...internalEdges, ...crossEdges];
+    const rfN = buildRFNodesForNodes(allVisibleNodes, templateMap, navToFocus);
+    const rfE = buildRFEdgesForEdges(allVisibleEdges, visibleEdgeTypes).map(e => {
+      const isCross = crossEdges.some(ce => ce.id === e.id);
+      return isCross ? { ...e, style: { ...e.style, opacity: 0.45 }, labelStyle: { ...e.labelStyle, opacity: 0.45 } } : e;
+    });
+    return { rfN: computeLayout(rfN, rfE, NODE_W, NODE_H), rfE };
+  }, [graphData, selectedComponent, visibleEdgeTypes, templateMap, layoutKey]);
+
+  useEffect(() => {
+    if (level !== 'interior' || !level2) return;
+    setRfNodes(level2.rfN);
+    setRfEdges(level2.rfE);
+  }, [level, level2]);
+
+  // Level 3: node focus
+  const level3 = useMemo(() => {
+    if (!graphData || !focalNodeId) return null;
+    const { nodes: focusNodes, edges: focusEdges } = buildFocusGraph(
+      focalNodeId, graphData.nodes, graphData.edges, depth
+    );
+    const rfN = buildRFNodesForNodes(focusNodes, templateMap, nodeId => {
+      navigate(buildRoute({ pathname: '/graph', params: { focus: nodeId }, branch: viewingRef }));
+    });
+    const rfE = buildRFEdgesForEdges(focusEdges, visibleEdgeTypes);
+    const layoutedN = computeLayout(rfN, rfE, NODE_W, NODE_H);
+    return {
+      rfN: layoutedN.map(n => n.id === focalNodeId
+        ? { ...n, data: { ...n.data }, style: { outline: '2px solid var(--accent)', outlineOffset: '2px', borderRadius: 'var(--radius)' } }
+        : n
+      ),
+      rfE,
+    };
+  }, [graphData, focalNodeId, depth, visibleEdgeTypes, templateMap, layoutKey, viewingRef]);
+
+  useEffect(() => {
+    if (level !== 'focus' || !level3) return;
+    setRfNodes(level3.rfN);
+    setRfEdges(level3.rfE);
+  }, [level, level3]);
 
   function handleToggleEdgeType(type) {
     setVisibleEdgeTypes(prev => {
