@@ -104,7 +104,7 @@ Currently the runner applies each adapter's results to the graph immediately ins
 
 ### 5. Deduplication (`src/import/dedup.ts`)
 
-A new pure module with no I/O, fully unit-testable.
+A new standalone module, kept deliberately separate from the runner. It has no I/O, no graph loading, and no adapter knowledge — it operates only on plain `EntryResult` values. This makes it independently testable and replaceable without touching the runner.
 
 **Exported interface:**
 
@@ -207,43 +207,43 @@ Import order does not affect deduplication outcome — dedup runs after all adap
 
 Corum node:
 ```
-id: employments.APIEndpoint.GetEmploymentController
-properties: { x-aka: [GetEmployment] }
-edges: [GetEmploymentController --triggers--> employments.Command.GetEmploymentQuery]
+id: billing.APIEndpoint.GetInvoiceController
+properties: { x-aka: [GetInvoice] }
+edges: [GetInvoiceController --triggers--> billing.Command.GetInvoiceQuery]
 ```
 
 OpenAPI node:
 ```
-id: employments.APIEndpoint.GetEmployment
-properties: { method: GET, path: /employments/{id}, parameters: {...}, responses: {...} }
+id: billing.APIEndpoint.GetInvoice
+properties: { method: GET, path: /invoices/{invoiceId}, parameters: {...}, responses: {...} }
 ```
 
 After dedup:
-- `GetEmployment` kept (all OpenAPI properties intact)
-- `GetEmploymentController` dropped
-- Edge rewritten: `GetEmployment --triggers--> employments.Command.GetEmploymentQuery`
+- `GetInvoice` kept (all OpenAPI properties intact)
+- `GetInvoiceController` dropped
+- Edge rewritten: `GetInvoice --triggers--> billing.Command.GetInvoiceQuery`
 - No warning (expected behaviour)
 
 ### IntegrationEvent (same-ID collision)
 
 Corum node:
 ```
-id: employers.IntegrationEvent.EmployerProvisionedIntegrationEvent
-children: [schemas.EmployerProvisionedIntegrationEvent, schemas.*.fields.*]
-edges: [DomainModel.operation.Provision --produces--> EmployerProvisionedIntegrationEvent]
+id: customers.IntegrationEvent.CustomerCreatedIntegrationEvent
+children: [schemas.CustomerCreatedIntegrationEvent, schemas.*.fields.*]
+edges: [customers.DomainModel.CustomerAggregate.operations.Create --produces--> CustomerCreatedIntegrationEvent]
 ```
 
 AsyncAPI node (same ID):
 ```
-id: employers.IntegrationEvent.EmployerProvisionedIntegrationEvent
-children: [schemas.EmployerProvisionedIntegrationEvent, schemas.*.fields.*]
+id: customers.IntegrationEvent.CustomerCreatedIntegrationEvent
+children: [schemas.CustomerCreatedIntegrationEvent, schemas.*.fields.*]
 ```
 
 After dedup (asyncapi primary):
 - AsyncAPI root node + children kept
 - Corum root node + children dropped
 - `produces` edge endpoint unchanged (same ID)
-- Warning emitted: "Duplicate node ID from adapters asyncapi and corum: employers.IntegrationEvent.EmployerProvisionedIntegrationEvent — corum node dropped"
+- Warning emitted: "Duplicate node ID from adapters asyncapi and corum: customers.IntegrationEvent.CustomerCreatedIntegrationEvent — corum node dropped"
 
 ---
 
