@@ -114,6 +114,7 @@ function NavTree({ navTree, templates, activeNodeId, onNode, overlayIndicatorIds
   const sortedComponents = [...navTree.keys()].sort((a, b) => a.localeCompare(b));
   const [openComponent, setOpenComponent] = useState();
   const [openEntryKeys, setOpenEntryKeys] = useState(new Set());
+  const [openGroupKeys, setOpenGroupKeys] = useState(new Set());
   const templateMap = new Map(templates.map(template => [template.name, template]));
 
   function openComponentWithEntries(component) {
@@ -150,6 +151,26 @@ function NavTree({ navTree, templates, activeNodeId, onNode, overlayIndicatorIds
         }
       }
     }
+  }, [activeNodeId, navTree]);
+
+  // Auto-expand groups for the active node; collapse all others.
+  useEffect(() => {
+    if (!activeNodeId || !navTree.size) return;
+    for (const entries of navTree.values()) {
+      for (const entry of entries) {
+        if (entry.kind === 'group') continue;
+        for (const node of entry.nodes) {
+          const isOwner =
+            node.id === activeNodeId ||
+            (node.navChildren ?? []).some(g => g.nodes.some(c => c.id === activeNodeId));
+          if (isOwner) {
+            setOpenGroupKeys(new Set((node.navChildren ?? []).map(g => `${node.id}:${g.label}`)));
+            return;
+          }
+        }
+      }
+    }
+    setOpenGroupKeys(new Set());
   }, [activeNodeId, navTree]);
 
   function toggleComponent(component) {
@@ -257,32 +278,47 @@ function NavTree({ navTree, templates, activeNodeId, onNode, overlayIndicatorIds
                         >
                           {displayName(node.id)}
                         </div>
-                        {(node.navChildren ?? []).map(group => (
-                          <div className="nav-child-group" key={group.label}>
-                            <div className="nav-child-head">{group.label}</div>
-                            {group.nodes.map(child => {
-                              const childTemplate = templateMap.get(child.template);
-                              const childColour = childTemplate?.ui?.colour ?? colour;
-                              const childIsActive = child.id === activeNodeId;
-                              return (
-                                <div
-                                  key={child.id}
-                                  className={`nav-node-item nav-node-child${childIsActive ? ' active' : ''}`}
-                                  onClick={() => onNode(child.id)}
-                                  title={child.id}
-                                  style={childIsActive ? { '--nav-node-active-bg': childColour } : undefined}
-                                >
-                                  {displayName(child.id)}
-                                  {overlayIndicatorIds && overlayIndicatorIds.has(child.id) && (
-                                    <span className="signal-dots">
-                                      <span className="signal-dot signal-dot-0" />
-                                    </span>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ))}
+                        {(node.navChildren ?? []).map(group => {
+                          const groupKey = `${node.id}:${group.label}`;
+                          const groupOpen = openGroupKeys.has(groupKey);
+                          return (
+                            <div className="nav-child-group" key={group.label}>
+                              <div
+                                className="nav-child-head"
+                                style={{ cursor: 'pointer' }}
+                                onClick={() => setOpenGroupKeys(prev => {
+                                  const next = new Set(prev);
+                                  next.has(groupKey) ? next.delete(groupKey) : next.add(groupKey);
+                                  return next;
+                                })}
+                              >
+                                {group.label}
+                                <Icon name={groupOpen ? 'chevron-down' : 'chevron-right'} size={10} />
+                              </div>
+                              {groupOpen && group.nodes.map(child => {
+                                const childTemplate = templateMap.get(child.template);
+                                const childColour = childTemplate?.ui?.colour ?? colour;
+                                const childIsActive = child.id === activeNodeId;
+                                return (
+                                  <div
+                                    key={child.id}
+                                    className={`nav-node-item nav-node-child${childIsActive ? ' active' : ''}`}
+                                    onClick={() => onNode(child.id)}
+                                    title={child.id}
+                                    style={childIsActive ? { '--nav-node-active-bg': childColour } : undefined}
+                                  >
+                                    {displayName(child.id)}
+                                    {overlayIndicatorIds && overlayIndicatorIds.has(child.id) && (
+                                      <span className="signal-dots">
+                                        <span className="signal-dot signal-dot-0" />
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })}
                       </div>
                     );
                   })}

@@ -3,6 +3,7 @@
 **Status:** Accepted  
 **Date:** 2026-04-12  
 **Amended:** 2026-04-14 — structural ownership edge types added (see amendment at end)  
+**Amended:** 2026-06-25 — structural reads edges auto-generated from node-ref properties (see amendment at end)  
 **Deciders:** Product Owner  
 **Depends on:** ADR-004 (Template Pack Format), ADR-003b (Core Logical Data Model)  
 **Related:** ADR-006 (Linter and Validator)
@@ -317,6 +318,22 @@ From this ADR, the linter must enforce:
 **Reason:** The `Schema` and `EnumDefinition` templates declared `outgoing: [has-field]` and `outgoing: [has-value]` respectively in their template edge sections, but these type names were not in the ADR-defined vocabulary. This caused a pre-existing violation of E-004 (template edge declaration vocabulary). The amendment formalises both types as structural ownership edges, documents that they are extracted from cluster file structure rather than authored in edge files, and adds E-008 to prohibit their use in edge files.
 
 **Prior description of "eight core types"** throughout this document and in ADR-003b is amended to "ten core types" (eight semantic plus two structural ownership types).
+
+---
+
+## Amendment: 2026-06-25
+
+**Added:** Auto-generation of structural `reads` edges from `node-ref` properties.
+
+**Reason:** Import adapters (OpenAPI, AsyncAPI) were hand-crafting `reads` edges when resolving `$ref` values to external clusters. This was fragile — any new adapter or node type with external references had to remember to emit these edges, and the adapter had to carry source-tracking bookkeeping to know the correct edge source. The cluster-loader already processes all node properties; it is the right place to derive these edges once, uniformly.
+
+**How it works:** During cluster materialisation, after each owned child node is created, the cluster-loader inspects the child's template properties for any property with `format: node-ref`. If the node's actual value for such a property is a global node ID (not a local `#/…` reference), the loader emits a `reads` edge from the **cluster root** to that global target. The edge is marked `generated: true` and is deduplicated so multiple fields referencing the same target produce exactly one edge.
+
+**Generated vs authored reads:** The `generated: true` flag is an internal runtime marker. Generated reads edges participate fully in graph queries — `list_nodes`, `get_cluster`, and `get_linked_fields` all see them. They are, however, **excluded from edge file serialisation**: `serializeGraph` filters edges where `generated === true` before writing `edges/*.yaml`. This means the edge is re-derived on every load and never appears as an explicit edge file entry.
+
+**`emitReadsEdge` removed from adapters:** The OpenAPI and AsyncAPI mapper functions no longer emit `reads` edges. The `emitReadsEdge` helper has been deleted from both. Adapter output is now limited to the node structure and structural ownership edges; cross-cluster reads relationships are left to the loader's auto-generation.
+
+**Edge direction:** Auto-generated reads edges always point from the cluster root to the external target, preserving the root-to-root constraint on `reads` edges stated in the Core Edge Type Vocabulary section above.
 
 ---
 

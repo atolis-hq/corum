@@ -30,6 +30,7 @@ export interface Edge {
   notes?: string
   derivation?: 'determined' | 'inferred' | 'manual'
   derivedBy?: string
+  generated?: true
 }
 
 export interface Template {

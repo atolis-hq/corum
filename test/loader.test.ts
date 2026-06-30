@@ -341,11 +341,11 @@ describe('edge loader', () => {
 })
 
 describe('loadGraph', () => {
-  it('loads 151 nodes and 167 edges using FileGraphSource', async () => {
+  it('loads 151 nodes and 178 edges using FileGraphSource', async () => {
     const source = new FileGraphSource({ graphDir: fixtureGraphDir })
     const graph = await loadGraph({ source })
     assert.equal(graph.nodesById.size, 151)
-    assert.equal([...graph.edgesByFrom.values()].flat().length, 167)
+    assert.equal([...graph.edgesByFrom.values()].flat().length, 178)
   })
 
   it('loads packsPath when graph.yaml is absent', async () => {
@@ -370,12 +370,12 @@ describe('loadGraph', () => {
     }
   })
 
-  it('loads full sample-graph with 151 nodes and 167 edges', async () => {
+  it('loads full sample-graph with 151 nodes and 178 edges', async () => {
     const graph = await loadGraph({ graphPath: fixtureGraphDir })
 
     assert.equal(graph.nodesById.size, 151, `expected 151 nodes, got ${graph.nodesById.size}`)
     const allEdges = [...graph.edgesByFrom.values()].flat()
-    assert.equal(allEdges.length, 167, `expected 167 edges, got ${allEdges.length}`)
+    assert.equal(allEdges.length, 178, `expected 178 edges, got ${allEdges.length}`)
   })
 
   it('does not throw in strict mode for the valid fixture', async () => {
@@ -512,5 +512,98 @@ describe('cluster loader — Mapping nodes', () => {
     assert.ok(templates.has('Mapping'), 'Mapping template loaded')
     const mapping = templates.get('Mapping')!
     assert.equal(mapping.info.core, true)
+  })
+})
+
+describe('cluster loader — structural reads edges', () => {
+  it('auto-generates a reads edge from a field with a global node-ref $ref', async () => {
+    const diagnostics: Diagnostic[] = []
+    const templates = loadPacks(await buildPackContentMap(), diagnostics)
+    assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0, 'pack load errors')
+
+    const content: ContentMap = new Map([
+      ['components/orders/DomainModels/cross-ref-test.yaml', [
+        'id: orders.DomainModel.cross-ref-test',
+        'template: DomainModel',
+        'schemaVersion: "1"',
+        'metadata:',
+        '  component: orders',
+        '  state: proposed',
+        '  stability: unstable',
+        '  lastModifiedAt: "2026-06-25"',
+        'schemas:',
+        '  item:',
+        '    fields:',
+        '      price:',
+        '        $ref: payments.DomainModel.payment',
+        '        nullable: false',
+      ].join('\n')],
+      ['components/payments/DomainModels/payment.yaml', [
+        'id: payments.DomainModel.payment',
+        'template: DomainModel',
+        'schemaVersion: "1"',
+        'metadata:',
+        '  component: payments',
+        '  state: proposed',
+        '  stability: unstable',
+        '  lastModifiedAt: "2026-06-25"',
+      ].join('\n')],
+    ])
+
+    const result = loadClusters(content, templates, diagnostics)
+    assert.equal(
+      diagnostics.filter(d => d.severity === 'error').length,
+      0,
+      `load errors: ${JSON.stringify(diagnostics.filter(d => d.severity === 'error'))}`,
+    )
+
+    const allEdges = [...result.edgesByFrom.values()].flat()
+    const structuralReads = allEdges.filter(e => e.type === 'reads' && e.generated === true)
+
+    assert.ok(structuralReads.length > 0, 'expected at least one structural reads edge')
+
+    const edge = structuralReads.find(
+      e => e.from === 'orders.DomainModel.cross-ref-test' && e.to === 'payments.DomainModel.payment',
+    )
+    assert.ok(edge, 'expected reads edge from orders.DomainModel.cross-ref-test to payments.DomainModel.payment')
+    assert.strictEqual(edge!.generated, true)
+    assert.strictEqual(edge!.from, 'orders.DomainModel.cross-ref-test')
+  })
+
+  it('deduplicates structural reads edges when multiple fields reference the same external node', async () => {
+    const diagnostics: Diagnostic[] = []
+    const templates = loadPacks(await buildPackContentMap(), diagnostics)
+
+    const content: ContentMap = new Map([
+      ['components/orders/DomainModels/multi-ref-test.yaml', [
+        'id: orders.DomainModel.multi-ref-test',
+        'template: DomainModel',
+        'schemaVersion: "1"',
+        'metadata:',
+        '  component: orders',
+        '  state: proposed',
+        '  stability: unstable',
+        '  lastModifiedAt: "2026-06-25"',
+        'schemas:',
+        '  first:',
+        '    fields:',
+        '      price:',
+        '        $ref: payments.DomainModel.payment',
+        '        nullable: false',
+        '  second:',
+        '    fields:',
+        '      amount:',
+        '        $ref: payments.DomainModel.payment',
+        '        nullable: false',
+      ].join('\n')],
+    ])
+
+    const result = loadClusters(content, templates, diagnostics)
+
+    const allEdges = [...result.edgesByFrom.values()].flat()
+    const readsToPayment = allEdges.filter(
+      e => e.type === 'reads' && e.to === 'payments.DomainModel.payment' && e.generated === true,
+    )
+    assert.equal(readsToPayment.length, 1, 'duplicate reads edges must be de-duplicated')
   })
 })

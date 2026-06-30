@@ -61,13 +61,6 @@ export function refName(ref: string): string {
   return ref.split('/').pop() ?? ref
 }
 
-function emitReadsEdge(from: string, to: string, edges: Edge[]): void {
-  const id = `${from}__reads__${to}`
-  if (!edges.some(e => e.id === id)) {
-    edges.push({ id, from, to, type: 'reads', state: 'implemented', stability: 'unstable' })
-  }
-}
-
 export function mapDocument(
   document: OpenAPIV3.Document,
   entry: OpenAPIImportEntry,
@@ -345,7 +338,6 @@ function emitSchemaNode(
 
     const globalId = sharedSchemas.get(schemaName)
     if (globalId) {
-      if (rootId) emitReadsEdge(rootId, globalId, edges)
       return globalId
     }
 
@@ -396,7 +388,6 @@ function resolveFieldRef(
   collection: 'one' | 'array',
   required: boolean,
   rootId: string | undefined,
-  readsSource: string,
   refSchema: OpenAPIV3.ReferenceObject,
   packConfig: AdapterPackConfig,
   specPath: string,
@@ -413,7 +404,6 @@ function resolveFieldRef(
 
   const globalId = sharedSchemas.get(schemaName)
   if (globalId) {
-    emitReadsEdge(readsSource, globalId, edges)
     return { $ref: globalId, ...extra }
   }
 
@@ -529,8 +519,6 @@ function emitFields(
   localSchemas: Map<string, string>,
   localMappings: Map<string, string>,
 ): void {
-  // readsSource: when in endpoint context use rootId, otherwise use the schema itself
-  const readsSource = rootId ?? parentId
   for (const [fieldName, rawFieldSchema] of Object.entries(schema.properties ?? {})) {
     const fieldSchema = resolveAllOfRef(rawFieldSchema as OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject)
     const fieldId = deriveNodeId('field', undefined, fieldName, parentId, section)
@@ -540,7 +528,7 @@ function emitFields(
 
     if (isRefSchema(fieldSchema)) {
       fieldNode.properties = resolveFieldRef(
-        refName(fieldSchema.$ref), 'one', required, rootId, readsSource,
+        refName(fieldSchema.$ref), 'one', required, rootId,
         fieldSchema as OpenAPIV3.ReferenceObject,
         packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings,
       )
@@ -558,7 +546,7 @@ function emitFields(
           fieldNode.properties = { type: 'string', nullable: !required, collection: 'array' }
         } else if (isRefSchema(items)) {
           fieldNode.properties = resolveFieldRef(
-            refName(items.$ref), 'array', required, rootId, readsSource,
+            refName(items.$ref), 'array', required, rootId,
             items as OpenAPIV3.ReferenceObject,
             packConfig, specPath, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, localSchemas, localMappings,
           )
