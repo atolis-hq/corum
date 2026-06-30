@@ -460,6 +460,42 @@ export function createApp(
     }
   })
 
+  app.get('/api/stats', async (req, res) => {
+    let targetGraph = graph
+    if (typeof req.query.ref === 'string' && multiCache) {
+      targetGraph = await getGraphForRef(req.query.ref, multiCache, graph)
+    }
+
+    const components = new Set<string>()
+    for (const node of targetGraph.nodesById.values()) {
+      if (node.component) components.add(node.component)
+    }
+
+    const nodesWithEdges = new Set<string>()
+    const edgesByType: Record<string, number> = {
+      triggers: 0, produces: 0, reads: 0, calls: 0, implements: 0, 'maps-to': 0, 'derived-from': 0,
+    }
+    for (const edgeList of targetGraph.edgesByFrom.values()) {
+      for (const edge of edgeList) {
+        if (!GRAPH_SEMANTIC_EDGE_TYPES.has(edge.type)) continue
+        edgesByType[edge.type]++
+        nodesWithEdges.add(edge.from)
+        nodesWithEdges.add(edge.to)
+      }
+    }
+
+    const orphanNodeCount = [...targetGraph.nodesById.keys()]
+      .filter(id => !nodesWithEdges.has(id)).length
+
+    res.json({
+      nodeCount: targetGraph.nodesById.size,
+      componentCount: components.size,
+      orphanNodeCount,
+      edgesByType,
+      diagnosticCount: targetGraph.diagnostics.length,
+    })
+  })
+
   app.get('/api/cluster', async (req, res) => {
     const nodeId = typeof req.query.nodeId === 'string' ? req.query.nodeId : undefined
     if (!nodeId) {

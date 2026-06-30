@@ -858,6 +858,41 @@ describe('web server', () => {
     })
   })
 
+  describe('GET /api/stats', () => {
+    it('returns counts matching the test graph', async () => {
+      const res = await fetch(`http://localhost:${handle.port}/api/stats`)
+      assert.equal(res.status, 200)
+      const body = await res.json() as {
+        nodeCount: number
+        componentCount: number
+        orphanNodeCount: number
+        edgesByType: Record<string, number>
+        diagnosticCount: number
+      }
+      assert.equal(body.nodeCount, 7)
+      assert.equal(body.componentCount, 2)
+      assert.equal(body.orphanNodeCount, 5)
+      assert.equal(body.edgesByType['maps-to'], 1)
+      assert.equal(body.edgesByType['triggers'], 0)
+      assert.equal(body.diagnosticCount, 0)
+    })
+
+    it('returns all seven semantic edge type keys', async () => {
+      const res = await fetch(`http://localhost:${handle.port}/api/stats`)
+      const body = await res.json() as { edgesByType: Record<string, number> }
+      for (const type of ['triggers', 'produces', 'reads', 'calls', 'implements', 'maps-to', 'derived-from']) {
+        assert.ok(type in body.edgesByType, `missing edge type: ${type}`)
+      }
+    })
+
+    it('falls back to default graph for unknown ?ref=', async () => {
+      const res = await fetch(`http://localhost:${handle.port}/api/stats?ref=nonexistent-branch`)
+      assert.equal(res.status, 200)
+      const body = await res.json() as { nodeCount: number }
+      assert.ok(body.nodeCount > 0)
+    })
+  })
+
   describe('GET /api/plugins', () => {
     it('returns an array (empty when no plugins exist)', async () => {
       const res = await fetch(`http://localhost:${handle.port}/api/plugins`)
