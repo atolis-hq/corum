@@ -84,23 +84,26 @@ async function getPluginFiles(): Promise<string[]> {
 }
 
 function getNavigationOwnership(graph: Graph, node: Node): { parentId: string; ownedSection: string } | undefined {
-  let match: { parentId: string; ownedSection: string } | undefined
-
-  for (const parent of graph.nodesById.values()) {
-    if (parent.id === node.id) continue
-    const parentTemplate = graph.templates.get(parent.template)
-    if (!parentTemplate) continue
-
-    for (const [section, childTemplate] of Object.entries(getOwnedSections(parentTemplate))) {
-      if (childTemplate !== node.template) continue
-      if (!node.id.startsWith(`${parent.id}.${section}.`)) continue
-      if (!match || parent.id.length > match.parentId.length) {
-        match = { parentId: parent.id, ownedSection: section }
+  // Walk up the node's own ID hierarchy in 2-segment strides (section + name),
+  // returning the deepest valid parent. This is O(depth) per node instead of O(N).
+  const parts = node.id.split('.')
+  let endIdx = parts.length - 2
+  while (endIdx >= 1) {
+    const candidateId = parts.slice(0, endIdx).join('.')
+    const section = parts[endIdx]
+    const candidate = graph.nodesById.get(candidateId)
+    if (candidate) {
+      const tmpl = graph.templates.get(candidate.template)
+      if (tmpl) {
+        const ownedSections = getOwnedSections(tmpl)
+        if (section in ownedSections && ownedSections[section] === node.template) {
+          return { parentId: candidateId, ownedSection: section }
+        }
       }
     }
+    endIdx -= 2
   }
-
-  return match
+  return undefined
 }
 
 function summarizeNodeForNavigation(graph: Graph, node: Node): Node & { parentId?: string; ownedSection?: string } {

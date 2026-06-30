@@ -14,6 +14,29 @@ const {
 const { buildNavTree, buildOverlayIndicatorIds } = window.CorumNav;
 const { parseRoute, buildRoute } = window.CorumRouter;
 
+const PANEL_EDGE_TYPES = new Set(['triggers', 'produces', 'calls', 'implements']);
+
+const EDGE_TYPE_STYLES = {
+  triggers: { background: '#fef3c7', color: '#b45309' },
+  produces: { background: '#ccfbf1', color: '#0f766e' },
+  calls: { background: '#ede9fe', color: '#6d28d9' },
+  implements: { background: '#f1f5f9', color: '#475569' },
+};
+
+function classifyEdges(edges, clusterIds) {
+  const inbound = [];
+  const outbound = [];
+  for (const edge of edges) {
+    if (!PANEL_EDGE_TYPES.has(edge.type)) continue;
+    if (clusterIds.has(edge.from) && !clusterIds.has(edge.to)) {
+      outbound.push(edge);
+    } else if (!clusterIds.has(edge.from) && clusterIds.has(edge.to)) {
+      inbound.push(edge);
+    }
+  }
+  return { inbound, outbound };
+}
+
 function displayName(id) {
   const parts = id.split('.');
   return parts[parts.length - 1];
@@ -423,6 +446,77 @@ function ComponentsPage() {
   return <div className="content"><h1>Components</h1></div>;
 }
 
+function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate }) {
+  const { useState: useLocalState } = React;
+  const [open, setOpen] = useLocalState(() => {
+    try { return localStorage.getItem('corum:edgePanelOpen') === 'true'; } catch { return false; }
+  });
+
+  if (inbound.length === 0 && outbound.length === 0) return null;
+
+  function toggle() {
+    setOpen(prev => {
+      const next = !prev;
+      try { localStorage.setItem('corum:edgePanelOpen', String(next)); } catch {}
+      return next;
+    });
+  }
+
+  const nodeMap = new Map(allNodes.map(n => [n.id, n]));
+  const templateMap = new Map(templates.map(t => [t.name, t]));
+
+  function EdgeRow({ edge, linkedNodeId }) {
+    const node = nodeMap.get(linkedNodeId);
+    const tmpl = node ? templateMap.get(node.template) : null;
+    const colour = tmpl?.ui?.colour ?? null;
+    const name = linkedNodeId.split('.').pop();
+    return (
+      <div
+        onClick={() => onNavigate(linkedNodeId)}
+        title={linkedNodeId}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', cursor: 'pointer' }}
+      >
+        <span className="tag" style={EDGE_TYPE_STYLES[edge.type] ?? {}}>{edge.type}</span>
+        <TemplateBadge name={tmpl?.ui?.displayName ?? node?.template ?? '?'} colour={colour} />
+        <span style={{ fontWeight: 500, fontSize: 13 }}>{name}</span>
+        {node && <StateTag state={node.state} />}
+        {node && <StabilityTag stability={node.stability} />}
+      </div>
+    );
+  }
+
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div
+        className="card-head"
+        onClick={toggle}
+        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, userSelect: 'none' }}
+      >
+        <span>Connections</span>
+        {inbound.length > 0 && <span className="label-sm">← {inbound.length} inbound</span>}
+        {outbound.length > 0 && <span className="label-sm">→ {outbound.length} outbound</span>}
+        <span style={{ marginLeft: 'auto' }}><Icon name={open ? 'chevron-up' : 'chevron-down'} size={12} /></span>
+      </div>
+      {open && (
+        <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '12px 16px' }}>
+          {inbound.length > 0 && (
+            <div>
+              <div className="label-xs" style={{ marginBottom: 8 }}>Inbound</div>
+              {inbound.map(edge => <EdgeRow key={edge.id} edge={edge} linkedNodeId={edge.from} />)}
+            </div>
+          )}
+          {outbound.length > 0 && (
+            <div>
+              <div className="label-xs" style={{ marginBottom: 8 }}>Outbound</div>
+              {outbound.map(edge => <EdgeRow key={edge.id} edge={edge} linkedNodeId={edge.to} />)}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, overlayRefs, compact = true }) {
   const [cluster, setCluster] = useState(null);
   const [error, setError] = useState(null);
@@ -435,7 +529,7 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
     const overlayParam = overlayRefs && overlayRefs.length > 0
       ? '&' + overlayRefs.map(ref => `overlayRefs=${encodeURIComponent(ref)}`).join('&')
       : '';
-    fetch(`/api/cluster?nodeId=${encodeURIComponent(nodeId)}&includeEdges=maps-to,reads${refParam}${overlayParam}`)
+    fetch(`/api/cluster?nodeId=${encodeURIComponent(nodeId)}&includeEdges=maps-to,reads,triggers,produces,calls,implements${refParam}${overlayParam}`)
       .then(response => response.ok ? response.json() : Promise.reject(response.status))
       .then(setCluster)
       .catch(err => setError(String(err)));
@@ -446,6 +540,8 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
   if (!cluster) return <div className="content"><p className="label-sm">Loading...</p></div>;
 
   const { root, descendants, includedNodes, edges } = cluster;
+  const clusterIds = new Set([root.id, ...descendants.map(d => d.id)]);
+  const { inbound: panelInbound, outbound: panelOutbound } = classifyEdges(edges, clusterIds);
   const template = templates.find(item => item.name === root.template);
   const colour = template?.ui?.colour ?? null;
   const nestedSections = new Set((template?.ui?.nav?.nestOwned ?? []).map(item => item.section));
@@ -490,6 +586,14 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
         </div>
         <div className="label-sm mono">{root.id}</div>
       </div>
+
+      <EdgePanel
+        inbound={panelInbound}
+        outbound={panelOutbound}
+        allNodes={[root, ...descendants, ...includedNodes]}
+        templates={templates}
+        onNavigate={onNavigate}
+      />
 
       <div className="meta-strip">
         {[
