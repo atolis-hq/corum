@@ -1179,11 +1179,6 @@ button {
   margin-bottom: 3px;
 }
 
-.graph-component-card-count {
-  font-size: 10px;
-  color: var(--ink-3);
-}
-
 /* ── Graph view ── */
 
 .graph-section {
