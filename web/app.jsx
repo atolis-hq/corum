@@ -92,6 +92,7 @@ function NavRail({ activeSection, onSection, debugMode, onDebugMode }) {
   const items = [
     { id: 'dashboard', icon: 'grip', label: 'Dashboard' },
     { id: 'components', icon: 'circle-nodes', label: 'Models' },
+    { id: 'graph', icon: 'diagram-project', label: 'Graph' },
   ];
 
   return (
@@ -844,7 +845,7 @@ function App() {
   const activeNodeId = route.pathname === '/node' ? route.params.get('id') : null;
   const activeSection = activeNodeId ? 'components' : (route.pathname.slice(1) || 'dashboard');
   const navTree = useMemo(() => buildNavTree(nodes, templates), [nodes, templates]);
-  const showTree = activeSection === 'components' || activeNodeId;
+  const showTree = (activeSection === 'components' || activeNodeId) && activeSection !== 'graph';
   const activeOverlayRefs = useMemo(() =>
     overlayMode === 'single' ? [] :
     overlayMode === 'consolidated' ? branches.filter(branch => branch.ref !== viewingRef).map(branch => branch.ref) :
@@ -895,6 +896,14 @@ function App() {
         viewingRef={viewingRef}
         overlayRefs={activeOverlayRefs}
         compact={!debugMode}
+      />
+    );
+  } else if (route.pathname === '/graph') {
+    page = (
+      <window.CorumGraph.GraphView
+        route={route}
+        viewingRef={viewingRef}
+        templates={templates}
       />
     );
   } else {

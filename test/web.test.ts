@@ -1008,7 +1008,7 @@ describe('web server', () => {
     it('app: components section navigation still routes through /components', () => {
       assert.match(app, /function handleSection\(section\) \{/)
       assert.match(app, /navigate\(buildRoute\(\{ pathname: `\/\$\{section\}`, params: \{\}, branch: viewingRef \}\)\);/)
-      assert.match(app, /const showTree = activeSection === 'components' \|\| activeNodeId;/)
+      assert.match(app, /const showTree = \(activeSection === 'components' \|\| activeNodeId\) && activeSection !== 'graph';/)
       assert.match(app, /} else if \(route\.pathname === '\/components'\) \{\s*page = <ComponentsPage \/>;/)
     })
 
