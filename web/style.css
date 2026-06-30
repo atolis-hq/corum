@@ -1287,22 +1287,17 @@ button {
   max-width: 180px;
 }
 
-.graph-node-card-parent {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 0;
-  background: none;
-  border: none;
-  color: var(--ink-3);
-  font: inherit;
+.graph-node-card-owner {
+  position: absolute;
+  top: -16px;
+  left: 8px;
   font-size: 10px;
-  cursor: pointer;
-  text-align: left;
-  margin-top: 1px;
+  font-weight: 500;
+  color: var(--ink-3);
+  white-space: nowrap;
+  pointer-events: none;
+  line-height: 1;
 }
-
-.graph-node-card-parent:hover { color: var(--ink); }
 
 .graph-node-card-component {
   font-size: 10px;
@@ -1316,13 +1311,14 @@ button {
 .graph-node-card-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px;
   padding: 3px 8px 5px 10px;
   border-top: 1px solid var(--rule);
   margin-top: 3px;
 }
 
 .graph-node-card-link {
+  margin-left: auto;
   color: var(--ink-4);
   cursor: pointer;
   font-size: 11px;

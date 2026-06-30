@@ -42,49 +42,58 @@ function buildFocusGraph(focalNodeId, nodes, edges, depth) {
   const nodeById = new Map(nodes.map(n => [n.id, n]));
   const visited = new Set([focalNodeId]);
 
-  if (depth === Infinity) {
-    // Full lineage: directed BFS upstream and downstream separately.
-    // Undirected BFS would "switch direction" at upstream nodes and pull in
-    // unrelated sideways branches, so we do two separate directed passes.
-    const downQueue = [focalNodeId];
-    while (downQueue.length > 0) {
-      const id = downQueue.shift();
-      for (const edge of edges) {
-        if (edge.from === id && !visited.has(edge.to) && nodeById.has(edge.to)) {
-          visited.add(edge.to);
-          downQueue.push(edge.to);
-        }
-      }
-    }
-    const upQueue = [focalNodeId];
-    while (upQueue.length > 0) {
-      const id = upQueue.shift();
-      for (const edge of edges) {
-        if (edge.to === id && !visited.has(edge.from) && nodeById.has(edge.from)) {
-          visited.add(edge.from);
-          upQueue.push(edge.from);
-        }
-      }
-    }
-  } else {
-    const queue = [{ id: focalNodeId, d: 0 }];
-    while (queue.length > 0) {
-      const { id, d } = queue.shift();
-      if (d >= depth) continue;
-      for (const edge of edges) {
-        let neighborId = null;
-        if (edge.from === id) neighborId = edge.to;
-        else if (edge.to === id) neighborId = edge.from;
-        if (!neighborId || visited.has(neighborId) || !nodeById.has(neighborId)) continue;
-        visited.add(neighborId);
-        queue.push({ id: neighborId, d: d + 1 });
+  // All depths use directed two-pass BFS (downstream + upstream separately).
+  // Undirected BFS lets upstream nodes "switch direction" and pull in sibling
+  // chains — nodes that share an ancestor or descendant but are not in the
+  // focal node's own lineage.
+  //
+  // parentId is an upstream relationship: an owned operation has no semantic
+  // edges of its own, so climbing to the parent aggregate is the only way to
+  // reach the edges that connect it to the wider graph. parentId traversal
+  // belongs in the upstream pass only; adding it to the downstream pass would
+  // re-introduce the same sideways crawl via the aggregate's other children.
+
+  const downQueue = [{ id: focalNodeId, d: 0 }];
+  while (downQueue.length > 0) {
+    const item = downQueue.shift();
+    const id = item.id;
+    if (item.d >= depth) continue;
+    for (const edge of edges) {
+      if (edge.from === id && !visited.has(edge.to) && nodeById.has(edge.to)) {
+        visited.add(edge.to);
+        downQueue.push({ id: edge.to, d: item.d + 1 });
       }
     }
   }
 
+  const upQueue = [{ id: focalNodeId, d: 0 }];
+  while (upQueue.length > 0) {
+    const item = upQueue.shift();
+    const id = item.id;
+    if (item.d >= depth) continue;
+    for (const edge of edges) {
+      if (edge.to === id && !visited.has(edge.from) && nodeById.has(edge.from)) {
+        visited.add(edge.from);
+        upQueue.push({ id: edge.from, d: item.d + 1 });
+      }
+    }
+    const pid = nodeById.get(id)?.parentId;
+    if (pid && !visited.has(pid) && nodeById.has(pid)) {
+      visited.add(pid);
+      upQueue.push({ id: pid, d: item.d + 1 });
+    }
+  }
+
+  const visibleEdges = edges.filter(e => visited.has(e.from) && visited.has(e.to));
+  const visibleNodeIds = new Set([focalNodeId]);
+  for (const edge of visibleEdges) {
+    visibleNodeIds.add(edge.from);
+    visibleNodeIds.add(edge.to);
+  }
+
   return {
-    nodes: [...visited].map(id => nodeById.get(id)).filter(Boolean),
-    edges: edges.filter(e => visited.has(e.from) && visited.has(e.to)),
+    nodes: [...visibleNodeIds].map(id => nodeById.get(id)).filter(Boolean),
+    edges: visibleEdges,
   };
 }
 

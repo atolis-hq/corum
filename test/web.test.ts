@@ -967,24 +967,28 @@ describe('web server', () => {
   describe('web assets', () => {
     let primitives = ''
     let app = ''
+    let graph = ''
     let styles = ''
-    let statusCodes = { primitives: 0, app: 0, styles: 0 }
+    let statusCodes = { primitives: 0, app: 0, graph: 0, styles: 0 }
 
     before(async () => {
-      const [primitivesRes, appRes, styleRes] = await Promise.all([
+      const [primitivesRes, appRes, graphRes, styleRes] = await Promise.all([
         fetch(`http://localhost:${handle.port}/primitives.jsx`),
         fetch(`http://localhost:${handle.port}/app.jsx`),
+        fetch(`http://localhost:${handle.port}/graph.jsx`),
         fetch(`http://localhost:${handle.port}/style.css`),
       ])
-      statusCodes = { primitives: primitivesRes.status, app: appRes.status, styles: styleRes.status }
+      statusCodes = { primitives: primitivesRes.status, app: appRes.status, graph: graphRes.status, styles: styleRes.status }
       primitives = await primitivesRes.text()
       app = await appRes.text()
+      graph = await graphRes.text()
       styles = await styleRes.text()
     })
 
     it('serves static files with 200', () => {
       assert.equal(statusCodes.primitives, 200)
       assert.equal(statusCodes.app, 200)
+      assert.equal(statusCodes.graph, 200)
       assert.equal(statusCodes.styles, 200)
     })
 
@@ -1096,6 +1100,36 @@ describe('web server', () => {
       assert.match(app, /navigate\(buildRoute\(\{ pathname: `\/\$\{section\}`, params: \{\}, branch: viewingRef \}\)\);/)
       assert.match(app, /const showTree = \(activeSection === 'components' \|\| activeNodeId\) && activeSection !== 'graph';/)
       assert.match(app, /} else if \(route\.pathname === '\/components'\) \{\s*page = <ComponentsPage \/>;/)
+    })
+
+    it('graph: node cards render status beside stability in the footer, not in the header', () => {
+      assert.match(graph, /<div className="graph-node-card-header">\s*<TemplateBadge name=\{data\.templateLabel\} colour=\{colour\} \/>\s*<\/div>/)
+      assert.match(graph, /<div className="graph-node-card-footer">[\s\S]*<StabilityTag stability=\{data\.stability\} \/>[\s\S]*<StateTag state=\{data\.state\} \/>/)
+    })
+
+    it('graph: depth control allows level 1 as the minimum step', () => {
+      assert.match(graph, /const DEPTH_STEPS = \[1, 2, 3, 4, 5, Infinity\];/)
+    })
+
+    it('graph: node cards keep parent labels even when the parent node is outside the visible focus depth', () => {
+      assert.match(graph, /const parentLabel = n\.parentId \? getDisplayName\(n\.parentId\) : null;/)
+    })
+
+    it('graph: focus layout recenters the canvas around the selected focal node', () => {
+      assert.match(graph, /function centerLayoutOnNode\(rfNodes, targetNodeId, nodeW, nodeH\) \{/)
+      assert.match(graph, /const centeredN = centerLayoutOnNode\(layoutedN, focalNodeId, NODE_W, NODE_H\);/)
+    })
+
+    it('graph: focus view recenters the React Flow viewport after the focal nodes are mounted', () => {
+      assert.match(graph, /const \[reactFlowInstance, setReactFlowInstance\] = useState\(null\);/)
+      assert.match(graph, /const canvasInstanceKey = `\$\{level\}::\$\{focalNodeId \?\? selectedComponent \?\? 'root'\}`;/)
+      assert.match(graph, /useEffect\(\(\) => \{\s*setReactFlowInstance\(null\);[\s\S]*\}, \[canvasInstanceKey\]\);/)
+      assert.match(graph, /const pendingFocusCenterRef = useRef\(false\);/)
+      assert.match(graph, /pendingFocusCenterRef\.current = true;/)
+      assert.match(graph, /requestAnimationFrame\(\(\) => \{[\s\S]*reactFlowInstance\.fitView\(\{/)
+      assert.match(graph, /nodes:\s*\[\{\s*id:\s*focalNodeId\s*\}\]/)
+      assert.match(graph, /pendingFocusCenterRef\.current = false;/)
+      assert.match(graph, /onInit=\{setReactFlowInstance\}/)
     })
 
     it('app: initial route state is derived from window.location.hash', () => {
