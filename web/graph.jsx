@@ -213,15 +213,19 @@ function GraphView({ route, viewingRef, templates }) {
   const focalNodeId = route.params.get('focus') ?? null;
   const level = focalNodeId ? 'focus' : selectedComponent ? 'interior' : 'component';
 
-  function navToRoot() {
+  const navToRoot = useCallback(() => {
     navigate(buildRoute({ pathname: '/graph', params: {}, branch: viewingRef }));
-  }
-  function navToComponent(component) {
+  }, [viewingRef]);
+
+  const navToComponent = useCallback(component => {
     navigate(buildRoute({ pathname: '/graph', params: { component }, branch: viewingRef }));
-  }
-  function navToFocus(nodeId) {
-    navigate(buildRoute({ pathname: '/graph', params: { focus: nodeId }, branch: viewingRef }));
-  }
+  }, [viewingRef]);
+
+  const navToFocus = useCallback(nodeId => {
+    const params = { focus: nodeId };
+    if (selectedComponent) params.component = selectedComponent;
+    navigate(buildRoute({ pathname: '/graph', params, branch: viewingRef }));
+  }, [viewingRef, selectedComponent]);
 
   useEffect(() => {
     setGraphData(null);
@@ -258,7 +262,7 @@ function GraphView({ route, viewingRef, templates }) {
       label: cmEdges.find(ce => ce.id === e.id)?.types.join(', ') ?? e.type,
     }));
     return { rfN: computeLayout(rfN, rfE, COMP_W, COMP_H), rfE };
-  }, [graphData, visibleEdgeTypes, layoutKey]);
+  }, [graphData, visibleEdgeTypes, layoutKey, navToComponent]);
 
   useEffect(() => {
     if (level !== 'component' || !level1) return;
