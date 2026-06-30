@@ -950,8 +950,8 @@ describe('web server', () => {
     })
 
     it('primitives: nested child schemas render overlay ghost rows in the recursive schema view', () => {
-      assert.match(primitives, /function SchemaFieldRows\(\{ schemaName, model, prefix = '', depth = 0, visited = new Set\(\), edges = \[\], overlayFields, overlayRefs, compact = false \}\)/)
-      assert.match(primitives, /const childSchemaNode = \(!canExpandMapping && localRef\) \? \(model\.schemasByName\.get\(localRef\) \?\? null\) : null;/)
+      assert.match(primitives, /function SchemaFieldRows\(\{ schemaNodeId, model, prefix = '', depth = 0, visited = new Set\(\), edges = \[\], overlayFields, overlayRefs, compact = false \}\)/)
+      assert.match(primitives, /const childSchemaNode = !canExpandMapping/)
       assert.match(primitives, /const childGhostFields = childSchemaNode \? overlayFieldsForSchema\(overlayFields, childSchemaNode\.id\) : \[\];/)
       assert.match(primitives, /<SchemaFieldRows[\s\S]*overlayFields=\{overlayFields\}[\s\S]*overlayRefs=\{overlayRefs\}/)
       assert.match(primitives, /\{childGhostFields\.length > 0 && \(\s*<GhostFieldRows fields=\{childGhostFields\} overlayRefs=\{overlayRefs\} prefix=\{childPrefix\} depth=\{depth \+ 1\} compact=\{compact\} \/>\s*\)\}/)

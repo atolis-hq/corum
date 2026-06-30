@@ -323,23 +323,33 @@ function enumValueDescription(node) {
   return node.properties?.description ?? '-';
 }
 
+function parentSchemaId(fieldNodeId) {
+  const idx = fieldNodeId.lastIndexOf('.fields.');
+  return idx >= 0 ? fieldNodeId.slice(0, idx) : null;
+}
+
 function buildSchemaModel(schemaNodes, allNodes) {
-  // Include all Schema nodes from allNodes so canExpand works for included/referenced schemas
   const allSchemaNodes = (allNodes ?? []).filter(n => n.template === 'Schema');
   const allMappingNodes = (allNodes ?? []).filter(n => n.template === 'Mapping');
   const schemasByName = new Map(allSchemaNodes.map(node => [localSchemaName(node.id), node]));
+  const schemasById = new Map(allSchemaNodes.map(node => [node.id, node]));
   const mappingsByNodeId = new Map(allMappingNodes.map(node => [node.id, node]));
   // Ensure the primary schemaNodes are always present (they may not be in allNodes)
-  for (const node of schemaNodes) schemasByName.set(localSchemaName(node.id), node);
+  for (const node of schemaNodes) {
+    schemasByName.set(localSchemaName(node.id), node);
+    schemasById.set(node.id, node);
+  }
+  // fieldsBySchema keyed by full schema node ID — prevents same-named schemas from
+  // different clusters contaminating each other's field lists
   const fieldsBySchema = new Map();
   const referencedSchemas = new Set();
 
   for (const node of allNodes ?? []) {
     if (node.template !== 'Field') continue;
-    const schemaName = fieldSchemaName(node.id);
-    if (!schemaName) continue;
-    if (!fieldsBySchema.has(schemaName)) fieldsBySchema.set(schemaName, []);
-    fieldsBySchema.get(schemaName).push(node);
+    const schemaId = parentSchemaId(node.id);
+    if (!schemaId) continue;
+    if (!fieldsBySchema.has(schemaId)) fieldsBySchema.set(schemaId, []);
+    fieldsBySchema.get(schemaId).push(node);
 
     const ref = node.properties?.['$ref'];
     const localName = refLocalSchemaName(ref);
@@ -351,6 +361,7 @@ function buildSchemaModel(schemaNodes, allNodes) {
   const topSchemas = schemaNodes.filter(node => !referencedSchemas.has(localSchemaName(node.id)));
   return {
     schemasByName,
+    schemasById,
     mappingsByNodeId,
     fieldsBySchema,
     topSchemas: topSchemas.length > 0 ? topSchemas : schemaNodes,
@@ -409,7 +420,7 @@ function MappingInlineRows({ mappingNode, depth, model, edges, compact, visited 
       {valueCanExpand && !valueCollapsed && (
         valueCanExpandSchema ? (
           <SchemaFieldRows
-            schemaName={valueLocalRef}
+            schemaNodeId={valueSchema.id}
             model={model}
             depth={depth + 1}
             visited={nextVisited}
@@ -431,9 +442,9 @@ function MappingInlineRows({ mappingNode, depth, model, edges, compact, visited 
   );
 }
 
-function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = new Set(), edges = [], overlayFields, overlayRefs, compact = false }) {
+function SchemaFieldRows({ schemaNodeId, model, prefix = '', depth = 0, visited = new Set(), edges = [], overlayFields, overlayRefs, compact = false }) {
   const [collapsed, setCollapsed] = React.useState(new Set());
-  const fields = model.fieldsBySchema.get(schemaName) ?? [];
+  const fields = model.fieldsBySchema.get(schemaNodeId) ?? [];
   if (fields.length === 0) {
     return (
       <div className="field-row">
@@ -457,14 +468,17 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
         const refNodeId = ref && typeof ref === 'object' && 'nodeId' in ref ? ref.nodeId : null;
         const mappingNode = refNodeId ? (model.mappingsByNodeId?.get(refNodeId) ?? null) : null;
         const canExpandMapping = !!mappingNode;
-        const childSchemaNode = (!canExpandMapping && localRef) ? (model.schemasByName.get(localRef) ?? null) : null;
-        const canExpand = !!childSchemaNode && !visited.has(localRef);
+        // Prefer exact node ID lookup to avoid same-named schemas from different clusters
+        const childSchemaNode = !canExpandMapping
+          ? (refNodeId ? (model.schemasById?.get(refNodeId) ?? null) : (localRef ? (model.schemasByName.get(localRef) ?? null) : null))
+          : null;
+        const canExpand = !!childSchemaNode && !visited.has(childSchemaNode.id);
         const isExpandable = canExpand || canExpandMapping;
         const childGhostFields = childSchemaNode ? overlayFieldsForSchema(overlayFields, childSchemaNode.id) : [];
         const c = field.properties?.collection;
         const childPrefix = `${prefix}${name}${c === 'array' ? '[].' : '.'}`;
         const nextVisited = new Set(visited);
-        nextVisited.add(schemaName);
+        nextVisited.add(schemaNodeId);
         const links = edges.filter(e =>
           (e.from === field.id || e.to === field.id)
           && e.type !== 'has-field'
@@ -525,7 +539,7 @@ function SchemaFieldRows({ schemaName, model, prefix = '', depth = 0, visited = 
               ) : (
                 <>
                   <SchemaFieldRows
-                    schemaName={localRef}
+                    schemaNodeId={childSchemaNode.id}
                     model={model}
                     prefix={childPrefix}
                     depth={depth + 1}
@@ -708,7 +722,7 @@ function SchemaCard({ title, nodes, allNodes, edges, anchorIdForNode, overlayFie
                   <div className="label-xs">Links</div>
                 </div>
                 <SchemaFieldRows
-                  schemaName={schemaName}
+                  schemaNodeId={schema.id}
                   model={model}
                   visited={new Set()}
                   edges={edges ?? []}
