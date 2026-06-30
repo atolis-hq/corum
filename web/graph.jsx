@@ -30,6 +30,7 @@ const EDGE_PILL_STYLES = {
 };
 
 const ALL_EDGE_TYPES = ['triggers', 'produces', 'reads', 'calls', 'implements', 'maps-to', 'derived-from'];
+const DEPTH_STEPS = [1, 2, 3, 4, 5, Infinity];
 
 const NODE_W = 210;
 const NODE_H = 88;
@@ -212,16 +213,18 @@ function GraphToolbar({ visibleEdgeTypes, onToggleEdgeType, showMinimap, onToggl
       <div className="graph-toolbar-sep" />
       {level === 'focus' && (
         <>
-          <div className="graph-depth-seg">
-            {[['1', 1], ['2', 2], ['∞', Infinity]].map(([label, val]) => (
-              <button
-                key={label}
-                className={`graph-depth-item${depth === val ? ' active' : ''}`}
-                onClick={() => onDepth(val)}
-              >
-                {label}
-              </button>
-            ))}
+          <div className="graph-depth-ctrl">
+            <button
+              className="graph-depth-btn"
+              onClick={() => onDepth(DEPTH_STEPS[DEPTH_STEPS.indexOf(depth) - 1])}
+              disabled={depth === DEPTH_STEPS[0]}
+            >−</button>
+            <span className="graph-depth-val">{depth === Infinity ? '∞' : depth}</span>
+            <button
+              className="graph-depth-btn"
+              onClick={() => onDepth(DEPTH_STEPS[DEPTH_STEPS.indexOf(depth) + 1])}
+              disabled={depth === DEPTH_STEPS[DEPTH_STEPS.length - 1]}
+            >+</button>
           </div>
           <div className="graph-focus-search" ref={searchRef}>
             <input
