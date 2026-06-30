@@ -871,7 +871,7 @@ describe('web server', () => {
       }
       assert.equal(body.nodeCount, 7)
       assert.equal(body.componentCount, 2)
-      assert.equal(body.orphanNodeCount, 5)
+      assert.equal(body.orphanNodeCount, 4)
       assert.equal(body.edgesByType['maps-to'], 1)
       assert.equal(body.edgesByType['triggers'], 0)
       assert.equal(body.diagnosticCount, 0)

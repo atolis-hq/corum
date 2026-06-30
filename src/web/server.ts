@@ -490,8 +490,8 @@ export function createApp(
       }
     }
 
-    const orphanNodeCount = [...targetGraph.nodesById.keys()]
-      .filter(id => !nodesWithEdges.has(id)).length
+    const orphanNodeCount = [...targetGraph.nodesById.values()]
+      .filter(node => !nodesWithEdges.has(node.id) && getNavigationOwnership(targetGraph, node) === undefined).length
 
     res.json({
       nodeCount: targetGraph.nodesById.size,
