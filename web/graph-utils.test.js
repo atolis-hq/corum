@@ -51,6 +51,15 @@ const { buildComponentMap, buildFocusGraph, applyEdgeTypeFilter, getDisplayName 
   assert(focusAll.nodes.length === 4, 'buildFocusGraph depth=Infinity: includes all reachable nodes');
   assert(focusAll.edges.length === 3, 'buildFocusGraph depth=Infinity: includes all reachable edges');
 
+  // buildFocusGraph - depth Infinity directed lineage (no sideways crawl)
+  // ordersApi → order and ordersApi → paymentsApi → payment
+  // Focusing on payment: upstream = {paymentsApi, ordersApi}, downstream = {}
+  // order must NOT appear — it's downstream of ordersApi but not in payment's lineage
+  const focusPayment = buildFocusGraph('payments.DomainModel.payment', nodes, edges, Infinity);
+  assert(focusPayment.nodes.length === 3, 'buildFocusGraph depth=Infinity directed: excludes sideways nodes');
+  assert(!focusPayment.nodes.some(n => n.id === 'orders.DomainModel.order'), 'buildFocusGraph depth=Infinity directed: sibling branch excluded');
+  assert(focusPayment.nodes.some(n => n.id === 'orders.RestAPI.ordersApi'), 'buildFocusGraph depth=Infinity directed: upstream root included');
+
   // applyEdgeTypeFilter
   const filtered = applyEdgeTypeFilter(edges, new Set(['reads']));
   assert(filtered.length === 2, 'applyEdgeTypeFilter: keeps only matching type');
