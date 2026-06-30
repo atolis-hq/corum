@@ -33,7 +33,7 @@ const ALL_EDGE_TYPES = ['triggers', 'produces', 'reads', 'calls', 'implements', 
 const DEPTH_STEPS = [1, 2, 3, 4, 5, Infinity];
 
 const NODE_W = 210;
-const NODE_H = 88;
+const NODE_H = 100;
 const COMP_W = 180;
 const COMP_H = 72;
 
@@ -79,9 +79,11 @@ function makeRFEdge(edge, edgeStyles) {
 }
 
 function buildRFNodesForNodes(graphNodes, templateMap, onNodeClick, viewingRef) {
+  const visibleIds = new Set(graphNodes.map(n => n.id));
   return graphNodes.map(n => {
     const tmpl = templateMap.get(n.template);
     const colour = tmpl?.ui?.colour ?? 'var(--ink-4)';
+    const parentLabel = n.parentId && visibleIds.has(n.parentId) ? getDisplayName(n.parentId) : null;
     return {
       id: n.id,
       type: 'nodeCard',
@@ -96,6 +98,8 @@ function buildRFNodesForNodes(graphNodes, templateMap, onNodeClick, viewingRef) 
         stability: n.stability,
         onClick: () => onNodeClick(n.id),
         viewingRef,
+        parentLabel,
+        onParentClick: parentLabel ? () => onNodeClick(n.parentId) : null,
       },
     };
   });
@@ -130,6 +134,15 @@ function NodeCardNode({ data }) {
       </div>
       <div className="graph-node-card-body">
         <div className="graph-node-card-name" title={data.nodeId}>{data.label}</div>
+        {data.parentLabel && (
+          <button
+            className="graph-node-card-parent"
+            onClick={e => { e.stopPropagation(); data.onParentClick(); }}
+          >
+            <Icon name="turn-up" size={9} />
+            {data.parentLabel}
+          </button>
+        )}
         <div className="graph-node-card-component">{data.component}</div>
       </div>
       <div className="graph-node-card-footer">

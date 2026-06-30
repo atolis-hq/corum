@@ -1287,6 +1287,23 @@ button {
   max-width: 180px;
 }
 
+.graph-node-card-parent {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+  text-align: left;
+  margin-top: 1px;
+}
+
+.graph-node-card-parent:hover { color: var(--ink); }
+
 .graph-node-card-component {
   font-size: 10px;
   color: var(--ink-3);
