@@ -349,7 +349,7 @@ function GraphView({ route, viewingRef, templates }) {
       return isCross ? { ...e, style: { ...e.style, opacity: 0.45 }, labelStyle: { ...e.labelStyle, opacity: 0.45 } } : e;
     });
     return { rfN: computeLayout(rfN, rfE, NODE_W, NODE_H), rfE };
-  }, [graphData, selectedComponent, visibleEdgeTypes, templateMap, layoutKey]);
+  }, [graphData, selectedComponent, visibleEdgeTypes, templateMap, layoutKey, navToFocus]);
 
   useEffect(() => {
     if (level !== 'interior' || !level2) return;
@@ -370,7 +370,7 @@ function GraphView({ route, viewingRef, templates }) {
     const layoutedN = computeLayout(rfN, rfE, NODE_W, NODE_H);
     return {
       rfN: layoutedN.map(n => n.id === focalNodeId
-        ? { ...n, data: { ...n.data }, style: { outline: '2px solid var(--accent)', outlineOffset: '2px', borderRadius: 'var(--radius)' } }
+        ? { ...n, style: { outline: '2px solid var(--accent)', outlineOffset: '2px', borderRadius: 'var(--radius)' } }
         : n
       ),
       rfE,
