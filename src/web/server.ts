@@ -432,19 +432,25 @@ export function createApp(
         targetGraph = await getGraphForRef(req.query.ref, multiCache, graph)
       }
 
-      const nodes = []
+      const nodes: Array<{ id: string; template: string; component: string; state: string; stability: string; parentId: string | null }> = []
       for (const node of targetGraph.nodesById.values()) {
         if (GRAPH_EXCLUDED_TEMPLATES.has(node.template)) continue
+        const ownership = getNavigationOwnership(targetGraph, node)
         nodes.push({
           id: node.id,
           template: node.template,
           component: node.component,
           state: node.state,
           stability: node.stability,
+          parentId: ownership?.parentId ?? null,
         })
       }
 
       const nodeIds = new Set(nodes.map(n => n.id))
+      // Clear parentId when the parent itself was excluded from the graph
+      for (const n of nodes) {
+        if (n.parentId && !nodeIds.has(n.parentId)) n.parentId = null
+      }
       const edges = []
       for (const edgeList of targetGraph.edgesByFrom.values()) {
         for (const edge of edgeList) {

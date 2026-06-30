@@ -30,9 +30,10 @@ const EDGE_PILL_STYLES = {
 };
 
 const ALL_EDGE_TYPES = ['triggers', 'produces', 'reads', 'calls', 'implements', 'maps-to', 'derived-from'];
+const DEPTH_STEPS = [1, 2, 3, 4, 5, Infinity];
 
 const NODE_W = 210;
-const NODE_H = 88;
+const NODE_H = 100;
 const COMP_W = 180;
 const COMP_H = 72;
 
@@ -81,6 +82,7 @@ function buildRFNodesForNodes(graphNodes, templateMap, onNodeClick, viewingRef) 
   return graphNodes.map(n => {
     const tmpl = templateMap.get(n.template);
     const colour = tmpl?.ui?.colour ?? 'var(--ink-4)';
+    const parentLabel = n.parentId ? getDisplayName(n.parentId) : null;
     return {
       id: n.id,
       type: 'nodeCard',
@@ -95,6 +97,7 @@ function buildRFNodesForNodes(graphNodes, templateMap, onNodeClick, viewingRef) 
         stability: n.stability,
         onClick: () => onNodeClick(n.id),
         viewingRef,
+        parentLabel,
       },
     };
   });
@@ -121,18 +124,23 @@ function NodeCardNode({ data }) {
   const colour = data.colour ?? 'var(--ink-4)';
   return (
     <div className="graph-node-card" onClick={data.onClick}>
+      {data.parentLabel && (
+        <div className="graph-node-card-owner">{data.parentLabel}</div>
+      )}
       <RF.Handle type="target" position={RF.Position.Left} style={{ opacity: 0 }} />
       <div className="graph-node-card-bar" style={{ background: colour }} />
-      <div className="graph-node-card-header">
-        <TemplateBadge name={data.templateLabel} colour={colour} />
-        <StateTag state={data.state} />
-      </div>
       <div className="graph-node-card-body">
-        <div className="graph-node-card-name" title={data.nodeId}>{data.label}</div>
-        <div className="graph-node-card-component">{data.component}</div>
+        <div className="graph-node-card-text">
+          <div className="graph-node-card-name" title={data.nodeId}>{data.label}</div>
+          <div className="graph-node-card-component">{data.component}</div>
+        </div>
+        <div className="graph-node-card-type">
+          <TemplateBadge name={data.templateLabel} colour={colour} />
+        </div>
       </div>
       <div className="graph-node-card-footer">
         <StabilityTag stability={data.stability} />
+        <StateTag state={data.state} />
         <button
           className="graph-node-card-link"
           title="View node details"
@@ -212,16 +220,18 @@ function GraphToolbar({ visibleEdgeTypes, onToggleEdgeType, showMinimap, onToggl
       <div className="graph-toolbar-sep" />
       {level === 'focus' && (
         <>
-          <div className="graph-depth-seg">
-            {[['1', 1], ['2', 2], ['∞', Infinity]].map(([label, val]) => (
-              <button
-                key={label}
-                className={`graph-depth-item${depth === val ? ' active' : ''}`}
-                onClick={() => onDepth(val)}
-              >
-                {label}
-              </button>
-            ))}
+          <div className="graph-depth-ctrl">
+            <button
+              className="graph-depth-btn"
+              onClick={() => onDepth(DEPTH_STEPS[DEPTH_STEPS.indexOf(depth) - 1])}
+              disabled={depth === DEPTH_STEPS[0]}
+            >−</button>
+            <span className="graph-depth-val">{depth === Infinity ? '∞' : depth}</span>
+            <button
+              className="graph-depth-btn"
+              onClick={() => onDepth(DEPTH_STEPS[DEPTH_STEPS.indexOf(depth) + 1])}
+              disabled={depth === DEPTH_STEPS[DEPTH_STEPS.length - 1]}
+            >+</button>
           </div>
           <div className="graph-focus-search" ref={searchRef}>
             <input
@@ -260,8 +270,11 @@ function GraphView({ route, viewingRef, templates }) {
   const [error, setError] = useState(null);
   const [visibleEdgeTypes, setVisibleEdgeTypes] = useState(loadVisibleEdgeTypes);
   const [showMinimap, setShowMinimap] = useState(false);
-  const [depth, setDepth] = useState(1);
+  const [depth, setDepth] = useState(2);
   const [layoutKey, setLayoutKey] = useState(0);
+  const [reactFlowInstance, setReactFlowInstance] = useState(null);
+  const pendingViewportRef = useRef(null);
+  const lastFocusedNodeIdRef = useRef(null);
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState([]);
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState([]);
 
@@ -323,6 +336,7 @@ function GraphView({ route, viewingRef, templates }) {
 
   useEffect(() => {
     if (level !== 'component' || !level1) return;
+    pendingViewportRef.current = { type: 'full' };
     setRfNodes(level1.rfN);
     setRfEdges(level1.rfE);
   }, [level, level1]);
@@ -354,9 +368,15 @@ function GraphView({ route, viewingRef, templates }) {
 
   useEffect(() => {
     if (level !== 'interior' || !level2) return;
+    pendingViewportRef.current = { type: 'full' };
     setRfNodes(level2.rfN);
     setRfEdges(level2.rfE);
   }, [level, level2]);
+
+  useEffect(() => {
+    if (level === 'focus') return;
+    lastFocusedNodeIdRef.current = null;
+  }, [level]);
 
   // Level 3: node focus
   const level3 = useMemo(() => {
@@ -380,9 +400,45 @@ function GraphView({ route, viewingRef, templates }) {
 
   useEffect(() => {
     if (level !== 'focus' || !level3) return;
+    const focalChanged = lastFocusedNodeIdRef.current !== focalNodeId;
+    if (focalChanged) {
+      pendingViewportRef.current = { type: 'focus', nodeId: focalNodeId };
+    }
+    lastFocusedNodeIdRef.current = focalNodeId;
     setRfNodes(level3.rfN);
     setRfEdges(level3.rfE);
-  }, [level, level3]);
+  }, [level, level3, focalNodeId]);
+
+  useEffect(() => {
+    if (!reactFlowInstance || !rfNodes.length) return;
+    let frameId = null;
+    function fitPendingViewport() {
+      const pending = pendingViewportRef.current;
+      if (!pending) return;
+      if (pending.type === 'focus' && !rfNodes.some(node => node.id === pending.nodeId)) return;
+      if (pending.type === 'focus') {
+        const measuredNode = reactFlowInstance.getNode(pending.nodeId);
+        if (!measuredNode?.width || !measuredNode?.height) {
+          frameId = requestAnimationFrame(fitPendingViewport);
+          return;
+        }
+        reactFlowInstance.fitView({
+          duration: 0,
+          padding: 0.2,
+        });
+      } else {
+        reactFlowInstance.fitView({
+          duration: 0,
+          padding: 0.2,
+        });
+      }
+      pendingViewportRef.current = null;
+    }
+    frameId = requestAnimationFrame(fitPendingViewport);
+    return () => {
+      if (frameId !== null) cancelAnimationFrame(frameId);
+    };
+  }, [reactFlowInstance, rfNodes, rfEdges]);
 
   function handleToggleEdgeType(type) {
     setVisibleEdgeTypes(prev => {
@@ -425,6 +481,7 @@ function GraphView({ route, viewingRef, templates }) {
             edges={rfEdges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
+            onInit={setReactFlowInstance}
             nodeTypes={nodeTypes}
             fitView
             proOptions={{ hideAttribution: true }}
