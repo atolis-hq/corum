@@ -63,38 +63,6 @@ function computeLayout(rfNodes, rfEdges, nodeW, nodeH) {
   });
 }
 
-function centerLayoutOnNode(rfNodes, targetNodeId, nodeW, nodeH) {
-  const targetNode = rfNodes.find(n => n.id === targetNodeId);
-  if (!targetNode || !rfNodes.length) return rfNodes;
-
-  const bounds = rfNodes.reduce((acc, node) => ({
-    minX: Math.min(acc.minX, node.position.x),
-    minY: Math.min(acc.minY, node.position.y),
-    maxX: Math.max(acc.maxX, node.position.x + nodeW),
-    maxY: Math.max(acc.maxY, node.position.y + nodeH),
-  }), {
-    minX: Infinity,
-    minY: Infinity,
-    maxX: -Infinity,
-    maxY: -Infinity,
-  });
-
-  const layoutCenterX = (bounds.minX + bounds.maxX) / 2;
-  const layoutCenterY = (bounds.minY + bounds.maxY) / 2;
-  const targetCenterX = targetNode.position.x + (nodeW / 2);
-  const targetCenterY = targetNode.position.y + (nodeH / 2);
-  const offsetX = layoutCenterX - targetCenterX;
-  const offsetY = layoutCenterY - targetCenterY;
-
-  return rfNodes.map(node => ({
-    ...node,
-    position: {
-      x: node.position.x + offsetX,
-      y: node.position.y + offsetY,
-    },
-  }));
-}
-
 function makeRFEdge(edge, edgeStyles) {
   const style = edgeStyles[edge.type] || { stroke: '#a8acb5', strokeWidth: 1.5 };
   return {
@@ -303,7 +271,7 @@ function GraphView({ route, viewingRef, templates }) {
   const [depth, setDepth] = useState(2);
   const [layoutKey, setLayoutKey] = useState(0);
   const [reactFlowInstance, setReactFlowInstance] = useState(null);
-  const pendingFocusCenterRef = useRef(false);
+  const pendingViewportRef = useRef(null);
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState([]);
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState([]);
 
@@ -311,12 +279,6 @@ function GraphView({ route, viewingRef, templates }) {
   const selectedComponent = route.params.get('component') ?? null;
   const focalNodeId = route.params.get('focus') ?? null;
   const level = focalNodeId ? 'focus' : selectedComponent ? 'interior' : 'component';
-  const canvasInstanceKey = `${level}::${focalNodeId ?? selectedComponent ?? 'root'}`;
-
-  useEffect(() => {
-    setReactFlowInstance(null);
-    pendingFocusCenterRef.current = false;
-  }, [canvasInstanceKey]);
 
   const navToRoot = useCallback(() => {
     navigate(buildRoute({ pathname: '/graph', params: {}, branch: viewingRef }));
@@ -371,6 +333,7 @@ function GraphView({ route, viewingRef, templates }) {
 
   useEffect(() => {
     if (level !== 'component' || !level1) return;
+    pendingViewportRef.current = { type: 'full' };
     setRfNodes(level1.rfN);
     setRfEdges(level1.rfE);
   }, [level, level1]);
@@ -402,6 +365,7 @@ function GraphView({ route, viewingRef, templates }) {
 
   useEffect(() => {
     if (level !== 'interior' || !level2) return;
+    pendingViewportRef.current = { type: 'full' };
     setRfNodes(level2.rfN);
     setRfEdges(level2.rfE);
   }, [level, level2]);
@@ -417,9 +381,8 @@ function GraphView({ route, viewingRef, templates }) {
     }, viewingRef);
     const rfE = buildRFEdgesForEdges(focusEdges, visibleEdgeTypes);
     const layoutedN = computeLayout(rfN, rfE, NODE_W, NODE_H);
-    const centeredN = centerLayoutOnNode(layoutedN, focalNodeId, NODE_W, NODE_H);
     return {
-      rfN: centeredN.map(n => n.id === focalNodeId
+      rfN: layoutedN.map(n => n.id === focalNodeId
         ? { ...n, style: { outline: '2px solid var(--accent)', outlineOffset: '2px', borderRadius: 'var(--radius)' } }
         : n
       ),
@@ -429,25 +392,33 @@ function GraphView({ route, viewingRef, templates }) {
 
   useEffect(() => {
     if (level !== 'focus' || !level3) return;
-    pendingFocusCenterRef.current = true;
+    pendingViewportRef.current = { type: 'focus', nodeId: focalNodeId };
     setRfNodes(level3.rfN);
     setRfEdges(level3.rfE);
-  }, [level, level3]);
+  }, [level, level3, focalNodeId]);
 
   useEffect(() => {
-    if (level !== 'focus' || !reactFlowInstance || !focalNodeId || !rfNodes.length || !pendingFocusCenterRef.current) return;
-    const focalNode = rfNodes.find(node => node.id === focalNodeId);
-    if (!focalNode) return;
+    if (!reactFlowInstance || !rfNodes.length) return;
+    const pending = pendingViewportRef.current;
+    if (!pending) return;
+    if (pending.type === 'focus' && !rfNodes.some(node => node.id === pending.nodeId)) return;
     const frameId = requestAnimationFrame(() => {
-      pendingFocusCenterRef.current = false;
-      reactFlowInstance.fitView({
-        nodes: [{ id: focalNodeId }],
-        duration: 0,
-        padding: 2,
-      });
+      if (pending.type === 'focus') {
+        reactFlowInstance.fitView({
+          nodes: [{ id: pending.nodeId }],
+          duration: 0,
+          padding: 0.8,
+        });
+      } else {
+        reactFlowInstance.fitView({
+          duration: 0,
+          padding: 0.2,
+        });
+      }
+      pendingViewportRef.current = null;
     });
     return () => cancelAnimationFrame(frameId);
-  }, [level, reactFlowInstance, focalNodeId, rfNodes]);
+  }, [reactFlowInstance, rfNodes, rfEdges]);
 
   function handleToggleEdgeType(type) {
     setVisibleEdgeTypes(prev => {
@@ -486,7 +457,6 @@ function GraphView({ route, viewingRef, templates }) {
       <div className="graph-canvas-wrap">
         <ReactFlowProvider>
           <ReactFlowCanvas
-            key={canvasInstanceKey}
             nodes={rfNodes}
             edges={rfEdges}
             onNodesChange={onNodesChange}

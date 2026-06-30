@@ -1115,21 +1115,16 @@ describe('web server', () => {
       assert.match(graph, /const parentLabel = n\.parentId \? getDisplayName\(n\.parentId\) : null;/)
     })
 
-    it('graph: focus layout recenters the canvas around the selected focal node', () => {
-      assert.match(graph, /function centerLayoutOnNode\(rfNodes, targetNodeId, nodeW, nodeH\) \{/)
-      assert.match(graph, /const centeredN = centerLayoutOnNode\(layoutedN, focalNodeId, NODE_W, NODE_H\);/)
-    })
-
-    it('graph: focus view recenters the React Flow viewport after the focal nodes are mounted', () => {
+    it('graph: graph view keeps a single React Flow canvas instance and refits after node updates', () => {
       assert.match(graph, /const \[reactFlowInstance, setReactFlowInstance\] = useState\(null\);/)
-      assert.match(graph, /const canvasInstanceKey = `\$\{level\}::\$\{focalNodeId \?\? selectedComponent \?\? 'root'\}`;/)
-      assert.match(graph, /useEffect\(\(\) => \{\s*setReactFlowInstance\(null\);[\s\S]*\}, \[canvasInstanceKey\]\);/)
-      assert.match(graph, /const pendingFocusCenterRef = useRef\(false\);/)
-      assert.match(graph, /pendingFocusCenterRef\.current = true;/)
+      assert.match(graph, /const pendingViewportRef = useRef\(null\);/)
+      assert.match(graph, /pendingViewportRef\.current = \{ type: 'full' \};/)
+      assert.match(graph, /pendingViewportRef\.current = \{ type: 'focus', nodeId: focalNodeId \};/)
       assert.match(graph, /requestAnimationFrame\(\(\) => \{[\s\S]*reactFlowInstance\.fitView\(\{/)
-      assert.match(graph, /nodes:\s*\[\{\s*id:\s*focalNodeId\s*\}\]/)
-      assert.match(graph, /pendingFocusCenterRef\.current = false;/)
+      assert.match(graph, /pending\.type === 'focus'/)
+      assert.match(graph, /pendingViewportRef\.current = null;/)
       assert.match(graph, /onInit=\{setReactFlowInstance\}/)
+      assert.doesNotMatch(graph, /key=\{canvasInstanceKey\}/)
     })
 
     it('app: initial route state is derived from window.location.hash', () => {
