@@ -1268,23 +1268,21 @@ button {
   border-radius: var(--radius) 0 0 var(--radius);
 }
 
-.graph-node-card-header {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 8px 4px 10px;
-}
+.graph-node-card-body { padding: 8px 8px 4px 10px; }
 
-.graph-node-card-body { padding: 2px 8px 4px 10px; }
+.graph-node-card-text {
+  min-height: calc((1.25em * 2) + 12px);
+}
 
 .graph-node-card-name {
   font-weight: 600;
   font-size: 13px;
   color: var(--ink);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 180px;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .graph-node-card-owner {
@@ -1306,6 +1304,10 @@ button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.graph-node-card-type {
+  margin-top: 6px;
 }
 
 .graph-node-card-footer {

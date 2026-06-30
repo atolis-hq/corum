@@ -129,12 +129,14 @@ function NodeCardNode({ data }) {
       )}
       <RF.Handle type="target" position={RF.Position.Left} style={{ opacity: 0 }} />
       <div className="graph-node-card-bar" style={{ background: colour }} />
-      <div className="graph-node-card-header">
-        <TemplateBadge name={data.templateLabel} colour={colour} />
-      </div>
       <div className="graph-node-card-body">
-        <div className="graph-node-card-name" title={data.nodeId}>{data.label}</div>
-        <div className="graph-node-card-component">{data.component}</div>
+        <div className="graph-node-card-text">
+          <div className="graph-node-card-name" title={data.nodeId}>{data.label}</div>
+          <div className="graph-node-card-component">{data.component}</div>
+        </div>
+        <div className="graph-node-card-type">
+          <TemplateBadge name={data.templateLabel} colour={colour} />
+        </div>
       </div>
       <div className="graph-node-card-footer">
         <StabilityTag stability={data.stability} />
@@ -272,6 +274,7 @@ function GraphView({ route, viewingRef, templates }) {
   const [layoutKey, setLayoutKey] = useState(0);
   const [reactFlowInstance, setReactFlowInstance] = useState(null);
   const pendingViewportRef = useRef(null);
+  const lastFocusedNodeIdRef = useRef(null);
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState([]);
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState([]);
 
@@ -370,6 +373,11 @@ function GraphView({ route, viewingRef, templates }) {
     setRfEdges(level2.rfE);
   }, [level, level2]);
 
+  useEffect(() => {
+    if (level === 'focus') return;
+    lastFocusedNodeIdRef.current = null;
+  }, [level]);
+
   // Level 3: node focus
   const level3 = useMemo(() => {
     if (!graphData || !focalNodeId) return null;
@@ -392,22 +400,31 @@ function GraphView({ route, viewingRef, templates }) {
 
   useEffect(() => {
     if (level !== 'focus' || !level3) return;
-    pendingViewportRef.current = { type: 'focus', nodeId: focalNodeId };
+    const focalChanged = lastFocusedNodeIdRef.current !== focalNodeId;
+    if (focalChanged) {
+      pendingViewportRef.current = { type: 'focus', nodeId: focalNodeId };
+    }
+    lastFocusedNodeIdRef.current = focalNodeId;
     setRfNodes(level3.rfN);
     setRfEdges(level3.rfE);
   }, [level, level3, focalNodeId]);
 
   useEffect(() => {
     if (!reactFlowInstance || !rfNodes.length) return;
-    const pending = pendingViewportRef.current;
-    if (!pending) return;
-    if (pending.type === 'focus' && !rfNodes.some(node => node.id === pending.nodeId)) return;
-    const frameId = requestAnimationFrame(() => {
+    let frameId = null;
+    function fitPendingViewport() {
+      const pending = pendingViewportRef.current;
+      if (!pending) return;
+      if (pending.type === 'focus' && !rfNodes.some(node => node.id === pending.nodeId)) return;
       if (pending.type === 'focus') {
+        const measuredNode = reactFlowInstance.getNode(pending.nodeId);
+        if (!measuredNode?.width || !measuredNode?.height) {
+          frameId = requestAnimationFrame(fitPendingViewport);
+          return;
+        }
         reactFlowInstance.fitView({
-          nodes: [{ id: pending.nodeId }],
           duration: 0,
-          padding: 0.8,
+          padding: 0.2,
         });
       } else {
         reactFlowInstance.fitView({
@@ -416,8 +433,11 @@ function GraphView({ route, viewingRef, templates }) {
         });
       }
       pendingViewportRef.current = null;
-    });
-    return () => cancelAnimationFrame(frameId);
+    }
+    frameId = requestAnimationFrame(fitPendingViewport);
+    return () => {
+      if (frameId !== null) cancelAnimationFrame(frameId);
+    };
   }, [reactFlowInstance, rfNodes, rfEdges]);
 
   function handleToggleEdgeType(type) {

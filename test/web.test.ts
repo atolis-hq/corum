@@ -1103,8 +1103,18 @@ describe('web server', () => {
     })
 
     it('graph: node cards render status beside stability in the footer, not in the header', () => {
-      assert.match(graph, /<div className="graph-node-card-header">\s*<TemplateBadge name=\{data\.templateLabel\} colour=\{colour\} \/>\s*<\/div>/)
+      assert.doesNotMatch(graph, /<div className="graph-node-card-header">\s*<TemplateBadge name=\{data\.templateLabel\} colour=\{colour\} \/>\s*<\/div>/)
       assert.match(graph, /<div className="graph-node-card-footer">[\s\S]*<StabilityTag stability=\{data\.stability\} \/>[\s\S]*<StateTag state=\{data\.state\} \/>/)
+    })
+
+    it('graph: node card titles use a dedicated wrapped block instead of single-line truncation', () => {
+      assert.match(graph, /<div className="graph-node-card-body">\s*<div className="graph-node-card-text">\s*<div className="graph-node-card-name" title=\{data\.nodeId\}>\{data\.label\}<\/div>\s*<div className="graph-node-card-component">\{data\.component\}<\/div>\s*<\/div>\s*<div className="graph-node-card-type">\s*<TemplateBadge name=\{data\.templateLabel\} colour=\{colour\} \/>\s*<\/div>\s*<\/div>/)
+      assert.match(styles, /\.graph-node-card-text\s*\{[^}]*min-height:\s*calc\(\(1\.25em \* 2\) \+ 12px\);/s)
+      assert.match(styles, /\.graph-node-card-name\s*\{[^}]*white-space:\s*normal;[^}]*overflow:\s*visible;[^}]*text-overflow:\s*clip;[^}]*line-height:\s*1\.25;/s)
+      assert.match(styles, /\.graph-node-card-type\s*\{[^}]*margin-top:\s*6px;/)
+      assert.doesNotMatch(styles, /\.graph-node-card-name\s*\{[^}]*white-space:\s*nowrap;/s)
+      assert.doesNotMatch(styles, /\.graph-node-card-name\s*\{[^}]*text-overflow:\s*ellipsis;/s)
+      assert.doesNotMatch(styles, /\.graph-node-card-name\s*\{[^}]*min-height:/s)
     })
 
     it('graph: depth control allows level 1 as the minimum step', () => {
@@ -1118,10 +1128,16 @@ describe('web server', () => {
     it('graph: graph view keeps a single React Flow canvas instance and refits after node updates', () => {
       assert.match(graph, /const \[reactFlowInstance, setReactFlowInstance\] = useState\(null\);/)
       assert.match(graph, /const pendingViewportRef = useRef\(null\);/)
+      assert.match(graph, /const lastFocusedNodeIdRef = useRef\(null\);/)
       assert.match(graph, /pendingViewportRef\.current = \{ type: 'full' \};/)
-      assert.match(graph, /pendingViewportRef\.current = \{ type: 'focus', nodeId: focalNodeId \};/)
-      assert.match(graph, /requestAnimationFrame\(\(\) => \{[\s\S]*reactFlowInstance\.fitView\(\{/)
+      assert.match(graph, /const focalChanged = lastFocusedNodeIdRef\.current !== focalNodeId;/)
+      assert.match(graph, /if \(focalChanged\) \{[\s\S]*pendingViewportRef\.current = \{ type: 'focus', nodeId: focalNodeId \};/)
+      assert.match(graph, /const measuredNode = reactFlowInstance\.getNode\(pending\.nodeId\);/)
+      assert.match(graph, /if \(!measuredNode\?\.width \|\| !measuredNode\?\.height\) \{/)
+      assert.match(graph, /requestAnimationFrame\(fitPendingViewport\)/)
       assert.match(graph, /pending\.type === 'focus'/)
+      assert.match(graph, /reactFlowInstance\.fitView\(\{\s*duration: 0,\s*padding: 0\.2,\s*\}\);/)
+      assert.doesNotMatch(graph, /nodes:\s*\[\{\s*id:\s*pending\.nodeId\s*\}\]/)
       assert.match(graph, /pendingViewportRef\.current = null;/)
       assert.match(graph, /onInit=\{setReactFlowInstance\}/)
       assert.doesNotMatch(graph, /key=\{canvasInstanceKey\}/)
