@@ -555,6 +555,10 @@ function DashboardPage({ nodes, templates, gitMode, viewingRef, branches, branch
     ? Object.entries(stats.edgesByType).filter(([, count]) => count > 0).sort((a, b) => b[1] - a[1])
     : [];
 
+  const orphanRows = stats
+    ? Object.entries(stats.orphansByTemplate).sort((a, b) => b[1] - a[1])
+    : [];
+
   return (
     <div className="content">
       <div className="dashboard-hero">
@@ -597,14 +601,23 @@ function DashboardPage({ nodes, templates, gitMode, viewingRef, branches, branch
         </div>
 
         <div className="dashboard-panel">
-          <div className="card-head">State Distribution</div>
+          <div className="card-head">Orphan Nodes by Type</div>
           <div className="card-body" style={{ padding: '12px 16px' }}>
-            {nodesByState.map(([state, count]) => (
-              <div key={state} className="stat-row">
-                <span className="stat-row-label"><StateTag state={state} /></span>
-                <span className="stat-row-value">{count}</span>
-              </div>
-            ))}
+            {stats === null && <div className="label-sm">Loading…</div>}
+            {stats !== null && orphanRows.length === 0 && <div className="label-sm">No orphan nodes.</div>}
+            {orphanRows.map(([name, count]) => {
+              const tmpl = templateMap.get(name);
+              const colour = tmpl?.ui?.colour ?? 'var(--ink-4)';
+              return (
+                <div key={name} className="stat-row">
+                  <span className="stat-row-label">
+                    <span className="stat-colour-dot" style={{ background: colour }} />
+                    {tmpl?.ui?.displayName ?? name}
+                  </span>
+                  <span className="stat-row-value">{count}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -625,8 +638,15 @@ function DashboardPage({ nodes, templates, gitMode, viewingRef, branches, branch
         </div>
 
         <div className="dashboard-panel">
-          <div className="card-head">Stability</div>
+          <div className="card-head">State & Stability</div>
           <div className="card-body" style={{ padding: '12px 16px' }}>
+            {nodesByState.map(([state, count]) => (
+              <div key={state} className="stat-row">
+                <span className="stat-row-label"><StateTag state={state} /></span>
+                <span className="stat-row-value">{count}</span>
+              </div>
+            ))}
+            <div style={{ borderTop: '1px solid var(--rule-2)', margin: '8px 0' }} />
             {nodesByStability.map(([stability, count]) => (
               <div key={stability} className="stat-row">
                 <span className="stat-row-label"><StabilityTag stability={stability} /></span>
