@@ -20,7 +20,7 @@ export function printBanner(options: {
 
   logger(`  ${c}· ·   ⡎⠑ ⡎⢱ ⣏⡱ ⡇⢸ ⡷⢾${r}`)
   logger(` ${c}· ◉ ·  ⠣⠔ ⠣⠜ ⠇⠱ ⠣⠜ ⠇⠸${r}`)
-  logger(`  · ·   v${version}`)
+  logger(`  ${c}· ·${r}   v${version}`)
 
   const keyWidth = config.length > 0 ? Math.max(...config.map(e => e.key.length)) : 0
   const minWidth = 44
