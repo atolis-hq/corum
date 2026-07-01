@@ -872,18 +872,16 @@ describe('web server', () => {
       }
       assert.equal(body.nodeCount, 7)
       assert.equal(body.componentCount, 2)
-      assert.equal(body.orphanNodeCount, 4)
+      assert.equal(body.orphanNodeCount, 3)
       assert.equal(body.edgesByType['maps-to'], 1)
-      assert.equal(body.edgesByType['triggers'], 0)
+      assert.equal(body.edgesByType['triggers'], undefined)
       assert.equal(body.diagnosticCount, 0)
     })
 
-    it('returns all seven semantic edge type keys', async () => {
+    it('returns only semantic edge types present in the graph', async () => {
       const res = await fetch(`http://localhost:${handle.port}/api/stats`)
       const body = await res.json() as { edgesByType: Record<string, number> }
-      for (const type of ['triggers', 'produces', 'reads', 'calls', 'implements', 'maps-to', 'derived-from']) {
-        assert.ok(type in body.edgesByType, `missing edge type: ${type}`)
-      }
+      assert.deepEqual(body.edgesByType, { 'maps-to': 1 })
     })
 
     it('falls back to default graph for unknown ?ref=', async () => {
@@ -891,6 +889,37 @@ describe('web server', () => {
       assert.equal(res.status, 200)
       const body = await res.json() as { nodeCount: number }
       assert.ok(body.nodeCount > 0)
+    })
+  })
+
+  describe('GET /api/search', () => {
+    it('returns ranked root-level search results', async () => {
+      const res = await fetch(`http://localhost:${handle.port}/api/search?q=order&limit=5`)
+      assert.equal(res.status, 200)
+      const body = await res.json() as Array<{ node: { id: string } }>
+      assert.ok(body.length > 0)
+      assert.ok(body.every(result => !result.node.id.includes('.fields.')))
+      assert.ok(body.some(result => result.node.id.includes('order')))
+    })
+  })
+
+  describe('GET /api/lineage', () => {
+    it('returns annotated lineage nodes and edges', async () => {
+      const res = await fetch(
+        `http://localhost:${handle.port}/api/lineage?node_ids=${encodeURIComponent('orders.Order.operations.cancel')}&direction=upstream`,
+      )
+      assert.equal(res.status, 200)
+      const body = await res.json() as {
+        nodes: Array<{ id: string; origin_id: string; depth: number; via_edge_type: string }>
+        edges: Array<{ id: string }>
+      }
+      assert.ok(Array.isArray(body.nodes))
+      assert.ok(Array.isArray(body.edges))
+    })
+
+    it('returns 400 when node_ids is missing', async () => {
+      const res = await fetch(`http://localhost:${handle.port}/api/lineage`)
+      assert.equal(res.status, 400)
     })
   })
 
@@ -1124,6 +1153,13 @@ describe('web server', () => {
 
     it('graph: node cards keep parent labels even when the parent node is outside the visible focus depth', () => {
       assert.match(graph, /const parentLabel = n\.parentId \? getDisplayName\(n\.parentId\) : null;/)
+    })
+
+    it('graph: focus view fetches lineage data instead of using buildFocusGraph', () => {
+      assert.doesNotMatch(graph, /buildFocusGraph/)
+      assert.match(graph, /const \[focusData, setFocusData\] = useState\(null\);/)
+      assert.match(graph, /const debounceTimerRef = useRef\(null\);/)
+      assert.match(graph, /fetch\(`\/api\/lineage\?\$\{params\}`\)/)
     })
 
     it('graph: graph view keeps a single React Flow canvas instance and refits after node updates', () => {

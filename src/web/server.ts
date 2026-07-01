@@ -7,7 +7,17 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { AddressInfo } from 'node:net'
 import type { Response } from 'express'
 import { parse as parseYaml } from 'yaml'
-import { computeClusterOverlay, getClusterView, listNodes, type ListNodesFilter } from '../graph/index.js'
+import {
+  computeClusterOverlay,
+  getClusterView,
+  getGraphSummary,
+  getLineage,
+  listNodes,
+  searchNodes,
+  type GetLineageOptions,
+  type LineageDirection,
+  type ListNodesFilter,
+} from '../graph/index.js'
 import { loadGraph, loadMultiGraph } from '../loader/index.js'
 import { VALID_EDGE_TYPE_SET } from '../loader/constants.js'
 import { getOwnedSections } from '../loader/pack-loader.js'
@@ -389,10 +399,18 @@ export function createApp(
   })
 
   app.get('/api/nodes', async (req, res) => {
-    const { template, component, state, stability } = req.query
+    const { component, state, stability } = req.query
     const includeCore = req.query.includeCore === 'true'
+    const singleTemplate = typeof req.query.template === 'string' && req.query.template
+      ? [req.query.template]
+      : undefined
+    const multiTemplates = Array.isArray(req.query.templates)
+      ? req.query.templates.filter((template): template is string => typeof template === 'string')
+      : typeof req.query.templates === 'string' && req.query.templates
+        ? [req.query.templates]
+        : undefined
     const filter: ListNodesFilter = {
-      template: typeof template === 'string' ? template : undefined,
+      templates: multiTemplates ?? singleTemplate,
       component: typeof component === 'string' ? component : undefined,
       state: typeof state === 'string' ? state as ListNodesFilter['state'] : undefined,
       stability: typeof stability === 'string' ? stability as ListNodesFilter['stability'] : undefined,
@@ -433,9 +451,24 @@ export function createApp(
         targetGraph = await getGraphForRef(req.query.ref, multiCache, graph)
       }
 
+      const filterTemplates = Array.isArray(req.query.templates)
+        ? req.query.templates.filter((template): template is string => typeof template === 'string')
+        : typeof req.query.templates === 'string' && req.query.templates
+          ? [req.query.templates]
+          : undefined
+      const filterExcludeTemplates = Array.isArray(req.query.exclude_templates)
+        ? req.query.exclude_templates.filter((template): template is string => typeof template === 'string')
+        : undefined
+      const excludeSet = filterTemplates?.length
+        ? null
+        : filterExcludeTemplates?.length
+          ? new Set(filterExcludeTemplates)
+          : GRAPH_EXCLUDED_TEMPLATES
+
       const nodes: Array<{ id: string; template: string; component: string; state: string; stability: string; parentId: string | null }> = []
       for (const node of targetGraph.nodesById.values()) {
-        if (GRAPH_EXCLUDED_TEMPLATES.has(node.template)) continue
+        if (filterTemplates?.length && !filterTemplates.includes(node.template)) continue
+        if (excludeSet?.has(node.template)) continue
         const ownership = getNavigationOwnership(targetGraph, node)
         nodes.push({
           id: node.id,
@@ -472,41 +505,81 @@ export function createApp(
     if (typeof req.query.ref === 'string' && multiCache) {
       targetGraph = await getGraphForRef(req.query.ref, multiCache, graph)
     }
+    res.json(getGraphSummary(targetGraph))
+  })
 
-    const components = new Set<string>()
-    for (const node of targetGraph.nodesById.values()) {
-      if (node.component) components.add(node.component)
-    }
-
-    const nodesWithEdges = new Set<string>()
-    const edgesByType: Record<string, number> = {
-      triggers: 0, produces: 0, reads: 0, calls: 0, implements: 0, 'maps-to': 0, 'derived-from': 0,
-    }
-    for (const edgeList of targetGraph.edgesByFrom.values()) {
-      for (const edge of edgeList) {
-        if (!GRAPH_SEMANTIC_EDGE_TYPES.has(edge.type)) continue
-        edgesByType[edge.type]++
-        nodesWithEdges.add(edge.from)
-        nodesWithEdges.add(edge.to)
+  app.get('/api/search', async (req, res) => {
+    try {
+      let targetGraph = graph
+      if (typeof req.query.ref === 'string' && multiCache) {
+        targetGraph = await getGraphForRef(req.query.ref, multiCache, graph)
       }
-    }
 
-    const orphansByTemplate: Record<string, number> = {}
-    for (const node of targetGraph.nodesById.values()) {
-      if (!nodesWithEdges.has(node.id) && getNavigationOwnership(targetGraph, node) === undefined) {
-        orphansByTemplate[node.template] = (orphansByTemplate[node.template] ?? 0) + 1
+      const q = typeof req.query.q === 'string' ? req.query.q : ''
+      const queries = q.split(',').map(part => part.trim()).filter(Boolean)
+      const templates = Array.isArray(req.query.templates)
+        ? req.query.templates.filter((template): template is string => typeof template === 'string')
+        : typeof req.query.templates === 'string' && req.query.templates
+          ? [req.query.templates]
+          : undefined
+      const excludeTemplates = Array.isArray(req.query.exclude_templates)
+        ? req.query.exclude_templates.filter((template): template is string => typeof template === 'string')
+        : undefined
+      const rawLimit = parseInt(String(req.query.limit ?? '10'), 10)
+      const rawOffset = parseInt(String(req.query.offset ?? '0'), 10)
+
+      res.json(searchNodes(targetGraph, queries, {
+        templates,
+        excludeTemplates,
+        limit: Number.isNaN(rawLimit) ? 10 : rawLimit,
+        offset: Number.isNaN(rawOffset) ? 0 : rawOffset,
+        searchProperties: req.query.search_properties === 'true',
+      }))
+    } catch (err) {
+      res.status(500).json({ error: String(err) })
+    }
+  })
+
+  app.get('/api/lineage', async (req, res) => {
+    try {
+      let targetGraph = graph
+      if (typeof req.query.ref === 'string' && multiCache) {
+        targetGraph = await getGraphForRef(req.query.ref, multiCache, graph)
       }
-    }
-    const orphanNodeCount = Object.values(orphansByTemplate).reduce((a, b) => a + b, 0)
 
-    res.json({
-      nodeCount: targetGraph.nodesById.size,
-      componentCount: components.size,
-      orphanNodeCount,
-      orphansByTemplate,
-      edgesByType,
-      diagnosticCount: targetGraph.diagnostics.length,
-    })
+      const nodeIds = Array.isArray(req.query.node_ids)
+        ? req.query.node_ids.filter((id): id is string => typeof id === 'string')
+        : typeof req.query.node_ids === 'string' && req.query.node_ids
+          ? [req.query.node_ids]
+          : []
+      if (nodeIds.length === 0) {
+        res.status(400).json({ error: 'node_ids query param required' })
+        return
+      }
+
+      const rawDepth = parseInt(String(req.query.depth ?? '2'), 10)
+      const direction = (['downstream', 'upstream', 'both'] as const).includes(req.query.direction as LineageDirection)
+        ? req.query.direction as LineageDirection
+        : 'downstream'
+      const edgeTypes = Array.isArray(req.query.edge_types)
+        ? req.query.edge_types.filter((type): type is EdgeType => typeof type === 'string' && VALID_EDGE_TYPE_SET.has(type))
+        : undefined
+      const excludeNodeTypes = Array.isArray(req.query.exclude_node_types)
+        ? req.query.exclude_node_types.filter((type): type is string => typeof type === 'string')
+        : undefined
+      const options: GetLineageOptions = {
+        depth: Number.isNaN(rawDepth) ? 2 : rawDepth,
+        direction,
+        edgeTypes,
+        excludeNodeTypes,
+        includeDanglingEdges: req.query.include_dangling_edges === 'true',
+        readsOutboundOnly: req.query.reads_outbound_only !== 'false',
+      }
+
+      res.json(getLineage(targetGraph, nodeIds, options))
+    } catch (err) {
+      res.status(500).json({ error: String(err) })
+    }
   })
 
   app.get('/api/cluster', async (req, res) => {

@@ -1,134 +1,199 @@
 # Reference: MCP Tool Catalogue
 
-**Status:** Reference — not yet fully specified  
-**Date:** 2026-04-12  
+**Status:** Reference  
+**Date:** 2026-07-01  
 **Relates to:** ADR-005 (MCP Interface Design)  
-**Note:** This document lists candidate tools and their intent. Signatures, response schemas, and error contracts are implementation concerns defined at build time, constrained by the decisions in ADR-005.
+**Note:** This document separates the currently implemented MCP read/query surface from additional candidate tools. Implemented tool names match the current codebase.
 
 ---
 
 ## Principles (from ADR-005)
 
-- Responses are layered clusters — core cluster always returned, overlay summary always included, overlay detail on request
-- Filters are expressed as a filter object, not typed parameters
-- Branch scope is multi-branch — tools accept a `branches` list
-- Analysis flags are pre-computed at refresh time; detail is fetched separately
+- Responses should be semantically richer than raw files.
+- Filters are expressed as structured objects where that improves extensibility.
+- Branch-aware querying is first-class when Corum is backed by a source.
+- Summary/orientation tools should be cheap to call at session start.
 
 ---
 
-## Graph Queries
+## Implemented Today
 
-**Get cluster**  
-Fetch a single cluster by node ID. Returns the full cluster document with overlay summary. Core tool — agents use this most frequently.
+These tools are implemented in `src/mcp/index.ts`.
 
-**List clusters**  
-Query clusters matching a filter object. Returns lightweight cluster summaries (root node properties only, no owned children) — agents call get cluster for full detail on specific results.
+### Graph Queries
 
-**Get lineage**  
-Traverse edges from a starting node in a specified direction, to a specified depth. Returns the subgraph of nodes and edges reachable from the root.
+**`list_nodes`**  
+Lists lightweight node summaries. Uses a `filter` object with:
+- `templates?: string[]`
+- `exclude_templates?: string[]`
+- `component?: string`
+- `state?: string | string[]`
+- `stability?: string | string[]`
 
-**Get field lineage**  
-Specialised lineage traversal following only `maps-to` and `derived-from` edges from a field node. Returns the chain of field-level correspondences across schema boundaries.
+Also accepts `branch`, `format`, and `compact_keys`.
 
-**Search**  
-Natural language or keyword search over node names, descriptions, and template types. Returns ranked cluster summaries.
+**`get_cluster`**  
+Returns:
+- `root`
+- `descendants`
+- `includedNodes`
+- `edges`
 
----
+Supports `edge_types`, `branch`, `overlay_refs`, `format`, and `compact_keys`.
 
-## Overlay Detail
+**`get_graph`**  
+Returns the semantic graph as `{ nodes, edges }`. Structural templates and structural edge types are excluded by default. Supports `filter`, `branch`, `format`, and `compact_keys`.
 
-**Get threads**  
-Fetch full thread detail for a node or owned node. Includes body, history, and resolution status. Agents call this when the overlay summary shows open threads worth investigating.
+**`get_graph_metadata`**  
+Returns discovery metadata for agents and other clients:
+- `template_names`
+- `node_templates_in_use`
+- `edge_types_in_use`
+- `valid_edge_types`
+- `states`
+- `stabilities`
+- `lineage_directions`
+- `output_formats`
 
-**Get drift detail**  
-Fetch the full drift report for a node — which properties differ, which fields are missing or added, what the derived layer contains. Agents call this when the overlay summary `drifting` flag is true.
+Also accepts `branch`, `format`, and `compact_keys`.
 
-**Get branch versions**  
-Fetch the full cluster document for a node across specified branches. Agents call this when the overlay summary shows in-flight versions on other branches they need to inspect.
+**`get_lineage`**  
+Traverses from one or more origin nodes and returns annotated lineage nodes plus edges. Supports:
+- `node_ids`
+- `depth`
+- `direction`
+- `edge_types`
+- `node_types`
+- `exclude_node_types`
+- `include_dangling_edges`
+- `reads_outbound_only`
+- `branch`
+- `format`
+- `compact_keys`
 
-**Get branch conflicts**  
-Fetch the conflict report for a node — which branches have incompatible versions and which specific properties conflict. Agents call this to understand what needs resolution before merging.
+**`search_nodes`**  
+Fuzzy-searches root-level nodes. Supports:
+- `queries`
+- `templates`
+- `exclude_templates`
+- `page_size`
+- `offset`
+- `search_properties`
+- `branch`
+- `format`
+- `compact_keys`
 
----
+**`get_linked_fields`**  
+Returns `maps-to` edges touching fields owned by a given root node.
 
-## Graph Mutations
+### Templates
 
-**Create cluster**  
-Create a new root node cluster file with its template-required properties.
+**`list_templates`**  
+Lists loaded template summaries.
 
-**Update cluster**  
-Update properties on an existing root node — flat properties, state, stability, description.
+**`get_template`**  
+Returns the full loaded template definition.
 
-**Remove cluster**  
-Soft-delete a node by transitioning state to `removed`. Never hard-deletes.
+### Summary and Branching
 
-**Create edge**  
-Create an edge between two nodes. Validated against the core edge type vocabulary.
+**`get_graph_summary`**  
+Returns node count, component count, orphan breakdown, edge counts, and diagnostic count.
 
-**Remove edge**  
-Hard-delete an edge. Edges have no historical identity worth preserving.
+**`list_branches`**  
+Lists available branches and their load status when a source-backed graph is configured.
 
-**Create field mapping**  
-Convenience wrapper for creating a `maps-to` edge between two field nodes.
+**`diff_branch`**  
+Diffs a branch against the default branch when a source-backed graph is configured.
 
-**Rename node**  
-First-class rename — creates a `renamed-from` edge, transitions old node to `removed`, flags affected edges for review.
+### Common Output Options
 
----
+Most tools support:
+- `format`: `yaml` (default), `json`, or `toon`
+- `compact_keys`: shorten common keys before serialization
 
-## Threads
+### Implemented Prompt
 
-**Create thread**  
-Create a discussion, question, or reasoning-trace thread on a node, edge, or field. Agents may not create instruction threads.
+The server also exposes an MCP prompt:
 
-**Resolve thread**  
-Mark a thread as resolved with an optional resolution note.
-
----
-
-## Branch and Sync
-
-**Sync**  
-Trigger an immediate Git fetch and incremental cache update. Agents call at session start to ensure current state.
-
-**List branches**  
-Return all open remote branches with their status relative to main — commits ahead/behind, conflict flag.
-
-**Create branch**  
-Create a new branch on the graph repo for in-flight design work.
-
----
-
-## Utility
-
-**Get template**  
-Return the full resolved template definition for a given template name, including merged schema if `extends` is declared.
-
-**Validate cluster**  
-Validate a proposed cluster's properties against its template JSON Schema without writing. Agents use before committing a create or update.
-
-**Get graph summary**  
-High-level graph overview — components, node counts by template, open thread count, drift count, in-flight branch count. Agents use at session start to orient themselves.
-
----
-
-## Session Start Pattern
-
-The typical agent session start sequence:
-
-1. `sync` — ensure current state
-2. `get graph summary` — orient to the graph
-3. `get threads` filtered to `instruction` type — check for pending human instructions
-4. Begin work
+**`usage-guide`**  
+Orientation prompt for newly connected agents. Covers:
+- node ID shape
+- edge-type semantics
+- recommended workflow
+- output-format selection
+- graph completeness caveats and verification guidance
 
 ---
 
 ## Candidate Future Tools
 
-Tools not needed in v1 but worth tracking:
+These are not implemented in the current codebase, but remain consistent with ADR-005 direction.
 
-- **Accept drift** — mark a drift instance as intentional (design intentionally differs from code)
-- **Propose merge** — suggest merging two in-flight branches that affect the same nodes
-- **Get change impact** — given a proposed change to a node, return all nodes and edges that would be affected
-- **Export cluster as TypeSpec** — output plugin; generate a TypeSpec file from an agreed API endpoint cluster (see REF-typespec-integration-opportunities)
-- **Export component as OpenAPI** — output plugin; generate an OpenAPI spec from all agreed API endpoints in a namespace
+### Overlay Detail
+
+**Get threads**  
+Fetch full thread detail for a node or owned node.
+
+**Get drift detail**  
+Fetch the full drift report for a node.
+
+**Get branch versions**  
+Fetch the full cluster document for a node across specified branches.
+
+**Get branch conflicts**  
+Fetch the conflict report for a node.
+
+### Graph Mutations
+
+**Create cluster**  
+Create a new root node cluster file with its template-required properties.
+
+**Update cluster**  
+Update properties on an existing root node.
+
+**Remove cluster**  
+Soft-delete a node by transitioning state to `removed`.
+
+**Create edge**  
+Create an edge between two nodes.
+
+**Remove edge**  
+Hard-delete an edge.
+
+**Create field mapping**  
+Convenience wrapper for creating a `maps-to` edge between two field nodes.
+
+**Rename node**  
+First-class rename with `renamed-from` semantics and affected-edge follow-up.
+
+### Threads
+
+**Create thread**  
+Create a discussion, question, or reasoning-trace thread on a node, edge, or field.
+
+**Resolve thread**  
+Mark a thread as resolved with an optional resolution note.
+
+### Branch and Sync
+
+**Sync**  
+Trigger an immediate Git fetch and incremental cache update.
+
+**Create branch**  
+Create a new branch on the graph repo for in-flight design work.
+
+### Utility
+
+**Validate cluster**  
+Validate a proposed cluster against its template JSON Schema without writing.
+
+---
+
+## Session Start Pattern
+
+The typical session-start sequence for the currently implemented surface is:
+
+1. `get_graph_summary`
+2. `list_branches` if branch-aware context matters
+3. `search_nodes` or `list_nodes` to orient to the area of interest
+4. `get_cluster` or `get_lineage` for deeper traversal

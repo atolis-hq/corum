@@ -129,6 +129,13 @@ componentNameReplacements:
   - from: ordershipping
     to: order-shipping
 
+# Optional: deduplicate nodes emitted by different adapters after all imports
+# complete. For each rule, keep nodes from the primary adapter and merge/drop
+# matching nodes from the secondary adapter.
+deduplication:
+  - primary: openapi
+    secondary: corum
+
 imports:
   - adapter: openapi
     spec: ./specs/order-shipping.openapi.yaml
@@ -149,6 +156,9 @@ imports:
 ```
 
 Replacements are applied in order; the first matching `from` wins. Unmatched names are passed through unchanged.
+Deduplication rules are applied after all adapters finish. They are intended for
+cross-adapter reconciliation, for example keeping OpenAPI endpoints as canonical
+while merging matching extractor-emitted Corum nodes into them.
 
 #### `corum import openapi <spec>`
 
@@ -288,13 +298,36 @@ Or if installed globally:
 
 | Tool | Description |
 |---|---|
-| `list_nodes` | List graph nodes, optionally filtered by `template`, `component`, `state`, or `stability` |
+| `list_nodes` | List graph nodes using a `filter` object with `templates`, `exclude_templates`, `component`, `state`, and `stability` |
 | `list_templates` | List loaded templates with summary metadata |
 | `get_template` | Return full details for a template |
-| `get_cluster` | Return a root node, its owned children, and internal edges |
+| `get_cluster` | Return a root node, its descendants, included external nodes, and edges |
+| `get_graph` | Return the semantic graph as `{ nodes, edges }`, excluding structural templates and structural edges by default |
+| `get_graph_metadata` | Return discoverable metadata: template names, node templates in use, edge types, and valid enum values |
+| `get_lineage` | Traverse lineage from one or more start nodes with depth, direction, and edge/node-type filters |
+| `get_graph_summary` | Return high-level graph statistics: node count, component count, orphan breakdown, edge counts, diagnostics |
+| `search_nodes` | Fuzzy-search root-level nodes by ID, with optional template filters and property search |
 | `get_linked_fields` | Return `maps-to` edges touching fields owned by a root node |
+| `list_branches` | List available branches and their load status from the configured source |
+| `diff_branch` | Diff a branch against the default branch |
 
 All tools accept an optional `format` argument: `yaml` (default), `json`, or `toon`. All tools also accept `compact_keys: true` to shorten common keys before serialization, reducing token usage.
+
+Common notes:
+- `branch` is supported on graph-query tools when Corum is running against a source-backed graph.
+- `list_nodes` is a breaking-change surface from older builds: use `filter.templates` instead of top-level `template`.
+- `search_nodes` accepts `queries: string[]`.
+- `get_graph_metadata` is the quickest way to discover valid template names, edge types, lifecycle states, stabilities, lineage directions, and output formats before constructing other calls.
+- `get_lineage` accepts `node_ids: string[]`, `depth`, `direction`, `edge_types`, `node_types`, `exclude_node_types`, `include_dangling_edges`, and `reads_outbound_only`.
+- The graph reflects modeled relationships, not guaranteed complete truth. Missing edges do not prove no relationship exists; agents should treat naming and schema similarity as hypotheses and then verify via cluster inspection or source material.
+
+## MCP Prompts
+
+The server also exposes a discoverable MCP prompt:
+
+| Prompt | Description |
+|---|---|
+| `usage-guide` | Orientation guide covering graph structure, recommended tool workflow, output-format choices, graph-completeness caveats, and inference guidance |
 
 ## Contributing
 
