@@ -1,3 +1,4 @@
+import { printBanner } from '../banner.js'
 import express from 'express'
 import path from 'node:path'
 import { existsSync, readFileSync, readdirSync, watch, type FSWatcher } from 'node:fs'
@@ -672,11 +673,14 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
     const server = app.listen(port, () => {
       const addr = server.address() as AddressInfo
       if (options.port !== 0) {
-        // graphPath is informational only — the graph object was already loaded by the caller
-        logger(`[corum web] config graphPath=${graphPath} (${graphPathSource})`)
-        logger(`[corum web] config port=${addr.port} (${portSource})`)
-        logger(`[corum web] config webDir=${WEB_DIR}`)
-        logger(`[corum web] http://localhost:${addr.port}`)
+        printBanner({
+          config: [
+            { key: 'graphPath', value: graphPath },
+            { key: 'webDir', value: WEB_DIR },
+            { key: 'port', value: String(addr.port) },
+          ],
+          services: [{ name: 'web', url: `http://localhost:${addr.port}` }],
+        })
       }
       resolve({
         port: addr.port,

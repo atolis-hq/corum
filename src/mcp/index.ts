@@ -1,3 +1,4 @@
+import { printBanner } from '../banner.js'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
@@ -377,6 +378,12 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
       default:
         return { content: [{ type: 'text', text: `Unknown tool: ${request.params.name}` }], isError: true }
     }
+  })
+
+  printBanner({
+    config: [{ key: 'graphPath', value: config.graphPath }],
+    services: [{ name: 'mcp', url: 'stdio' }],
+    logger: (line) => process.stderr.write(line + '\n'),
   })
 
   await server.connect(new StdioServerTransport())

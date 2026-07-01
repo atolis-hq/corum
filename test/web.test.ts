@@ -249,7 +249,7 @@ async function startStandaloneWebEntrypoint(): Promise<{ child: ChildProcess; po
       reject(new Error(`standalone web server exited early with code ${code} signal ${signal}; logs: ${logs}`))
     })
 
-    child.stderr.on('data', chunk => {
+    child.stdout.on('data', chunk => {
       logs += chunk.toString()
       const match = logs.match(/http:\/\/localhost:(\d+)/)
       if (!match) return
@@ -258,6 +258,7 @@ async function startStandaloneWebEntrypoint(): Promise<{ child: ChildProcess; po
       child.removeAllListeners('exit')
       resolve({ child, port: Number(match[1]) })
     })
+    child.stderr.on('data', chunk => { logs += chunk.toString() })
   })
 }
 
