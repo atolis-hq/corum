@@ -5,6 +5,7 @@ import { CallToolRequestSchema, GetPromptRequestSchema, ListPromptsRequestSchema
 import { pathToFileURL } from 'node:url'
 import {
   computeClusterOverlay,
+  expandExternalNodes,
   getCluster,
   getClusterView,
   getGraphSummary,
@@ -135,21 +136,30 @@ function fullNode(node: Graph['nodesById'] extends Map<string, infer T> ? T : ne
   }
 }
 
-function mapEdge(edge: Edge, includeProvenance: boolean): Record<string, unknown> {
-  const out: Record<string, unknown> = {
-    id: edge.id,
-    from: edge.from,
-    to: edge.to,
-    type: edge.type,
-    state: edge.state,
-    stability: edge.stability,
-  }
+type EdgeOutputOptions = {
+  includeProvenance?: boolean
+  includeId?: boolean
+}
+
+function mapEdge(edge: Edge, options: EdgeOutputOptions = {}): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  if (options.includeId) out.id = edge.id
+  out.from = edge.from
+  out.to = edge.to
+  out.type = edge.type
   if (edge.notes !== undefined) out.notes = edge.notes
-  if (includeProvenance) {
+  if (options.includeProvenance) {
     if (edge.derivation !== undefined) out.derivation = edge.derivation
     if (edge.derivedBy !== undefined) out.derivedBy = edge.derivedBy
   }
   return out
+}
+
+function getEdgeOutputOptions(args: Record<string, unknown>): EdgeOutputOptions {
+  return {
+    includeProvenance: includesProvenance(args),
+    includeId: args.include_edge_ids === true,
+  }
 }
 
 function mapLineageNode(
@@ -320,29 +330,65 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
         const edgeTypes = parseEdgeTypes(args.edge_types)
           ?? [...SEMANTIC_EDGE_TYPES]
 
-        const cluster = getClusterView(targetGraph, String(args.node_id), edgeTypes)
+        const rawCluster = getClusterView(targetGraph, String(args.node_id), edgeTypes)
+        const clusterIds = new Set([rawCluster.root.id, ...rawCluster.descendants.map(n => n.id)])
+        const externalIds = new Set<string>()
+        for (const edge of rawCluster.edges) {
+          if (!clusterIds.has(edge.from)) externalIds.add(edge.from)
+          if (!clusterIds.has(edge.to)) externalIds.add(edge.to)
+        }
+        const cluster = { ...rawCluster, includedNodes: expandExternalNodes(targetGraph, externalIds) }
         const includeProvenance = includesProvenance(args)
         const collapseSchemas = args.collapse_schemas !== false
+        const includeEdges = args.include_edges === true
+        const includeDescendants = args.include_descendants !== false
+        const nodeTypes = toStringArray(args.node_types)
+        const edgeOptions = getEdgeOutputOptions(args)
 
         let clusterPayload: Record<string, unknown>
         if (collapseSchemas) {
           const collapsed = collapseClusterSchemas(targetGraph, cluster)
+          let filteredDescendants = collapsed.descendants
+          let filteredIncludedNodes = collapsed.includedNodes
+          if (!includeDescendants) {
+            filteredDescendants = []
+            filteredIncludedNodes = []
+          } else if (nodeTypes) {
+            const typeSet = new Set(nodeTypes)
+            filteredDescendants = filteredDescendants.filter(n => typeSet.has(n.template))
+            filteredIncludedNodes = filteredIncludedNodes.filter(n => typeSet.has(n.template))
+          }
+          const mergedSchemas = { ...collapsed.schemas, ...collapsed.schemaEnums }
           clusterPayload = {
             root: {
               ...fullNode(collapsed.root, includeProvenance),
-              ...(Object.keys(collapsed.schemas).length > 0 ? { schemas: collapsed.schemas } : {}),
+              ...(Object.keys(mergedSchemas).length > 0 ? { schemas: mergedSchemas } : {}),
               ...(Object.keys(collapsed.enums).length > 0 ? { enums: collapsed.enums } : {}),
             },
-            descendants: collapsed.descendants.map(node => fullNode(node, includeProvenance)),
-            includedNodes: collapsed.includedNodes.map(node => fullNode(node, includeProvenance)),
-            edges: collapsed.edges.map(e => mapEdge(e, includeProvenance)),
+            ...(includeDescendants ? {
+              descendants: filteredDescendants.map(node => fullNode(node, includeProvenance)),
+              includedNodes: filteredIncludedNodes.map(node => fullNode(node, includeProvenance)),
+            } : {}),
+            ...(includeEdges ? { edges: collapsed.edges.map(e => mapEdge(e, edgeOptions)) } : {}),
           }
         } else {
+          let filteredDescendants = cluster.descendants
+          let filteredIncludedNodes = cluster.includedNodes
+          if (!includeDescendants) {
+            filteredDescendants = []
+            filteredIncludedNodes = []
+          } else if (nodeTypes) {
+            const typeSet = new Set(nodeTypes)
+            filteredDescendants = filteredDescendants.filter(n => typeSet.has(n.template))
+            filteredIncludedNodes = filteredIncludedNodes.filter(n => typeSet.has(n.template))
+          }
           clusterPayload = {
             root: fullNode(cluster.root, includeProvenance),
-            descendants: cluster.descendants.map(node => fullNode(node, includeProvenance)),
-            includedNodes: cluster.includedNodes.map(node => fullNode(node, includeProvenance)),
-            edges: cluster.edges.map(e => mapEdge(e, includeProvenance)),
+            ...(includeDescendants ? {
+              descendants: filteredDescendants.map(node => fullNode(node, includeProvenance)),
+              includedNodes: filteredIncludedNodes.map(node => fullNode(node, includeProvenance)),
+            } : {}),
+            ...(includeEdges ? { edges: cluster.edges.map(e => mapEdge(e, edgeOptions)) } : {}),
           }
         }
         if (overlayRefs.length === 0 || !source || !branchRef) {
@@ -458,10 +504,11 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
         const lean = args.lean !== false
         const includeEdges = args.include_edges === true
         const includeProvenance = includesProvenance(args)
+        const edgeOptions = getEdgeOutputOptions(args)
         const payload: Record<string, unknown> = {
           nodes: lineage.nodes.map(node => mapLineageNode(node as unknown as Record<string, unknown>, includeProvenance, lean)),
         }
-        if (includeEdges) payload.edges = lineage.edges.map(e => mapEdge(e, includeProvenance))
+        if (includeEdges) payload.edges = lineage.edges.map(e => mapEdge(e, edgeOptions))
         if (args.include_dangling_edges === true && lineage.dangling_edges) payload.dangling_edges = lineage.dangling_edges
         return formatResult(payload, args.format, getCompactKeys(args))
       }
@@ -481,8 +528,9 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
       const run = (targetGraph: Graph): ToolResult => {
         const linked = getLinkedFields(targetGraph, String(args.node_id))
         const incProv = includesProvenance(args)
+        const edgeOptions = getEdgeOutputOptions(args)
         return formatResult({
-          edges: linked.edges.map(e => mapEdge(e, incProv)),
+          edges: linked.edges.map(e => mapEdge(e, edgeOptions)),
           nodes: linked.nodes.map(node => fullNode(node, incProv)),
         }, args.format, getCompactKeys(args))
       }
@@ -631,7 +679,7 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
     },
     {
       name: 'get_cluster',
-      description: 'Use when you need the full structural contents of a single node - its schema, fields, and owned children. Not suited for following relationships across the graph; use get_lineage for that. Note: large aggregates may exceed response size limits.',
+      description: 'Use when you need the full structural contents of a single node - its schema, fields, and owned children. Not suited for following relationships across the graph; use get_lineage for that.\n\nBy default returns only the root node with its collapsed schema and enums blocks (descendants and edges excluded). Pass include_descendants: true to include owned operations/commands/events. Pass include_edges: true to include the edge list.',
       inputSchema: {
         type: 'object',
         required: ['node_id'],
@@ -642,9 +690,15 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
             items: { type: 'string' },
             description: 'Edge types to follow for external node inclusion. Defaults to all semantic types.',
           },
-          include_dangling_edges: { type: 'boolean', description: 'Include edges to nodes outside the cluster. Default false.' },
-          reads_outbound_only: { type: 'boolean', description: 'Restrict reads edges to outbound only. Default true.' },
           collapse_schemas: { type: 'boolean', description: 'Collapse schema/enum child nodes into compact schemas and enums blocks on the root. Structural edges and schema child nodes are removed from descendants. Default true.' },
+          include_descendants: { type: 'boolean', description: 'Include descendant nodes (operations, commands, events, and cross-component nodes). Default true.' },
+          node_types: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Allowlist of node templates to include in the descendant set. Useful for limiting to specific types (e.g. ["DomainOperation", "DomainEvent"]).',
+          },
+          include_edges: { type: 'boolean', description: 'Include the edge list in the response. Default false.' },
+          include_edge_ids: { type: 'boolean', description: 'Include edge id field in edge output. Default false.' },
           include_provenance: { type: 'boolean', description: 'Include provenance fields on returned nodes. Default false.' },
           branch: { type: 'string', description: 'Branch ref to load the cluster from' },
           overlay_refs: {
@@ -715,6 +769,7 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
           reads_outbound_only: { type: 'boolean', description: 'Do not follow inbound reads edges in upstream traversal. Default true.' },
           lean: { type: 'boolean', description: 'Return minimal lineage node shape. Default true.' },
           include_edges: { type: 'boolean', description: 'Include the edges list in the response. Default false.' },
+          include_edge_ids: { type: 'boolean', description: 'Include edge id field in edge output. Default false.' },
           include_provenance: { type: 'boolean', description: 'Include provenance fields on returned nodes. Default false.' },
           branch: { type: 'string', description: 'Branch ref to load the lineage from' },
           format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
@@ -730,6 +785,7 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
         required: ['node_id'],
         properties: {
           node_id: { type: 'string', description: 'Fully qualified root node ID' },
+          include_edge_ids: { type: 'boolean', description: 'Include edge id field in edge output. Default false.' },
           include_provenance: { type: 'boolean', description: 'Include provenance fields on returned nodes. Default false.' },
           branch: { type: 'string', description: 'Branch ref to load linked fields from' },
           format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },

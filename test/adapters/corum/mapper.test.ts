@@ -132,6 +132,26 @@ describe('mapDocument — nodes (basic)', () => {
     const { nodes } = mapDocument(doc, SPEC_PATH)
     assert.ok(!('x-aka' in nodes[0].properties))
   })
+
+  it('normalizes unresolved root component IDs from _ to _unresolved', () => {
+    const doc = makeDoc({
+      nodes: {
+        '_.DomainEvent.OrderPlaced': {
+          type: 'DomainEvent',
+        },
+      },
+      edges: [{
+        from: '_.DomainEvent.OrderPlaced',
+        to: '_.DomainEvent.OtherEvent',
+        type: 'produces',
+      }],
+    })
+    const { nodes, edges } = mapDocument(doc, SPEC_PATH)
+    assert.equal(nodes[0].id, '_unresolved.DomainEvent.OrderPlaced')
+    assert.equal(nodes[0].component, '_unresolved')
+    assert.equal(edges[0].from, '_unresolved.DomainEvent.OrderPlaced')
+    assert.equal(edges[0].to, '_unresolved.DomainEvent.OtherEvent')
+  })
 })
 
 describe('mapDocument — schema expansion', () => {
@@ -475,6 +495,219 @@ describe('mapDocument — edges', () => {
     const { edges, diagnostics } = mapDocument(doc, SPEC_PATH)
     assert.equal(edges.length, 0)
     assert.ok(diagnostics.some(d => d.severity === 'warning' && d.message.includes('unknown-type')))
+  })
+
+  it('uses usage rather than schema name prefix for edge-only schema ownership', () => {
+    const doc = makeDoc({
+      nodes: {
+        'orders.DomainEvent.OrderPlaced': {
+          type: 'DomainEvent',
+        },
+      },
+      components: {
+        schemas: {
+          'workers.ReactToPersonCreatedCommand': {
+            type: 'object',
+            properties: {
+              PersonId: { type: 'string', format: 'uuid' },
+            },
+          },
+        },
+      },
+      edges: [{
+        from: 'orders.DomainEvent.OrderPlaced',
+        to: '#/components/schemas/workers.ReactToPersonCreatedCommand',
+        type: 'reads',
+      }],
+    })
+    const { nodes, edges, diagnostics } = mapDocument(doc, SPEC_PATH)
+    assert.ok(!diagnostics.some(d => d.severity === 'warning' && d.message.includes('unresolvable node')))
+    const schemaNode = nodes.find(n => n.id === 'orders.DomainEvent.OrderPlaced.schemas.ReactToPersonCreatedCommand')
+    assert.ok(schemaNode)
+    assert.equal(schemaNode!.component, 'orders')
+    assert.equal(schemaNode!.template, 'Schema')
+    const fieldNode = nodes.find(n => n.id === 'orders.DomainEvent.OrderPlaced.schemas.ReactToPersonCreatedCommand.fields.PersonId')
+    assert.ok(fieldNode)
+    assert.ok(edges.some(e =>
+      e.from === 'orders.DomainEvent.OrderPlaced' &&
+      e.to === 'orders.DomainEvent.OrderPlaced.schemas.ReactToPersonCreatedCommand' &&
+      e.type === 'reads',
+    ))
+  })
+
+  it('inlines an edge-only schema into the single cluster that uses it', () => {
+    const doc = makeDoc({
+      nodes: {
+        'orders.DomainEvent.OrderPlaced': {
+          type: 'DomainEvent',
+        },
+      },
+      components: {
+        schemas: {
+          EdgeOnly: {
+            type: 'object',
+            properties: {
+              PersonId: { type: 'string', format: 'uuid' },
+            },
+          },
+        },
+      },
+      edges: [{
+        from: 'orders.DomainEvent.OrderPlaced',
+        to: '#/components/schemas/EdgeOnly',
+        type: 'reads',
+      }],
+    })
+    const { nodes, edges, diagnostics } = mapDocument(doc, SPEC_PATH)
+    assert.ok(!diagnostics.some(d => d.severity === 'warning' && d.message.includes('unresolvable node')))
+    assert.ok(nodes.some(n => n.id === 'orders.DomainEvent.OrderPlaced.schemas.EdgeOnly'))
+    assert.ok(!nodes.some(n => n.id === 'orders.Schema.EdgeOnly'))
+    assert.ok(edges.some(e =>
+      e.from === 'orders.DomainEvent.OrderPlaced' &&
+      e.to === 'orders.DomainEvent.OrderPlaced.schemas.EdgeOnly' &&
+      e.type === 'reads',
+    ))
+  })
+
+  it('promotes an edge-only schema to component shared when multiple clusters in one component use it', () => {
+    const doc = makeDoc({
+      nodes: {
+        'orders.DomainEvent.OrderPlaced': { type: 'DomainEvent' },
+        'orders.Command.PlaceOrder': { type: 'Command' },
+      },
+      components: {
+        schemas: {
+          SharedWithinOrders: {
+            type: 'object',
+            properties: {
+              PersonId: { type: 'string', format: 'uuid' },
+            },
+          },
+        },
+      },
+      edges: [
+        {
+          from: 'orders.DomainEvent.OrderPlaced',
+          to: '#/components/schemas/SharedWithinOrders',
+          type: 'reads',
+        },
+        {
+          from: 'orders.Command.PlaceOrder',
+          to: '#/components/schemas/SharedWithinOrders',
+          type: 'reads',
+        },
+      ],
+    })
+    const { nodes, edges } = mapDocument(doc, SPEC_PATH)
+    assert.ok(nodes.some(n => n.id === 'orders.Schema.SharedWithinOrders'))
+    assert.ok(!nodes.some(n => n.id === 'orders.DomainEvent.OrderPlaced.schemas.SharedWithinOrders'))
+    assert.ok(!nodes.some(n => n.id === 'orders.Command.PlaceOrder.schemas.SharedWithinOrders'))
+    assert.ok(edges.some(e =>
+      e.from === 'orders.DomainEvent.OrderPlaced' &&
+      e.to === 'orders.Schema.SharedWithinOrders' &&
+      e.type === 'reads',
+    ))
+    assert.ok(edges.some(e =>
+      e.from === 'orders.Command.PlaceOrder' &&
+      e.to === 'orders.Schema.SharedWithinOrders' &&
+      e.type === 'reads',
+    ))
+  })
+
+  it('derives edge-only schema ownership from schema-to-schema usage', () => {
+    const doc = makeDoc({
+      nodes: {
+        'orders.DomainEvent.OrderPlaced': {
+          type: 'DomainEvent',
+          schema: { $ref: '#/components/schemas/OrderPlaced' },
+        },
+      },
+      components: {
+        schemas: {
+          OrderPlaced: {
+            type: 'object',
+            properties: {
+              Amount: { type: 'number' },
+            },
+          },
+          EdgeOnly: {
+            type: 'object',
+            properties: {
+              Amount: { type: 'number' },
+            },
+          },
+        },
+      },
+      edges: [{
+        from: '#/components/schemas/OrderPlaced/properties/Amount',
+        to: '#/components/schemas/EdgeOnly/properties/Amount',
+        type: 'maps-to',
+      }],
+    })
+    const { nodes, edges, diagnostics } = mapDocument(doc, SPEC_PATH)
+    assert.ok(!diagnostics.some(d => d.message.includes('unresolvable node')))
+    assert.ok(nodes.some(n => n.id === 'orders.DomainEvent.OrderPlaced.schemas.EdgeOnly'))
+    assert.ok(edges.some(e =>
+      e.from === 'orders.DomainEvent.OrderPlaced.schemas.OrderPlaced.fields.Amount' &&
+      e.to === 'orders.DomainEvent.OrderPlaced.schemas.EdgeOnly.fields.Amount' &&
+      e.type === 'maps-to',
+    ))
+  })
+
+  it('skips unused top-level schemas and emits a warning', () => {
+    const doc = makeDoc({
+      nodes: {
+        'orders.DomainEvent.OrderPlaced': { type: 'DomainEvent' },
+      },
+      components: {
+        schemas: {
+          UnusedSchema: {
+            type: 'object',
+            properties: {
+              PersonId: { type: 'string', format: 'uuid' },
+            },
+          },
+        },
+      },
+    })
+    const { nodes, diagnostics } = mapDocument(doc, SPEC_PATH)
+    assert.ok(!nodes.some(n => n.id.includes('UnusedSchema')))
+    assert.ok(diagnostics.some(d => d.severity === 'warning' && d.message.includes('unused schema') && d.message.includes('UnusedSchema')))
+  })
+
+  it('skips container schemas that only reference a used schema but are not themselves used', () => {
+    const doc = makeDoc({
+      nodes: {
+        'orders.DomainEvent.OrderPlaced': {
+          type: 'DomainEvent',
+          schema: { $ref: '#/components/schemas/OrderPlaced' },
+        },
+      },
+      components: {
+        schemas: {
+          OrderPlaced: {
+            type: 'object',
+            properties: {
+              Item: { $ref: '#/components/schemas/PayLineItem' },
+            },
+          },
+          PayLineItem: {
+            type: 'object',
+            properties: {
+              Amount: { type: 'number' },
+            },
+          },
+          IReadOnlyCollectionOfPayLineItem1: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/PayLineItem' },
+          },
+        },
+      },
+    })
+    const { nodes } = mapDocument(doc, SPEC_PATH)
+    assert.ok(nodes.some(n => n.id === 'orders.DomainEvent.OrderPlaced.schemas.PayLineItem'))
+    assert.ok(!nodes.some(n => n.id.includes('IReadOnlyCollectionOfPayLineItem1')))
+    assert.ok(!nodes.some(n => n.id === 'shared.Schema.IReadOnlyCollectionOfPayLineItem1'))
   })
 })
 

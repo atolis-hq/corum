@@ -472,7 +472,8 @@ function SchemaFieldRows({ schemaNodeId, model, prefix = '', depth = 0, visited 
         const childSchemaNode = !canExpandMapping
           ? (refNodeId ? (model.schemasById?.get(refNodeId) ?? null) : (localRef ? (model.schemasByName.get(localRef) ?? null) : null))
           : null;
-        const canExpand = !!childSchemaNode && !visited.has(childSchemaNode.id);
+        const childHasFields = childSchemaNode ? (model.fieldsBySchema.get(childSchemaNode.id) ?? []).length > 0 : false;
+        const canExpand = !!childSchemaNode && !visited.has(childSchemaNode.id) && childHasFields;
         const isExpandable = canExpand || canExpandMapping;
         const childGhostFields = childSchemaNode ? overlayFieldsForSchema(overlayFields, childSchemaNode.id) : [];
         const c = field.properties?.collection;

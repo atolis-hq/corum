@@ -161,6 +161,33 @@ describe('collapseClusterSchemas', () => {
 
       assert.deepEqual(result.enums, {})
     })
+
+    it('inlines enum values into schemaEnums block when EnumValue nodes appear under schemas path', () => {
+      const root = node(ROOT, 'DomainModel')
+      const schema = node(`${ROOT}.schemas.PayRunStatus`, 'Schema')
+      const v1 = node(`${ROOT}.schemas.PayRunStatus.values.draft`, 'EnumValue', { name: 'Draft' })
+      const v2 = node(`${ROOT}.schemas.PayRunStatus.values.finalised`, 'EnumValue', { name: 'Finalised' })
+      const g = graph([root, schema, v1, v2])
+      const c = cluster(root, [schema, v1, v2])
+
+      const result = collapseClusterSchemas(g, c)
+
+      assert.deepEqual(result.schemaEnums['PayRunStatus'], { values: ['Draft', 'Finalised'] })
+      assert.ok(!('PayRunStatus' in result.schemas))
+      assert.deepEqual(result.enums, {})
+    })
+
+    it('falls back to value key for enum-like schema when name property is absent', () => {
+      const root = node(ROOT, 'DomainModel')
+      const schema = node(`${ROOT}.schemas.Status`, 'Schema')
+      const v = node(`${ROOT}.schemas.Status.values.active`, 'EnumValue', {})
+      const g = graph([root, schema, v])
+      const c = cluster(root, [schema, v])
+
+      const result = collapseClusterSchemas(g, c)
+
+      assert.deepEqual(result.schemaEnums['Status'], { values: ['active'] })
+    })
   })
 
   describe('descendants and edges', () => {

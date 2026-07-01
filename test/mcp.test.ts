@@ -295,7 +295,7 @@ describe('MCP handlers', () => {
   describe('get_cluster', () => {
     it('returns full cluster for DomainModel with collapse_schemas: false', async () => {
       const handlers = createMcpHandlers(graph)
-      const result = await handlers.get_cluster({ node_id: 'orders.DomainModel.order', format: 'json', collapse_schemas: false })
+      const result = await handlers.get_cluster({ node_id: 'orders.DomainModel.order', format: 'json', collapse_schemas: false, include_edges: true })
       const cluster = JSON.parse(result.content[0].text)
       assert.equal(cluster.root.id, 'orders.DomainModel.order')
       assert.equal(cluster.descendants.length, 22)
@@ -360,6 +360,51 @@ describe('MCP handlers', () => {
 
       assert.ok(!('schemaVersion' in cluster.root))
       assert.equal(cluster.root.lastModifiedAt, '2026-04-23')
+    })
+
+    it('excludes edges by default', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.get_cluster({ node_id: 'orders.DomainModel.order', format: 'json' })
+      const cluster = JSON.parse(result.content[0].text)
+      assert.ok(!('edges' in cluster), 'edges should be absent by default')
+    })
+
+    it('includes edges when include_edges: true', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.get_cluster({ node_id: 'orders.DomainModel.order', format: 'json', include_edges: true })
+      const cluster = JSON.parse(result.content[0].text)
+      assert.ok(Array.isArray(cluster.edges))
+      assert.ok(cluster.edges.length > 0)
+      assert.ok(!('id' in cluster.edges[0]), 'edge id should be absent by default')
+      assert.ok(!('state' in cluster.edges[0]), 'edge state should be absent by default')
+      assert.ok(!('stability' in cluster.edges[0]), 'edge stability should be absent by default')
+      assert.ok('from' in cluster.edges[0])
+      assert.ok('to' in cluster.edges[0])
+      assert.ok('type' in cluster.edges[0])
+    })
+
+    it('includes edge ids when include_edge_ids: true', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.get_cluster({ node_id: 'orders.DomainModel.order', format: 'json', include_edges: true, include_edge_ids: true })
+      const cluster = JSON.parse(result.content[0].text)
+      assert.ok('id' in cluster.edges[0])
+    })
+
+    it('excludes descendants when include_descendants: false', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.get_cluster({ node_id: 'orders.DomainModel.order', format: 'json', include_descendants: false })
+      const cluster = JSON.parse(result.content[0].text)
+      assert.ok(!('descendants' in cluster), 'descendants should be absent')
+      assert.ok(!('includedNodes' in cluster), 'includedNodes should be absent')
+      assert.ok('root' in cluster)
+    })
+
+    it('filters descendants by node_types', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.get_cluster({ node_id: 'orders.DomainModel.order', format: 'json', node_types: ['DomainOperation'] })
+      const cluster = JSON.parse(result.content[0].text)
+      assert.ok(Array.isArray(cluster.descendants))
+      assert.ok(cluster.descendants.every((n: Record<string, unknown>) => n.template === 'DomainOperation'))
     })
 
     it('returns error message for unknown node', async () => {
