@@ -208,16 +208,21 @@ export function expandExternalNodes(graph: Graph, externalIds: Iterable<string>)
   const dataQueue: string[] = []
 
   for (const rawId of externalIds) {
-    // Resolve to cluster root: edges like maps-to may target structural children
-    // (e.g. Schema.X.fields.Y). Walk up the parent chain to get the owning cluster root.
-    let id = rawId
-    let parent = findParent(graph, id)
-    while (parent !== undefined) { id = parent; parent = findParent(graph, id) }
+    const immediateParent = findParent(graph, rawId)
 
-    if (!graph.nodesById.has(id) || result.has(id)) continue
-    result.add(id)
-    const node = graph.nodesById.get(id)!
-    if (DATA_NODE_TEMPLATES.has(node.template)) dataQueue.push(id)
+    if (immediateParent !== undefined) {
+      // rawId is a structural child (field/value targeted by maps-to).
+      // Include just this specific node — don't walk up and expand the entire parent tree.
+      if (!graph.nodesById.has(rawId) || result.has(rawId)) continue
+      result.add(rawId)
+      continue
+    }
+
+    // rawId has no structural parent — it's a root or standalone node (reads/calls/etc. target).
+    if (!graph.nodesById.has(rawId) || result.has(rawId)) continue
+    result.add(rawId)
+    const node = graph.nodesById.get(rawId)!
+    if (DATA_NODE_TEMPLATES.has(node.template)) dataQueue.push(rawId)
   }
 
   for (const id of dataQueue) {
