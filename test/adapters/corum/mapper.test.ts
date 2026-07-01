@@ -132,6 +132,26 @@ describe('mapDocument — nodes (basic)', () => {
     const { nodes } = mapDocument(doc, SPEC_PATH)
     assert.ok(!('x-aka' in nodes[0].properties))
   })
+
+  it('normalizes unresolved root component IDs from _ to _unresolved', () => {
+    const doc = makeDoc({
+      nodes: {
+        '_.DomainEvent.OrderPlaced': {
+          type: 'DomainEvent',
+        },
+      },
+      edges: [{
+        from: '_.DomainEvent.OrderPlaced',
+        to: '_.DomainEvent.OtherEvent',
+        type: 'produces',
+      }],
+    })
+    const { nodes, edges } = mapDocument(doc, SPEC_PATH)
+    assert.equal(nodes[0].id, '_unresolved.DomainEvent.OrderPlaced')
+    assert.equal(nodes[0].component, '_unresolved')
+    assert.equal(edges[0].from, '_unresolved.DomainEvent.OrderPlaced')
+    assert.equal(edges[0].to, '_unresolved.DomainEvent.OtherEvent')
+  })
 })
 
 describe('mapDocument — schema expansion', () => {
@@ -475,6 +495,44 @@ describe('mapDocument — edges', () => {
     const { edges, diagnostics } = mapDocument(doc, SPEC_PATH)
     assert.equal(edges.length, 0)
     assert.ok(diagnostics.some(d => d.severity === 'warning' && d.message.includes('unknown-type')))
+  })
+
+  it('materializes edge-only schema refs under a valid component and root template', () => {
+    const doc = makeDoc({
+      nodes: {
+        'orders.DomainEvent.OrderPlaced': {
+          type: 'DomainEvent',
+        },
+      },
+      components: {
+        schemas: {
+          'workers.ReactToPersonCreatedCommand': {
+            type: 'object',
+            properties: {
+              PersonId: { type: 'string', format: 'uuid' },
+            },
+          },
+        },
+      },
+      edges: [{
+        from: 'orders.DomainEvent.OrderPlaced',
+        to: '#/components/schemas/workers.ReactToPersonCreatedCommand',
+        type: 'reads',
+      }],
+    })
+    const { nodes, edges, diagnostics } = mapDocument(doc, SPEC_PATH)
+    assert.ok(!diagnostics.some(d => d.severity === 'warning' && d.message.includes('unresolvable node')))
+    const schemaNode = nodes.find(n => n.id === 'workers.Schema.ReactToPersonCreatedCommand')
+    assert.ok(schemaNode)
+    assert.equal(schemaNode!.component, 'workers')
+    assert.equal(schemaNode!.template, 'Schema')
+    const fieldNode = nodes.find(n => n.id === 'workers.Schema.ReactToPersonCreatedCommand.fields.PersonId')
+    assert.ok(fieldNode)
+    assert.ok(edges.some(e =>
+      e.from === 'orders.DomainEvent.OrderPlaced' &&
+      e.to === 'workers.Schema.ReactToPersonCreatedCommand' &&
+      e.type === 'reads',
+    ))
   })
 })
 

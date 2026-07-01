@@ -86,4 +86,43 @@ describe('corum import — basic fixture', () => {
       cleanup()
     }
   })
+
+  it('writes unresolved components and edge-only schemas to valid cluster paths', async () => {
+    const { graphDir, cleanup } = await setupGraphDir()
+    const specPath = path.join(graphDir, 'unresolved.corum.yaml')
+    fs.writeFileSync(specPath, `corum: '1.0'
+nodes:
+  _.DomainEvent.OrderPlaced:
+    type: DomainEvent
+components:
+  schemas:
+    workers.ReactToPersonCreatedCommand:
+      type: object
+      properties:
+        PersonId:
+          type: string
+          format: uuid
+edges:
+  - type: reads
+    from: _.DomainEvent.OrderPlaced
+    to: '#/components/schemas/workers.ReactToPersonCreatedCommand'
+`)
+
+    try {
+      const config: ImportConfig = {
+        imports: [{
+          adapter: 'corum',
+          spec: specPath,
+        }],
+      }
+      const runtimeConfig = makeRuntimeConfig(graphDir)
+      const result = await runImport(config, runtimeConfig)
+
+      assert.ok(!result.diagnostics.some(d => d.severity === 'error'), `unexpected errors: ${JSON.stringify(result.diagnostics.filter(d => d.severity === 'error'))}`)
+      assert.ok(fs.existsSync(path.join(graphDir, 'components', '_unresolved', 'DomainEvents', 'OrderPlaced.yaml')))
+      assert.ok(fs.existsSync(path.join(graphDir, 'components', 'workers', 'Schemas', 'ReactToPersonCreatedCommand.yaml')))
+    } finally {
+      cleanup()
+    }
+  })
 })

@@ -5,6 +5,7 @@ const VALID_EDGE_TYPES = new Set<string>([
   'triggers', 'produces', 'reads', 'calls', 'implements',
   'maps-to', 'derived-from', 'renamed-from', 'has-field', 'has-value',
 ])
+const UNRESOLVED_COMPONENT = '_unresolved'
 
 export interface MapResult {
   nodes: Node[]
@@ -35,7 +36,8 @@ export function mapDocument(document: CorumInterchangeDocument, specPath: string
       continue
     }
 
-    const component = nodeId.split('.')[0]
+    const normalizedNodeId = normalizeNodeId(nodeId)
+    const component = componentFromNodeId(normalizedNodeId)
     const properties: Record<string, unknown> = {}
 
     let schemaName: string | undefined
@@ -52,12 +54,12 @@ export function mapDocument(document: CorumInterchangeDocument, specPath: string
       properties['x-aka'] = entry['x-aka']
     }
 
-    const node = makeNode(entry.type, component, specPath, nodeId, entry.provenance, properties)
+    const node = makeNode(entry.type, component, specPath, normalizedNodeId, entry.provenance, properties)
     nodes.push(node)
 
     if (schemaName) {
       const expanded = new Map<string, string>()
-      expandSchema(schemaName, nodeId, allSchemas, nodes, edges, specPath, component, expanded, refToNodeId, schemaComponents)
+      expandSchema(schemaName, normalizedNodeId, allSchemas, nodes, edges, specPath, component, expanded, refToNodeId, schemaComponents)
     }
   }
 
@@ -79,16 +81,16 @@ export function mapDocument(document: CorumInterchangeDocument, specPath: string
 
       const schemaDef = allSchemas[schemaName] as { properties?: Record<string, unknown>; enum?: unknown[] } | undefined
       const isOrphanEnum = Array.isArray(schemaDef?.enum) && !schemaDef?.properties
-      const orphanSection = isOrphanEnum ? 'enums' : 'schemas'
       const orphanTemplate = isOrphanEnum ? 'EnumDefinition' : 'Schema'
-      const schemaId = `${schemaLocalName}.${orphanSection}.${schemaLocalName}`
+      const orphanComponent = deriveSchemaComponent(schemaName, schemaComponents)
+      const schemaId = `${orphanComponent}.${orphanTemplate}.${schemaLocalName}`
       refToNodeId.set(schemaRef, schemaId)
-      nodes.push(makeNode(orphanTemplate, '_', specPath, schemaId, undefined, {}))
+      nodes.push(makeNode(orphanTemplate, orphanComponent, specPath, schemaId, undefined, {}))
 
       for (const fieldName of Object.keys(schemaDef?.properties ?? {})) {
         const fieldId = `${schemaId}.fields.${fieldName}`
         refToNodeId.set(`${schemaRef}/properties/${fieldName}`, fieldId)
-        nodes.push(makeNode('Field', '_', specPath, fieldId, undefined, {}))
+        nodes.push(makeNode('Field', orphanComponent, specPath, fieldId, undefined, {}))
         edges.push(makeHasFieldEdge(schemaId, fieldId))
       }
       if (isOrphanEnum) {
@@ -96,7 +98,7 @@ export function mapDocument(document: CorumInterchangeDocument, specPath: string
           if (typeof value !== 'string') continue
           const valueId = `${schemaId}.values.${value}`
           refToNodeId.set(`${schemaRef}/properties/${value}`, valueId)
-          nodes.push(makeNode('EnumValue', '_', specPath, valueId, undefined, { value }))
+          nodes.push(makeNode('EnumValue', orphanComponent, specPath, valueId, undefined, { value }))
           edges.push(makeHasValueEdge(schemaId, valueId))
         }
       }
@@ -118,8 +120,8 @@ export function mapDocument(document: CorumInterchangeDocument, specPath: string
       })
       continue
     }
-    const from = refToNodeId.get(raw.from) ?? refToNodeIdLower.get(raw.from.toLowerCase()) ?? raw.from
-    const to = refToNodeId.get(raw.to) ?? refToNodeIdLower.get(raw.to.toLowerCase()) ?? raw.to
+    const from = refToNodeId.get(raw.from) ?? refToNodeIdLower.get(raw.from.toLowerCase()) ?? normalizeNodeId(raw.from)
+    const to = refToNodeId.get(raw.to) ?? refToNodeIdLower.get(raw.to.toLowerCase()) ?? normalizeNodeId(raw.to)
     if (from.startsWith('#/') || to.startsWith('#/')) {
       diagnostics.push({
         severity: 'warning',
@@ -145,7 +147,7 @@ function computeSchemaComponents(
   for (const [nodeId, entry] of Object.entries(document.nodes)) {
     const rootName = entry.schema?.$ref ? schemaRefName(entry.schema.$ref) : undefined
     if (!rootName) continue
-    const component = nodeId.split('.')[0]
+    const component = componentFromNodeId(normalizeNodeId(nodeId))
     const visited = new Set<string>()
     collectSchemaRefNames(rootName, allSchemas, visited)
     for (const name of visited) {
@@ -188,6 +190,29 @@ function extractSchemaName(endpoint: string): string | undefined {
   const prefix = '#/components/schemas/'
   if (!endpoint.startsWith(prefix)) return undefined
   return endpoint.slice(prefix.length).split('/')[0]
+}
+
+function normalizeNodeId(nodeId: string): string {
+  if (nodeId.startsWith('#/')) return nodeId
+  const parts = nodeId.split('.')
+  if (parts.length === 0) return nodeId
+  parts[0] = normalizeComponent(parts[0])
+  return parts.join('.')
+}
+
+function componentFromNodeId(nodeId: string): string {
+  return normalizeComponent(nodeId.split('.')[0] ?? '')
+}
+
+function normalizeComponent(component: string): string {
+  return component === '_' || component.trim() === '' ? UNRESOLVED_COMPONENT : component
+}
+
+function deriveSchemaComponent(schemaName: string, schemaComponents: Map<string, string>): string {
+  const knownComponent = schemaComponents.get(schemaName)
+  if (knownComponent) return normalizeComponent(knownComponent)
+  if (schemaName.includes('.')) return normalizeComponent(schemaName.split('.')[0] ?? '')
+  return UNRESOLVED_COMPONENT
 }
 
 function expandSchema(
