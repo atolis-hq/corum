@@ -13,6 +13,17 @@ export interface MapResult {
   diagnostics: Diagnostic[]
 }
 
+type SchemaUsage = {
+  rootsBySchema: Map<string, Set<string>>
+  directEdgeSchemas: Set<string>
+}
+
+type SchemaOwnership =
+  | { kind: 'inline'; rootNodeId: string; component: string }
+  | { kind: 'shared'; component: string }
+  | { kind: 'unused' }
+  | { kind: 'unresolved' }
+
 export function mapDocument(document: CorumInterchangeDocument, specPath: string): MapResult {
   const nodes: Node[] = []
   const edges: Edge[] = []
@@ -20,8 +31,10 @@ export function mapDocument(document: CorumInterchangeDocument, specPath: string
   const allSchemas = (document.components?.schemas ?? {}) as Record<string, unknown>
   // Maps #/components/schemas/X and #/components/schemas/X/properties/Y to materialized node IDs
   const refToNodeId = new Map<string, string>()
+  const rootNodeIds = getRootNodeIds(document.nodes)
   // Pre-pass: determine canonical component for each schema (shared if referenced by 2+ components)
   const schemaComponents = computeSchemaComponents(document, allSchemas)
+  const schemaUsage = computeSchemaUsage(document, allSchemas, rootNodeIds)
 
   for (const gap of document.gaps ?? []) {
     const msg = gap.nodeId
@@ -63,46 +76,36 @@ export function mapDocument(document: CorumInterchangeDocument, specPath: string
     }
   }
 
-  // Expand schemas referenced in edges that weren't reachable via any node's schema ref.
-  // Uses schema name as its own synthetic root so IDs are self-contained and don't collide.
-  // Enum schemas register their enum values as field nodes so edge refs to them can resolve.
-  const orphanExpanded = new Set<string>()
-  for (const raw of document.edges ?? []) {
-    for (const endpoint of [raw.from, raw.to]) {
-      const schemaName = extractSchemaName(endpoint)
-      if (!schemaName) continue
-      const schemaRef = `#/components/schemas/${schemaName}`
-      if (refToNodeId.has(schemaRef) || orphanExpanded.has(schemaName)) continue
-      orphanExpanded.add(schemaName)
+  for (const schemaName of Object.keys(allSchemas)) {
+    const schemaRef = `#/components/schemas/${schemaName}`
+    if (refToNodeId.has(schemaRef)) continue
 
-      const schemaLocalName = schemaName.includes('.')
-        ? schemaName.slice(schemaName.lastIndexOf('.') + 1)
-        : schemaName
-
-      const schemaDef = allSchemas[schemaName] as { properties?: Record<string, unknown>; enum?: unknown[] } | undefined
-      const isOrphanEnum = Array.isArray(schemaDef?.enum) && !schemaDef?.properties
-      const orphanTemplate = isOrphanEnum ? 'EnumDefinition' : 'Schema'
-      const orphanComponent = deriveSchemaComponent(schemaName, schemaComponents)
-      const schemaId = `${orphanComponent}.${orphanTemplate}.${schemaLocalName}`
-      refToNodeId.set(schemaRef, schemaId)
-      nodes.push(makeNode(orphanTemplate, orphanComponent, specPath, schemaId, undefined, {}))
-
-      for (const fieldName of Object.keys(schemaDef?.properties ?? {})) {
-        const fieldId = `${schemaId}.fields.${fieldName}`
-        refToNodeId.set(`${schemaRef}/properties/${fieldName}`, fieldId)
-        nodes.push(makeNode('Field', orphanComponent, specPath, fieldId, undefined, {}))
-        edges.push(makeHasFieldEdge(schemaId, fieldId))
-      }
-      if (isOrphanEnum) {
-        for (const value of schemaDef!.enum!) {
-          if (typeof value !== 'string') continue
-          const valueId = `${schemaId}.values.${value}`
-          refToNodeId.set(`${schemaRef}/properties/${value}`, valueId)
-          nodes.push(makeNode('EnumValue', orphanComponent, specPath, valueId, undefined, { value }))
-          edges.push(makeHasValueEdge(schemaId, valueId))
-        }
-      }
+    const ownership = determineSchemaOwnership(schemaName, schemaUsage)
+    if (ownership.kind === 'unused') {
+      diagnostics.push({
+        severity: 'warning',
+        file: specPath,
+        message: `Skipping unused schema '${schemaName}' because no node or edge refers to it`,
+      })
+      continue
     }
+
+    if (ownership.kind === 'unresolved') {
+      diagnostics.push({
+        severity: 'warning',
+        file: specPath,
+        message: `Schema '${schemaName}' is only referenced by unresolved schema edges; keeping it under ${UNRESOLVED_COMPONENT}`,
+      })
+      materializeStandaloneSchema(schemaName, UNRESOLVED_COMPONENT, allSchemas, nodes, edges, specPath, refToNodeId, schemaComponents)
+      continue
+    }
+
+    if (ownership.kind === 'inline') {
+      expandSchema(schemaName, ownership.rootNodeId, allSchemas, nodes, edges, specPath, ownership.component, new Map(), refToNodeId, schemaComponents)
+      continue
+    }
+
+    materializeStandaloneSchema(schemaName, ownership.component, allSchemas, nodes, edges, specPath, refToNodeId, schemaComponents)
   }
 
   // Build case-insensitive fallback index to handle PascalCase/camelCase mismatches
@@ -160,6 +163,80 @@ function computeSchemaComponents(
   return result
 }
 
+function getRootNodeIds(nodes: Record<string, CorumInterchangeDocument['nodes'][string]>): string[] {
+  const nodeIds = Object.keys(nodes).map(normalizeNodeId)
+  return nodeIds
+    .filter(nodeId => !nodeIds.some(other => other !== nodeId && nodeId.startsWith(`${other}.`)))
+    .sort((a, b) => b.length - a.length)
+}
+
+function computeSchemaUsage(
+  document: CorumInterchangeDocument,
+  allSchemas: Record<string, unknown>,
+  rootNodeIds: string[],
+): SchemaUsage {
+  const usage: SchemaUsage = {
+    rootsBySchema: new Map(),
+    directEdgeSchemas: new Set(),
+  }
+  const schemaLinks = new Map<string, Set<string>>()
+
+  for (const [nodeId, entry] of Object.entries(document.nodes)) {
+    const rootName = entry.schema?.$ref ? schemaRefName(entry.schema.$ref) : undefined
+    if (!rootName) continue
+    const normalizedNodeId = normalizeNodeId(nodeId)
+    const visited = new Set<string>()
+    collectSchemaRefNames(rootName, allSchemas, visited)
+    for (const name of visited) addSchemaUsage(usage, name, normalizedNodeId)
+  }
+
+  for (const [schemaName, rawSchema] of Object.entries(allSchemas)) {
+    for (const refName of collectDirectSchemaRefs(rawSchema)) {
+      addSchemaLink(schemaLinks, schemaName, refName)
+    }
+  }
+
+  for (const edge of document.edges ?? []) {
+    const fromSchema = extractSchemaName(edge.from)
+    const toSchema = extractSchemaName(edge.to)
+
+    if (fromSchema && toSchema) {
+      usage.directEdgeSchemas.add(fromSchema)
+      usage.directEdgeSchemas.add(toSchema)
+      addSchemaLink(schemaLinks, fromSchema, toSchema)
+      continue
+    }
+
+    if (fromSchema) {
+      usage.directEdgeSchemas.add(fromSchema)
+      const owner = resolveOwningRootNodeId(normalizeNodeId(edge.to), rootNodeIds)
+      if (owner) addSchemaUsage(usage, fromSchema, owner)
+    }
+
+    if (toSchema) {
+      usage.directEdgeSchemas.add(toSchema)
+      const owner = resolveOwningRootNodeId(normalizeNodeId(edge.from), rootNodeIds)
+      if (owner) addSchemaUsage(usage, toSchema, owner)
+    }
+  }
+
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const [schemaName, linkedNames] of schemaLinks) {
+      const ownUsage = usage.rootsBySchema.get(schemaName)
+      if (!ownUsage) continue
+      for (const linkedName of linkedNames) {
+        const beforeSize = usage.rootsBySchema.get(linkedName)?.size ?? 0
+        for (const rootNodeId of ownUsage) addSchemaUsage(usage, linkedName, rootNodeId)
+        if ((usage.rootsBySchema.get(linkedName)?.size ?? 0) !== beforeSize) changed = true
+      }
+    }
+  }
+
+  return usage
+}
+
 function collectSchemaRefNames(
   schemaName: string,
   allSchemas: Record<string, unknown>,
@@ -178,6 +255,49 @@ function collectSchemaRefNames(
       if (itemRef) collectSchemaRefNames(itemRef, allSchemas, visited)
     }
   }
+}
+
+function collectDirectSchemaRefs(value: unknown): Set<string> {
+  const refs = new Set<string>()
+  collectDirectSchemaRefsInto(value, refs)
+  return refs
+}
+
+function collectDirectSchemaRefsInto(value: unknown, refs: Set<string>): void {
+  if (!value || typeof value !== 'object') return
+  if (Array.isArray(value)) {
+    for (const item of value) collectDirectSchemaRefsInto(item, refs)
+    return
+  }
+
+  const record = value as Record<string, unknown>
+  const refName = typeof record.$ref === 'string' ? schemaRefName(record.$ref) : undefined
+  if (refName) refs.add(refName)
+
+  collectDirectSchemaRefsInto(record.properties, refs)
+  collectDirectSchemaRefsInto(record.items, refs)
+  collectDirectSchemaRefsInto(record.additionalProperties, refs)
+  collectDirectSchemaRefsInto(record.allOf, refs)
+  collectDirectSchemaRefsInto(record.anyOf, refs)
+  collectDirectSchemaRefsInto(record.oneOf, refs)
+}
+
+function addSchemaUsage(usage: SchemaUsage, schemaName: string, rootNodeId: string): void {
+  const roots = usage.rootsBySchema.get(schemaName) ?? new Set<string>()
+  roots.add(rootNodeId)
+  usage.rootsBySchema.set(schemaName, roots)
+}
+
+function addSchemaLink(schemaLinks: Map<string, Set<string>>, from: string, to: string): void {
+  if (from === to) return
+  const fromSet = schemaLinks.get(from) ?? new Set<string>()
+  fromSet.add(to)
+  schemaLinks.set(from, fromSet)
+}
+
+function resolveOwningRootNodeId(nodeId: string, rootNodeIds: string[]): string | undefined {
+  if (nodeId.startsWith('#/')) return undefined
+  return rootNodeIds.find(rootNodeId => nodeId === rootNodeId || nodeId.startsWith(`${rootNodeId}.`))
 }
 
 function schemaRefName(ref: string): string | undefined {
@@ -208,11 +328,84 @@ function normalizeComponent(component: string): string {
   return component === '_' || component.trim() === '' ? UNRESOLVED_COMPONENT : component
 }
 
-function deriveSchemaComponent(schemaName: string, schemaComponents: Map<string, string>): string {
-  const knownComponent = schemaComponents.get(schemaName)
-  if (knownComponent) return normalizeComponent(knownComponent)
-  if (schemaName.includes('.')) return normalizeComponent(schemaName.split('.')[0] ?? '')
-  return UNRESOLVED_COMPONENT
+function determineSchemaOwnership(schemaName: string, usage: SchemaUsage): SchemaOwnership {
+  const rootNodeIds = [...(usage.rootsBySchema.get(schemaName) ?? [])]
+  if (rootNodeIds.length === 0) {
+    return usage.directEdgeSchemas.has(schemaName) ? { kind: 'unresolved' } : { kind: 'unused' }
+  }
+  if (rootNodeIds.length === 1) {
+    return {
+      kind: 'inline',
+      rootNodeId: rootNodeIds[0],
+      component: componentFromNodeId(rootNodeIds[0]),
+    }
+  }
+
+  const components = new Set(rootNodeIds.map(componentFromNodeId))
+  return {
+    kind: 'shared',
+    component: components.size === 1 ? [...components][0] : 'shared',
+  }
+}
+
+function localSchemaName(schemaName: string): string {
+  return schemaName.includes('.')
+    ? schemaName.slice(schemaName.lastIndexOf('.') + 1)
+    : schemaName
+}
+
+function materializeStandaloneSchema(
+  schemaName: string,
+  component: string,
+  allSchemas: Record<string, unknown>,
+  nodes: Node[],
+  edges: Edge[],
+  specPath: string,
+  refToNodeId: Map<string, string>,
+  schemaComponents: Map<string, string>,
+): string {
+  const schemaLocalName = localSchemaName(schemaName)
+  const schemaDef = allSchemas[schemaName] as { type?: string; properties?: Record<string, unknown>; required?: string[]; enum?: unknown[] } | undefined
+  const isEnumSchema = Array.isArray(schemaDef?.enum) && !schemaDef?.properties
+  const template = isEnumSchema ? 'EnumDefinition' : 'Schema'
+  const schemaId = `${component}.${template}.${schemaLocalName}`
+  const schemaRef = `#/components/schemas/${schemaName}`
+
+  if (refToNodeId.has(schemaRef)) return refToNodeId.get(schemaRef)!
+  refToNodeId.set(schemaRef, schemaId)
+
+  nodes.push(makeNode(template, component, specPath, schemaId, undefined, {}))
+
+  if (isEnumSchema) {
+    for (const value of schemaDef.enum!) {
+      if (typeof value !== 'string') continue
+      const valueId = `${schemaId}.values.${value}`
+      refToNodeId.set(`${schemaRef}/properties/${value}`, valueId)
+      nodes.push(makeNode('EnumValue', component, specPath, valueId, undefined, { value }))
+      edges.push(makeHasValueEdge(schemaId, valueId))
+    }
+    return schemaId
+  }
+
+  const expanded = new Map<string, string>([[schemaName, schemaId]])
+  const localMappings = new Map<string, string>()
+  for (const [fieldName, rawProp] of Object.entries(schemaDef?.properties ?? {})) {
+    const fieldId = `${schemaId}.fields.${fieldName}`
+    const fieldRef = `${schemaRef}/properties/${fieldName}`
+    if (!refToNodeId.has(fieldRef)) refToNodeId.set(fieldRef, fieldId)
+
+    const fieldNode = makeNode('Field', component, specPath, fieldId, undefined, {})
+    const required = Array.isArray(schemaDef?.required) && schemaDef.required.includes(fieldName)
+    fieldNode.properties = resolveFieldProperties(
+      fieldName, rawProp as Record<string, unknown>, required,
+      schemaId, schemaId, allSchemas, nodes, edges, specPath, component, expanded, localMappings, refToNodeId, schemaComponents,
+    )
+
+    nodes.push(fieldNode)
+    edges.push(makeHasFieldEdge(schemaId, fieldId))
+  }
+
+  return schemaId
 }
 
 function expandSchema(
@@ -234,9 +427,7 @@ function expandSchema(
   // (e.g. "workers.ReactToPersonCreatedCommand"). Strip the prefix so the local segment
   // in the node ID is a simple identifier — graph serialization rejects local names
   // that contain dots because it uses dots as a hierarchy separator.
-  const schemaLocalName = schemaName.includes('.')
-    ? schemaName.slice(schemaName.lastIndexOf('.') + 1)
-    : schemaName
+  const schemaLocalName = localSchemaName(schemaName)
 
   const schemaDef = allSchemas[schemaName] as { type?: string; properties?: Record<string, unknown>; required?: string[]; enum?: unknown[] } | undefined
   const isEnumSchema = Array.isArray(schemaDef?.enum) && !schemaDef?.properties
