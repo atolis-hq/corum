@@ -5,6 +5,7 @@ import { CallToolRequestSchema, GetPromptRequestSchema, ListPromptsRequestSchema
 import { pathToFileURL } from 'node:url'
 import {
   computeClusterOverlay,
+  expandExternalNodes,
   getCluster,
   getClusterView,
   getGraphSummary,
@@ -329,7 +330,14 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
         const edgeTypes = parseEdgeTypes(args.edge_types)
           ?? [...SEMANTIC_EDGE_TYPES]
 
-        const cluster = getClusterView(targetGraph, String(args.node_id), edgeTypes)
+        const rawCluster = getClusterView(targetGraph, String(args.node_id), edgeTypes)
+        const clusterIds = new Set([rawCluster.root.id, ...rawCluster.descendants.map(n => n.id)])
+        const externalIds = new Set<string>()
+        for (const edge of rawCluster.edges) {
+          if (!clusterIds.has(edge.from)) externalIds.add(edge.from)
+          if (!clusterIds.has(edge.to)) externalIds.add(edge.to)
+        }
+        const cluster = { ...rawCluster, includedNodes: expandExternalNodes(targetGraph, externalIds) }
         const includeProvenance = includesProvenance(args)
         const collapseSchemas = args.collapse_schemas !== false
         const includeEdges = args.include_edges === true

@@ -142,6 +142,12 @@ export function getCluster(graph: Graph, nodeId: string): ClusterResult {
   return { root, children, edges }
 }
 
+// Shared data-type templates whose structural children (fields, values) and referenced types
+// are included when expanding external node references into a cluster view.
+// Operational templates (DomainEvent, Command, APIEndpoint, etc.) are excluded — callers get
+// only their root metadata, not their internal schema trees.
+const DATA_NODE_TEMPLATES = new Set(['Schema', 'EnumDefinition'])
+
 export function getClusterView(graph: Graph, nodeId: string, includeEdgeTypes: EdgeType[] = []): ClusterViewResult {
   const cluster = getCluster(graph, nodeId)
   if (includeEdgeTypes.length === 0) {
@@ -158,41 +164,86 @@ export function getClusterView(graph: Graph, nodeId: string, includeEdgeTypes: E
   // reads edges are directional (consumer → type); only follow outbound so viewing a shared
   // Schema doesn't pull in every endpoint that references it
   const inboundTypes = new Set([...requestedTypes].filter(t => t !== 'reads') as EdgeType[])
-  const includedNodeIds = new Set<string>()
   const edges = [...cluster.edges]
   const seen = new Set(cluster.edges.map(edge => edge.id))
 
   for (const id of clusterIds) {
     for (const edge of graph.edgesByFrom.get(id) ?? []) {
-      collectIncludedEdge(edge, requestedTypes, clusterIds, includedNodeIds, edges, seen, graph)
+      if (!requestedTypes.has(edge.type) || seen.has(edge.id)) continue
+      edges.push(edge)
+      seen.add(edge.id)
     }
     for (const edge of graph.edgesByTo.get(id) ?? []) {
-      collectIncludedEdge(edge, inboundTypes, clusterIds, includedNodeIds, edges, seen, graph)
-    }
-  }
-
-  // BFS over included nodes (outbound only) to transitively pull in referenced schemas
-  const processedOutbound = new Set<string>(clusterIds)
-  let prevSize = 0
-  while (includedNodeIds.size > prevSize) {
-    prevSize = includedNodeIds.size
-    for (const id of includedNodeIds) {
-      if (processedOutbound.has(id)) continue
-      processedOutbound.add(id)
-      for (const edge of graph.edgesByFrom.get(id) ?? []) {
-        collectIncludedEdge(edge, requestedTypes, clusterIds, includedNodeIds, edges, seen, graph)
-      }
+      if (!inboundTypes.has(edge.type) || seen.has(edge.id)) continue
+      edges.push(edge)
+      seen.add(edge.id)
     }
   }
 
   return {
     root: cluster.root,
     descendants: cluster.children,
-    includedNodes: [...includedNodeIds]
-      .map(id => graph.nodesById.get(id))
-      .filter((node): node is Node => node !== undefined),
+    // includedNodes is intentionally empty — callers compose this from the dangling edges
+    // using expandExternalNodes so each layer can apply its own inclusion policy.
+    includedNodes: [],
     edges,
   }
+}
+
+/**
+ * Expands a set of external node IDs (typically from dangling semantic edges) into a flat
+ * list of nodes suitable for use as `includedNodes` in a cluster view response.
+ *
+ * Each ID is first resolved to its cluster root so that structural child IDs from
+ * edges like `maps-to` (which point to e.g. `Schema.X.fields.Y`) are collapsed to
+ * the owning cluster root (`Schema.X`) before processing.
+ *
+ * Policy:
+ *   - Schema and EnumDefinition nodes: include structural children (fields/values) and
+ *     follow their outbound `reads` edges one hop to collect referenced data types.
+ *   - All other templates: include only the root node (metadata for connectivity panels).
+ */
+export function expandExternalNodes(graph: Graph, externalIds: Iterable<string>): Node[] {
+  const result = new Set<string>()
+  const dataQueue: string[] = []
+
+  for (const rawId of externalIds) {
+    // Resolve to cluster root: edges like maps-to may target structural children
+    // (e.g. Schema.X.fields.Y). Walk up the parent chain to get the owning cluster root.
+    let id = rawId
+    let parent = findParent(graph, id)
+    while (parent !== undefined) { id = parent; parent = findParent(graph, id) }
+
+    if (!graph.nodesById.has(id) || result.has(id)) continue
+    result.add(id)
+    const node = graph.nodesById.get(id)!
+    if (DATA_NODE_TEMPLATES.has(node.template)) dataQueue.push(id)
+  }
+
+  for (const id of dataQueue) {
+    // Include structural children (fields, values, mappings)
+    const prefix = `${id}.`
+    for (const childId of graph.nodesById.keys()) {
+      if (childId.startsWith(prefix)) result.add(childId)
+    }
+    // Follow outbound reads one hop to collect referenced enum/schema types
+    for (const edge of graph.edgesByFrom.get(id) ?? []) {
+      if (edge.type !== 'reads' || result.has(edge.to)) continue
+      const target = graph.nodesById.get(edge.to)
+      if (!target) continue
+      result.add(edge.to)
+      if (DATA_NODE_TEMPLATES.has(target.template)) {
+        const targetPrefix = `${edge.to}.`
+        for (const childId of graph.nodesById.keys()) {
+          if (childId.startsWith(targetPrefix)) result.add(childId)
+        }
+      }
+    }
+  }
+
+  return [...result]
+    .map(id => graph.nodesById.get(id))
+    .filter((node): node is Node => node !== undefined)
 }
 
 export function getLinkedFields(graph: Graph, nodeId: string): LinkedFieldsResult {
@@ -246,27 +297,6 @@ function collectMapsTo(edge: Edge, edges: Edge[], nodeIds: Set<string>, seen: Se
   seen.add(edge.id)
 }
 
-function collectIncludedEdge(
-  edge: Edge,
-  requestedTypes: Set<EdgeType>,
-  clusterIds: Set<string>,
-  includedNodeIds: Set<string>,
-  edges: Edge[],
-  seen: Set<string>,
-  graph: Graph,
-): void {
-  if (!requestedTypes.has(edge.type) || seen.has(edge.id)) return
-  edges.push(edge)
-  seen.add(edge.id)
-  for (const endId of [edge.from, edge.to]) {
-    if (clusterIds.has(endId)) continue
-    includedNodeIds.add(endId)
-    const prefix = `${endId}.`
-    for (const id of graph.nodesById.keys()) {
-      if (id.startsWith(prefix)) includedNodeIds.add(id)
-    }
-  }
-}
 
 const OVERLAY_EXCLUDED: ReadonlySet<GhostState> = new Set(['local', 'shared'])
 

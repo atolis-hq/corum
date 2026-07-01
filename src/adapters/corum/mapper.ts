@@ -74,24 +74,28 @@ export function mapDocument(document: CorumInterchangeDocument, specPath: string
       const schemaLocalName = schemaName.includes('.')
         ? schemaName.slice(schemaName.lastIndexOf('.') + 1)
         : schemaName
-      const schemaId = `${schemaLocalName}.schemas.${schemaLocalName}`
-      refToNodeId.set(schemaRef, schemaId)
-      nodes.push(makeNode('Schema', '_', specPath, schemaId, undefined, {}))
 
       const schemaDef = allSchemas[schemaName] as { properties?: Record<string, unknown>; enum?: unknown[] } | undefined
+      const isOrphanEnum = Array.isArray(schemaDef?.enum) && !schemaDef?.properties
+      const orphanSection = isOrphanEnum ? 'enums' : 'schemas'
+      const orphanTemplate = isOrphanEnum ? 'EnumDefinition' : 'Schema'
+      const schemaId = `${schemaLocalName}.${orphanSection}.${schemaLocalName}`
+      refToNodeId.set(schemaRef, schemaId)
+      nodes.push(makeNode(orphanTemplate, '_', specPath, schemaId, undefined, {}))
+
       for (const fieldName of Object.keys(schemaDef?.properties ?? {})) {
         const fieldId = `${schemaId}.fields.${fieldName}`
         refToNodeId.set(`${schemaRef}/properties/${fieldName}`, fieldId)
         nodes.push(makeNode('Field', '_', specPath, fieldId, undefined, {}))
         edges.push(makeHasFieldEdge(schemaId, fieldId))
       }
-      if (Array.isArray(schemaDef?.enum)) {
-        for (const value of schemaDef.enum) {
+      if (isOrphanEnum) {
+        for (const value of schemaDef!.enum!) {
           if (typeof value !== 'string') continue
-          const fieldId = `${schemaId}.values.${value}`
-          refToNodeId.set(`${schemaRef}/properties/${value}`, fieldId)
-          nodes.push(makeNode('EnumValue', '_', specPath, fieldId, undefined, { value }))
-          edges.push(makeHasFieldEdge(schemaId, fieldId))
+          const valueId = `${schemaId}.values.${value}`
+          refToNodeId.set(`${schemaRef}/properties/${value}`, valueId)
+          nodes.push(makeNode('EnumValue', '_', specPath, valueId, undefined, { value }))
+          edges.push(makeHasValueEdge(schemaId, valueId))
         }
       }
     }
@@ -161,16 +165,38 @@ function expandSchema(
   const schemaLocalName = schemaName.includes('.')
     ? schemaName.slice(schemaName.lastIndexOf('.') + 1)
     : schemaName
+
+  const schemaDef = allSchemas[schemaName] as { type?: string; properties?: Record<string, unknown>; required?: string[]; enum?: unknown[] } | undefined
+  const isEnumSchema = Array.isArray(schemaDef?.enum) && !schemaDef?.properties
+
+  const schemaRef = `#/components/schemas/${schemaName}`
+
+  if (isEnumSchema) {
+    // Enum schemas become standalone EnumDefinition cluster roots, matching the OpenAPI/AsyncAPI
+    // adapters. Using refToNodeId as shared dedup so only one node is created per mapDocument call
+    // even though `expanded` is scoped per parent node.
+    const enumId = `${component}.EnumDefinition.${schemaLocalName}`
+    expanded.set(schemaName, enumId)
+    if (!refToNodeId.has(schemaRef)) {
+      refToNodeId.set(schemaRef, enumId)
+      nodes.push(makeNode('EnumDefinition', component, specPath, enumId, undefined, {}))
+      for (const value of schemaDef.enum!) {
+        if (typeof value !== 'string') continue
+        const valueId = `${enumId}.values.${value}`
+        refToNodeId.set(`${schemaRef}/properties/${value}`, valueId)
+        nodes.push(makeNode('EnumValue', component, specPath, valueId, undefined, { value }))
+        edges.push(makeHasValueEdge(enumId, valueId))
+      }
+    }
+    return refToNodeId.get(schemaRef)!
+  }
+
   const schemaId = `${rootNodeId}.schemas.${schemaLocalName}`
   expanded.set(schemaName, schemaId)
 
-  const schemaRef = `#/components/schemas/${schemaName}`
   if (!refToNodeId.has(schemaRef)) refToNodeId.set(schemaRef, schemaId)
 
-  const schemaDef = allSchemas[schemaName] as { type?: string; properties?: Record<string, unknown>; required?: string[]; enum?: unknown[] } | undefined
-
-  const schemaNode = makeNode('Schema', component, specPath, schemaId, undefined, {})
-  nodes.push(schemaNode)
+  nodes.push(makeNode('Schema', component, specPath, schemaId, undefined, {}))
   edges.push(makeHasFieldEdge(rootNodeId, schemaId))
 
   const localMappings = new Map<string, string>()
@@ -190,20 +216,6 @@ function expandSchema(
 
     nodes.push(fieldNode)
     edges.push(makeHasFieldEdge(schemaId, fieldId))
-  }
-
-  // Register enum values as field refs so edges referencing them (as /properties/{value}) can resolve
-  if (Array.isArray(schemaDef?.enum)) {
-    for (const value of schemaDef.enum) {
-      if (typeof value !== 'string') continue
-      const fieldRef = `${schemaRef}/properties/${value}`
-      if (!refToNodeId.has(fieldRef)) {
-        const fieldId = `${schemaId}.values.${value}`
-        refToNodeId.set(fieldRef, fieldId)
-        nodes.push(makeNode('EnumValue', component, specPath, fieldId, undefined, { value }))
-        edges.push(makeHasFieldEdge(schemaId, fieldId))
-      }
-    }
   }
 
   return schemaId
@@ -364,6 +376,19 @@ function makeHasFieldEdge(from: string, to: string): Edge {
     from,
     to,
     type: 'has-field',
+    state: 'implemented',
+    stability: 'unstable',
+    derivation: 'determined',
+    derivedBy: 'adapter:corum',
+  }
+}
+
+function makeHasValueEdge(from: string, to: string): Edge {
+  return {
+    id: `${from}__has-value__${to}`,
+    from,
+    to,
+    type: 'has-value',
     state: 'implemented',
     stability: 'unstable',
     derivation: 'determined',

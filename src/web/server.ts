@@ -11,6 +11,7 @@ import {
   computeClusterOverlay,
   getClusterView,
   getGraphSummary,
+  expandExternalNodes,
   getLineage,
   listNodes,
   searchNodes,
@@ -608,10 +609,21 @@ export function createApp(
         overlay = computeClusterOverlay(multi, req.query.ref, overlayRefs, nodeId)
       }
 
+      // Compute included nodes from dangling semantic edges: data-type nodes (Schema,
+      // EnumDefinition) are expanded with structural children; operational nodes get
+      // root metadata only (for connectivity panels).
+      const clusterIds = new Set([cluster.root.id, ...cluster.descendants.map(n => n.id)])
+      const externalIds = new Set<string>()
+      for (const edge of cluster.edges) {
+        if (!clusterIds.has(edge.from)) externalIds.add(edge.from)
+        if (!clusterIds.has(edge.to)) externalIds.add(edge.to)
+      }
+      const includedNodes = expandExternalNodes(targetGraph, externalIds)
+
       res.json({
         root: summarizeNodeForNavigation(targetGraph, annotateNode(targetGraph, cluster.root)),
         descendants: cluster.descendants.map(child => summarizeNodeForNavigation(targetGraph, annotateNode(targetGraph, child))),
-        includedNodes: cluster.includedNodes.map(node => summarizeNodeForNavigation(targetGraph, annotateNode(targetGraph, node))),
+        includedNodes: includedNodes.map(node => summarizeNodeForNavigation(targetGraph, annotateNode(targetGraph, node))),
         edges: cluster.edges,
         overlay,
       })

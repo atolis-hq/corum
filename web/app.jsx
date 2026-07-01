@@ -843,8 +843,12 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
   const childDisplayEntries = [...displayChildren.entries()]
     .filter(([templateName]) => templateName !== 'Field' && templateName !== 'EnumValue' && templateName !== 'Mapping');
   const displayEntries = [...rootSpecializedNodes, ...childDisplayEntries];
-  const includedSchemaNodes = includedNodes.filter(n => n.template === 'Schema');
-  const includedEnumNodes = includedNodes.filter(n => n.template === 'EnumDefinition');
+  // includedNodes now contains only directly-connected external nodes:
+  // - Schema / EnumDefinition: with structural children (fields/values) and referenced types
+  // - All other templates (DomainEvent, Command, etc.): root metadata only for connectivity panel
+  // This is computed server-side via expandExternalNodes, so no client-side filtering is needed.
+  const includedSchemaNodes = includedNodes.filter(n => n.template === 'Schema' && !n.parentId);
+  const includedEnumNodes = includedNodes.filter(n => n.template === 'EnumDefinition' && !n.parentId);
 
   function handlePropertyNavigate(targetNodeId) {
     if (displayedNodeIds.has(targetNodeId)) {
