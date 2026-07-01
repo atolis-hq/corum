@@ -27,8 +27,11 @@ export function deduplicateResults(
       }
     }
 
+    const primaryNodeIds = new Set<string>(primaryNodes.keys())
+
     const redirects = new Map<string, string>()
 
+    // Phase 1a: x-aka matching
     for (const r of results) {
       if (r.adapterId !== rule.secondary) continue
       for (const node of r.nodes) {
@@ -47,22 +50,40 @@ export function deduplicateResults(
             }
           }
         }
+      }
+    }
 
+    // Phase 1b: collect raw same-ID collisions
+    const rawSameIds: string[] = []
+    for (const r of results) {
+      if (r.adapterId !== rule.secondary) continue
+      for (const node of r.nodes) {
         if (!redirects.has(node.id) && primaryNodes.has(node.id)) {
-          redirects.set(node.id, node.id)
-          diagnostics.push({
-            severity: 'warning',
-            file: '',
-            message: `Duplicate node ID from adapters ${rule.primary} and ${rule.secondary}: ${node.id} — ${rule.secondary} node dropped`,
-          })
+          rawSameIds.push(node.id)
         }
+      }
+    }
+
+    // Phase 2: add only root collisions (those not covered by another collision)
+    for (const nodeId of rawSameIds) {
+      const coveredByRoot = rawSameIds.some(id => id !== nodeId && nodeId.startsWith(id + '.'))
+      if (!coveredByRoot) {
+        redirects.set(nodeId, nodeId)
+        diagnostics.push({
+          severity: 'warning',
+          file: '',
+          message: `Duplicate node ID from adapters ${rule.primary} and ${rule.secondary}: ${nodeId} — ${rule.secondary} node dropped`,
+        })
       }
     }
 
     if (redirects.size === 0) continue
 
     for (const r of results) {
-      r.edges = r.edges.map(edge => rewriteEdge(edge, redirects))
+      r.edges = r.edges.flatMap(edge => {
+        const rewritten = rewriteEdge(edge, redirects, primaryNodeIds)
+        return rewritten === null ? [] : [rewritten]
+      })
     }
 
     for (const r of results) {
@@ -86,14 +107,15 @@ export function deduplicateResults(
   return { results, diagnostics }
 }
 
-function rewriteEdge(edge: Edge, redirects: Map<string, string>): Edge {
-  const from = rewriteEndpoint(edge.from, redirects)
-  const to = rewriteEndpoint(edge.to, redirects)
+function rewriteEdge(edge: Edge, redirects: Map<string, string>, primaryNodeIds: Set<string>): Edge | null {
+  const from = rewriteEndpoint(edge.from, redirects, primaryNodeIds)
+  const to = rewriteEndpoint(edge.to, redirects, primaryNodeIds)
+  if (from === null || to === null) return null
   if (from === edge.from && to === edge.to) return edge
   return { ...edge, from, to, id: `${from}__${edge.type}__${to}` }
 }
 
-function rewriteEndpoint(endpoint: string, redirects: Map<string, string>): string {
+function rewriteEndpoint(endpoint: string, redirects: Map<string, string>, primaryNodeIds: Set<string>): string | null {
   const exact = redirects.get(endpoint)
   if (exact !== undefined && exact !== endpoint) return exact
 
@@ -101,7 +123,9 @@ function rewriteEndpoint(endpoint: string, redirects: Map<string, string>): stri
     if (secondaryId === primaryId) continue
     const prefix = secondaryId + '.'
     if (endpoint.startsWith(prefix)) {
-      return primaryId + '.' + endpoint.slice(prefix.length)
+      const rewritten = primaryId + '.' + endpoint.slice(prefix.length)
+      if (!primaryNodeIds.has(rewritten)) return null
+      return rewritten
     }
   }
 

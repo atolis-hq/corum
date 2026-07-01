@@ -148,7 +148,7 @@ describe('deduplicateResults — child node dropping', () => {
     assert.equal(corumResult.nodes.length, 0, 'root and all children dropped')
   })
 
-  it('rewrites edges referencing dropped child nodes via prefix substitution', () => {
+  it('drops edge referencing dropped child node when rewritten target does not exist in primary', () => {
     const root = makeNode('billing.APIEndpoint.GetInvoiceController', 'corum', { 'x-aka': ['GetInvoice'] })
     const field = makeNode('billing.APIEndpoint.GetInvoiceController.schemas.Response.fields.Id', 'corum')
     const primary = makeNode('billing.APIEndpoint.GetInvoice', 'openapi')
@@ -165,9 +165,50 @@ describe('deduplicateResults — child node dropping', () => {
 
     const { results: out } = deduplicateResults(results, [{ primary: 'openapi', secondary: 'corum' }])
     const allEdges = out.flatMap(r => r.edges)
+    assert.equal(allEdges.length, 0, 'edge dropped because rewritten target does not exist in primary')
+  })
+
+  it('rewrites child edge when rewritten target exists in primary', () => {
+    const root = makeNode('billing.APIEndpoint.GetInvoiceController', 'corum', { 'x-aka': ['GetInvoice'] })
+    const field = makeNode('billing.APIEndpoint.GetInvoiceController.schemas.Response.fields.Id', 'corum')
+    const primary = makeNode('billing.APIEndpoint.GetInvoice', 'openapi')
+    const primaryField = makeNode('billing.APIEndpoint.GetInvoice.schemas.Response.fields.Id', 'openapi')
+    const edge = makeEdge(
+      'billing.APIEndpoint.GetInvoiceController.schemas.Response.fields.Id',
+      'shared.Schema.Invoice.fields.Id',
+      'maps-to',
+    )
+
+    const results = [
+      makeResult('corum', [root, field], [edge]),
+      makeResult('openapi', [primary, primaryField]),
+    ]
+
+    const { results: out } = deduplicateResults(results, [{ primary: 'openapi', secondary: 'corum' }])
+    const allEdges = out.flatMap(r => r.edges)
     assert.equal(allEdges.length, 1)
     assert.equal(allEdges[0].from, 'billing.APIEndpoint.GetInvoice.schemas.Response.fields.Id')
-    assert.equal(allEdges[0].to, 'shared.Schema.Invoice.fields.Id', 'non-secondary endpoint unchanged')
+    assert.equal(allEdges[0].to, 'shared.Schema.Invoice.fields.Id')
+  })
+})
+
+describe('deduplicateResults — same-ID collision with full tree', () => {
+  it('emits only one warning for same-ID collision with full tree', () => {
+    const secondary = makeNode('customers.IntegrationEvent.CustomerCreated', 'corum')
+    const secondaryChild = makeNode('customers.IntegrationEvent.CustomerCreated.schemas.CustomerCreated', 'corum')
+    const primary = makeNode('customers.IntegrationEvent.CustomerCreated', 'asyncapi')
+    const primaryChild = makeNode('customers.IntegrationEvent.CustomerCreated.schemas.CustomerCreated', 'asyncapi')
+
+    const results = [
+      makeResult('corum', [secondary, secondaryChild]),
+      makeResult('asyncapi', [primary, primaryChild]),
+    ]
+
+    const { results: out, diagnostics } = deduplicateResults(results, [{ primary: 'asyncapi', secondary: 'corum' }])
+    assert.equal(diagnostics.length, 1, 'only root-level warning, not one per child')
+    assert.ok(diagnostics[0].message.includes('customers.IntegrationEvent.CustomerCreated'))
+    const corumNodes = out.find(r => r.adapterId === 'corum')!.nodes
+    assert.equal(corumNodes.length, 0, 'all corum nodes dropped')
   })
 })
 
