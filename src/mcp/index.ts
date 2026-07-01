@@ -25,6 +25,7 @@ import { QueryError } from '../schema/index.js'
 import { createGraphRuntimeConfig } from '../source/config.js'
 import type { GraphSource } from '../source/index.js'
 import { startGraphFileWatcher, startWebServer, type MultiGraphCache } from '../web/server.js'
+import { USAGE_GUIDE_PROMPT } from './prompts/usage-guide.js'
 import { compactKeys, getSerializer } from './serializers.js'
 
 type ToolContent = { type: 'text'; text: string }
@@ -51,6 +52,10 @@ const EDGE_TYPES = [
 ] as const satisfies readonly EdgeType[]
 
 const EDGE_TYPE_SET = new Set<EdgeType>(EDGE_TYPES)
+const STATE_VALUES = ['draft', 'proposed', 'agreed', 'future', 'removed', 'implemented'] as const
+const STABILITY_VALUES = ['unstable', 'stable', 'deprecated'] as const
+const LINEAGE_DIRECTIONS = ['downstream', 'upstream', 'both'] as const satisfies readonly LineageDirection[]
+const OUTPUT_FORMATS = ['yaml', 'json', 'toon'] as const
 
 function toStringArray(value: unknown): string[] | undefined {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : undefined
@@ -66,12 +71,31 @@ function parseEdgeTypes(value: unknown): EdgeType[] | undefined {
   return requested as EdgeType[]
 }
 
+function parseListNodesFilter(value: unknown): ListNodesFilter {
+  const filterArg = typeof value === 'object' && value !== null
+    ? value as Record<string, unknown>
+    : {}
+
+  return {
+    templates: toStringArray(filterArg.templates),
+    excludeTemplates: toStringArray(filterArg.exclude_templates),
+    component: typeof filterArg.component === 'string' ? filterArg.component : undefined,
+    state: typeof filterArg.state === 'string'
+      ? filterArg.state as ListNodesFilter['state']
+      : toStringArray(filterArg.state) as ListNodesFilter['state'] | undefined,
+    stability: typeof filterArg.stability === 'string'
+      ? filterArg.stability as ListNodesFilter['stability']
+      : toStringArray(filterArg.stability) as ListNodesFilter['stability'] | undefined,
+  }
+}
+
 export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: MultiGraphCache): {
   list_nodes: ToolHandler
   list_templates: ToolHandler
   get_template: ToolHandler
   get_cluster: ToolHandler
   get_graph: ToolHandler
+  get_graph_metadata: ToolHandler
   get_lineage: ToolHandler
   get_linked_fields: ToolHandler
   get_graph_summary: ToolHandler
@@ -84,20 +108,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
   return {
     list_nodes(args) {
       const run = (targetGraph: Graph): ToolResult => {
-        const filterArg = typeof args.filter === 'object' && args.filter !== null
-          ? args.filter as Record<string, unknown>
-          : {}
-        const filter: ListNodesFilter = {
-          templates: toStringArray(filterArg.templates),
-          excludeTemplates: toStringArray(filterArg.exclude_templates),
-          component: typeof filterArg.component === 'string' ? filterArg.component : undefined,
-          state: typeof filterArg.state === 'string'
-            ? filterArg.state as ListNodesFilter['state']
-            : toStringArray(filterArg.state) as ListNodesFilter['state'] | undefined,
-          stability: typeof filterArg.stability === 'string'
-            ? filterArg.stability as ListNodesFilter['stability']
-            : toStringArray(filterArg.stability) as ListNodesFilter['stability'] | undefined,
-        }
+        const filter = parseListNodesFilter(args.filter)
         const summaries = listNodes(targetGraph, filter).map(node => ({
           id: node.id,
           template: node.template,
@@ -230,19 +241,12 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
 
     get_graph(args) {
       const run = (targetGraph: Graph): ToolResult => {
-        const filterArg = typeof args.filter === 'object' && args.filter !== null
-          ? args.filter as Record<string, unknown>
-          : {}
-        const filterTemplates = toStringArray(filterArg.templates)
-        const filterExclude = toStringArray(filterArg.exclude_templates)
-        const excludeSet = filterTemplates?.length ? null : filterExclude?.length ? new Set(filterExclude) : STRUCTURAL_NODE_TEMPLATES
+        const filter = parseListNodesFilter(args.filter)
+        const effectiveFilter: ListNodesFilter = (!filter.templates?.length && !filter.excludeTemplates?.length)
+          ? { ...filter, excludeTemplates: [...STRUCTURAL_NODE_TEMPLATES] }
+          : filter
 
-        const nodes = [...targetGraph.nodesById.values()]
-          .filter(node => {
-            if (filterTemplates?.length && !filterTemplates.includes(node.template)) return false
-            if (excludeSet?.has(node.template)) return false
-            return true
-          })
+        const nodes = listNodes(targetGraph, effectiveFilter)
           .map(node => ({
             id: node.id,
             template: node.template,
@@ -261,6 +265,39 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
         }
 
         return formatResult({ nodes, edges }, args.format, getCompactKeys(args))
+      }
+
+      if (hasBranch(args) && source) {
+        return withBranchGraph(source, String(args.branch), branch => run(branch.graph))
+      }
+
+      try {
+        return run(graph)
+      } catch (err) {
+        return errorResult(err)
+      }
+    },
+
+    get_graph_metadata(args) {
+      const run = (targetGraph: Graph): ToolResult => {
+        const nodeTemplatesInUse = new Set<string>()
+        for (const node of targetGraph.nodesById.values()) nodeTemplatesInUse.add(node.template)
+
+        const edgeTypesInUse = new Set<string>()
+        for (const edgeList of targetGraph.edgesByFrom.values()) {
+          for (const edge of edgeList) edgeTypesInUse.add(edge.type)
+        }
+
+        return formatResult({
+          template_names: [...targetGraph.templates.keys()].sort(),
+          node_templates_in_use: [...nodeTemplatesInUse].sort(),
+          edge_types_in_use: [...edgeTypesInUse].sort(),
+          valid_edge_types: [...EDGE_TYPES],
+          states: [...STATE_VALUES],
+          stabilities: [...STABILITY_VALUES],
+          lineage_directions: [...LINEAGE_DIRECTIONS],
+          output_formats: [...OUTPUT_FORMATS],
+        }, args.format, getCompactKeys(args))
       }
 
       if (hasBranch(args) && source) {
@@ -432,76 +469,12 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
     { capabilities: { tools: {}, prompts: {} } },
   )
 
-  const USAGE_GUIDE = `
-# Corum graph — orientation guide
-
-Corum models service architecture as a typed graph. Nodes are design artefacts; edges are typed relationships between them.
-
-## Node IDs
-
-IDs encode the ownership hierarchy as a dot-separated path:
-
-  {component}.{Template}.{name}                      — root node
-  {component}.{Template}.{name}.{section}.{child}   — owned child (e.g. operations, schemas, fields)
-
-Examples:
-  orders.DomainModel.order
-  orders.DomainModel.order.operations.place
-  orders.APIEndpoint.create-order
-
-search_nodes and list_nodes only return root nodes.
-
-## Edge types
-
-Semantic (traversed by default in get_lineage / get_cluster):
-  triggers, produces, reads, calls, implements, maps-to, derived-from
-
-Structural (excluded from traversal by default):
-  has-field, has-value, renamed-from
-
-## Recommended workflow
-
-1. Orient — call get_graph_summary first. Returns node count, component list, orphan count, edge counts by type. Near-zero cost.
-
-2. Find nodes — use search_nodes with one or more terms (OR semantics). Fuzzy-matches against node IDs. Pass templates to restrict to a type, e.g. ["DomainModel"].
-
-3. Inspect a node — use get_cluster with a fully-qualified node ID. Returns the root, all owned descendants, and external nodes reachable via semantic edges.
-
-4. Trace relationships — use get_lineage from one or more node IDs. Default: depth 2 downstream. Use direction "both" and a higher depth to see full event flow around a node. Each result node carries origin_id, depth, via_edge_type, via_node_id.
-
-5. Broad scan — use get_graph or list_nodes with a filter to fetch all nodes of a type across the whole graph. Combine templates and component to scope to one service.
-
-## Output format tips
-
-- Default format is YAML. Use format "json" when parsing results programmatically.
-- Add compact_keys true to shorten common keys (id→i, template→t, component→cp, state→s, stability→st) and cut token usage ~30–40% on large results.
-
-## Common patterns
-
-All commands and events in a component:
-  list_nodes — filter { templates: ["DomainEvent", "IntegrationEvent"], component: "orders" }
-
-What does an operation produce?
-  get_lineage — node_ids: ["orders.DomainModel.order.operations.place"], direction: "downstream"
-
-What triggers an operation?
-  get_lineage — node_ids: ["orders.DomainModel.order.operations.complete"], direction: "upstream"
-
-Full event flow around a node:
-  get_lineage — direction: "both", depth: 3
-
-Field-level mappings between nodes:
-  get_linked_fields — returns all maps-to edges touching fields owned by a root node
-
-Schema / field details:
-  get_cluster — descendants include owned schemas, fields, and enum values
-`.trim()
 
   server.setRequestHandler(ListPromptsRequestSchema, async () => ({
     prompts: [
       {
         name: 'usage-guide',
-        description: 'Orientation guide — recommended workflow, node ID format, edge types, and common query patterns.',
+        description: 'Orientation guide - recommended workflow, node ID format, edge types, output formats, and common query patterns.',
       },
     ],
   }))
@@ -513,7 +486,7 @@ Schema / field details:
     return {
       description: 'Corum graph query orientation guide',
       messages: [
-        { role: 'user' as const, content: { type: 'text' as const, text: USAGE_GUIDE } },
+        { role: 'user' as const, content: { type: 'text' as const, text: USAGE_GUIDE_PROMPT } },
       ],
     }
   })
@@ -625,6 +598,18 @@ Schema / field details:
               },
             },
             branch: { type: 'string', description: 'Branch ref to load the graph from' },
+            format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+            compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          },
+        },
+      },
+      {
+        name: 'get_graph_metadata',
+        description: 'Return discoverable graph metadata: template names, node templates in use, edge types, and valid enum values.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            branch: { type: 'string', description: 'Branch ref to load metadata from' },
             format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
             compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
           },
@@ -748,6 +733,8 @@ Schema / field details:
         return await handlers.get_cluster(args)
       case 'get_graph':
         return await handlers.get_graph(args)
+      case 'get_graph_metadata':
+        return await handlers.get_graph_metadata(args)
       case 'get_lineage':
         return await handlers.get_lineage(args)
       case 'get_linked_fields':

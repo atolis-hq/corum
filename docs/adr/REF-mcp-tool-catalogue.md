@@ -44,6 +44,19 @@ Supports `edge_types`, `branch`, `overlay_refs`, `format`, and `compact_keys`.
 **`get_graph`**  
 Returns the semantic graph as `{ nodes, edges }`. Structural templates and structural edge types are excluded by default. Supports `filter`, `branch`, `format`, and `compact_keys`.
 
+**`get_graph_metadata`**  
+Returns discovery metadata for agents and other clients:
+- `template_names`
+- `node_templates_in_use`
+- `edge_types_in_use`
+- `valid_edge_types`
+- `states`
+- `stabilities`
+- `lineage_directions`
+- `output_formats`
+
+Also accepts `branch`, `format`, and `compact_keys`.
+
 **`get_lineage`**  
 Traverses from one or more origin nodes and returns annotated lineage nodes plus edges. Supports:
 - `node_ids`
@@ -97,6 +110,18 @@ Diffs a branch against the default branch when a source-backed graph is configur
 Most tools support:
 - `format`: `yaml` (default), `json`, or `toon`
 - `compact_keys`: shorten common keys before serialization
+
+### Implemented Prompt
+
+The server also exposes an MCP prompt:
+
+**`usage-guide`**  
+Orientation prompt for newly connected agents. Covers:
+- node ID shape
+- edge-type semantics
+- recommended workflow
+- output-format selection
+- graph completeness caveats and verification guidance
 
 ---
 

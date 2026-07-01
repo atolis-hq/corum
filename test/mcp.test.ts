@@ -8,6 +8,7 @@ import * as git from 'isomorphic-git'
 import { parse as parseYaml } from 'yaml'
 import { decode as decodeToon } from '@toon-format/toon'
 import { createMcpHandlers } from '../src/mcp/index.js'
+import { USAGE_GUIDE_PROMPT } from '../src/mcp/prompts/usage-guide.js'
 import { loadGraph } from '../src/loader/index.js'
 import type { Graph } from '../src/schema/index.js'
 import { FileGraphSource } from '../src/source/file-source.js'
@@ -375,6 +376,31 @@ describe('MCP handlers', () => {
     })
   })
 
+  describe('get_graph_metadata', () => {
+    it('returns template, edge, and enum metadata', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.get_graph_metadata({ format: 'json' })
+      const data = JSON.parse(result.content[0].text)
+
+      assert.ok(Array.isArray(data.template_names))
+      assert.ok(Array.isArray(data.node_templates_in_use))
+      assert.ok(Array.isArray(data.edge_types_in_use))
+      assert.ok(Array.isArray(data.valid_edge_types))
+      assert.ok(Array.isArray(data.states))
+      assert.ok(Array.isArray(data.stabilities))
+      assert.ok(Array.isArray(data.lineage_directions))
+      assert.ok(Array.isArray(data.output_formats))
+      assert.ok(data.template_names.includes('DomainModel'))
+      assert.ok(data.node_templates_in_use.includes('DomainEvent'))
+      assert.ok(data.edge_types_in_use.includes('produces'))
+      assert.ok(data.valid_edge_types.includes('has-field'))
+      assert.ok(data.states.includes('agreed'))
+      assert.ok(data.stabilities.includes('stable'))
+      assert.ok(data.lineage_directions.includes('both'))
+      assert.ok(data.output_formats.includes('toon'))
+    })
+  })
+
   describe('search_nodes', () => {
     it('returns matched root nodes', async () => {
       const handlers = createMcpHandlers(graph)
@@ -454,6 +480,31 @@ describe('MCP handlers', () => {
       const result = await handlers.get_graph({ filter: { templates: ['DomainModel'] }, format: 'json' })
       const data = JSON.parse(result.content[0].text)
       assert.ok(data.nodes.every((n: Record<string, unknown>) => n.template === 'DomainModel'))
+    })
+
+    it('supports component, state, and stability filters', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.get_graph({
+        filter: { component: 'payments', state: 'agreed', stability: 'stable' },
+        format: 'json',
+      })
+      const data = JSON.parse(result.content[0].text)
+
+      assert.ok(data.nodes.length > 0)
+      assert.ok(data.nodes.every((n: Record<string, unknown>) => n.component === 'payments'))
+      assert.ok(data.nodes.every((n: Record<string, unknown>) => n.state === 'agreed'))
+      assert.ok(data.nodes.every((n: Record<string, unknown>) => n.stability === 'stable'))
+    })
+  })
+
+  describe('usage guide prompt', () => {
+    it('mentions supported formats, graph incompleteness, and avoids mojibake', () => {
+      assert.match(USAGE_GUIDE_PROMPT, /format "json"/)
+      assert.match(USAGE_GUIDE_PROMPT, /Missing edges do not prove no relationship exists\./)
+      assert.match(USAGE_GUIDE_PROMPT, /naming, shared component context, schema similarity, and lineage adjacency as hypotheses/i)
+      assert.match(USAGE_GUIDE_PROMPT, /format "toon"/)
+      assert.doesNotMatch(USAGE_GUIDE_PROMPT, /â/)
+      assert.doesNotMatch(USAGE_GUIDE_PROMPT, /component list/)
     })
   })
 })

@@ -303,6 +303,7 @@ Or if installed globally:
 | `get_template` | Return full details for a template |
 | `get_cluster` | Return a root node, its descendants, included external nodes, and edges |
 | `get_graph` | Return the semantic graph as `{ nodes, edges }`, excluding structural templates and structural edges by default |
+| `get_graph_metadata` | Return discoverable metadata: template names, node templates in use, edge types, and valid enum values |
 | `get_lineage` | Traverse lineage from one or more start nodes with depth, direction, and edge/node-type filters |
 | `get_graph_summary` | Return high-level graph statistics: node count, component count, orphan breakdown, edge counts, diagnostics |
 | `search_nodes` | Fuzzy-search root-level nodes by ID, with optional template filters and property search |
@@ -316,7 +317,17 @@ Common notes:
 - `branch` is supported on graph-query tools when Corum is running against a source-backed graph.
 - `list_nodes` is a breaking-change surface from older builds: use `filter.templates` instead of top-level `template`.
 - `search_nodes` accepts `queries: string[]`.
+- `get_graph_metadata` is the quickest way to discover valid template names, edge types, lifecycle states, stabilities, lineage directions, and output formats before constructing other calls.
 - `get_lineage` accepts `node_ids: string[]`, `depth`, `direction`, `edge_types`, `node_types`, `exclude_node_types`, `include_dangling_edges`, and `reads_outbound_only`.
+- The graph reflects modeled relationships, not guaranteed complete truth. Missing edges do not prove no relationship exists; agents should treat naming and schema similarity as hypotheses and then verify via cluster inspection or source material.
+
+## MCP Prompts
+
+The server also exposes a discoverable MCP prompt:
+
+| Prompt | Description |
+|---|---|
+| `usage-guide` | Orientation guide covering graph structure, recommended tool workflow, output-format choices, graph-completeness caveats, and inference guidance |
 
 ## Contributing
 
