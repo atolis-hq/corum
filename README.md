@@ -301,7 +301,7 @@ Or if installed globally:
 | `list_nodes` | List graph nodes using a `filter` object with `templates`, `exclude_templates`, `component`, `state`, and `stability` |
 | `list_templates` | List loaded templates with summary metadata |
 | `get_template` | Return full details for a template |
-| `get_cluster` | Return a root node, its descendants, included external nodes, and edges for one node's full structural detail |
+| `get_cluster` | Return a node's structural contents. By default, schema and enum child nodes are collapsed into compact `schemas` and `enums` blocks on the root. Pass `collapse_schemas: false` to restore the full node-per-field representation |
 | `get_graph` | Return the semantic graph as `{ nodes, edges }`, excluding structural templates and structural edges by default |
 | `get_graph_metadata` | Return discoverable metadata: template names, node templates in use, edge types, and valid enum values |
 | `get_lineage` | Traverse lineage from one or more start nodes. Lean nodes and no `edges` by default; opt in to fuller payloads when needed |
@@ -324,7 +324,7 @@ Common notes:
 - `get_lineage` accepts `node_ids: string[]`, `depth`, `direction`, `edge_types`, `node_types`, `exclude_node_types`, `include_dangling_edges`, `reads_outbound_only`, `lean`, and `include_edges`.
 - `get_lineage` defaults to `lean: true` and `include_edges: false`. Lean lineage nodes contain only `id`, `origin_id`, `depth`, `via_edge_type`, and `via_node_id`.
 - Pass multiple `node_ids` to `get_lineage` in one call instead of making separate traversal calls.
-- Use `get_cluster` only when you need full structural contents for one node such as schemas and fields. Use `get_lineage` for relationship traversal.
+- Use `get_cluster` only when you need full structural contents for one node. By default it returns compact `schemas` and `enums` blocks on the root rather than individual field nodes, which keeps response size manageable for large aggregates. Use `get_lineage` for relationship traversal.
 - The graph reflects modeled relationships, not guaranteed complete truth. Missing edges do not prove no relationship exists; agents should treat naming and schema similarity as hypotheses and then verify via cluster inspection or source material.
 
 ## MCP Prompts

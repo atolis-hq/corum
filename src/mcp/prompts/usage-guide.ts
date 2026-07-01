@@ -43,7 +43,7 @@ When likely relationships are absent, treat naming, shared component context, sc
 
 5. Use direction "upstream" from a DomainModel node to find all writers to that aggregate.
 
-6. Avoid get_cluster for traversal questions - use it only when you need a node's full structural detail (schema, fields). Prefer get_lineage for following relationships.
+6. Avoid get_cluster for traversal questions - use it only when you need a node's full structural detail. Prefer get_lineage for following relationships.
 
 7. Add include_provenance: true only when you need to bridge a finding to the source codebase.
 
@@ -84,5 +84,10 @@ Field-level mappings between nodes:
   get_linked_fields - returns all maps-to edges touching fields owned by a root node
 
 Schema / field details:
-  get_cluster - descendants include owned schemas, fields, and enum values
+  get_cluster - root includes compact schemas and enums blocks by default. Each schema entry
+  is a map of field name to { type?, $ref?, collection?, nullable?, edges? }. Local references
+  use $ref: '#/schemas/name' or $ref: '#/enums/name' pointing into the same blocks. Mapping
+  fields appear as { type: map, key: string, value: { ... } } inline on the field. Field-level
+  cross-cluster edges (maps-to, derived-from) appear as an edges block on the field. Pass
+  collapse_schemas: false to get the full structural node-per-field representation instead.
 `.trim()

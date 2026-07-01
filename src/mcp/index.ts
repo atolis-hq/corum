@@ -26,6 +26,7 @@ import { createGraphRuntimeConfig } from '../source/config.js'
 import type { GraphSource } from '../source/index.js'
 import { startGraphFileWatcher, startWebServer, type MultiGraphCache } from '../web/server.js'
 import { USAGE_GUIDE_PROMPT } from './prompts/usage-guide.js'
+import { collapseClusterSchemas } from '../graph/schema-collapse.js'
 import { compactKeys, getSerializer } from './serializers.js'
 
 type ToolContent = { type: 'text'; text: string }
@@ -321,11 +322,28 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
 
         const cluster = getClusterView(targetGraph, String(args.node_id), edgeTypes)
         const includeProvenance = includesProvenance(args)
-        const clusterPayload = {
-          root: fullNode(cluster.root, includeProvenance),
-          descendants: cluster.descendants.map(node => fullNode(node, includeProvenance)),
-          includedNodes: cluster.includedNodes.map(node => fullNode(node, includeProvenance)),
-          edges: cluster.edges.map(e => mapEdge(e, includeProvenance)),
+        const collapseSchemas = args.collapse_schemas !== false
+
+        let clusterPayload: Record<string, unknown>
+        if (collapseSchemas) {
+          const collapsed = collapseClusterSchemas(targetGraph, cluster)
+          clusterPayload = {
+            root: {
+              ...fullNode(collapsed.root, includeProvenance),
+              ...(Object.keys(collapsed.schemas).length > 0 ? { schemas: collapsed.schemas } : {}),
+              ...(Object.keys(collapsed.enums).length > 0 ? { enums: collapsed.enums } : {}),
+            },
+            descendants: collapsed.descendants.map(node => fullNode(node, includeProvenance)),
+            includedNodes: collapsed.includedNodes.map(node => fullNode(node, includeProvenance)),
+            edges: collapsed.edges.map(e => mapEdge(e, includeProvenance)),
+          }
+        } else {
+          clusterPayload = {
+            root: fullNode(cluster.root, includeProvenance),
+            descendants: cluster.descendants.map(node => fullNode(node, includeProvenance)),
+            includedNodes: cluster.includedNodes.map(node => fullNode(node, includeProvenance)),
+            edges: cluster.edges.map(e => mapEdge(e, includeProvenance)),
+          }
         }
         if (overlayRefs.length === 0 || !source || !branchRef) {
           return formatResult(clusterPayload, args.format, getCompactKeys(args))
@@ -626,6 +644,7 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
           },
           include_dangling_edges: { type: 'boolean', description: 'Include edges to nodes outside the cluster. Default false.' },
           reads_outbound_only: { type: 'boolean', description: 'Restrict reads edges to outbound only. Default true.' },
+          collapse_schemas: { type: 'boolean', description: 'Collapse schema/enum child nodes into compact schemas and enums blocks on the root. Structural edges and schema child nodes are removed from descendants. Default true.' },
           include_provenance: { type: 'boolean', description: 'Include provenance fields on returned nodes. Default false.' },
           branch: { type: 'string', description: 'Branch ref to load the cluster from' },
           overlay_refs: {
