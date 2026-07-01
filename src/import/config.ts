@@ -6,6 +6,11 @@ export interface ComponentNameReplacement {
   to: string
 }
 
+export interface DeduplicationRule {
+  primary: string
+  secondary: string
+}
+
 export type FieldStrategy =
   | { strategy: 'channel-segment'; separator: string; segment: number }
   | { strategy: 'channel-pattern'; pattern: string }
@@ -47,6 +52,7 @@ export type ImportEntry = OpenAPIImportEntry | AsyncAPIImportEntry | CorumImport
 
 export interface ImportConfig {
   componentNameReplacements?: ComponentNameReplacement[]
+  deduplication?: DeduplicationRule[]
   imports: ImportEntry[]
 }
 
@@ -64,6 +70,11 @@ export function loadImportConfig(filePath: string): ImportConfig {
   for (const replacement of cfg.componentNameReplacements ?? []) {
     if (!replacement.from || !replacement.to) {
       throw new Error(`Invalid import config: componentNameReplacements entries must have non-empty "from" and "to"`)
+    }
+  }
+  for (const rule of cfg.deduplication ?? []) {
+    if (!rule.primary || !rule.secondary) {
+      throw new Error(`Invalid import config: deduplication entries must have non-empty "primary" and "secondary"`)
     }
   }
   return cfg
