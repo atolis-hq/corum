@@ -53,6 +53,10 @@ export type LinkedFieldsResult = {
 export type GraphSummary = {
   nodeCount: number
   componentCount: number
+  nodesByComponent: Record<string, number>
+  nodesByTemplate: Record<string, number>
+  nodesByState: Record<string, number>
+  nodesByStability: Record<string, number>
   orphanNodeCount: number
   orphansByTemplate: Record<string, number>
   edgesByType: Record<string, number>
@@ -292,8 +296,18 @@ export function computeClusterOverlay(
 
 export function getGraphSummary(graph: Graph): GraphSummary {
   const components = new Set<string>()
+  const nodesByComponent: Record<string, number> = {}
+  const nodesByTemplate: Record<string, number> = {}
+  const nodesByState: Record<string, number> = {}
+  const nodesByStability: Record<string, number> = {}
   for (const node of graph.nodesById.values()) {
-    if (node.component) components.add(node.component)
+    if (node.component) {
+      components.add(node.component)
+      nodesByComponent[node.component] = (nodesByComponent[node.component] ?? 0) + 1
+    }
+    nodesByTemplate[node.template] = (nodesByTemplate[node.template] ?? 0) + 1
+    nodesByState[node.state] = (nodesByState[node.state] ?? 0) + 1
+    nodesByStability[node.stability] = (nodesByStability[node.stability] ?? 0) + 1
   }
 
   const nodesWithEdges = new Set<string>()
@@ -317,6 +331,10 @@ export function getGraphSummary(graph: Graph): GraphSummary {
   return {
     nodeCount: graph.nodesById.size,
     componentCount: components.size,
+    nodesByComponent,
+    nodesByTemplate,
+    nodesByState,
+    nodesByStability,
     orphanNodeCount: Object.values(orphansByTemplate).reduce((sum, count) => sum + count, 0),
     orphansByTemplate,
     edgesByType,

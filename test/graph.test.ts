@@ -203,6 +203,31 @@ describe('graph queries', () => {
       const summary = getGraphSummary(graph)
       assert.ok(typeof summary.diagnosticCount === 'number')
     })
+
+    it('returns node breakdowns for all templates, states, and stability values', () => {
+      const summary = getGraphSummary(graph)
+      assert.ok(summary.nodesByTemplate.DomainModel > 0)
+      assert.ok(summary.nodesByTemplate.Schema > 0)
+      assert.ok(summary.nodesByTemplate.Field > 0)
+      assert.ok(summary.nodesByComponent.orders > 0)
+      assert.ok(summary.nodesByComponent.payments > 0)
+      assert.equal(
+        Object.values(summary.nodesByTemplate).reduce<number>((a, b) => a + b, 0),
+        summary.nodeCount,
+      )
+      assert.equal(
+        Object.values(summary.nodesByComponent).reduce<number>((a, b) => a + b, 0),
+        summary.nodeCount,
+      )
+      assert.equal(
+        Object.values(summary.nodesByState).reduce<number>((a, b) => a + b, 0),
+        summary.nodeCount,
+      )
+      assert.equal(
+        Object.values(summary.nodesByStability).reduce<number>((a, b) => a + b, 0),
+        summary.nodeCount,
+      )
+    })
   })
 
   describe('searchNodes', () => {

@@ -867,12 +867,35 @@ describe('web server', () => {
         nodeCount: number
         componentCount: number
         orphanNodeCount: number
+        nodesByComponent: Record<string, number>
+        nodesByTemplate: Record<string, number>
+        nodesByState: Record<string, number>
+        nodesByStability: Record<string, number>
         edgesByType: Record<string, number>
         diagnosticCount: number
       }
       assert.equal(body.nodeCount, 7)
       assert.equal(body.componentCount, 2)
       assert.equal(body.orphanNodeCount, 3)
+      assert.deepEqual(body.nodesByComponent, {
+        billing: 2,
+        orders: 5,
+      })
+      assert.deepEqual(body.nodesByTemplate, {
+        DomainModel: 1,
+        Schema: 2,
+        Field: 2,
+        DomainOperation: 2,
+      })
+      assert.deepEqual(body.nodesByState, {
+        agreed: 5,
+        draft: 1,
+        proposed: 1,
+      })
+      assert.deepEqual(body.nodesByStability, {
+        stable: 6,
+        unstable: 1,
+      })
       assert.equal(body.edgesByType['maps-to'], 1)
       assert.equal(body.edgesByType['triggers'], undefined)
       assert.equal(body.diagnosticCount, 0)
@@ -1265,10 +1288,31 @@ describe('web server', () => {
       assert.match(app, /\/api\/overlay\//)
     })
 
+    it('app: DashboardPage renders counts from stats instead of filtered nodes', () => {
+      assert.doesNotMatch(app, /const componentCount = new Set\(nodes\.map\(n => n\.component\)\.filter\(Boolean\)\)\.size;/)
+      assert.doesNotMatch(app, /const nodeCount = nodes\.length;/)
+      assert.doesNotMatch(app, /const nodesByComponent = \[\.\.\.nodes\.reduce\(/)
+      assert.doesNotMatch(app, /const nodesByTemplate = \[\.\.\.nodes\.reduce\(/)
+      assert.doesNotMatch(app, /const nodesByState = \[\.\.\.nodes\.reduce\(/)
+      assert.doesNotMatch(app, /const nodesByStability = \[\.\.\.nodes\.reduce\(/)
+      assert.match(app, /<HeroCard value=\{stats \? stats\.componentCount : '\u2026'\} label="Components" \/>/)
+      assert.match(app, /<HeroCard value=\{stats \? stats\.nodeCount : '\u2026'\} label="Nodes" \/>/)
+      assert.match(app, /Object\.entries\(stats\.nodesByComponent\)/)
+      assert.match(app, /Object\.entries\(stats\.nodesByTemplate\)/)
+      assert.match(app, /Object\.entries\(stats\.nodesByState\)/)
+      assert.match(app, /Object\.entries\(stats\.nodesByStability\)/)
+    })
+
+    it('app: DashboardPage includes a Nodes by Component panel', () => {
+      assert.match(app, /<div className="card-head">Nodes by Component<\/div>/)
+    })
+
     it('style: dashboard hero and grid layout classes defined', () => {
       assert.match(styles, /\.dashboard-hero\s*\{/)
       assert.match(styles, /\.hero-card\s*\{/)
-      assert.match(styles, /\.dashboard-grid\s*\{[^}]*grid-template-columns:/)
+      assert.match(styles, /\.dashboard-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(260px,\s*1fr\)\);/s)
+      assert.match(styles, /@media \(max-width:\s*960px\)\s*\{[\s\S]*\.dashboard-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(260px,\s*1fr\)\);/s)
+      assert.match(styles, /@media \(max-width:\s*640px\)\s*\{[\s\S]*\.dashboard-grid\s*\{[^}]*grid-template-columns:\s*1fr;/s)
       assert.match(styles, /\.dashboard-panel\s*\{/)
     })
   })
