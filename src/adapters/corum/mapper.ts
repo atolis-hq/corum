@@ -17,6 +17,8 @@ export function mapDocument(document: CorumInterchangeDocument, specPath: string
   const edges: Edge[] = []
   const diagnostics: Diagnostic[] = []
   const allSchemas = (document.components?.schemas ?? {}) as Record<string, unknown>
+  // Maps #/components/schemas/X and #/components/schemas/X/properties/Y to materialized node IDs
+  const refToNodeId = new Map<string, string>()
 
   for (const gap of document.gaps ?? []) {
     const msg = gap.nodeId
@@ -53,9 +55,53 @@ export function mapDocument(document: CorumInterchangeDocument, specPath: string
 
     if (schemaName) {
       const expanded = new Map<string, string>()
-      expandSchema(schemaName, nodeId, allSchemas, nodes, edges, specPath, component, expanded)
+      expandSchema(schemaName, nodeId, allSchemas, nodes, edges, specPath, component, expanded, refToNodeId)
     }
   }
+
+  // Expand schemas referenced in edges that weren't reachable via any node's schema ref.
+  // Uses schema name as its own synthetic root so IDs are self-contained and don't collide.
+  // Enum schemas register their enum values as field nodes so edge refs to them can resolve.
+  const orphanExpanded = new Set<string>()
+  for (const raw of document.edges ?? []) {
+    for (const endpoint of [raw.from, raw.to]) {
+      const schemaName = extractSchemaName(endpoint)
+      if (!schemaName) continue
+      const schemaRef = `#/components/schemas/${schemaName}`
+      if (refToNodeId.has(schemaRef) || orphanExpanded.has(schemaName)) continue
+      orphanExpanded.add(schemaName)
+
+      const schemaLocalName = schemaName.includes('.')
+        ? schemaName.slice(schemaName.lastIndexOf('.') + 1)
+        : schemaName
+      const schemaId = `${schemaLocalName}.schemas.${schemaLocalName}`
+      refToNodeId.set(schemaRef, schemaId)
+      nodes.push(makeNode('Schema', '_', specPath, schemaId, undefined, {}))
+
+      const schemaDef = allSchemas[schemaName] as { properties?: Record<string, unknown>; enum?: unknown[] } | undefined
+      for (const fieldName of Object.keys(schemaDef?.properties ?? {})) {
+        const fieldId = `${schemaId}.fields.${fieldName}`
+        refToNodeId.set(`${schemaRef}/properties/${fieldName}`, fieldId)
+        nodes.push(makeNode('Field', '_', specPath, fieldId, undefined, {}))
+        edges.push(makeHasFieldEdge(schemaId, fieldId))
+      }
+      if (Array.isArray(schemaDef?.enum)) {
+        for (const value of schemaDef.enum) {
+          if (typeof value !== 'string') continue
+          const fieldId = `${schemaId}.values.${value}`
+          refToNodeId.set(`${schemaRef}/properties/${value}`, fieldId)
+          nodes.push(makeNode('EnumValue', '_', specPath, fieldId, undefined, { value }))
+          edges.push(makeHasFieldEdge(schemaId, fieldId))
+        }
+      }
+    }
+  }
+
+  // Build case-insensitive fallback index to handle PascalCase/camelCase mismatches
+  // between edge field refs and actual schema property names
+  const refToNodeIdLower = new Map(
+    [...refToNodeId.entries()].map(([k, v]) => [k.toLowerCase(), v]),
+  )
 
   for (const raw of document.edges ?? []) {
     if (!VALID_EDGE_TYPES.has(raw.type)) {
@@ -66,7 +112,17 @@ export function mapDocument(document: CorumInterchangeDocument, specPath: string
       })
       continue
     }
-    edges.push(mapEdge(raw))
+    const from = refToNodeId.get(raw.from) ?? refToNodeIdLower.get(raw.from.toLowerCase()) ?? raw.from
+    const to = refToNodeId.get(raw.to) ?? refToNodeIdLower.get(raw.to.toLowerCase()) ?? raw.to
+    if (from.startsWith('#/') || to.startsWith('#/')) {
+      diagnostics.push({
+        severity: 'warning',
+        file: specPath,
+        message: `edge references unresolvable node — skipping: ${from} → ${to}`,
+      })
+      continue
+    }
+    edges.push(mapEdge({ ...raw, from, to }))
   }
 
   return { nodes, edges, diagnostics }
@@ -78,6 +134,12 @@ function schemaRefName(ref: string): string | undefined {
   return ref.slice(prefix.length)
 }
 
+function extractSchemaName(endpoint: string): string | undefined {
+  const prefix = '#/components/schemas/'
+  if (!endpoint.startsWith(prefix)) return undefined
+  return endpoint.slice(prefix.length).split('/')[0]
+}
+
 function expandSchema(
   schemaName: string,
   rootNodeId: string,
@@ -87,14 +149,25 @@ function expandSchema(
   specPath: string,
   component: string,
   expanded: Map<string, string>,
+  refToNodeId: Map<string, string>,
 ): string {
   const existing = expanded.get(schemaName)
   if (existing) return existing
 
-  const schemaId = `${rootNodeId}.schemas.${schemaName}`
+  // Schema names from corum extractors are sometimes prefixed with the component name
+  // (e.g. "workers.ReactToPersonCreatedCommand"). Strip the prefix so the local segment
+  // in the node ID is a simple identifier — graph serialization rejects local names
+  // that contain dots because it uses dots as a hierarchy separator.
+  const schemaLocalName = schemaName.includes('.')
+    ? schemaName.slice(schemaName.lastIndexOf('.') + 1)
+    : schemaName
+  const schemaId = `${rootNodeId}.schemas.${schemaLocalName}`
   expanded.set(schemaName, schemaId)
 
-  const schemaDef = allSchemas[schemaName] as { type?: string; properties?: Record<string, unknown>; required?: string[] } | undefined
+  const schemaRef = `#/components/schemas/${schemaName}`
+  if (!refToNodeId.has(schemaRef)) refToNodeId.set(schemaRef, schemaId)
+
+  const schemaDef = allSchemas[schemaName] as { type?: string; properties?: Record<string, unknown>; required?: string[]; enum?: unknown[] } | undefined
 
   const schemaNode = makeNode('Schema', component, specPath, schemaId, undefined, {})
   nodes.push(schemaNode)
@@ -104,16 +177,33 @@ function expandSchema(
 
   for (const [fieldName, rawProp] of Object.entries(schemaDef?.properties ?? {})) {
     const fieldId = `${schemaId}.fields.${fieldName}`
+    const fieldRef = `${schemaRef}/properties/${fieldName}`
+    if (!refToNodeId.has(fieldRef)) refToNodeId.set(fieldRef, fieldId)
+
     const fieldNode = makeNode('Field', component, specPath, fieldId, undefined, {})
     const required = Array.isArray(schemaDef?.required) && schemaDef.required.includes(fieldName)
 
     fieldNode.properties = resolveFieldProperties(
       fieldName, rawProp as Record<string, unknown>, required,
-      schemaId, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, localMappings,
+      schemaId, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, localMappings, refToNodeId,
     )
 
     nodes.push(fieldNode)
     edges.push(makeHasFieldEdge(schemaId, fieldId))
+  }
+
+  // Register enum values as field refs so edges referencing them (as /properties/{value}) can resolve
+  if (Array.isArray(schemaDef?.enum)) {
+    for (const value of schemaDef.enum) {
+      if (typeof value !== 'string') continue
+      const fieldRef = `${schemaRef}/properties/${value}`
+      if (!refToNodeId.has(fieldRef)) {
+        const fieldId = `${schemaId}.values.${value}`
+        refToNodeId.set(fieldRef, fieldId)
+        nodes.push(makeNode('EnumValue', component, specPath, fieldId, undefined, { value }))
+        edges.push(makeHasFieldEdge(schemaId, fieldId))
+      }
+    }
   }
 
   return schemaId
@@ -132,13 +222,14 @@ function resolveFieldProperties(
   component: string,
   expanded: Map<string, string>,
   localMappings: Map<string, string>,
+  refToNodeId: Map<string, string>,
 ): Record<string, unknown> {
   const nullable = !required
 
   if (typeof prop.$ref === 'string') {
     const refName = schemaRefName(prop.$ref)
     if (refName) {
-      const refId = expandSchema(refName, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded)
+      const refId = expandSchema(refName, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, refToNodeId)
       return { $ref: refId, nullable, collection: 'one' }
     }
     return { type: 'string', nullable, collection: 'one' }
@@ -151,7 +242,7 @@ function resolveFieldProperties(
     if (items && typeof items.$ref === 'string') {
       const refName = schemaRefName(items.$ref as string)
       if (refName) {
-        const refId = expandSchema(refName, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded)
+        const refId = expandSchema(refName, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, refToNodeId)
         return { $ref: refId, nullable, collection: 'array' }
       }
     }
@@ -163,7 +254,7 @@ function resolveFieldProperties(
   }
 
   if (type === 'object' && prop.additionalProperties !== undefined) {
-    createMapping(fieldName, prop.additionalProperties, schemaId, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, localMappings)
+    createMapping(fieldName, prop.additionalProperties, schemaId, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, localMappings, refToNodeId)
     return { $ref: `#/mappings/${fieldName}`, nullable, collection: 'one' }
   }
 
@@ -183,6 +274,7 @@ function createMapping(
   component: string,
   expanded: Map<string, string>,
   localMappings: Map<string, string>,
+  refToNodeId: Map<string, string>,
 ): string {
   const existing = localMappings.get(mappingName)
   if (existing) return existing
@@ -200,7 +292,7 @@ function createMapping(
     if (typeof addl.$ref === 'string') {
       const refName = schemaRefName(addl.$ref)
       if (refName) {
-        props.$ref = expandSchema(refName, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded)
+        props.$ref = expandSchema(refName, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, refToNodeId)
       } else {
         props.type = 'string'
       }
@@ -210,7 +302,7 @@ function createMapping(
       if (items && typeof items.$ref === 'string') {
         const refName = schemaRefName(items.$ref as string)
         if (refName) {
-          props.$ref = expandSchema(refName, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded)
+          props.$ref = expandSchema(refName, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, refToNodeId)
         } else {
           props.type = 'string'
         }
@@ -219,7 +311,7 @@ function createMapping(
       }
     } else if (addl.type === 'object' && addl.additionalProperties !== undefined) {
       const innerName = `${mappingName}-values`
-      props.$ref = createMapping(innerName, addl.additionalProperties, schemaId, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, localMappings)
+      props.$ref = createMapping(innerName, addl.additionalProperties, schemaId, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, localMappings, refToNodeId)
     } else {
       props.type = mapScalar((addl.type as string) ?? 'string', addl.format as string | undefined)
     }

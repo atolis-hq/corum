@@ -491,13 +491,19 @@ export function createApp(
       }
     }
 
-    const orphanNodeCount = [...targetGraph.nodesById.values()]
-      .filter(node => !nodesWithEdges.has(node.id) && getNavigationOwnership(targetGraph, node) === undefined).length
+    const orphansByTemplate: Record<string, number> = {}
+    for (const node of targetGraph.nodesById.values()) {
+      if (!nodesWithEdges.has(node.id) && getNavigationOwnership(targetGraph, node) === undefined) {
+        orphansByTemplate[node.template] = (orphansByTemplate[node.template] ?? 0) + 1
+      }
+    }
+    const orphanNodeCount = Object.values(orphansByTemplate).reduce((a, b) => a + b, 0)
 
     res.json({
       nodeCount: targetGraph.nodesById.size,
       componentCount: components.size,
       orphanNodeCount,
+      orphansByTemplate,
       edgesByType,
       diagnosticCount: targetGraph.diagnostics.length,
     })
