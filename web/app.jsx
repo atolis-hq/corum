@@ -530,26 +530,25 @@ function DashboardPage({ nodes, templates, gitMode, viewingRef, branches, branch
       .catch(() => setBranchDiff(null));
   }, [isOnNonDefaultBranch, viewingRef, defaultBranchRef]);
 
-  const componentCount = new Set(nodes.map(n => n.component).filter(Boolean)).size;
-  const nodeCount = nodes.length;
   const totalEdges = stats ? Object.values(stats.edgesByType).reduce((a, b) => a + b, 0) : '…';
 
   const templateMap = new Map(templates.map(t => [t.name, t]));
 
-  const nodesByTemplate = [...nodes.reduce((acc, node) => {
-    acc.set(node.template, (acc.get(node.template) ?? 0) + 1);
-    return acc;
-  }, new Map()).entries()].sort((a, b) => b[1] - a[1]);
+  const nodesByTemplate = stats
+    ? Object.entries(stats.nodesByTemplate).sort((a, b) => b[1] - a[1])
+    : [];
 
-  const nodesByState = [...nodes.reduce((acc, node) => {
-    acc.set(node.state, (acc.get(node.state) ?? 0) + 1);
-    return acc;
-  }, new Map()).entries()].sort((a, b) => b[1] - a[1]);
+  const nodesByComponent = stats
+    ? Object.entries(stats.nodesByComponent).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    : [];
 
-  const nodesByStability = [...nodes.reduce((acc, node) => {
-    acc.set(node.stability, (acc.get(node.stability) ?? 0) + 1);
-    return acc;
-  }, new Map()).entries()].sort((a, b) => b[1] - a[1]);
+  const nodesByState = stats
+    ? Object.entries(stats.nodesByState).sort((a, b) => b[1] - a[1])
+    : [];
+
+  const nodesByStability = stats
+    ? Object.entries(stats.nodesByStability).sort((a, b) => b[1] - a[1])
+    : [];
 
   const edgeRows = stats
     ? Object.entries(stats.edgesByType).filter(([, count]) => count > 0).sort((a, b) => b[1] - a[1])
@@ -562,8 +561,8 @@ function DashboardPage({ nodes, templates, gitMode, viewingRef, branches, branch
   return (
     <div className="content">
       <div className="dashboard-hero">
-        <HeroCard value={componentCount} label="Components" />
-        <HeroCard value={nodeCount} label="Nodes" />
+        <HeroCard value={stats ? stats.componentCount : '…'} label="Components" />
+        <HeroCard value={stats ? stats.nodeCount : '…'} label="Nodes" />
         <HeroCard value={totalEdges} label="Edges" />
         <HeroCard value={stats ? stats.orphanNodeCount : '…'} label="Orphan Nodes" />
       </div>
@@ -584,6 +583,7 @@ function DashboardPage({ nodes, templates, gitMode, viewingRef, branches, branch
         <div className="dashboard-panel">
           <div className="card-head">Nodes by Type</div>
           <div className="card-body" style={{ padding: '12px 16px' }}>
+            {stats === null && <div className="label-sm">Loading…</div>}
             {nodesByTemplate.map(([name, count]) => {
               const tmpl = templateMap.get(name);
               const colour = tmpl?.ui?.colour ?? 'var(--ink-4)';
@@ -597,6 +597,19 @@ function DashboardPage({ nodes, templates, gitMode, viewingRef, branches, branch
                 </div>
               );
             })}
+          </div>
+        </div>
+
+        <div className="dashboard-panel">
+          <div className="card-head">Nodes by Component</div>
+          <div className="card-body" style={{ padding: '12px 16px' }}>
+            {stats === null && <div className="label-sm">Loading…</div>}
+            {nodesByComponent.map(([name, count]) => (
+              <div key={name} className="stat-row">
+                <span className="stat-row-label">{name}</span>
+                <span className="stat-row-value">{count}</span>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -640,6 +653,7 @@ function DashboardPage({ nodes, templates, gitMode, viewingRef, branches, branch
         <div className="dashboard-panel">
           <div className="card-head">State & Stability</div>
           <div className="card-body" style={{ padding: '12px 16px' }}>
+            {stats === null && <div className="label-sm">Loading…</div>}
             {nodesByState.map(([state, count]) => (
               <div key={state} className="stat-row">
                 <span className="stat-row-label"><StateTag state={state} /></span>
