@@ -293,9 +293,9 @@ describe('MCP handlers', () => {
   })
 
   describe('get_cluster', () => {
-    it('returns full cluster for DomainModel', async () => {
+    it('returns full cluster for DomainModel with collapse_schemas: false', async () => {
       const handlers = createMcpHandlers(graph)
-      const result = await handlers.get_cluster({ node_id: 'orders.DomainModel.order', format: 'json' })
+      const result = await handlers.get_cluster({ node_id: 'orders.DomainModel.order', format: 'json', collapse_schemas: false })
       const cluster = JSON.parse(result.content[0].text)
       assert.equal(cluster.root.id, 'orders.DomainModel.order')
       assert.equal(cluster.descendants.length, 22)
@@ -304,6 +304,49 @@ describe('MCP handlers', () => {
       assert.ok(!('schemaVersion' in cluster.root))
       assert.ok(!('lastModifiedAt' in cluster.root))
       assert.ok(!('schemaVersion' in cluster.descendants[0]))
+    })
+
+    it('collapses schema children into schemas and enums blocks by default', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.get_cluster({ node_id: 'orders.DomainModel.order', format: 'json' })
+      const cluster = JSON.parse(result.content[0].text)
+
+      // Only invariant and operation descendants remain (16 schema children removed)
+      assert.equal(cluster.descendants.length, 6)
+
+      // Schemas block on root
+      assert.ok(cluster.root.schemas, 'root should have schemas block')
+      assert.ok('order' in cluster.root.schemas, 'primary schema should be present')
+      assert.ok('order-line-item' in cluster.root.schemas, 'referenced schema should be present')
+
+      // Primitive field
+      assert.deepEqual(cluster.root.schemas['order']['id'], { type: 'uuid' })
+
+      // Nullable field
+      assert.equal(cluster.root.schemas['order']['notes'].nullable, true)
+
+      // Local schema ref preserved
+      assert.equal(cluster.root.schemas['order']['items'].$ref, '#/schemas/order-line-item')
+      assert.equal(cluster.root.schemas['order']['items'].collection, 'array')
+
+      // Local enum ref preserved
+      assert.equal(cluster.root.schemas['order']['status'].$ref, '#/enums/order-status')
+
+      // Enums block on root
+      assert.ok(cluster.root.enums, 'root should have enums block')
+      assert.ok('order-status' in cluster.root.enums)
+      assert.deepEqual(cluster.root.enums['order-status'].values, ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'])
+    })
+
+    it('annotates field edges on collapsed fields', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.get_cluster({ node_id: 'orders.DomainModel.order', format: 'json' })
+      const cluster = JSON.parse(result.content[0].text)
+
+      // orders.DomainModel.order.schemas.order.fields.id has inbound maps-to edges from
+      // several other nodes — those are on the source fields, not this field. But the field
+      // itself has no outbound maps-to edges in the fixture, so edges should be absent.
+      assert.ok(!cluster.root.schemas['order']['id'].edges)
     })
 
     it('includes cluster provenance when requested', async () => {

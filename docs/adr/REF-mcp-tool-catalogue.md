@@ -34,14 +34,22 @@ Also accepts `include_provenance`, `branch`, `format`, and `compact_keys`.
 
 **`get_cluster`**  
 Returns:
-- `root`
-- `descendants`
+- `root` — with `schemas` and `enums` blocks by default (see below)
+- `descendants` — semantic children only (operations, invariants, etc.) when collapsed
 - `includedNodes`
 - `edges`
 
-Use when you need the full structural contents of a single node such as schemas, fields, and owned children. Not suited for following relationships across the graph; use `get_lineage` for that.
+By default (`collapse_schemas: true`) schema and enum child nodes are collapsed into compact blocks on the root rather than emitted as individual descendant nodes:
 
-Supports `edge_types`, `include_provenance`, `branch`, `overlay_refs`, `format`, and `compact_keys`.
+- `root.schemas` — map of schema name → field map. Each field entry: `{ type?, $ref?, collection?, nullable?, edges? }`. Local schema/enum refs use `$ref: '#/schemas/name'` or `$ref: '#/enums/name'`. Mapping fields render as `{ type: map, key: string, value: { ... } }`.
+- `root.enums` — map of enum name → `{ values: string[] }`.
+- Field-level cross-cluster edges (`maps-to`, `derived-from`) appear as an `edges` block on the field entry. Targets are full node IDs, usable directly in `get_lineage`.
+
+Pass `collapse_schemas: false` to restore the full structural node-per-field representation. All other behaviour is identical.
+
+Use when you need the full structural contents of a single node. Not suited for following relationships across the graph; use `get_lineage` for that.
+
+Supports `collapse_schemas`, `edge_types`, `include_provenance`, `branch`, `overlay_refs`, `format`, and `compact_keys`.
 
 **`get_graph`**  
 Returns the semantic graph as `{ nodes, edges }`. Structural templates and structural edge types are excluded by default. Supports `filter`, `include_provenance`, `branch`, `format`, and `compact_keys`.
