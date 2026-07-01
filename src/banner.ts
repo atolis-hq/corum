@@ -14,7 +14,7 @@ export function printBanner(options: {
   services: BannerService[]
   logger?: (line: string) => void
 }): void {
-  const { config, services, logger = console.error } = options
+  const { config, services, logger = (line: string) => process.stdout.write(line + '\n') } = options
   const c = process.env.NO_COLOR ? '' : CORAL
   const r = process.env.NO_COLOR ? '' : RESET
 

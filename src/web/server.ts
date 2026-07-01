@@ -680,7 +680,6 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
             { key: 'port', value: String(addr.port) },
           ],
           services: [{ name: 'web', url: `http://localhost:${addr.port}` }],
-          logger,
         })
       }
       resolve({

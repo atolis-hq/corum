@@ -383,6 +383,7 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
   printBanner({
     config: [{ key: 'graphPath', value: config.graphPath }],
     services: [{ name: 'mcp', url: 'stdio' }],
+    logger: (line) => process.stderr.write(line + '\n'),
   })
 
   await server.connect(new StdioServerTransport())
