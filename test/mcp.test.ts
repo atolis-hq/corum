@@ -290,6 +290,18 @@ describe('MCP handlers', () => {
       assert.ok(result.content[0].text.includes('not found'))
     })
 
+    it('returns an error for unknown edge types', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.get_cluster({
+        node_id: 'orders.DomainModel.order',
+        edge_types: ['consumes'],
+        format: 'json',
+      })
+
+      assert.ok(result.isError)
+      assert.ok(result.content[0].text.includes('Unknown edge type'))
+    })
+
     it('loads a cluster from a source-backed branch', async () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-mcp-'))
       try {
@@ -404,6 +416,18 @@ describe('MCP handlers', () => {
       const placed = data.nodes.find((n: Record<string, unknown>) => n.id === 'orders.DomainEvent.order-placed')
       assert.equal(placed.depth, 1)
       assert.equal(placed.via_edge_type, 'produces')
+    })
+
+    it('returns an error for unknown edge types', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.get_lineage({
+        node_ids: ['orders.DomainModel.order.operations.place'],
+        edge_types: ['consumes'],
+        format: 'json',
+      })
+
+      assert.ok(result.isError)
+      assert.ok(result.content[0].text.includes('Unknown edge type'))
     })
 
     it('returns error when node_ids missing', async () => {

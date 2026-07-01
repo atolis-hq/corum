@@ -5,11 +5,59 @@ import { fileURLToPath } from 'node:url'
 import { listNodes, getCluster, getLinkedFields, getGraphSummary, searchNodes, getLineage } from '../src/graph/index.js'
 import { loadGraph } from '../src/loader/index.js'
 import { QueryError } from '../src/schema/index.js'
-import type { Graph } from '../src/schema/index.js'
+import type { Edge, Graph, Node } from '../src/schema/index.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..', '..')
 const fixtureGraphDir = path.join(repoRoot, 'fixtures/sample-graph')
+
+function createNode(id: string): Node {
+  return {
+    id,
+    template: 'DomainEvent',
+    component: 'orders',
+    state: 'agreed',
+    stability: 'stable',
+    schemaVersion: '1.0.0',
+    lastModifiedAt: '2026-07-01T00:00:00Z',
+    properties: {},
+  }
+}
+
+function createEdge(id: string, from: string, to: string): Edge {
+  return {
+    id,
+    from,
+    to,
+    type: 'produces',
+    state: 'agreed',
+    stability: 'stable',
+  }
+}
+
+function createMergedLineageGraph(): Graph {
+  const startA = createNode('orders.DomainModel.order.operations.place')
+  const startB = createNode('orders.DomainModel.order.operations.complete')
+  const shared = createNode('orders.DomainEvent.order-published')
+  const nodes = [startA, startB, shared]
+  const edges = [
+    createEdge('edge-place-published', startA.id, shared.id),
+    createEdge('edge-complete-published', startB.id, shared.id),
+  ]
+
+  return {
+    nodesById: new Map(nodes.map(node => [node.id, node])),
+    edgesByFrom: new Map([
+      [startA.id, [edges[0]]],
+      [startB.id, [edges[1]]],
+    ]),
+    edgesByTo: new Map([
+      [shared.id, edges],
+    ]),
+    templates: new Map(),
+    diagnostics: [],
+  }
+}
 
 describe('graph queries', () => {
   let graph: Graph
@@ -247,6 +295,21 @@ describe('graph queries', () => {
       const ids = result.nodes.map((n: { id: string }) => n.id)
       assert.ok(ids.includes('orders.DomainEvent.order-placed'))
       assert.ok(ids.includes('orders.DomainEvent.order-completed'))
+    })
+
+    it('records all origins when multiple start nodes reach the same node', () => {
+      const mergedGraph = createMergedLineageGraph()
+      const result = getLineage(mergedGraph, [
+        'orders.DomainModel.order.operations.place',
+        'orders.DomainModel.order.operations.complete',
+      ])
+      const shared = result.nodes.find((node: { id: string }) => node.id === 'orders.DomainEvent.order-published')
+
+      assert.ok(shared !== undefined)
+      assert.deepEqual(shared!.origins?.sort(), [
+        'orders.DomainModel.order.operations.complete',
+        'orders.DomainModel.order.operations.place',
+      ])
     })
 
     it('returns empty result for unknown start node', () => {

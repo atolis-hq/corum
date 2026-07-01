@@ -1,7 +1,7 @@
 import { printBanner } from '../banner.js'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
+import { CallToolRequestSchema, GetPromptRequestSchema, ListPromptsRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { pathToFileURL } from 'node:url'
 import {
   computeClusterOverlay,
@@ -11,7 +11,9 @@ import {
   getLineage,
   getLinkedFields,
   listNodes,
+  SEMANTIC_EDGE_TYPES,
   searchNodes,
+  STRUCTURAL_NODE_TEMPLATES,
   type GetLineageOptions,
   type LineageDirection,
   type ListNodesFilter,
@@ -35,6 +37,35 @@ type ToolResult = {
 type MaybePromise<T> = T | Promise<T>
 type ToolHandler = (args: Record<string, unknown>) => MaybePromise<ToolResult>
 
+const EDGE_TYPES = [
+  'triggers',
+  'produces',
+  'reads',
+  'calls',
+  'implements',
+  'maps-to',
+  'derived-from',
+  'renamed-from',
+  'has-field',
+  'has-value',
+] as const satisfies readonly EdgeType[]
+
+const EDGE_TYPE_SET = new Set<EdgeType>(EDGE_TYPES)
+
+function toStringArray(value: unknown): string[] | undefined {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : undefined
+}
+
+function parseEdgeTypes(value: unknown): EdgeType[] | undefined {
+  const requested = toStringArray(value)
+  if (!requested) return undefined
+  const invalid = requested.filter(type => !EDGE_TYPE_SET.has(type as EdgeType))
+  if (invalid.length > 0) {
+    throw new QueryError(`Unknown edge type: ${invalid.join(', ')}`)
+  }
+  return requested as EdgeType[]
+}
+
 export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: MultiGraphCache): {
   list_nodes: ToolHandler
   list_templates: ToolHandler
@@ -56,8 +87,6 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
         const filterArg = typeof args.filter === 'object' && args.filter !== null
           ? args.filter as Record<string, unknown>
           : {}
-        const toStringArray = (value: unknown): string[] | undefined =>
-          Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : undefined
         const filter: ListNodesFilter = {
           templates: toStringArray(filterArg.templates),
           excludeTemplates: toStringArray(filterArg.exclude_templates),
@@ -110,9 +139,6 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
         ? args.queries.filter((query): query is string => typeof query === 'string')
         : []
       if (queries.length === 0) return errorResult(new QueryError('queries is required'))
-
-      const toStringArray = (value: unknown): string[] | undefined =>
-        Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : undefined
 
       const run = (targetGraph: Graph): ToolResult => {
         const options: SearchNodesOptions = {
@@ -180,14 +206,9 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
         ? args.overlay_refs.filter((ref): ref is string => typeof ref === 'string')
         : []
 
-      const toStringArray = (value: unknown): string[] | undefined =>
-        Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : undefined
-
       const run = async (targetGraph: Graph, branchRef?: string): Promise<ToolResult> => {
-        const requestedEdgeTypes = toStringArray(args.edge_types)
-        const edgeTypes: EdgeType[] = requestedEdgeTypes
-          ? requestedEdgeTypes.filter((type): type is EdgeType => true)
-          : ['triggers', 'produces', 'reads', 'calls', 'implements', 'maps-to', 'derived-from']
+        const edgeTypes = parseEdgeTypes(args.edge_types)
+          ?? [...SEMANTIC_EDGE_TYPES]
 
         const cluster = getClusterView(targetGraph, String(args.node_id), edgeTypes)
         if (overlayRefs.length === 0 || !source || !branchRef) {
@@ -208,18 +229,13 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
     },
 
     get_graph(args) {
-      const toStringArray = (value: unknown): string[] | undefined =>
-        Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : undefined
-      const semantic = new Set<EdgeType>(['triggers', 'produces', 'reads', 'calls', 'implements', 'maps-to', 'derived-from'])
-      const structuralTemplates = new Set(['Field', 'Schema', 'EnumDefinition', 'EnumValue', 'Mapping'])
-
       const run = (targetGraph: Graph): ToolResult => {
         const filterArg = typeof args.filter === 'object' && args.filter !== null
           ? args.filter as Record<string, unknown>
           : {}
         const filterTemplates = toStringArray(filterArg.templates)
         const filterExclude = toStringArray(filterArg.exclude_templates)
-        const excludeSet = filterTemplates?.length ? null : filterExclude?.length ? new Set(filterExclude) : structuralTemplates
+        const excludeSet = filterTemplates?.length ? null : filterExclude?.length ? new Set(filterExclude) : STRUCTURAL_NODE_TEMPLATES
 
         const nodes = [...targetGraph.nodesById.values()]
           .filter(node => {
@@ -239,7 +255,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
         const edges: Array<{ id: string; from: string; to: string; type: string }> = []
         for (const edgeList of targetGraph.edgesByFrom.values()) {
           for (const edge of edgeList) {
-            if (!semantic.has(edge.type) || !nodeIds.has(edge.from) || !nodeIds.has(edge.to)) continue
+            if (!SEMANTIC_EDGE_TYPES.has(edge.type) || !nodeIds.has(edge.from) || !nodeIds.has(edge.to)) continue
             edges.push({ id: edge.id, from: edge.from, to: edge.to, type: edge.type })
           }
         }
@@ -264,9 +280,6 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
         : []
       if (nodeIds.length === 0) return errorResult(new QueryError('node_ids is required'))
 
-      const toStringArray = (value: unknown): string[] | undefined =>
-        Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : undefined
-
       const run = (targetGraph: Graph): ToolResult => {
         const direction = (['downstream', 'upstream', 'both'] as const).includes(args.direction as LineageDirection)
           ? args.direction as LineageDirection
@@ -274,7 +287,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
         const options: GetLineageOptions = {
           depth: typeof args.depth === 'number' ? args.depth : 2,
           direction,
-          edgeTypes: toStringArray(args.edge_types) as EdgeType[] | undefined,
+          edgeTypes: parseEdgeTypes(args.edge_types),
           nodeTypes: toStringArray(args.node_types),
           excludeNodeTypes: toStringArray(args.exclude_node_types),
           includeDanglingEdges: args.include_dangling_edges === true,
@@ -416,8 +429,94 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
 
   const server = new Server(
     { name: 'corum', version: '0.1.0' },
-    { capabilities: { tools: {} } },
+    { capabilities: { tools: {}, prompts: {} } },
   )
+
+  const USAGE_GUIDE = `
+# Corum graph — orientation guide
+
+Corum models service architecture as a typed graph. Nodes are design artefacts; edges are typed relationships between them.
+
+## Node IDs
+
+IDs encode the ownership hierarchy as a dot-separated path:
+
+  {component}.{Template}.{name}                      — root node
+  {component}.{Template}.{name}.{section}.{child}   — owned child (e.g. operations, schemas, fields)
+
+Examples:
+  orders.DomainModel.order
+  orders.DomainModel.order.operations.place
+  orders.APIEndpoint.create-order
+
+search_nodes and list_nodes only return root nodes.
+
+## Edge types
+
+Semantic (traversed by default in get_lineage / get_cluster):
+  triggers, produces, reads, calls, implements, maps-to, derived-from
+
+Structural (excluded from traversal by default):
+  has-field, has-value, renamed-from
+
+## Recommended workflow
+
+1. Orient — call get_graph_summary first. Returns node count, component list, orphan count, edge counts by type. Near-zero cost.
+
+2. Find nodes — use search_nodes with one or more terms (OR semantics). Fuzzy-matches against node IDs. Pass templates to restrict to a type, e.g. ["DomainModel"].
+
+3. Inspect a node — use get_cluster with a fully-qualified node ID. Returns the root, all owned descendants, and external nodes reachable via semantic edges.
+
+4. Trace relationships — use get_lineage from one or more node IDs. Default: depth 2 downstream. Use direction "both" and a higher depth to see full event flow around a node. Each result node carries origin_id, depth, via_edge_type, via_node_id.
+
+5. Broad scan — use get_graph or list_nodes with a filter to fetch all nodes of a type across the whole graph. Combine templates and component to scope to one service.
+
+## Output format tips
+
+- Default format is YAML. Use format "json" when parsing results programmatically.
+- Add compact_keys true to shorten common keys (id→i, template→t, component→cp, state→s, stability→st) and cut token usage ~30–40% on large results.
+
+## Common patterns
+
+All commands and events in a component:
+  list_nodes — filter { templates: ["DomainEvent", "IntegrationEvent"], component: "orders" }
+
+What does an operation produce?
+  get_lineage — node_ids: ["orders.DomainModel.order.operations.place"], direction: "downstream"
+
+What triggers an operation?
+  get_lineage — node_ids: ["orders.DomainModel.order.operations.complete"], direction: "upstream"
+
+Full event flow around a node:
+  get_lineage — direction: "both", depth: 3
+
+Field-level mappings between nodes:
+  get_linked_fields — returns all maps-to edges touching fields owned by a root node
+
+Schema / field details:
+  get_cluster — descendants include owned schemas, fields, and enum values
+`.trim()
+
+  server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+    prompts: [
+      {
+        name: 'usage-guide',
+        description: 'Orientation guide — recommended workflow, node ID format, edge types, and common query patterns.',
+      },
+    ],
+  }))
+
+  server.setRequestHandler(GetPromptRequestSchema, async request => {
+    if (request.params.name !== 'usage-guide') {
+      throw new Error(`Unknown prompt: ${request.params.name}`)
+    }
+    return {
+      description: 'Corum graph query orientation guide',
+      messages: [
+        { role: 'user' as const, content: { type: 'text' as const, text: USAGE_GUIDE } },
+      ],
+    }
+  })
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [

@@ -312,6 +312,7 @@ function GraphView({ route, viewingRef, templates }) {
 
   useEffect(() => {
     if (!focalNodeId) { setFocusData(null); return; }
+    setFocusData(null);
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(() => {
       const params = new URLSearchParams([

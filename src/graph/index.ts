@@ -12,9 +12,9 @@ import type {
 } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
 
-const STRUCTURAL_EDGE_TYPES = new Set<EdgeType>(['has-field', 'has-value', 'renamed-from'])
-const STRUCTURAL_NODE_TEMPLATES = new Set(['Field', 'Schema', 'EnumDefinition', 'EnumValue', 'Mapping'])
-const SEMANTIC_EDGE_TYPES = new Set<EdgeType>([
+export const STRUCTURAL_EDGE_TYPES = new Set<EdgeType>(['has-field', 'has-value', 'renamed-from'])
+export const STRUCTURAL_NODE_TEMPLATES = new Set(['Field', 'Schema', 'EnumDefinition', 'EnumValue', 'Mapping'])
+export const SEMANTIC_EDGE_TYPES = new Set<EdgeType>([
   'triggers',
   'produces',
   'reads',
@@ -300,7 +300,7 @@ export function getGraphSummary(graph: Graph): GraphSummary {
   const edgesByType: Record<string, number> = {}
   for (const edgeList of graph.edgesByFrom.values()) {
     for (const edge of edgeList) {
-      if (STRUCTURAL_EDGE_TYPES.has(edge.type) || !SEMANTIC_EDGE_TYPES.has(edge.type)) continue
+      if (!SEMANTIC_EDGE_TYPES.has(edge.type)) continue
       edgesByType[edge.type] = (edgesByType[edge.type] ?? 0) + 1
       nodesWithEdges.add(edge.from)
       nodesWithEdges.add(edge.to)
@@ -453,7 +453,11 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
       for (const edge of graph.edgesByFrom.get(current.id) ?? []) {
         if (!edgeTypeSet.has(edge.type)) continue
         const node = graph.nodesById.get(edge.to)
-        if (!node || !isIncluded(node) || visited.has(edge.to)) continue
+        if (!node || !isIncluded(node)) continue
+        if (visited.has(edge.to)) {
+          originSets.get(edge.to)?.add(current.originId)
+          continue
+        }
         visited.add(edge.to)
         tryRecord(edge.to, current.originId, current.distance + 1, edge.type, current.id, 'downstream')
         queue.push({ id: edge.to, originId: current.originId, distance: current.distance + 1 })
@@ -473,20 +477,27 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
       for (const edge of graph.edgesByTo.get(current.id) ?? []) {
         if (!inboundTypeSet.has(edge.type)) continue
         const node = graph.nodesById.get(edge.from)
-        if (!node || !isIncluded(node) || visited.has(edge.from)) continue
+        if (!node || !isIncluded(node)) continue
+        if (visited.has(edge.from)) {
+          originSets.get(edge.from)?.add(current.originId)
+          continue
+        }
         visited.add(edge.from)
         tryRecord(edge.from, current.originId, current.distance + 1, edge.type, current.id, 'upstream')
         queue.push({ id: edge.from, originId: current.originId, distance: current.distance + 1 })
       }
 
       const parentId = findParent(graph, current.id)
-      if (parentId && !visited.has(parentId)) {
+      if (parentId) {
         const parentNode = graph.nodesById.get(parentId)
-        if (parentNode && isIncluded(parentNode)) {
-          visited.add(parentId)
-          tryRecord(parentId, current.originId, current.distance + 1, 'parent', current.id, 'upstream')
-          queue.push({ id: parentId, originId: current.originId, distance: current.distance + 1 })
+        if (!parentNode || !isIncluded(parentNode)) continue
+        if (visited.has(parentId)) {
+          originSets.get(parentId)?.add(current.originId)
+          continue
         }
+        visited.add(parentId)
+        tryRecord(parentId, current.originId, current.distance + 1, 'parent', current.id, 'upstream')
+        queue.push({ id: parentId, originId: current.originId, distance: current.distance + 1 })
       }
     }
   }
