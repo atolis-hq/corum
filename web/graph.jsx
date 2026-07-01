@@ -484,6 +484,7 @@ function GraphView({ route, viewingRef, templates }) {
             onInit={setReactFlowInstance}
             nodeTypes={nodeTypes}
             fitView
+            minZoom={0.1}
             proOptions={{ hideAttribution: true }}
           >
             <Background />
