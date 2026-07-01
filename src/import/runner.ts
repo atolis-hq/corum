@@ -4,6 +4,8 @@ import { loadGraph } from '../loader/index.js'
 import { serializeGraph } from '../writer/graph-writer.js'
 import { getAdapter } from '../adapters/index.js'
 import { diffNodes } from '../reconcile/index.js'
+import { deduplicateResults } from './dedup.js'
+import type { EntryResult } from './dedup.js'
 import type { ImportConfig } from './config.js'
 import type { AdapterPackConfig } from '../adapters/index.js'
 import type { Diagnostic } from '../schema/index.js'
@@ -16,8 +18,9 @@ export interface RunResult {
 
 export async function runImport(config: ImportConfig, runtimeConfig: GraphRuntimeConfig): Promise<RunResult> {
   const allDiagnostics: Diagnostic[] = []
-
   const graph = await loadGraph({ source: runtimeConfig.source })
+
+  const entryResults: EntryResult[] = []
 
   for (const entry of config.imports) {
     const packConfig = await loadPackAdapterConfig(runtimeConfig, entry.adapter)
@@ -42,19 +45,29 @@ export async function runImport(config: ImportConfig, runtimeConfig: GraphRuntim
 
     if (result.diagnostics.some(d => d.severity === 'error')) continue
 
-    const { toAdd, toUpdate, toRemove } = diffNodes(result.nodes, graph.nodesById, specPath)
+    entryResults.push({ adapterId: entry.adapter, specPath, nodes: result.nodes, edges: result.edges })
+  }
+
+  if (config.deduplication?.length) {
+    const { results: deduped, diagnostics } = deduplicateResults(entryResults, config.deduplication)
+    allDiagnostics.push(...diagnostics)
+    entryResults.splice(0, entryResults.length, ...deduped)
+  }
+
+  const STRUCTURAL_EDGE_TYPES = new Set(['has-field', 'has-value'])
+
+  for (const er of entryResults) {
+    const { toAdd, toUpdate, toRemove } = diffNodes(er.nodes, graph.nodesById, er.specPath)
 
     for (const node of [...toAdd, ...toUpdate, ...toRemove]) {
       graph.nodesById.set(node.id, node)
     }
 
-    const STRUCTURAL_EDGE_TYPES = new Set(['has-field', 'has-value'])
-    for (const edge of result.edges) {
+    for (const edge of er.edges) {
       if (STRUCTURAL_EDGE_TYPES.has(edge.type)) continue
       const existing = graph.edgesByFrom.get(edge.from) ?? []
       if (!existing.some(e => e.id === edge.id)) {
-        const updated = [...existing, edge]
-        graph.edgesByFrom.set(edge.from, updated)
+        graph.edgesByFrom.set(edge.from, [...existing, edge])
         const byTo = graph.edgesByTo.get(edge.to) ?? []
         graph.edgesByTo.set(edge.to, [...byTo, edge])
       }

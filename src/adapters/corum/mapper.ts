@@ -44,6 +44,10 @@ export function mapDocument(document: CorumInterchangeDocument, specPath: string
       properties.description = entry.title
     }
 
+    if (entry['x-aka']?.length) {
+      properties['x-aka'] = entry['x-aka']
+    }
+
     const node = makeNode(entry.type, component, specPath, nodeId, entry.provenance, properties)
     nodes.push(node)
 
