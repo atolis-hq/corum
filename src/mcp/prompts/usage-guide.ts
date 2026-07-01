@@ -33,24 +33,38 @@ When likely relationships are absent, treat naming, shared component context, sc
 
 ## Recommended workflow
 
-1. Orient - call get_graph_summary first. Returns node count, component count, orphan count, edge counts by type, and diagnostic count.
+1. Call get_graph_metadata first to discover which edge types are in use and what node templates exist.
 
-2. Discover valid values - call get_graph_metadata when you need the available template names, edge types, or enum values for filters and traversal options.
+2. Use search_nodes with domain terms to find relevant starting nodes. Avoid list_nodes for discovery - it returns full inventories rather than ranked matches.
 
-3. Find nodes - use search_nodes with one or more terms (OR semantics). It fuzzy-matches node IDs and, when search_properties is enabled, names, descriptions, and x-aka aliases. Pass templates to restrict to a type, for example ["DomainModel"].
+3. Call get_lineage with multiple node_ids batched together rather than separate calls per node.
 
-4. Inspect a node - use get_cluster with a fully-qualified node ID. Returns the root, its owned descendants, and included semantic neighbors.
+4. Use direction "downstream" with depth 2 from events to trace event -> command -> operation chains.
 
-5. Trace relationships - use get_lineage from one or more node IDs. Default: depth 2 downstream. Use direction "both" and a higher depth to see event flow around a node. Each result node carries origin_id, depth, via_edge_type, and via_node_id. When multiple origins reach the same node, origins lists all origin IDs.
+5. Use direction "upstream" from a DomainModel node to find all writers to that aggregate.
 
-6. Broad scan - use get_graph or list_nodes with filters to fetch nodes across the graph. get_graph supports templates, exclude_templates, component, state, and stability filters.
+6. Avoid get_cluster for traversal questions - use it only when you need a node's full structural detail (schema, fields). Prefer get_lineage for following relationships.
 
-## Output format tips
+7. Add include_provenance: true only when you need to bridge a finding to the source codebase.
 
-- Default format is YAML.
-- Use format "json" when you want conventional structured output for downstream parsing.
-- Use format "toon" when you want the most token-efficient machine-readable output, especially for large node or edge lists.
-- Add compact_keys true to shorten common keys (id->i, template->t, component->cp, state->s, stability->st).
+## Output format and token efficiency
+
+Start with format "toon" and compact_keys true. TOON is the most token-efficient machine-readable format and compact_keys shortens common field names. Fall back to format "yaml" if a downstream consumer needs human-readable output, or format "json" if it needs conventional structured parsing.
+
+When compact_keys is true the following field names are shortened in the response:
+
+  id              → i      template        → t      component       → cp
+  state           → s      stability       → st     properties      → p
+  nodes           → n      edges           → e      root            → r
+  children        → ch     from            → fr     to              → to
+  type            → ty     notes           → nt     version         → v
+  core            → c      abstract        → a      extends         → ex
+  origin_id       → oi     depth           → d      via_edge_type   → vet
+  via_node_id     → vni    lastModifiedAt  → lm     extractedFrom   → xf
+  derivation      → dv     derivedBy       → db
+
+- get_lineage is lean by default: it returns only id (i), origin_id (oi), depth (d), via_edge_type (vet), and via_node_id (vni) unless lean is set to false.
+- get_lineage omits edges by default; add include_edges true when you need graph reconstruction or edge-level auditing.
 
 ## Common patterns
 
