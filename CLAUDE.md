@@ -26,9 +26,9 @@ node --test dist/test/loader.test.js  # run single test file
 
 **Templates** (`src/loader/pack-loader.ts`) live in `.corum/packs/*/templates/*.yaml` and can extend other templates. Core pack provides base types; domain/rest/messaging packs extend them.
 
-**MCP tools** (`src/mcp/index.ts`): `list_nodes`, `list_templates`, `get_template`, `get_cluster` (root + all owned children + internal edges), `get_linked_fields` (maps-to edges for a node's fields).
+**MCP tools** (`src/mcp/index.ts`): `list_nodes`, `list_templates`, `get_template`, `get_cluster`, `get_graph`, `get_graph_metadata`, `get_lineage`, `get_graph_summary`, `search_nodes`, `get_linked_fields`, `list_branches`, `diff_branch`.
 
-**Serialization** (`src/mcp/serializers.ts`): YAML (default), JSON, or TOON (compact token format). `compact_keys` flag shortens common keys (`id→i`, `template→t`, etc.) to reduce token usage.
+**Serialization** (`src/mcp/serializers.ts`): YAML (default), JSON, or TOON (compact token format). `compact_keys` shortens common keys (`id→i`, `template→t`, etc.) to reduce token usage. MCP omits node provenance by default; node-returning tools accept `include_provenance: true` when codebase/source bridging is needed. `get_lineage` is lean by default and omits `edges` unless `include_edges: true`.
 
 **Error handling**: Load errors are collected as diagnostics and bundled in `LoadError`—not thrown per-item unless `strict: true`. Query failures throw `QueryError` immediately.
 

@@ -30,7 +30,7 @@ Lists lightweight node summaries. Uses a `filter` object with:
 - `state?: string | string[]`
 - `stability?: string | string[]`
 
-Also accepts `branch`, `format`, and `compact_keys`.
+Also accepts `include_provenance`, `branch`, `format`, and `compact_keys`.
 
 **`get_cluster`**  
 Returns:
@@ -39,10 +39,12 @@ Returns:
 - `includedNodes`
 - `edges`
 
-Supports `edge_types`, `branch`, `overlay_refs`, `format`, and `compact_keys`.
+Use when you need the full structural contents of a single node such as schemas, fields, and owned children. Not suited for following relationships across the graph; use `get_lineage` for that.
+
+Supports `edge_types`, `include_provenance`, `branch`, `overlay_refs`, `format`, and `compact_keys`.
 
 **`get_graph`**  
-Returns the semantic graph as `{ nodes, edges }`. Structural templates and structural edge types are excluded by default. Supports `filter`, `branch`, `format`, and `compact_keys`.
+Returns the semantic graph as `{ nodes, edges }`. Structural templates and structural edge types are excluded by default. Supports `filter`, `include_provenance`, `branch`, `format`, and `compact_keys`.
 
 **`get_graph_metadata`**  
 Returns discovery metadata for agents and other clients:
@@ -55,10 +57,12 @@ Returns discovery metadata for agents and other clients:
 - `lineage_directions`
 - `output_formats`
 
+Call this first before making traversal queries. `edge_types_in_use` tells you which edge types are actually modeled in the current graph.
+
 Also accepts `branch`, `format`, and `compact_keys`.
 
 **`get_lineage`**  
-Traverses from one or more origin nodes and returns annotated lineage nodes plus edges. Supports:
+Traverses from one or more origin nodes. By default it returns `nodes` only, in lean form. Supports:
 - `node_ids`
 - `depth`
 - `direction`
@@ -67,9 +71,24 @@ Traverses from one or more origin nodes and returns annotated lineage nodes plus
 - `exclude_node_types`
 - `include_dangling_edges`
 - `reads_outbound_only`
+- `lean`
+- `include_edges`
+- `include_provenance`
 - `branch`
 - `format`
 - `compact_keys`
+
+Default lean lineage node shape:
+- `id`
+- `origin_id`
+- `depth`
+- `via_edge_type`
+- `via_node_id`
+
+Pass multiple `node_ids` in one call to expand all origins in parallel. Useful patterns:
+- Event fan-out: `direction: downstream`, `depth: 2`
+- Find all writers to an aggregate: `direction: upstream`
+- Full event chain: `direction: downstream`, `depth: 3` or more
 
 **`search_nodes`**  
 Fuzzy-searches root-level nodes. Supports:
@@ -79,12 +98,17 @@ Fuzzy-searches root-level nodes. Supports:
 - `page_size`
 - `offset`
 - `search_properties`
+- `include_provenance`
 - `branch`
 - `format`
 - `compact_keys`
 
+Prefer this over `list_nodes` when you have a domain term to search for. Use `list_nodes` only when you need a complete inventory under explicit filters.
+
 **`get_linked_fields`**  
 Returns `maps-to` edges touching fields owned by a given root node.
+
+Supports `include_provenance`, `branch`, `format`, and `compact_keys`.
 
 ### Templates
 
@@ -110,6 +134,11 @@ Diffs a branch against the default branch when a source-backed graph is configur
 Most tools support:
 - `format`: `yaml` (default), `json`, or `toon`
 - `compact_keys`: shorten common keys before serialization
+
+All node-returning tools support:
+- `include_provenance`: include `extractedFrom`, `lastModifiedAt`, `derivation`, and `derivedBy`
+
+`schemaVersion` is never returned by MCP.
 
 ### Implemented Prompt
 
@@ -193,7 +222,8 @@ Validate a proposed cluster against its template JSON Schema without writing.
 
 The typical session-start sequence for the currently implemented surface is:
 
-1. `get_graph_summary`
+1. `get_graph_metadata`
 2. `list_branches` if branch-aware context matters
-3. `search_nodes` or `list_nodes` to orient to the area of interest
-4. `get_cluster` or `get_lineage` for deeper traversal
+3. `search_nodes` to find candidate start nodes
+4. `get_lineage` with batched `node_ids` for traversal
+5. `get_cluster` only when full structural detail is required

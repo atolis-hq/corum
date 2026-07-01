@@ -301,10 +301,10 @@ Or if installed globally:
 | `list_nodes` | List graph nodes using a `filter` object with `templates`, `exclude_templates`, `component`, `state`, and `stability` |
 | `list_templates` | List loaded templates with summary metadata |
 | `get_template` | Return full details for a template |
-| `get_cluster` | Return a root node, its descendants, included external nodes, and edges |
+| `get_cluster` | Return a root node, its descendants, included external nodes, and edges for one node's full structural detail |
 | `get_graph` | Return the semantic graph as `{ nodes, edges }`, excluding structural templates and structural edges by default |
 | `get_graph_metadata` | Return discoverable metadata: template names, node templates in use, edge types, and valid enum values |
-| `get_lineage` | Traverse lineage from one or more start nodes with depth, direction, and edge/node-type filters |
+| `get_lineage` | Traverse lineage from one or more start nodes. Lean nodes and no `edges` by default; opt in to fuller payloads when needed |
 | `get_graph_summary` | Return high-level graph statistics: node count, component count, orphan breakdown, edge counts, diagnostics |
 | `search_nodes` | Fuzzy-search root-level nodes by ID, with optional template filters and property search |
 | `get_linked_fields` | Return `maps-to` edges touching fields owned by a root node |
@@ -313,12 +313,18 @@ Or if installed globally:
 
 All tools accept an optional `format` argument: `yaml` (default), `json`, or `toon`. All tools also accept `compact_keys: true` to shorten common keys before serialization, reducing token usage.
 
+All node-returning MCP tools accept `include_provenance: true` to include `extractedFrom`, `lastModifiedAt`, `derivation`, and `derivedBy`. These fields are omitted by default. `schemaVersion` is never returned by MCP.
+
 Common notes:
 - `branch` is supported on graph-query tools when Corum is running against a source-backed graph.
 - `list_nodes` is a breaking-change surface from older builds: use `filter.templates` instead of top-level `template`.
 - `search_nodes` accepts `queries: string[]`.
-- `get_graph_metadata` is the quickest way to discover valid template names, edge types, lifecycle states, stabilities, lineage directions, and output formats before constructing other calls.
-- `get_lineage` accepts `node_ids: string[]`, `depth`, `direction`, `edge_types`, `node_types`, `exclude_node_types`, `include_dangling_edges`, and `reads_outbound_only`.
+- `get_graph_metadata` should usually be your first call. Use `edge_types_in_use` to avoid traversing edge types that do not exist in the current graph.
+- Prefer `search_nodes` over `list_nodes` for discovery. Use `list_nodes` when you need a full inventory under explicit filters.
+- `get_lineage` accepts `node_ids: string[]`, `depth`, `direction`, `edge_types`, `node_types`, `exclude_node_types`, `include_dangling_edges`, `reads_outbound_only`, `lean`, and `include_edges`.
+- `get_lineage` defaults to `lean: true` and `include_edges: false`. Lean lineage nodes contain only `id`, `origin_id`, `depth`, `via_edge_type`, and `via_node_id`.
+- Pass multiple `node_ids` to `get_lineage` in one call instead of making separate traversal calls.
+- Use `get_cluster` only when you need full structural contents for one node such as schemas and fields. Use `get_lineage` for relationship traversal.
 - The graph reflects modeled relationships, not guaranteed complete truth. Missing edges do not prove no relationship exists; agents should treat naming and schema similarity as hypotheses and then verify via cluster inspection or source material.
 
 ## MCP Prompts

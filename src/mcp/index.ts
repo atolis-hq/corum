@@ -20,7 +20,7 @@ import {
   type SearchNodesOptions,
 } from '../graph/index.js'
 import { loadGraph, loadMultiGraph } from '../loader/index.js'
-import type { BranchGraph, EdgeType, Graph } from '../schema/index.js'
+import type { BranchGraph, Edge, EdgeType, Graph } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
 import { createGraphRuntimeConfig } from '../source/config.js'
 import type { GraphSource } from '../source/index.js'
@@ -37,6 +37,15 @@ type ToolResult = {
 
 type MaybePromise<T> = T | Promise<T>
 type ToolHandler = (args: Record<string, unknown>) => MaybePromise<ToolResult>
+type ToolDefinition = {
+  name: string
+  description: string
+  inputSchema: {
+    type: 'object'
+    required?: string[]
+    properties: Record<string, unknown>
+  }
+}
 
 const EDGE_TYPES = [
   'triggers',
@@ -89,6 +98,92 @@ function parseListNodesFilter(value: unknown): ListNodesFilter {
   }
 }
 
+function includesProvenance(args: Record<string, unknown>): boolean {
+  return args.include_provenance === true || args.includeProvenance === true
+}
+
+function summarizeNode(node: Graph['nodesById'] extends Map<string, infer T> ? T : never, includeProvenance: boolean): Record<string, unknown> {
+  return {
+    id: node.id,
+    template: node.template,
+    component: node.component,
+    state: node.state,
+    stability: node.stability,
+    ...(includeProvenance ? withProvenance(node) : {}),
+  }
+}
+
+function withProvenance(node: Graph['nodesById'] extends Map<string, infer T> ? T : never): Record<string, unknown> {
+  return {
+    ...(node.extractedFrom !== undefined ? { extractedFrom: node.extractedFrom } : {}),
+    ...(node.lastModifiedAt !== undefined ? { lastModifiedAt: node.lastModifiedAt } : {}),
+    ...(node.derivation !== undefined ? { derivation: node.derivation } : {}),
+    ...(node.derivedBy !== undefined ? { derivedBy: node.derivedBy } : {}),
+  }
+}
+
+function fullNode(node: Graph['nodesById'] extends Map<string, infer T> ? T : never, includeProvenance: boolean): Record<string, unknown> {
+  return {
+    id: node.id,
+    template: node.template,
+    component: node.component,
+    state: node.state,
+    stability: node.stability,
+    properties: node.properties,
+    ...(includeProvenance ? withProvenance(node) : {}),
+  }
+}
+
+function mapEdge(edge: Edge, includeProvenance: boolean): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    id: edge.id,
+    from: edge.from,
+    to: edge.to,
+    type: edge.type,
+    state: edge.state,
+    stability: edge.stability,
+  }
+  if (edge.notes !== undefined) out.notes = edge.notes
+  if (includeProvenance) {
+    if (edge.derivation !== undefined) out.derivation = edge.derivation
+    if (edge.derivedBy !== undefined) out.derivedBy = edge.derivedBy
+  }
+  return out
+}
+
+function mapLineageNode(
+  node: Record<string, unknown>,
+  includeProvenance: boolean,
+  lean: boolean,
+): Record<string, unknown> {
+  const base = {
+    id: String(node.id),
+    origin_id: String(node.origin_id),
+    depth: Number(node.depth),
+    via_edge_type: String(node.via_edge_type),
+    via_node_id: String(node.via_node_id),
+  }
+
+  if (lean) return base
+
+  return {
+    ...base,
+    template: String(node.template),
+    component: String(node.component),
+    state: String(node.state),
+    stability: String(node.stability),
+    properties: (node.properties ?? {}) as Record<string, unknown>,
+    ...(includeProvenance
+      ? {
+        ...(node.extractedFrom !== undefined ? { extractedFrom: node.extractedFrom } : {}),
+        ...(node.lastModifiedAt !== undefined ? { lastModifiedAt: node.lastModifiedAt } : {}),
+        ...(node.derivation !== undefined ? { derivation: node.derivation } : {}),
+        ...(node.derivedBy !== undefined ? { derivedBy: node.derivedBy } : {}),
+      }
+      : {}),
+  }
+}
+
 export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: MultiGraphCache): {
   list_nodes: ToolHandler
   list_templates: ToolHandler
@@ -109,13 +204,8 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
     list_nodes(args) {
       const run = (targetGraph: Graph): ToolResult => {
         const filter = parseListNodesFilter(args.filter)
-        const summaries = listNodes(targetGraph, filter).map(node => ({
-          id: node.id,
-          template: node.template,
-          component: node.component,
-          state: node.state,
-          stability: node.stability,
-        }))
+        const summaries = listNodes(targetGraph, filter)
+          .map(node => summarizeNode(node, includesProvenance(args)))
         return formatResult(summaries, args.format, getCompactKeys(args))
       }
 
@@ -159,7 +249,15 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
           offset: typeof args.offset === 'number' ? args.offset : 0,
           searchProperties: args.search_properties === true,
         }
-        return formatResult(searchNodes(targetGraph, queries, options), args.format, getCompactKeys(args))
+        const wantFull = args.full_nodes === true
+        const incProv = includesProvenance(args)
+        const results = searchNodes(targetGraph, queries, options).map(result => ({
+          score: result.score,
+          node: wantFull
+            ? fullNode(result.node, incProv)
+            : summarizeNode(result.node, incProv),
+        }))
+        return formatResult(results, args.format, getCompactKeys(args))
       }
 
       if (hasBranch(args) && source) {
@@ -222,12 +320,19 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
           ?? [...SEMANTIC_EDGE_TYPES]
 
         const cluster = getClusterView(targetGraph, String(args.node_id), edgeTypes)
+        const includeProvenance = includesProvenance(args)
+        const clusterPayload = {
+          root: fullNode(cluster.root, includeProvenance),
+          descendants: cluster.descendants.map(node => fullNode(node, includeProvenance)),
+          includedNodes: cluster.includedNodes.map(node => fullNode(node, includeProvenance)),
+          edges: cluster.edges.map(e => mapEdge(e, includeProvenance)),
+        }
         if (overlayRefs.length === 0 || !source || !branchRef) {
-          return formatResult(cluster, args.format, getCompactKeys(args))
+          return formatResult(clusterPayload, args.format, getCompactKeys(args))
         }
         const multi = await resolveMulti(source)
         const overlay = computeClusterOverlay(multi, branchRef, overlayRefs, String(args.node_id))
-        return formatResult({ ...cluster, overlay }, args.format, getCompactKeys(args))
+        return formatResult({ ...clusterPayload, overlay }, args.format, getCompactKeys(args))
       }
 
       const branchRef = hasBranch(args) ? String(args.branch) : undefined
@@ -247,24 +352,22 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
           : filter
 
         const nodes = listNodes(targetGraph, effectiveFilter)
-          .map(node => ({
-            id: node.id,
-            template: node.template,
-            component: node.component,
-            state: node.state,
-            stability: node.stability,
-          }))
+          .map(node => summarizeNode(node, includesProvenance(args)))
 
-        const nodeIds = new Set(nodes.map(node => node.id))
-        const edges: Array<{ id: string; from: string; to: string; type: string }> = []
-        for (const edgeList of targetGraph.edgesByFrom.values()) {
-          for (const edge of edgeList) {
-            if (!SEMANTIC_EDGE_TYPES.has(edge.type) || !nodeIds.has(edge.from) || !nodeIds.has(edge.to)) continue
-            edges.push({ id: edge.id, from: edge.from, to: edge.to, type: edge.type })
+        const payload: Record<string, unknown> = { nodes }
+        if (args.include_edges === true) {
+          const nodeIds = new Set(nodes.map(node => node.id))
+          const edges: Array<{ id: string; from: string; to: string; type: string }> = []
+          for (const edgeList of targetGraph.edgesByFrom.values()) {
+            for (const edge of edgeList) {
+              if (!SEMANTIC_EDGE_TYPES.has(edge.type) || !nodeIds.has(edge.from) || !nodeIds.has(edge.to)) continue
+              edges.push({ id: edge.id, from: edge.from, to: edge.to, type: edge.type })
+            }
           }
+          payload.edges = edges
         }
 
-        return formatResult({ nodes, edges }, args.format, getCompactKeys(args))
+        return formatResult(payload, args.format, getCompactKeys(args))
       }
 
       if (hasBranch(args) && source) {
@@ -288,15 +391,18 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
           for (const edge of edgeList) edgeTypesInUse.add(edge.type)
         }
 
+        const includeStatic = args.include_static_enums === true
         return formatResult({
           template_names: [...targetGraph.templates.keys()].sort(),
           node_templates_in_use: [...nodeTemplatesInUse].sort(),
           edge_types_in_use: [...edgeTypesInUse].sort(),
-          valid_edge_types: [...EDGE_TYPES],
-          states: [...STATE_VALUES],
-          stabilities: [...STABILITY_VALUES],
-          lineage_directions: [...LINEAGE_DIRECTIONS],
-          output_formats: [...OUTPUT_FORMATS],
+          ...(includeStatic ? {
+            valid_edge_types: [...EDGE_TYPES],
+            states: [...STATE_VALUES],
+            stabilities: [...STABILITY_VALUES],
+            lineage_directions: [...LINEAGE_DIRECTIONS],
+            output_formats: [...OUTPUT_FORMATS],
+          } : {}),
         }, args.format, getCompactKeys(args))
       }
 
@@ -330,7 +436,16 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
           includeDanglingEdges: args.include_dangling_edges === true,
           readsOutboundOnly: args.reads_outbound_only !== false,
         }
-        return formatResult(getLineage(targetGraph, nodeIds, options), args.format, getCompactKeys(args))
+        const lineage = getLineage(targetGraph, nodeIds, options)
+        const lean = args.lean !== false
+        const includeEdges = args.include_edges === true
+        const includeProvenance = includesProvenance(args)
+        const payload: Record<string, unknown> = {
+          nodes: lineage.nodes.map(node => mapLineageNode(node as unknown as Record<string, unknown>, includeProvenance, lean)),
+        }
+        if (includeEdges) payload.edges = lineage.edges.map(e => mapEdge(e, includeProvenance))
+        if (args.include_dangling_edges === true && lineage.dangling_edges) payload.dangling_edges = lineage.dangling_edges
+        return formatResult(payload, args.format, getCompactKeys(args))
       }
 
       if (hasBranch(args) && source) {
@@ -345,8 +460,14 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
     },
 
     get_linked_fields(args) {
-      const run = (targetGraph: Graph): ToolResult =>
-        formatResult(getLinkedFields(targetGraph, String(args.node_id)), args.format, getCompactKeys(args))
+      const run = (targetGraph: Graph): ToolResult => {
+        const linked = getLinkedFields(targetGraph, String(args.node_id))
+        const incProv = includesProvenance(args)
+        return formatResult({
+          edges: linked.edges.map(e => mapEdge(e, incProv)),
+          nodes: linked.nodes.map(node => fullNode(node, incProv)),
+        }, args.format, getCompactKeys(args))
+      }
 
       if (hasBranch(args)) {
         return withBranchGraph(source, String(args.branch), branch => run(branch.graph))
@@ -425,6 +546,242 @@ function errorResult(err: unknown): ToolResult {
   return { content: [{ type: 'text', text: message }], isError: true }
 }
 
+export function getMcpToolDefinitions(): ToolDefinition[] {
+  return [
+    {
+      name: 'list_nodes',
+      description: 'List nodes in the graph. Returns id, template, component, state, stability for each matched node.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          filter: {
+            type: 'object',
+            description: 'Filter criteria',
+            properties: {
+              templates: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Include only these template types (OR semantics)',
+              },
+              exclude_templates: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Exclude these template types',
+              },
+              component: { type: 'string', description: 'Filter by component name' },
+              state: {
+                description: 'Filter by lifecycle state as a string or array',
+                oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
+              },
+              stability: {
+                description: 'Filter by stability as a string or array',
+                oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
+              },
+            },
+          },
+          include_provenance: { type: 'boolean', description: 'Include provenance fields on returned nodes. Default false.' },
+          branch: { type: 'string', description: 'Branch ref to load nodes from' },
+          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+        },
+      },
+    },
+    {
+      name: 'list_templates',
+      description: 'List loaded graph templates. Returns name, version, core, abstract, extends, and description for each template.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          branch: { type: 'string', description: 'Branch ref to load templates from' },
+          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+        },
+      },
+    },
+    {
+      name: 'get_template',
+      description: 'Get full details for a loaded graph template.',
+      inputSchema: {
+        type: 'object',
+        required: ['name'],
+        properties: {
+          name: { type: 'string', description: 'Template name' },
+          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+        },
+      },
+    },
+    {
+      name: 'get_cluster',
+      description: 'Use when you need the full structural contents of a single node - its schema, fields, and owned children. Not suited for following relationships across the graph; use get_lineage for that. Note: large aggregates may exceed response size limits.',
+      inputSchema: {
+        type: 'object',
+        required: ['node_id'],
+        properties: {
+          node_id: { type: 'string', description: 'Fully qualified node ID' },
+          edge_types: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Edge types to follow for external node inclusion. Defaults to all semantic types.',
+          },
+          include_dangling_edges: { type: 'boolean', description: 'Include edges to nodes outside the cluster. Default false.' },
+          reads_outbound_only: { type: 'boolean', description: 'Restrict reads edges to outbound only. Default true.' },
+          include_provenance: { type: 'boolean', description: 'Include provenance fields on returned nodes. Default false.' },
+          branch: { type: 'string', description: 'Branch ref to load the cluster from' },
+          overlay_refs: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Branch refs to overlay. Returns ghost field data alongside the cluster.',
+          },
+          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+        },
+      },
+    },
+    {
+      name: 'get_graph',
+      description: 'Return semantic nodes (and optionally edges) across the graph. Excludes structural templates and structural edge types by default. Pass include_edges: true to include the semantic edge list.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          filter: {
+            type: 'object',
+            properties: {
+              templates: { type: 'array', items: { type: 'string' } },
+              exclude_templates: { type: 'array', items: { type: 'string' } },
+              component: { type: 'string' },
+              state: { oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
+              stability: { oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
+            },
+          },
+          include_edges: { type: 'boolean', description: 'Include the semantic edge list in the response. Default false.' },
+          include_provenance: { type: 'boolean', description: 'Include provenance fields on returned nodes. Default false.' },
+          branch: { type: 'string', description: 'Branch ref to load the graph from' },
+          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+        },
+      },
+    },
+    {
+      name: 'get_graph_metadata',
+      description: 'Return discoverable graph metadata: template names, node templates in use, edge types in use. Call this first before making traversal queries. The edge_types_in_use field tells you which edge types are actually modelled in the current graph - there is no value traversing edge types that have no entries. Pass include_static_enums: true to also receive valid_edge_types, states, stabilities, lineage_directions, and output_formats.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          include_static_enums: { type: 'boolean', description: 'Include static enum reference fields (valid_edge_types, states, stabilities, lineage_directions, output_formats). Default false.' },
+          branch: { type: 'string', description: 'Branch ref to load metadata from' },
+          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+        },
+      },
+    },
+    {
+      name: 'get_lineage',
+      description: 'Traverse the graph from one or more origin nodes via BFS and return annotated lineage results. Pass multiple node_ids to expand all origins in parallel in a single call rather than making separate calls - results are merged and deduplicated automatically.\n\nCommon patterns:\n- Event fan-out - direction: downstream, depth: 2 from an event node to see all triggered commands and the operations they invoke.\n- Find all writers to an aggregate - direction: upstream from a DomainModel node to see every command and operation that writes to it.\n- Full event chain - direction: downstream, depth: 3 or more to trace event -> command -> operation -> produced event chains.',
+      inputSchema: {
+        type: 'object',
+        required: ['node_ids'],
+        properties: {
+          node_ids: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Fully-qualified IDs of origin nodes. All expand in parallel.',
+          },
+          depth: { type: 'number', description: 'Max hops. Default 2.' },
+          direction: { type: 'string', enum: ['downstream', 'upstream', 'both'], description: 'Traversal direction. Default downstream.' },
+          edge_types: { type: 'array', items: { type: 'string' }, description: 'Edge types to traverse. Default: all non-structural.' },
+          node_types: { type: 'array', items: { type: 'string' }, description: 'Allowlist of node templates.' },
+          exclude_node_types: { type: 'array', items: { type: 'string' }, description: 'Denylist of node templates.' },
+          include_dangling_edges: { type: 'boolean', description: 'Include dangling edges in the response when present. Default false.' },
+          reads_outbound_only: { type: 'boolean', description: 'Do not follow inbound reads edges in upstream traversal. Default true.' },
+          lean: { type: 'boolean', description: 'Return minimal lineage node shape. Default true.' },
+          include_edges: { type: 'boolean', description: 'Include the edges list in the response. Default false.' },
+          include_provenance: { type: 'boolean', description: 'Include provenance fields on returned nodes. Default false.' },
+          branch: { type: 'string', description: 'Branch ref to load the lineage from' },
+          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+        },
+      },
+    },
+    {
+      name: 'get_linked_fields',
+      description: 'Get all maps-to edges touching fields owned by the given root node.',
+      inputSchema: {
+        type: 'object',
+        required: ['node_id'],
+        properties: {
+          node_id: { type: 'string', description: 'Fully qualified root node ID' },
+          include_provenance: { type: 'boolean', description: 'Include provenance fields on returned nodes. Default false.' },
+          branch: { type: 'string', description: 'Branch ref to load linked fields from' },
+          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+        },
+      },
+    },
+    {
+      name: 'get_graph_summary',
+      description: 'Return high-level statistics: node count, component count, orphan breakdown, edge counts by type, diagnostic count.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          branch: { type: 'string', description: 'Branch ref to load the summary from' },
+          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+        },
+      },
+    },
+    {
+      name: 'search_nodes',
+      description: 'Fuzzy search for root-level nodes by ID segments. Returns slim node summaries (id, template, component, state, stability) by default. Pass full_nodes: true to include properties. Prefer this over list_nodes when you have a domain term to search for - it returns ranked, targeted results without noise. Use list_nodes only when you need a complete inventory of nodes matching specific filter criteria.',
+      inputSchema: {
+        type: 'object',
+        required: ['queries'],
+        properties: {
+          queries: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Search terms. OR semantics; any matching term qualifies the node.',
+          },
+          templates: { type: 'array', items: { type: 'string' }, description: 'Include only these template types.' },
+          exclude_templates: { type: 'array', items: { type: 'string' }, description: 'Exclude these template types.' },
+          page_size: { type: 'number', description: 'Max results to return. Default 10.' },
+          offset: { type: 'number', description: 'Result offset for pagination. Default 0.' },
+          search_properties: { type: 'boolean', description: 'Also match name, description, and x-aka properties.' },
+          full_nodes: { type: 'boolean', description: 'Include properties on each result node. Default false.' },
+          include_provenance: { type: 'boolean', description: 'Include provenance fields on returned nodes. Default false.' },
+          branch: { type: 'string', description: 'Branch ref to search within' },
+          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+        },
+      },
+    },
+    {
+      name: 'list_branches',
+      description: 'List branches available from the configured graph source and their load status.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+        },
+      },
+    },
+    {
+      name: 'diff_branch',
+      description: 'Diff a branch against the default branch.',
+      inputSchema: {
+        type: 'object',
+        required: ['branch'],
+        properties: {
+          branch: { type: 'string', description: 'Branch ref to diff against the default branch' },
+          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+        },
+      },
+    },
+  ]
+}
+
 // TODO: A future library-first refactor (src/runtime/) would be the right path
 // if external consumers of this startup API emerge. For now, the CLI is the only consumer.
 export type McpServerOptions = {
@@ -492,228 +849,7 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
   })
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [
-      {
-        name: 'list_nodes',
-        description: 'List nodes in the graph. Returns id, template, component, state, stability for each matched node.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            filter: {
-              type: 'object',
-              description: 'Filter criteria',
-              properties: {
-                templates: {
-                  type: 'array',
-                  items: { type: 'string' },
-                  description: 'Include only these template types (OR semantics)',
-                },
-                exclude_templates: {
-                  type: 'array',
-                  items: { type: 'string' },
-                  description: 'Exclude these template types',
-                },
-                component: { type: 'string', description: 'Filter by component name' },
-                state: {
-                  description: 'Filter by lifecycle state as a string or array',
-                  oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
-                },
-                stability: {
-                  description: 'Filter by stability as a string or array',
-                  oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
-                },
-              },
-            },
-            branch: { type: 'string', description: 'Branch ref to load nodes from' },
-            format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-            compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
-          },
-        },
-      },
-      {
-        name: 'list_templates',
-        description: 'List loaded graph templates. Returns name, version, core, abstract, extends, and description for each template.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            branch: { type: 'string', description: 'Branch ref to load templates from' },
-            format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-            compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
-          },
-        },
-      },
-      {
-        name: 'get_template',
-        description: 'Get full details for a loaded graph template.',
-        inputSchema: {
-          type: 'object',
-          required: ['name'],
-          properties: {
-            name: { type: 'string', description: 'Template name' },
-            format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-            compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
-          },
-        },
-      },
-      {
-        name: 'get_cluster',
-        description: 'Get the full cluster for a root node.',
-        inputSchema: {
-          type: 'object',
-          required: ['node_id'],
-          properties: {
-            node_id: { type: 'string', description: 'Fully qualified node ID' },
-            edge_types: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Edge types to follow for external node inclusion. Defaults to all semantic types.',
-            },
-            include_dangling_edges: { type: 'boolean', description: 'Include edges to nodes outside the cluster. Default false.' },
-            reads_outbound_only: { type: 'boolean', description: 'Restrict reads edges to outbound only. Default true.' },
-            branch: { type: 'string', description: 'Branch ref to load the cluster from' },
-            overlay_refs: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Branch refs to overlay. Returns ghost field data alongside the cluster.',
-            },
-            format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-            compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
-          },
-        },
-      },
-      {
-        name: 'get_graph',
-        description: 'Return all semantic nodes and edges. Excludes structural templates and structural edge types by default.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            filter: {
-              type: 'object',
-              properties: {
-                templates: { type: 'array', items: { type: 'string' } },
-                exclude_templates: { type: 'array', items: { type: 'string' } },
-                component: { type: 'string' },
-                state: { oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
-                stability: { oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
-              },
-            },
-            branch: { type: 'string', description: 'Branch ref to load the graph from' },
-            format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-            compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
-          },
-        },
-      },
-      {
-        name: 'get_graph_metadata',
-        description: 'Return discoverable graph metadata: template names, node templates in use, edge types, and valid enum values.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            branch: { type: 'string', description: 'Branch ref to load metadata from' },
-            format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-            compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
-          },
-        },
-      },
-      {
-        name: 'get_lineage',
-        description: 'Traverse the graph from one or more origin nodes via BFS and return annotated lineage results.',
-        inputSchema: {
-          type: 'object',
-          required: ['node_ids'],
-          properties: {
-            node_ids: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Fully-qualified IDs of origin nodes. All expand in parallel.',
-            },
-            depth: { type: 'number', description: 'Max hops. Default 2.' },
-            direction: { type: 'string', enum: ['downstream', 'upstream', 'both'], description: 'Traversal direction. Default downstream.' },
-            edge_types: { type: 'array', items: { type: 'string' }, description: 'Edge types to traverse. Default: all non-structural.' },
-            node_types: { type: 'array', items: { type: 'string' }, description: 'Allowlist of node templates.' },
-            exclude_node_types: { type: 'array', items: { type: 'string' }, description: 'Denylist of node templates.' },
-            include_dangling_edges: { type: 'boolean', description: 'Include edges to nodes outside the result set. Default false.' },
-            reads_outbound_only: { type: 'boolean', description: 'Do not follow inbound reads edges in upstream traversal. Default true.' },
-            branch: { type: 'string', description: 'Branch ref to load the lineage from' },
-            format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-            compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
-          },
-        },
-      },
-      {
-        name: 'get_linked_fields',
-        description: 'Get all maps-to edges touching fields owned by the given root node.',
-        inputSchema: {
-          type: 'object',
-          required: ['node_id'],
-          properties: {
-            node_id: { type: 'string', description: 'Fully qualified root node ID' },
-            branch: { type: 'string', description: 'Branch ref to load linked fields from' },
-            format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-            compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
-          },
-        },
-      },
-      {
-        name: 'get_graph_summary',
-        description: 'Return high-level statistics: node count, component count, orphan breakdown, edge counts by type, diagnostic count.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            branch: { type: 'string', description: 'Branch ref to load the summary from' },
-            format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-            compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
-          },
-        },
-      },
-      {
-        name: 'search_nodes',
-        description: 'Fuzzy search for root-level nodes by ID segments. Returns ranked results with score.',
-        inputSchema: {
-          type: 'object',
-          required: ['queries'],
-          properties: {
-            queries: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Search terms. OR semantics; any matching term qualifies the node.',
-            },
-            templates: { type: 'array', items: { type: 'string' }, description: 'Include only these template types.' },
-            exclude_templates: { type: 'array', items: { type: 'string' }, description: 'Exclude these template types.' },
-            page_size: { type: 'number', description: 'Max results to return. Default 10.' },
-            offset: { type: 'number', description: 'Result offset for pagination. Default 0.' },
-            search_properties: { type: 'boolean', description: 'Also match name, description, and x-aka properties.' },
-            branch: { type: 'string', description: 'Branch ref to search within' },
-            format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-            compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
-          },
-        },
-      },
-      {
-        name: 'list_branches',
-        description: 'List branches available from the configured graph source and their load status.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-            compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
-          },
-        },
-      },
-      {
-        name: 'diff_branch',
-        description: 'Diff a branch against the default branch.',
-        inputSchema: {
-          type: 'object',
-          required: ['branch'],
-          properties: {
-            branch: { type: 'string', description: 'Branch ref to diff against the default branch' },
-            format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-            compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
-          },
-        },
-      },
-    ],
+    tools: getMcpToolDefinitions(),
   }))
 
   server.setRequestHandler(CallToolRequestSchema, async request => {

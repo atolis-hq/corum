@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import * as git from 'isomorphic-git'
 import { parse as parseYaml } from 'yaml'
 import { decode as decodeToon } from '@toon-format/toon'
-import { createMcpHandlers } from '../src/mcp/index.js'
+import { createMcpHandlers, getMcpToolDefinitions } from '../src/mcp/index.js'
 import { USAGE_GUIDE_PROMPT } from '../src/mcp/prompts/usage-guide.js'
 import { loadGraph } from '../src/loader/index.js'
 import type { Graph } from '../src/schema/index.js'
@@ -35,6 +35,25 @@ describe('MCP handlers', () => {
       assert.ok('template' in nodes[0])
       assert.ok('state' in nodes[0])
       assert.ok(!('properties' in nodes[0]))
+      assert.ok(!('schemaVersion' in nodes[0]))
+      assert.ok(!('lastModifiedAt' in nodes[0]))
+      assert.ok(!('extractedFrom' in nodes[0]))
+      assert.ok(!('derivation' in nodes[0]))
+      assert.ok(!('derivedBy' in nodes[0]))
+    })
+
+    it('includes provenance when requested', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.list_nodes({
+        filter: { templates: ['DomainModel'] },
+        include_provenance: true,
+        format: 'json',
+      })
+      const nodes = JSON.parse(result.content[0].text)
+
+      assert.ok(nodes.length > 0)
+      assert.ok(!('schemaVersion' in nodes[0]))
+      assert.equal(nodes[0].lastModifiedAt, '2026-04-23')
     })
 
     it('filters by template', async () => {
@@ -282,6 +301,22 @@ describe('MCP handlers', () => {
       assert.equal(cluster.descendants.length, 22)
       assert.ok(Array.isArray(cluster.edges))
       assert.ok(Array.isArray(cluster.includedNodes))
+      assert.ok(!('schemaVersion' in cluster.root))
+      assert.ok(!('lastModifiedAt' in cluster.root))
+      assert.ok(!('schemaVersion' in cluster.descendants[0]))
+    })
+
+    it('includes cluster provenance when requested', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.get_cluster({
+        node_id: 'orders.DomainModel.order',
+        include_provenance: true,
+        format: 'json',
+      })
+      const cluster = JSON.parse(result.content[0].text)
+
+      assert.ok(!('schemaVersion' in cluster.root))
+      assert.equal(cluster.root.lastModifiedAt, '2026-04-23')
     })
 
     it('returns error message for unknown node', async () => {
@@ -332,6 +367,21 @@ describe('MCP handlers', () => {
       const linked = JSON.parse(result.content[0].text)
       assert.equal(linked.edges.length, 23)
       assert.ok(Array.isArray(linked.nodes))
+      assert.ok(!('schemaVersion' in linked.nodes[0]))
+      assert.ok(!('lastModifiedAt' in linked.nodes[0]))
+    })
+
+    it('includes linked field node provenance when requested', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.get_linked_fields({
+        node_id: 'orders.DomainModel.order',
+        include_provenance: true,
+        format: 'json',
+      })
+      const linked = JSON.parse(result.content[0].text)
+
+      assert.ok(!('schemaVersion' in linked.nodes[0]))
+      assert.ok('lastModifiedAt' in linked.nodes[0])
     })
 
     it('returns error message for unknown node', async () => {
@@ -377,7 +427,7 @@ describe('MCP handlers', () => {
   })
 
   describe('get_graph_metadata', () => {
-    it('returns template, edge, and enum metadata', async () => {
+    it('returns template, edge, and in-use metadata without static enums by default', async () => {
       const handlers = createMcpHandlers(graph)
       const result = await handlers.get_graph_metadata({ format: 'json' })
       const data = JSON.parse(result.content[0].text)
@@ -385,14 +435,26 @@ describe('MCP handlers', () => {
       assert.ok(Array.isArray(data.template_names))
       assert.ok(Array.isArray(data.node_templates_in_use))
       assert.ok(Array.isArray(data.edge_types_in_use))
+      assert.ok(!('valid_edge_types' in data))
+      assert.ok(!('states' in data))
+      assert.ok(!('stabilities' in data))
+      assert.ok(!('lineage_directions' in data))
+      assert.ok(!('output_formats' in data))
+      assert.ok(data.template_names.includes('DomainModel'))
+      assert.ok(data.node_templates_in_use.includes('DomainEvent'))
+      assert.ok(data.edge_types_in_use.includes('produces'))
+    })
+
+    it('includes static enums when include_static_enums is true', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.get_graph_metadata({ include_static_enums: true, format: 'json' })
+      const data = JSON.parse(result.content[0].text)
+
       assert.ok(Array.isArray(data.valid_edge_types))
       assert.ok(Array.isArray(data.states))
       assert.ok(Array.isArray(data.stabilities))
       assert.ok(Array.isArray(data.lineage_directions))
       assert.ok(Array.isArray(data.output_formats))
-      assert.ok(data.template_names.includes('DomainModel'))
-      assert.ok(data.node_templates_in_use.includes('DomainEvent'))
-      assert.ok(data.edge_types_in_use.includes('produces'))
       assert.ok(data.valid_edge_types.includes('has-field'))
       assert.ok(data.states.includes('agreed'))
       assert.ok(data.stabilities.includes('stable'))
@@ -412,6 +474,33 @@ describe('MCP handlers', () => {
         const node = r.node as Record<string, unknown>
         return typeof node.id === 'string' && node.id.includes('order')
       }))
+      const firstNode = data[0].node as Record<string, unknown>
+      assert.ok(!('schemaVersion' in firstNode))
+      assert.ok(!('lastModifiedAt' in firstNode))
+      assert.ok(!('properties' in firstNode))
+    })
+
+    it('includes properties when full_nodes is true', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.search_nodes({ queries: ['order'], full_nodes: true, format: 'json' })
+      const data = JSON.parse(result.content[0].text)
+      const firstNode = data[0].node as Record<string, unknown>
+      assert.ok('properties' in firstNode)
+      assert.ok(!('schemaVersion' in firstNode))
+    })
+
+    it('includes provenance in search results when requested', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.search_nodes({
+        queries: ['order'],
+        include_provenance: true,
+        format: 'json',
+      })
+      const data = JSON.parse(result.content[0].text)
+      const firstNode = data[0].node as Record<string, unknown>
+
+      assert.ok(!('schemaVersion' in firstNode))
+      assert.ok('lastModifiedAt' in firstNode)
     })
 
     it('respects page_size', async () => {
@@ -429,7 +518,7 @@ describe('MCP handlers', () => {
   })
 
   describe('get_lineage', () => {
-    it('returns downstream lineage with annotations', async () => {
+    it('returns lean downstream lineage without edges by default', async () => {
       const handlers = createMcpHandlers(graph)
       const result = await handlers.get_lineage({
         node_ids: ['orders.DomainModel.order.operations.place'],
@@ -437,11 +526,32 @@ describe('MCP handlers', () => {
       })
       const data = JSON.parse(result.content[0].text)
       assert.ok(Array.isArray(data.nodes))
-      assert.ok(Array.isArray(data.edges))
+      assert.ok(!('edges' in data))
       assert.ok(data.nodes.some((n: Record<string, unknown>) => n.id === 'orders.DomainEvent.order-placed'))
       const placed = data.nodes.find((n: Record<string, unknown>) => n.id === 'orders.DomainEvent.order-placed')
       assert.equal(placed.depth, 1)
       assert.equal(placed.via_edge_type, 'produces')
+      assert.equal(Object.keys(placed).sort().join(','), 'depth,id,origin_id,via_edge_type,via_node_id')
+    })
+
+    it('returns full lineage fields and edges when requested', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.get_lineage({
+        node_ids: ['orders.DomainModel.order.operations.place'],
+        lean: false,
+        include_edges: true,
+        include_provenance: true,
+        format: 'json',
+      })
+      const data = JSON.parse(result.content[0].text)
+      const placed = data.nodes.find((n: Record<string, unknown>) => n.id === 'orders.DomainEvent.order-placed')
+
+      assert.ok(Array.isArray(data.edges))
+      assert.equal(placed.template, 'DomainEvent')
+      assert.equal(placed.component, 'orders')
+      assert.ok('properties' in placed)
+      assert.ok('lastModifiedAt' in placed)
+      assert.ok(!('schemaVersion' in placed))
     })
 
     it('returns an error for unknown edge types', async () => {
@@ -464,15 +574,33 @@ describe('MCP handlers', () => {
   })
 
   describe('get_graph', () => {
-    it('returns semantic nodes and edges without structural templates', async () => {
+    it('returns semantic nodes without edges by default', async () => {
       const handlers = createMcpHandlers(graph)
       const result = await handlers.get_graph({ format: 'json' })
       const data = JSON.parse(result.content[0].text)
       assert.ok(Array.isArray(data.nodes))
-      assert.ok(Array.isArray(data.edges))
+      assert.ok(!('edges' in data))
       const structural = ['Field', 'Schema', 'EnumDefinition', 'EnumValue', 'Mapping']
       assert.ok(data.nodes.every((n: Record<string, unknown>) => !structural.includes(n.template as string)))
+      assert.ok(!('schemaVersion' in data.nodes[0]))
+      assert.ok(!('lastModifiedAt' in data.nodes[0]))
+    })
+
+    it('includes semantic edges when include_edges is true', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.get_graph({ include_edges: true, format: 'json' })
+      const data = JSON.parse(result.content[0].text)
+      assert.ok(Array.isArray(data.edges))
       assert.ok(data.edges.every((e: Record<string, unknown>) => !['has-field', 'has-value', 'renamed-from'].includes(e.type as string)))
+    })
+
+    it('includes graph node provenance when requested', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.get_graph({ include_provenance: true, format: 'json' })
+      const data = JSON.parse(result.content[0].text)
+
+      assert.ok(!('schemaVersion' in data.nodes[0]))
+      assert.ok('lastModifiedAt' in data.nodes[0])
     })
 
     it('filter by template restricts nodes', async () => {
@@ -505,6 +633,38 @@ describe('MCP handlers', () => {
       assert.match(USAGE_GUIDE_PROMPT, /format "toon"/)
       assert.doesNotMatch(USAGE_GUIDE_PROMPT, /â/)
       assert.doesNotMatch(USAGE_GUIDE_PROMPT, /component list/)
+    })
+  })
+
+  describe('usage guide workflow additions', () => {
+    it('mentions recommended MCP workflow and provenance guidance', () => {
+      assert.match(USAGE_GUIDE_PROMPT, /Call get_graph_metadata first/i)
+      assert.match(USAGE_GUIDE_PROMPT, /Avoid list_nodes for discovery/i)
+      assert.match(USAGE_GUIDE_PROMPT, /batched together/i)
+      assert.match(USAGE_GUIDE_PROMPT, /include_provenance: true/i)
+    })
+  })
+
+  describe('tool definitions', () => {
+    it('advertises the lean lineage and discovery-first workflow', () => {
+      const tools = getMcpToolDefinitions()
+      const metadata = tools.find((tool: { name: string }) => tool.name === 'get_graph_metadata')
+      const cluster = tools.find((tool: { name: string }) => tool.name === 'get_cluster')
+      const search = tools.find((tool: { name: string }) => tool.name === 'search_nodes')
+      const lineage = tools.find((tool: { name: string }) => tool.name === 'get_lineage')
+
+      assert.ok(metadata)
+      assert.ok(cluster)
+      assert.ok(search)
+      assert.ok(lineage)
+      assert.match(metadata!.description, /Call this first before making traversal queries/i)
+      assert.match(cluster!.description, /Not suited for following relationships across the graph; use get_lineage/i)
+      assert.match(search!.description, /Prefer this over list_nodes/i)
+      assert.match(lineage!.description, /Pass multiple node_ids to expand all origins in parallel/i)
+      assert.match(lineage!.description, /Event fan-out/i)
+      assert.equal((lineage!.inputSchema.properties.include_provenance as { description: string }).description, 'Include provenance fields on returned nodes. Default false.')
+      assert.equal((lineage!.inputSchema.properties.lean as { description: string }).description, 'Return minimal lineage node shape. Default true.')
+      assert.equal((lineage!.inputSchema.properties.include_edges as { description: string }).description, 'Include the edges list in the response. Default false.')
     })
   })
 })
