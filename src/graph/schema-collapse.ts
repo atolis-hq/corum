@@ -16,6 +16,7 @@ export type CollapsedField = {
 export type CollapsedClusterResult = {
   root: Node
   schemas: Record<string, Record<string, CollapsedField>>
+  schemaEnums: Record<string, { values: string[] }>
   enums: Record<string, { values: string[] }>
   descendants: Node[]
   edges: Edge[]
@@ -34,6 +35,7 @@ export function collapseClusterSchemas(graph: Graph, cluster: ClusterViewResult)
   const enumNames = new Map<string, true>()                            // localName → exists
   const fieldsByParentId = new Map<string, Map<string, Node>>()        // parentId → fieldName → Node
   const valuesByEnumId = new Map<string, string[]>()                   // enumId → value names
+  const valuesBySchemaId = new Map<string, string[]>()                 // schemaId → value names (enum-like schemas)
   const mappingsByParentId = new Map<string, Map<string, Node>>()      // parentSchemaId → mapName → Node
   const semanticDescendants: Node[] = []
 
@@ -67,12 +69,22 @@ export function collapseClusterSchemas(graph: Graph, cluster: ClusterViewResult)
     }
 
     if (n.template === 'EnumValue') {
-      const m = /^enums\.([^.]+)\.values\.([^.]+)$/.exec(suffix)
-      if (m) {
-        const enumId = `${rootId}.enums.${m[1]}`
+      const enumM = /^enums\.([^.]+)\.values\.([^.]+)$/.exec(suffix)
+      if (enumM) {
+        const enumId = `${rootId}.enums.${enumM[1]}`
         const values = valuesByEnumId.get(enumId) ?? []
-        values.push(typeof n.properties.name === 'string' ? n.properties.name : m[2])
+        values.push(typeof n.properties.name === 'string' ? n.properties.name : enumM[2])
         valuesByEnumId.set(enumId, values)
+        schemaChildIds.add(n.id)
+        continue
+      }
+      // Also handle EnumValue nodes under schemas section (enum-like schemas)
+      const schemaM = /^schemas\.([^.]+)\.values\.([^.]+)$/.exec(suffix)
+      if (schemaM) {
+        const schemaId = `${rootId}.schemas.${schemaM[1]}`
+        const values = valuesBySchemaId.get(schemaId) ?? []
+        values.push(typeof n.properties.name === 'string' ? n.properties.name : schemaM[2])
+        valuesBySchemaId.set(schemaId, values)
         schemaChildIds.add(n.id)
         continue
       }
@@ -95,9 +107,18 @@ export function collapseClusterSchemas(graph: Graph, cluster: ClusterViewResult)
 
   // Build schemas output
   const schemas: Record<string, Record<string, CollapsedField>> = {}
+  const schemaEnums: Record<string, { values: string[] }> = {}
   for (const localName of schemaNames.keys()) {
     const schemaId = `${rootId}.schemas.${localName}`
     const fields = fieldsByParentId.get(schemaId) ?? new Map()
+
+    // Enum-like schema: has EnumValue children but no Field children
+    const schemaValues = valuesBySchemaId.get(schemaId)
+    if (schemaValues && fields.size === 0) {
+      schemaEnums[localName] = { values: schemaValues }
+      continue
+    }
+
     const mappings = mappingsByParentId.get(schemaId) ?? new Map()
     const entry: Record<string, CollapsedField> = {}
     for (const [fieldName, fieldNode] of fields) {
@@ -122,6 +143,7 @@ export function collapseClusterSchemas(graph: Graph, cluster: ClusterViewResult)
   return {
     root: cluster.root,
     schemas,
+    schemaEnums,
     enums,
     descendants: semanticDescendants,
     edges: filteredEdges,
