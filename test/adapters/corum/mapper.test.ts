@@ -107,6 +107,31 @@ describe('mapDocument — nodes (basic)', () => {
     assert.equal(nodes.length, 0)
     assert.ok(diagnostics.some(d => d.severity === 'warning'))
   })
+
+  it('passes x-aka through to node properties', () => {
+    const doc = makeDoc({
+      nodes: {
+        'billing.APIEndpoint.GetInvoiceController': {
+          type: 'APIEndpoint',
+          'x-aka': ['GetInvoice'],
+        },
+      },
+    })
+    const { nodes } = mapDocument(doc, SPEC_PATH)
+    assert.deepEqual(nodes[0].properties['x-aka'], ['GetInvoice'])
+  })
+
+  it('does not set x-aka property when absent', () => {
+    const doc = makeDoc({
+      nodes: {
+        'billing.APIEndpoint.GetInvoiceController': {
+          type: 'APIEndpoint',
+        },
+      },
+    })
+    const { nodes } = mapDocument(doc, SPEC_PATH)
+    assert.ok(!('x-aka' in nodes[0].properties))
+  })
 })
 
 describe('mapDocument — schema expansion', () => {
