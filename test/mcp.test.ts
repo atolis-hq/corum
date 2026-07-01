@@ -38,7 +38,7 @@ describe('MCP handlers', () => {
 
     it('filters by template', async () => {
       const handlers = createMcpHandlers(graph)
-      const result = await handlers.list_nodes({ template: 'APIEndpoint', format: 'json' })
+      const result = await handlers.list_nodes({ filter: { templates: ['APIEndpoint'] }, format: 'json' })
       const nodes = JSON.parse(result.content[0].text)
       assert.equal(nodes.length, 5)
       assert.ok(nodes.some((n: Record<string, unknown>) => n.id === 'orders.APIEndpoint.create-order'))
@@ -46,14 +46,14 @@ describe('MCP handlers', () => {
 
     it('filters by component', async () => {
       const handlers = createMcpHandlers(graph)
-      const result = await handlers.list_nodes({ component: 'orders', format: 'json' })
+      const result = await handlers.list_nodes({ filter: { component: 'orders' }, format: 'json' })
       const nodes = JSON.parse(result.content[0].text)
       assert.equal(nodes.length, 113)
     })
 
     it('returns YAML by default', async () => {
       const handlers = createMcpHandlers(graph)
-      const result = await handlers.list_nodes({ template: 'APIEndpoint' })
+      const result = await handlers.list_nodes({ filter: { templates: ['APIEndpoint'] } })
       const nodes = parseYaml(result.content[0].text) as Array<Record<string, unknown>>
       assert.equal(nodes.length, 5)
       assert.ok(nodes.some(n => n.id === 'orders.APIEndpoint.create-order'))
@@ -61,13 +61,13 @@ describe('MCP handlers', () => {
 
     it('returns TOON output using the toon format', async () => {
       const handlers = createMcpHandlers(graph)
-      const result = await handlers.list_nodes({ template: 'APIEndpoint', format: 'toon' })
+      const result = await handlers.list_nodes({ filter: { templates: ['APIEndpoint'] }, format: 'toon' })
       assert.match(result.content[0].text, /^\[\d+\]\{id,template,component,state,stability\}:/)
     })
 
     it('TOON output round trips through the official library', async () => {
       const handlers = createMcpHandlers(graph)
-      const result = await handlers.list_nodes({ template: 'APIEndpoint', format: 'toon' })
+      const result = await handlers.list_nodes({ filter: { templates: ['APIEndpoint'] }, format: 'toon' })
       const nodes = decodeToon(result.content[0].text) as Array<Record<string, unknown>>
       assert.equal(nodes.length, 5)
       assert.equal(nodes[0].template, 'APIEndpoint')
@@ -76,7 +76,7 @@ describe('MCP handlers', () => {
 
     it('applies compact keys to JSON output when requested', async () => {
       const handlers = createMcpHandlers(graph)
-      const result = await handlers.list_nodes({ template: 'APIEndpoint', format: 'json', compact_keys: true })
+      const result = await handlers.list_nodes({ filter: { templates: ['APIEndpoint'] }, format: 'json', compact_keys: true })
       const nodes = JSON.parse(result.content[0].text)
       assert.equal(nodes.length, 5)
       assert.equal(nodes[0].t, 'APIEndpoint')
@@ -91,7 +91,7 @@ describe('MCP handlers', () => {
 
     it('applies compact keys to YAML output when requested', async () => {
       const handlers = createMcpHandlers(graph)
-      const result = await handlers.list_nodes({ template: 'APIEndpoint', compactKeys: true })
+      const result = await handlers.list_nodes({ filter: { templates: ['APIEndpoint'] }, compactKeys: true })
       const nodes = parseYaml(result.content[0].text) as Array<Record<string, unknown>>
       assert.equal(nodes.length, 5)
       assert.ok(nodes.some(n => n.i === 'orders.APIEndpoint.create-order'))
@@ -102,7 +102,7 @@ describe('MCP handlers', () => {
 
     it('applies compact keys to TOON output when requested', async () => {
       const handlers = createMcpHandlers(graph)
-      const result = await handlers.list_nodes({ template: 'APIEndpoint', format: 'toon', compact_keys: true })
+      const result = await handlers.list_nodes({ filter: { templates: ['APIEndpoint'] }, format: 'toon', compact_keys: true })
       const nodes = decodeToon(result.content[0].text) as Array<Record<string, unknown>>
       assert.equal(nodes.length, 5)
       assert.ok(nodes.some(n => n.i === 'orders.APIEndpoint.create-order'))
@@ -124,7 +124,7 @@ describe('MCP handlers', () => {
       const source = new FileGraphSource({ graphDir: fixtureGraphDir })
       const branch = await source.defaultBranch()
       const handlers = createMcpHandlers(graph, source)
-      const result = await handlers.list_nodes({ branch, component: 'orders', format: 'json' })
+      const result = await handlers.list_nodes({ branch, filter: { component: 'orders' }, format: 'json' })
       const nodes = JSON.parse(result.content[0].text)
 
       assert.equal(nodes.length, 113)
@@ -278,8 +278,9 @@ describe('MCP handlers', () => {
       const result = await handlers.get_cluster({ node_id: 'orders.DomainModel.order', format: 'json' })
       const cluster = JSON.parse(result.content[0].text)
       assert.equal(cluster.root.id, 'orders.DomainModel.order')
-      assert.equal(cluster.children.length, 22)
+      assert.equal(cluster.descendants.length, 22)
       assert.ok(Array.isArray(cluster.edges))
+      assert.ok(Array.isArray(cluster.includedNodes))
     })
 
     it('returns error message for unknown node', async () => {
@@ -346,6 +347,89 @@ describe('MCP handlers', () => {
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true })
       }
+    })
+  })
+
+  describe('get_graph_summary', () => {
+    it('returns node and component counts', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.get_graph_summary({ format: 'json' })
+      const summary = JSON.parse(result.content[0].text)
+      assert.equal(summary.nodeCount, 151)
+      assert.equal(summary.componentCount, 3)
+      assert.ok(typeof summary.orphanNodeCount === 'number')
+      assert.ok(typeof summary.edgesByType === 'object')
+      assert.ok(summary.edgesByType.triggers > 0)
+    })
+  })
+
+  describe('search_nodes', () => {
+    it('returns matched root nodes', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.search_nodes({ queries: ['order'], format: 'json' })
+      const data = JSON.parse(result.content[0].text)
+      assert.ok(Array.isArray(data))
+      assert.ok(data.length > 0)
+      assert.ok(data.some((r: Record<string, unknown>) => {
+        const node = r.node as Record<string, unknown>
+        return typeof node.id === 'string' && node.id.includes('order')
+      }))
+    })
+
+    it('respects page_size', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.search_nodes({ queries: ['order'], page_size: 2, format: 'json' })
+      const data = JSON.parse(result.content[0].text)
+      assert.ok(data.length <= 2)
+    })
+
+    it('returns error when queries missing', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.search_nodes({ format: 'json' })
+      assert.ok(result.isError)
+    })
+  })
+
+  describe('get_lineage', () => {
+    it('returns downstream lineage with annotations', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.get_lineage({
+        node_ids: ['orders.DomainModel.order.operations.place'],
+        format: 'json',
+      })
+      const data = JSON.parse(result.content[0].text)
+      assert.ok(Array.isArray(data.nodes))
+      assert.ok(Array.isArray(data.edges))
+      assert.ok(data.nodes.some((n: Record<string, unknown>) => n.id === 'orders.DomainEvent.order-placed'))
+      const placed = data.nodes.find((n: Record<string, unknown>) => n.id === 'orders.DomainEvent.order-placed')
+      assert.equal(placed.depth, 1)
+      assert.equal(placed.via_edge_type, 'produces')
+    })
+
+    it('returns error when node_ids missing', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.get_lineage({ format: 'json' })
+      assert.ok(result.isError)
+    })
+  })
+
+  describe('get_graph', () => {
+    it('returns semantic nodes and edges without structural templates', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.get_graph({ format: 'json' })
+      const data = JSON.parse(result.content[0].text)
+      assert.ok(Array.isArray(data.nodes))
+      assert.ok(Array.isArray(data.edges))
+      const structural = ['Field', 'Schema', 'EnumDefinition', 'EnumValue', 'Mapping']
+      assert.ok(data.nodes.every((n: Record<string, unknown>) => !structural.includes(n.template as string)))
+      assert.ok(data.edges.every((e: Record<string, unknown>) => !['has-field', 'has-value', 'renamed-from'].includes(e.type as string)))
+    })
+
+    it('filter by template restricts nodes', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.get_graph({ filter: { templates: ['DomainModel'] }, format: 'json' })
+      const data = JSON.parse(result.content[0].text)
+      assert.ok(data.nodes.every((n: Record<string, unknown>) => n.template === 'DomainModel'))
     })
   })
 })

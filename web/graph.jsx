@@ -3,7 +3,7 @@
 const { useState, useEffect, useMemo, useCallback, useRef } = React;
 const { navigate, Icon, TemplateBadge, StateTag, StabilityTag } = window.CorumPrimitives;
 const { buildRoute, parseRoute } = window.CorumRouter;
-const { buildComponentMap, buildFocusGraph, applyEdgeTypeFilter, getDisplayName } = window.CorumGraphUtils;
+const { buildComponentMap, applyEdgeTypeFilter, getDisplayName } = window.CorumGraphUtils;
 
 const RF = window.ReactFlow;
 const ReactFlowCanvas = RF.ReactFlow || RF.default;
@@ -272,9 +272,11 @@ function GraphView({ route, viewingRef, templates }) {
   const [showMinimap, setShowMinimap] = useState(false);
   const [depth, setDepth] = useState(2);
   const [layoutKey, setLayoutKey] = useState(0);
+  const [focusData, setFocusData] = useState(null);
   const [reactFlowInstance, setReactFlowInstance] = useState(null);
   const pendingViewportRef = useRef(null);
   const lastFocusedNodeIdRef = useRef(null);
+  const debounceTimerRef = useRef(null);
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState([]);
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState([]);
 
@@ -299,6 +301,7 @@ function GraphView({ route, viewingRef, templates }) {
 
   useEffect(() => {
     setGraphData(null);
+    setFocusData(null);
     setError(null);
     const refParam = viewingRef ? `?ref=${encodeURIComponent(viewingRef)}` : '';
     fetch(`/api/graph${refParam}`)
@@ -306,6 +309,25 @@ function GraphView({ route, viewingRef, templates }) {
       .then(setGraphData)
       .catch(err => setError(String(err)));
   }, [viewingRef]);
+
+  useEffect(() => {
+    if (!focalNodeId) { setFocusData(null); return; }
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      const params = new URLSearchParams([
+        ['node_ids', focalNodeId],
+        ['depth', depth === Infinity ? '999' : String(depth)],
+        ['direction', 'both'],
+        ['reads_outbound_only', 'false'],
+      ]);
+      if (viewingRef) params.append('ref', viewingRef);
+      fetch(`/api/lineage?${params}`)
+        .then(r => r.ok ? r.json() : Promise.reject(r.status))
+        .then(data => { setFocusData(data); })
+        .catch(err => setError(String(err)));
+    }, 150);
+    return () => { if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current); };
+  }, [focalNodeId, depth, viewingRef]);
 
   const templateMap = useMemo(() => new Map((templates ?? []).map(t => [t.name, t])), [templates]);
 
@@ -379,15 +401,23 @@ function GraphView({ route, viewingRef, templates }) {
   }, [level]);
 
   // Level 3: node focus
+  const nodeById = useMemo(
+    () => new Map((graphData?.nodes ?? []).map(n => [n.id, n])),
+    [graphData],
+  );
+
   const level3 = useMemo(() => {
-    if (!graphData || !focalNodeId) return null;
-    const { nodes: focusNodes, edges: focusEdges } = buildFocusGraph(
-      focalNodeId, graphData.nodes, graphData.edges, depth
-    );
-    const rfN = buildRFNodesForNodes(focusNodes, templateMap, nodeId => {
+    if (!focusData || !focalNodeId) return null;
+    const parentIdMap = new Map((graphData?.nodes ?? []).map(n => [n.id, n.parentId]));
+    const focalNode = nodeById.get(focalNodeId);
+    const lineageNodes = [
+      ...(focalNode && !focusData.nodes.some(n => n.id === focalNodeId) ? [focalNode] : []),
+      ...focusData.nodes,
+    ].map(n => ({ ...n, parentId: parentIdMap.get(n.id) ?? null }));
+    const rfN = buildRFNodesForNodes(lineageNodes, templateMap, nodeId => {
       navigate(buildRoute({ pathname: '/graph', params: { focus: nodeId }, branch: viewingRef }));
     }, viewingRef);
-    const rfE = buildRFEdgesForEdges(focusEdges, visibleEdgeTypes);
+    const rfE = buildRFEdgesForEdges(applyEdgeTypeFilter(focusData.edges, visibleEdgeTypes), visibleEdgeTypes);
     const layoutedN = computeLayout(rfN, rfE, NODE_W, NODE_H);
     return {
       rfN: layoutedN.map(n => n.id === focalNodeId
@@ -396,7 +426,7 @@ function GraphView({ route, viewingRef, templates }) {
       ),
       rfE,
     };
-  }, [graphData, focalNodeId, depth, visibleEdgeTypes, templateMap, layoutKey, viewingRef]);
+  }, [focusData, focalNodeId, visibleEdgeTypes, templateMap, layoutKey, viewingRef, graphData, nodeById]);
 
   useEffect(() => {
     if (level !== 'focus' || !level3) return;

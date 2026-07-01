@@ -3,43 +3,30 @@
 const { useState, useEffect, useRef } = React;
 const { TemplateBadge, Icon } = window.CorumPrimitives;
 
-function fuzzyMatch(query, id) {
-  if (!query) return { score: 0 };
-  const q = query.toLowerCase();
-  const s = id.toLowerCase();
-  let qi = 0, run = 0, maxRun = 0;
-  for (let i = 0; i < s.length; i++) {
-    if (qi >= q.length) break;
-    if (s[i] === q[qi]) { qi++; run++; if (run > maxRun) maxRun = run; }
-    else { run = 0; }
-  }
-  return qi === q.length ? { score: maxRun } : null;
-}
-
-function searchNodes(nodes, templates, query) {
-  if (!query || !query.trim()) return [];
-  const templateMap = new Map(templates.map(t => [t.name, t]));
-  const results = [];
-  for (const node of nodes) {
-    if (node.parentId) continue;
-    const match = fuzzyMatch(query.trim(), node.id);
-    if (!match) continue;
-    results.push({ node, template: templateMap.get(node.template), score: match.score });
-  }
-  results.sort((a, b) => b.score - a.score || a.node.id.length - b.node.id.length);
-  return results.slice(0, 10);
-}
-
 function SearchModal({ nodes, templates, onNavigate, onClose }) {
   const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef(null);
-
-  const results = searchNodes(nodes, templates, query);
+  const templateMap = new Map((templates ?? []).map(t => [t.name, t]));
 
   useEffect(() => { setSelectedIndex(0); }, [query]);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) {
+      setResults([]);
+      return;
+    }
+
+    const url = `/api/search?q=${encodeURIComponent(q)}&limit=10`;
+    fetch(url)
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(data => setResults(Array.isArray(data) ? data : []))
+      .catch(() => setResults([]));
+  }, [query]);
 
   useEffect(() => {
     function handleKey(e) {
@@ -81,7 +68,8 @@ function SearchModal({ nodes, templates, onNavigate, onClose }) {
         {results.length > 0 && (
           <div className="search-results">
             {results.map((result, index) => {
-              const { node, template } = result;
+              const { node } = result;
+              const template = templateMap.get(node.template);
               const name = node.id.split('.').pop();
               const colour = template?.ui?.colour ?? null;
               const tplName = template?.ui?.displayName ?? node.template;
