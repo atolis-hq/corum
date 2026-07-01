@@ -109,4 +109,21 @@ components:
     assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0)
     cleanup()
   })
+
+  it('parses x-aka when present on a node', () => {
+    const { filePath, cleanup } = writeTmp(`
+corum: "1.0"
+nodes:
+  billing.APIEndpoint.GetInvoiceController:
+    type: APIEndpoint
+    x-aka:
+      - GetInvoice
+`)
+    const { document, diagnostics } = parseSpec(filePath)
+    assert.ok(document !== null)
+    const node = document.nodes['billing.APIEndpoint.GetInvoiceController']
+    assert.deepEqual(node['x-aka'], ['GetInvoice'])
+    assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0)
+    cleanup()
+  })
 })

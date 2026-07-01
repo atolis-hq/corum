@@ -84,6 +84,15 @@ properties:
             $ref:
               type: string
               description: JSON Pointer to a schema in components.schemas (e.g. '#/components/schemas/MySchema').
+        x-aka:
+          type: array
+          description: |
+            Alternative names for this node. Used by the import reconciler to match
+            nodes produced by different adapters — e.g. a C# controller class name
+            matched to an OpenAPI operationId, or an IntegrationEvent class name to
+            an AsyncAPI channel message name.
+          items:
+            type: string
         provenance:
           $ref: '#/$defs/provenance'
 

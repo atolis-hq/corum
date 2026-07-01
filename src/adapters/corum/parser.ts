@@ -14,6 +14,7 @@ export interface CorumInterchangeNodeEntry {
   type: string
   title?: string
   schema?: { $ref: string }
+  'x-aka'?: string[]
   provenance?: CorumInterchangeProvenance
 }
 
