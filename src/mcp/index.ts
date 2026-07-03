@@ -11,10 +11,11 @@ import {
   getGraphSummary,
   getLineage,
   getLinkedFields,
+  getStructuralNodeTemplates,
+  getVisibleEdgeTypes,
+  isVisibleEdgeType,
   listNodes,
-  SEMANTIC_EDGE_TYPES,
   searchNodes,
-  STRUCTURAL_NODE_TEMPLATES,
   type GetLineageOptions,
   type LineageDirection,
   type ListNodesFilter,
@@ -25,7 +26,7 @@ import type { BranchGraph, Edge, EdgeType, Graph } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
 import { createGraphRuntimeConfig } from '../source/config.js'
 import type { GraphSource } from '../source/index.js'
-import { startGraphFileWatcher, startWebServer, type MultiGraphCache } from '../web/server.js'
+import { createMultiGraphCache, replaceGraph, startGraphFileWatcher, startWebServer, type MultiGraphCache } from '../web/server.js'
 import { USAGE_GUIDE_PROMPT } from './prompts/usage-guide.js'
 import { collapseClusterSchemas } from '../graph/schema-collapse.js'
 import { compactKeys, getSerializer } from './serializers.js'
@@ -49,20 +50,6 @@ type ToolDefinition = {
   }
 }
 
-const EDGE_TYPES = [
-  'triggers',
-  'produces',
-  'reads',
-  'calls',
-  'implements',
-  'maps-to',
-  'derived-from',
-  'renamed-from',
-  'has-field',
-  'has-value',
-] as const satisfies readonly EdgeType[]
-
-const EDGE_TYPE_SET = new Set<EdgeType>(EDGE_TYPES)
 const STATE_VALUES = ['draft', 'proposed', 'agreed', 'future', 'removed', 'implemented'] as const
 const STABILITY_VALUES = ['unstable', 'stable', 'deprecated'] as const
 const LINEAGE_DIRECTIONS = ['downstream', 'upstream', 'both'] as const satisfies readonly LineageDirection[]
@@ -72,10 +59,13 @@ function toStringArray(value: unknown): string[] | undefined {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : undefined
 }
 
-function parseEdgeTypes(value: unknown): EdgeType[] | undefined {
+function parseEdgeTypes(value: unknown, graph: Graph): EdgeType[] | undefined {
   const requested = toStringArray(value)
   if (!requested) return undefined
-  const invalid = requested.filter(type => !EDGE_TYPE_SET.has(type as EdgeType))
+  const known = graph.edgeTypes
+  const invalid = known
+    ? requested.filter(type => !known.has(type))
+    : []
   if (invalid.length > 0) {
     throw new QueryError(`Unknown edge type: ${invalid.join(', ')}`)
   }
@@ -221,7 +211,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
       }
 
       if (hasBranch(args)) {
-        return withBranchGraph(source, String(args.branch), branch => run(branch.graph))
+        return withBranchGraph(source, String(args.branch), branch => run(branch.graph), cache)
       }
 
       try {
@@ -236,7 +226,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
         formatResult(getGraphSummary(targetGraph), args.format, getCompactKeys(args))
 
       if (hasBranch(args) && source) {
-        return withBranchGraph(source, String(args.branch), branch => run(branch.graph))
+        return withBranchGraph(source, String(args.branch), branch => run(branch.graph), cache)
       }
 
       try {
@@ -272,7 +262,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
       }
 
       if (hasBranch(args) && source) {
-        return withBranchGraph(source, String(args.branch), branch => run(branch.graph))
+        return withBranchGraph(source, String(args.branch), branch => run(branch.graph), cache)
       }
 
       try {
@@ -298,7 +288,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
       }
 
       if (hasBranch(args) && source) {
-        return withBranchGraph(source, String(args.branch), branch => run(branch.graph))
+        return withBranchGraph(source, String(args.branch), branch => run(branch.graph), cache)
       }
 
       try {
@@ -327,8 +317,8 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
         : []
 
       const run = async (targetGraph: Graph, branchRef?: string): Promise<ToolResult> => {
-        const edgeTypes = parseEdgeTypes(args.edge_types)
-          ?? [...SEMANTIC_EDGE_TYPES]
+        const edgeTypes = parseEdgeTypes(args.edge_types, targetGraph)
+          ?? getVisibleEdgeTypes(targetGraph)
 
         const rawCluster = getClusterView(targetGraph, String(args.node_id), edgeTypes)
         const clusterIds = new Set([rawCluster.root.id, ...rawCluster.descendants.map(n => n.id)])
@@ -412,7 +402,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
       const run = (targetGraph: Graph): ToolResult => {
         const filter = parseListNodesFilter(args.filter)
         const effectiveFilter: ListNodesFilter = (!filter.templates?.length && !filter.excludeTemplates?.length)
-          ? { ...filter, excludeTemplates: [...STRUCTURAL_NODE_TEMPLATES] }
+          ? { ...filter, excludeTemplates: [...getStructuralNodeTemplates(targetGraph)] }
           : filter
 
         const nodes = listNodes(targetGraph, effectiveFilter)
@@ -424,7 +414,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
           const edges: Array<{ id: string; from: string; to: string; type: string }> = []
           for (const edgeList of targetGraph.edgesByFrom.values()) {
             for (const edge of edgeList) {
-              if (!SEMANTIC_EDGE_TYPES.has(edge.type) || !nodeIds.has(edge.from) || !nodeIds.has(edge.to)) continue
+              if (!isVisibleEdgeType(targetGraph, edge.type) || !nodeIds.has(edge.from) || !nodeIds.has(edge.to)) continue
               edges.push({ id: edge.id, from: edge.from, to: edge.to, type: edge.type })
             }
           }
@@ -435,7 +425,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
       }
 
       if (hasBranch(args) && source) {
-        return withBranchGraph(source, String(args.branch), branch => run(branch.graph))
+        return withBranchGraph(source, String(args.branch), branch => run(branch.graph), cache)
       }
 
       try {
@@ -461,7 +451,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
           node_templates_in_use: [...nodeTemplatesInUse].sort(),
           edge_types_in_use: [...edgeTypesInUse].sort(),
           ...(includeStatic ? {
-            valid_edge_types: [...EDGE_TYPES],
+            valid_edge_types: [...(targetGraph.edgeTypes?.keys() ?? [])],
             states: [...STATE_VALUES],
             stabilities: [...STABILITY_VALUES],
             lineage_directions: [...LINEAGE_DIRECTIONS],
@@ -471,7 +461,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
       }
 
       if (hasBranch(args) && source) {
-        return withBranchGraph(source, String(args.branch), branch => run(branch.graph))
+        return withBranchGraph(source, String(args.branch), branch => run(branch.graph), cache)
       }
 
       try {
@@ -494,7 +484,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
         const options: GetLineageOptions = {
           depth: typeof args.depth === 'number' ? args.depth : 2,
           direction,
-          edgeTypes: parseEdgeTypes(args.edge_types),
+          edgeTypes: parseEdgeTypes(args.edge_types, targetGraph),
           nodeTypes: toStringArray(args.node_types),
           excludeNodeTypes: toStringArray(args.exclude_node_types),
           includeDanglingEdges: args.include_dangling_edges === true,
@@ -514,7 +504,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
       }
 
       if (hasBranch(args) && source) {
-        return withBranchGraph(source, String(args.branch), branch => run(branch.graph))
+        return withBranchGraph(source, String(args.branch), branch => run(branch.graph), cache)
       }
 
       try {
@@ -536,7 +526,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
       }
 
       if (hasBranch(args)) {
-        return withBranchGraph(source, String(args.branch), branch => run(branch.graph))
+        return withBranchGraph(source, String(args.branch), branch => run(branch.graph), cache)
       }
 
       try {
@@ -596,6 +586,30 @@ async function withBranchGraph(
 
 function hasBranch(args: Record<string, unknown>): boolean {
   return typeof args.branch === 'string' && args.branch.length > 0
+}
+
+/**
+ * Retries a previously-failed graph load. Only attempts the load when `loadError` is set —
+ * a healthy graph is never re-loaded on the hot call path. On success, `graph` is mutated in
+ * place (via `replaceGraph`) so existing closures over it observe the fresh data, and
+ * `onReload` fires so callers can invalidate any dependent caches (e.g. a MultiGraphCache).
+ * Returns the resulting error, if any (undefined once recovered).
+ */
+export async function ensureGraphLoaded(
+  graph: Graph,
+  loadError: string | undefined,
+  loader: () => Promise<Graph>,
+  onReload?: () => void,
+): Promise<string | undefined> {
+  if (!loadError) return undefined
+  try {
+    const fresh = await loader()
+    replaceGraph(graph, fresh)
+    onReload?.()
+    return undefined
+  } catch (err) {
+    return String(err)
+  }
 }
 
 function formatResult(value: unknown, format: unknown, compact: unknown = false): ToolResult {
@@ -766,7 +780,7 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
           node_types: { type: 'array', items: { type: 'string' }, description: 'Allowlist of node templates.' },
           exclude_node_types: { type: 'array', items: { type: 'string' }, description: 'Denylist of node templates.' },
           include_dangling_edges: { type: 'boolean', description: 'Include dangling edges in the response when present. Default false.' },
-          reads_outbound_only: { type: 'boolean', description: 'Do not follow inbound reads edges in upstream traversal. Default true.' },
+          reads_outbound_only: { type: 'boolean', description: 'Do not follow inbound reads/uses-type edges in upstream traversal. Default true.' },
           lean: { type: 'boolean', description: 'Return minimal lineage node shape. Default true.' },
           include_edges: { type: 'boolean', description: 'Include the edges list in the response. Default false.' },
           include_edge_ids: { type: 'boolean', description: 'Include edge id field in edge output. Default false.' },
@@ -884,16 +898,25 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
     }
   }
 
-  const handlers = createMcpHandlers(graph, config.source)
+  const mcpCache = config.source ? createMultiGraphCache(config.source) : undefined
+  const handlers = createMcpHandlers(graph, config.source, mcpCache)
 
   if (!noWeb) {
-    await startWebServer(graph, {
-      graphPath: config.graphPath,
-      fileWatcher: config.fileWatcherGraphPath && watch ? true : undefined,
-      source: config.source,
-    })
+    try {
+      await startWebServer(graph, {
+        graphPath: config.graphPath,
+        fileWatcher: config.fileWatcherGraphPath && watch ? true : undefined,
+        source: config.source,
+        onReload: () => mcpCache?.invalidate(),
+      })
+    } catch (err) {
+      process.stderr.write(`[corum] web server failed to start, continuing MCP-only: ${err}\n`)
+    }
   } else if (watch && config.fileWatcherGraphPath) {
-    startGraphFileWatcher(graph, { graphPath: config.fileWatcherGraphPath })
+    startGraphFileWatcher(graph, {
+      graphPath: config.fileWatcherGraphPath,
+      onReload: () => mcpCache?.invalidate(),
+    })
   }
 
   const server = new Server(
@@ -928,6 +951,13 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
   }))
 
   server.setRequestHandler(CallToolRequestSchema, async request => {
+    loadError = await ensureGraphLoaded(
+      graph,
+      loadError,
+      () => loadGraph({ source: config.source, strict: true }),
+      () => mcpCache?.invalidate(),
+    )
+
     if (loadError) {
       return { content: [{ type: 'text', text: `Graph load error: ${loadError}` }], isError: true }
     }

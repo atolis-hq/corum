@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { parse as parseYaml } from 'yaml'
 import { loadGraph } from '../src/loader/index.js'
 import { saveGraph, serializeGraph } from '../src/writer/graph-writer.js'
 import type { Edge } from '../src/schema/index.js'
@@ -61,14 +62,14 @@ describe('serializeGraph', () => {
     }
   })
 
-  it('excludes generated reads edges from edge file output', async () => {
+  it('excludes generated uses-type edges from edge file output', async () => {
     const graph = await loadGraph({ graphPath: fixtureGraphDir })
 
     const syntheticEdge: Edge = {
-      id: 'orders.DomainModel.order__reads__payments.DomainModel.payment',
+      id: 'orders.DomainModel.order__uses-type__payments.DomainModel.payment',
       from: 'orders.DomainModel.order',
       to: 'payments.DomainModel.payment',
-      type: 'reads',
+      type: 'uses-type',
       state: 'proposed',
       stability: 'unstable',
       generated: true,
@@ -83,16 +84,42 @@ describe('serializeGraph', () => {
       // in real edges — only child field IDs do. Its presence here means a generated edge was written.
       assert.ok(
         !content.includes('to: payments.DomainModel.payment\n'),
-        `generated reads edge must not appear in edge file ${key}`,
+        `generated uses-type edge must not appear in edge file ${key}`,
       )
     }
+  })
+
+  it('serialises explicit edge properties in alphabetical order when the edge type declares no schema', async () => {
+    const graph = await loadGraph({ graphPath: fixtureGraphDir })
+
+    const syntheticEdge: Edge = {
+      id: 'orders.DomainModel.order__triggers__payments.DomainModel.payment',
+      from: 'orders.DomainModel.order',
+      to: 'payments.DomainModel.payment',
+      type: 'triggers',
+      state: 'proposed',
+      stability: 'unstable',
+      properties: { zeta: 1, alpha: 2, mid: 3 },
+    }
+    const fromEdges = graph.edgesByFrom.get('orders.DomainModel.order') ?? []
+    graph.edgesByFrom.set('orders.DomainModel.order', [...fromEdges, syntheticEdge])
+
+    const map = serializeGraph(graph)
+    const edgeYaml = map.get('edges/corum.edges.yaml')
+    assert.ok(edgeYaml)
+    const doc = parseYaml(edgeYaml) as { edges: Array<Record<string, unknown>> }
+    const written = doc.edges.find(e => e.from === syntheticEdge.from && e.to === syntheticEdge.to)
+    assert.ok(written)
+    assert.deepEqual(Object.keys(written.properties as Record<string, unknown>), ['alpha', 'mid', 'zeta'])
   })
 })
 
 describe('graph writer', () => {
-  it('writes an edited graph to a replacement folder that can be loaded again', async () => {
+  it('writes an edited graph to a replacement folder that can be loaded again, preserving non-yaml files', async () => {
     const outputGraphDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-write-back-'))
-    fs.writeFileSync(path.join(outputGraphDir, 'stale.txt'), 'this should be removed')
+    // Non-YAML files a user kept alongside the graph must survive a replace
+    // (P2.4): saveGraph's replace semantics only own *.yaml content.
+    fs.writeFileSync(path.join(outputGraphDir, 'notes.txt'), 'kept by user')
 
     try {
       const graph = await loadGraph({ graphPath: fixtureGraphDir })
@@ -105,7 +132,7 @@ describe('graph writer', () => {
         outputGraphPath: outputGraphDir,
       })
 
-      assert.equal(fs.existsSync(path.join(outputGraphDir, 'stale.txt')), false)
+      assert.equal(fs.readFileSync(path.join(outputGraphDir, 'notes.txt'), 'utf-8'), 'kept by user')
 
       const writtenGraph = await loadGraph({ graphPath: outputGraphDir })
       const writtenEndpoint = writtenGraph.nodesById.get('orders.APIEndpoint.create-order')
@@ -211,6 +238,71 @@ describe('graph writer', () => {
       assert.equal(reloadedRoot?.properties.schema, '#/schemas/order', 'schema property survives round-trip')
     } finally {
       fs.rmSync(outputGraphDir, { recursive: true, force: true })
+    }
+  })
+
+  it('serialises root node properties in template-declared order, unknown keys alphabetically after', async () => {
+    const graph = await loadGraph({ graphPath: fixtureGraphDir })
+    const endpoint = graph.nodesById.get('orders.APIEndpoint.create-order')
+    assert.ok(endpoint)
+
+    // Permute insertion order and add keys not declared on the template.
+    const permuted: Record<string, unknown> = {}
+    permuted.zzzCustom = 'z'
+    permuted.responses = endpoint.properties.responses
+    permuted.aaaCustom = 'a'
+    permuted.path = endpoint.properties.path
+    permuted.request = endpoint.properties.request
+    permuted.method = endpoint.properties.method
+    endpoint.properties = permuted
+
+    const map = serializeGraph(graph)
+    const clusterYaml = map.get('components/orders/APIEndpoints/create-order.yaml')
+    assert.ok(clusterYaml)
+    const doc = parseYaml(clusterYaml) as { properties: Record<string, unknown> }
+    assert.deepEqual(
+      Object.keys(doc.properties),
+      ['method', 'path', 'request', 'responses', 'aaaCustom', 'zzzCustom'],
+    )
+  })
+
+  it('serialises owned child (field) properties in template-declared order', async () => {
+    const graph = await loadGraph({ graphPath: fixtureGraphDir })
+    const field = graph.nodesById.get('orders.DomainModel.order.schemas.order-line-item.fields.unitPrice')
+    assert.ok(field)
+
+    const permuted: Record<string, unknown> = {}
+    permuted.nullable = field.properties.nullable
+    permuted.type = field.properties.type
+    field.properties = permuted
+
+    const map = serializeGraph(graph)
+    const clusterYaml = map.get('components/orders/DomainModels/order.yaml')
+    assert.ok(clusterYaml)
+    const doc = parseYaml(clusterYaml) as {
+      schemas: { 'order-line-item': { fields: { unitPrice: Record<string, unknown> } } }
+    }
+    const fieldDoc = doc.schemas['order-line-item'].fields.unitPrice
+    const propertyKeys = Object.keys(fieldDoc).filter(k => k === 'type' || k === 'nullable')
+    assert.deepEqual(propertyKeys, ['type', 'nullable'])
+  })
+
+  it('property key permutation does not change serialised output (determinism)', async () => {
+    const graphA = await loadGraph({ graphPath: fixtureGraphDir })
+    const mapA = serializeGraph(graphA)
+
+    const graphB = await loadGraph({ graphPath: fixtureGraphDir })
+    const endpoint = graphB.nodesById.get('orders.APIEndpoint.create-order')
+    assert.ok(endpoint)
+    const keys = Object.keys(endpoint.properties).reverse()
+    const permuted: Record<string, unknown> = {}
+    for (const key of keys) permuted[key] = endpoint.properties[key]
+    endpoint.properties = permuted
+    const mapB = serializeGraph(graphB)
+
+    assert.deepEqual([...mapA.keys()].sort(), [...mapB.keys()].sort())
+    for (const [key, content] of mapA) {
+      assert.equal(mapB.get(key), content, `content for ${key} differs after property permutation`)
     }
   })
 })

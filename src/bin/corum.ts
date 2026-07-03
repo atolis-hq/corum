@@ -62,6 +62,22 @@ program
     })
   })
 
+program
+  .command('lint')
+  .description('Lint the graph and report diagnostics')
+  .option('--graph <path>', 'Override graph path')
+  .action(async (opts) => {
+    const config = buildRuntimeConfig(opts.graph)
+    try {
+      const graph = await loadGraph({ source: config.source, strict: false })
+      reportDiagnostics(graph.diagnostics, 'Lint complete')
+      if (graph.diagnostics.some(d => d.severity === 'error')) process.exit(1)
+    } catch (err) {
+      process.stderr.write(`[ERROR] ${err instanceof Error ? err.message : String(err)}\n`)
+      process.exit(2)
+    }
+  })
+
 const CONFIG_TEMPLATE = `# Corum project configuration
 # Uncomment and set the options relevant to your setup.
 # All values can be overridden by environment variables (CORUM_*) or CLI flags.
@@ -153,6 +169,7 @@ const importCmd = program.command('import')
   .description('Import specifications into the graph')
   .option('--config <path>', 'Path to import config YAML')
   .option('--graph <path>', 'Override CORUM_GRAPH_PATH')
+  .option('-b, --branch <name>', 'Target branch to commit the import to (required for git sources)')
   .addHelpText('after', '\nFor import config file format and options, see: https://github.com/atolis-hq/corum#readme')
   .action(async (opts) => {
     if (!opts.config) {
@@ -162,7 +179,7 @@ const importCmd = program.command('import')
     try {
       const runtimeConfig = buildRuntimeConfig(opts.graph)
       const config = loadImportConfig(path.resolve(opts.config))
-      const result = await runImport(config, runtimeConfig)
+      const result = await runImport(config, runtimeConfig, { branch: opts.branch })
       reportDiagnostics(result.diagnostics)
       if (result.diagnostics.some(d => d.severity === 'error')) process.exit(1)
     } catch (err) {
@@ -179,11 +196,12 @@ importCmd
   .option('--pattern <regex>', 'Regex pattern (uri-segment strategy)')
   .option('--component <name>', 'Component name (hardcoded strategy)')
   .option('--graph <path>', 'Override CORUM_GRAPH_PATH')
+  .option('-b, --branch <name>', 'Target branch to commit the import to (required for git sources)')
   .action(async (spec: string, opts) => {
     try {
       const runtimeConfig = buildRuntimeConfig(opts.graph)
       const entry = buildOpenAPIConfig(spec, opts.componentStrategy, opts.segment, opts.pattern, opts.component)
-      const result = await runImport({ imports: [entry] }, runtimeConfig)
+      const result = await runImport({ imports: [entry] }, runtimeConfig, { branch: opts.branch })
       reportDiagnostics(result.diagnostics)
       if (result.diagnostics.some(d => d.severity === 'error')) process.exit(1)
     } catch (err) {
@@ -203,6 +221,7 @@ importCmd
   .option('--event-classification <mode>', 'Event classification: always-integration, always-domain', 'always-integration')
   .option('--include-consumed', 'Also import receive (consumed) operations', false)
   .option('--graph <path>', 'Override CORUM_GRAPH_PATH')
+  .option('-b, --branch <name>', 'Target branch to commit the import to (required for git sources)')
   .action(async (spec: string, opts) => {
     try {
       const runtimeConfig = buildRuntimeConfig(opts.graph)
@@ -218,7 +237,7 @@ importCmd
       if (opts.includeConsumed) {
         entry.includeConsumed = true
       }
-      const result = await runImport({ imports: [entry] }, runtimeConfig)
+      const result = await runImport({ imports: [entry] }, runtimeConfig, { branch: opts.branch })
       reportDiagnostics(result.diagnostics)
       if (result.diagnostics.some(d => d.severity === 'error')) process.exit(1)
     } catch (err) {
@@ -231,11 +250,12 @@ importCmd
   .command('corum <spec>')
   .description('Import a corum interchange file into the graph')
   .option('--graph <path>', 'Override CORUM_GRAPH_PATH')
+  .option('-b, --branch <name>', 'Target branch to commit the import to (required for git sources)')
   .action(async (spec: string, opts) => {
     try {
       const runtimeConfig = buildRuntimeConfig(opts.graph)
       const entry = { adapter: 'corum' as const, spec: path.resolve(spec) }
-      const result = await runImport({ imports: [entry] }, runtimeConfig)
+      const result = await runImport({ imports: [entry] }, runtimeConfig, { branch: opts.branch })
       reportDiagnostics(result.diagnostics)
       if (result.diagnostics.some(d => d.severity === 'error')) process.exit(1)
     } catch (err) {
@@ -282,14 +302,14 @@ function buildRuntimeConfig(graphOverride?: string) {
   return createGraphRuntimeConfig()
 }
 
-function reportDiagnostics(diagnostics: { severity: string; file: string; message: string }[]): void {
+function reportDiagnostics(diagnostics: { severity: string; file: string; message: string }[], label = 'Import complete'): void {
   for (const d of diagnostics) {
     const prefix = d.severity === 'error' ? 'ERROR' : 'WARN'
     process.stderr.write(`[${prefix}] ${d.file}: ${d.message}\n`)
   }
   const errors = diagnostics.filter(d => d.severity === 'error').length
   const warnings = diagnostics.filter(d => d.severity === 'warning').length
-  process.stdout.write(`Import complete. ${errors} error(s), ${warnings} warning(s).\n`)
+  process.stdout.write(`${label}. ${errors} error(s), ${warnings} warning(s).\n`)
 }
 
 function reportGraphDiagnostics(diagnostics: { severity: string; file?: string; message: string }[]): void {

@@ -78,6 +78,17 @@ describe('deriveNodeId', () => {
       'orders.APIEndpoint.createOrder.schemas.create-order-request.fields.customerId'
     )
   })
+
+  it('sanitises dotted operationIds so they cannot corrupt the id hierarchy', () => {
+    assert.equal(deriveNodeId('operation', 'orders', 'orders.getOrder'), 'orders.APIEndpoint.orders-getOrder')
+  })
+
+  it('sanitises dotted names in child ids', () => {
+    assert.equal(
+      deriveNodeId('schema', undefined, 'my.request', 'orders.APIEndpoint.createOrder', 'schemas'),
+      'orders.APIEndpoint.createOrder.schemas.my-request',
+    )
+  })
 })
 
 const PACK_CONFIG: AdapterPackConfig = {

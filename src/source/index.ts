@@ -2,6 +2,8 @@ export type ContentMap = Map<string, string>
 
 export interface CommitOptions {
   replaceGraphContent?: boolean
+  /** Create the target branch from the default branch head if it does not exist. */
+  createBranchIfMissing?: boolean
 }
 
 export interface GraphSource {

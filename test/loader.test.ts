@@ -277,6 +277,61 @@ describe('cluster loader', () => {
     assert.equal(field.properties.nullable, false)
     assert.equal(field.properties.collection, undefined)
   })
+
+  it('warns and falls back on an invalid root node state', async () => {
+    const diagnostics: Diagnostic[] = []
+    const templates = loadPacks(await buildPackContentMap(), diagnostics)
+    const content: ContentMap = new Map([
+      ['components/orders/DomainModels/bad-state.yaml', [
+        'id: orders.DomainModel.bad-state',
+        'template: DomainModel',
+        'schemaVersion: "1"',
+        'metadata:',
+        '  component: orders',
+        '  state: bogus',
+        '  stability: unstable',
+        '  lastModifiedAt: "2026-01-01"',
+      ].join('\n')],
+    ])
+
+    const result = loadClusters(content, templates, diagnostics)
+    assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0)
+    assert.ok(diagnostics.some(d => d.severity === 'warning' && d.message.includes("invalid state 'bogus'")))
+    assert.equal(result.nodes.get('orders.DomainModel.bad-state')?.state, 'proposed', 'falls back to default state')
+  })
+
+  it('warns and falls back on an invalid owned-child stability', async () => {
+    const diagnostics: Diagnostic[] = []
+    const templates = loadPacks(await buildPackContentMap(), diagnostics)
+    const content: ContentMap = new Map([
+      ['components/orders/DomainModels/bad-child-stability.yaml', [
+        'id: orders.DomainModel.bad-child-stability',
+        'template: DomainModel',
+        'schemaVersion: "1"',
+        'metadata:',
+        '  component: orders',
+        '  state: agreed',
+        '  stability: stable',
+        '  lastModifiedAt: "2026-01-01"',
+        'schemas:',
+        '  item:',
+        '    stability: bogus',
+        '    fields:',
+        '      id:',
+        '        type: uuid',
+        '        nullable: false',
+      ].join('\n')],
+    ])
+
+    const result = loadClusters(content, templates, diagnostics)
+    assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0)
+    assert.ok(diagnostics.some(d => d.severity === 'warning' && d.message.includes("invalid stability 'bogus'")))
+    assert.equal(
+      result.nodes.get('orders.DomainModel.bad-child-stability.schemas.item')?.stability,
+      'stable',
+      'falls back to inherited parent stability',
+    )
+  })
 })
 
 describe('edge loader', () => {
@@ -337,6 +392,40 @@ describe('edge loader', () => {
     const warnings = diagnostics.filter(d => d.severity === 'warning')
     assert.ok(warnings.length > 0, 'expected warnings for unresolved endpoints')
     assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0)
+  })
+
+  it('warns and falls back on an invalid edge state, without erroring', () => {
+    const nodes = new Map<string, Node>([
+      ['a.DomainModel.a', { id: 'a.DomainModel.a', template: 'DomainModel', component: 'a', state: 'proposed', stability: 'unstable', schemaVersion: '1', lastModifiedAt: '2026-01-01', properties: {} }],
+      ['b.DomainModel.b', { id: 'b.DomainModel.b', template: 'DomainModel', component: 'b', state: 'proposed', stability: 'unstable', schemaVersion: '1', lastModifiedAt: '2026-01-01', properties: {} }],
+    ])
+    const content: ContentMap = new Map([
+      ['edges/bad.edges.yaml', 'edges:\n  - from: a.DomainModel.a\n    to: b.DomainModel.b\n    type: reads\n    state: bogus\n'],
+    ])
+    const diagnostics: Diagnostic[] = []
+    const result = loadEdges(content, nodes, diagnostics)
+
+    assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0)
+    assert.ok(diagnostics.some(d => d.severity === 'warning' && d.message.includes('invalid edge state')))
+    const edge = [...result.edgesByFrom.values()].flat()[0]
+    assert.equal(edge.state, 'proposed', 'falls back to default state')
+  })
+
+  it('warns and falls back on an invalid edge stability, without erroring', () => {
+    const nodes = new Map<string, Node>([
+      ['a.DomainModel.a', { id: 'a.DomainModel.a', template: 'DomainModel', component: 'a', state: 'proposed', stability: 'unstable', schemaVersion: '1', lastModifiedAt: '2026-01-01', properties: {} }],
+      ['b.DomainModel.b', { id: 'b.DomainModel.b', template: 'DomainModel', component: 'b', state: 'proposed', stability: 'unstable', schemaVersion: '1', lastModifiedAt: '2026-01-01', properties: {} }],
+    ])
+    const content: ContentMap = new Map([
+      ['edges/bad.edges.yaml', 'edges:\n  - from: a.DomainModel.a\n    to: b.DomainModel.b\n    type: reads\n    stability: bogus\n'],
+    ])
+    const diagnostics: Diagnostic[] = []
+    const result = loadEdges(content, nodes, diagnostics)
+
+    assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0)
+    assert.ok(diagnostics.some(d => d.severity === 'warning' && d.message.includes('invalid edge stability')))
+    const edge = [...result.edgesByFrom.values()].flat()[0]
+    assert.equal(edge.stability, 'unstable', 'falls back to default stability')
   })
 })
 
@@ -515,8 +604,8 @@ describe('cluster loader — Mapping nodes', () => {
   })
 })
 
-describe('cluster loader — structural reads edges', () => {
-  it('auto-generates a reads edge from a field with a global node-ref $ref', async () => {
+describe('cluster loader — structural uses-type edges', () => {
+  it('auto-generates a uses-type edge from a field with a global node-ref $ref', async () => {
     const diagnostics: Diagnostic[] = []
     const templates = loadPacks(await buildPackContentMap(), diagnostics)
     assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0, 'pack load errors')
@@ -558,19 +647,19 @@ describe('cluster loader — structural reads edges', () => {
     )
 
     const allEdges = [...result.edgesByFrom.values()].flat()
-    const structuralReads = allEdges.filter(e => e.type === 'reads' && e.generated === true)
+    const structuralUsesType = allEdges.filter(e => e.type === 'uses-type' && e.generated === true)
 
-    assert.ok(structuralReads.length > 0, 'expected at least one structural reads edge')
+    assert.ok(structuralUsesType.length > 0, 'expected at least one structural uses-type edge')
 
-    const edge = structuralReads.find(
+    const edge = structuralUsesType.find(
       e => e.from === 'orders.DomainModel.cross-ref-test' && e.to === 'payments.DomainModel.payment',
     )
-    assert.ok(edge, 'expected reads edge from orders.DomainModel.cross-ref-test to payments.DomainModel.payment')
+    assert.ok(edge, 'expected uses-type edge from orders.DomainModel.cross-ref-test to payments.DomainModel.payment')
     assert.strictEqual(edge!.generated, true)
     assert.strictEqual(edge!.from, 'orders.DomainModel.cross-ref-test')
   })
 
-  it('deduplicates structural reads edges when multiple fields reference the same external node', async () => {
+  it('deduplicates structural uses-type edges when multiple fields reference the same external node', async () => {
     const diagnostics: Diagnostic[] = []
     const templates = loadPacks(await buildPackContentMap(), diagnostics)
 
@@ -601,9 +690,9 @@ describe('cluster loader — structural reads edges', () => {
     const result = loadClusters(content, templates, diagnostics)
 
     const allEdges = [...result.edgesByFrom.values()].flat()
-    const readsToPayment = allEdges.filter(
-      e => e.type === 'reads' && e.to === 'payments.DomainModel.payment' && e.generated === true,
+    const usesTypeToPayment = allEdges.filter(
+      e => e.type === 'uses-type' && e.to === 'payments.DomainModel.payment' && e.generated === true,
     )
-    assert.equal(readsToPayment.length, 1, 'duplicate reads edges must be de-duplicated')
+    assert.equal(usesTypeToPayment.length, 1, 'duplicate uses-type edges must be de-duplicated')
   })
 })

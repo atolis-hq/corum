@@ -82,4 +82,26 @@ describe('MCP serializers', () => {
     assert.equal(source.id, 'root')
     assert.deepEqual(source.edges[0], { from: 'a', to: 'b', type: 'reads', notes: 'edge note' })
   })
+
+  it('compactKeys leaves user-authored property data untouched', () => {
+    const source = {
+      id: 'orders.Schema.order.fields.id',
+      template: 'Field',
+      properties: {
+        type: 'string',
+        notes: 'primary key',
+        nested: { id: 'user-value', from: 'somewhere', version: 2 },
+      },
+    }
+
+    assert.deepEqual(compactKeys(source), {
+      i: 'orders.Schema.order.fields.id',
+      t: 'Field',
+      p: {
+        type: 'string',
+        notes: 'primary key',
+        nested: { id: 'user-value', from: 'somewhere', version: 2 },
+      },
+    })
+  })
 })

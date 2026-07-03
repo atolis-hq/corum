@@ -87,7 +87,8 @@ export function compactKeys(value: unknown): unknown {
   return Object.fromEntries(
     Object.entries(value as Record<string, unknown>).map(([key, child]) => [
       COMPACT_KEY_MAP[key] ?? key,
-      compactKeys(child),
+      // `properties` values are user-authored data; compact envelope keys only.
+      key === 'properties' ? child : compactKeys(child),
     ]),
   )
 }

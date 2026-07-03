@@ -131,6 +131,168 @@ describe('FileGraphSource', () => {
       fs.rmSync(tmpDir, { recursive: true, force: true })
     }
   })
+
+  it('commit with replaceGraphContent preserves non-yaml files a user kept in graphDir', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-file-source-preserve-'))
+    try {
+      const source = new FileGraphSource({ graphDir: tmpDir, defaultBranch: 'local' })
+      await source.commit('local', new Map([
+        ['graph.yaml', 'templatePacks: []\n'],
+        ['components/orders/order.yaml', 'id: order\n'],
+      ]), 'first', { replaceGraphContent: true })
+
+      fs.writeFileSync(path.join(tmpDir, 'notes.txt'), 'kept by user')
+
+      await source.commit('local', new Map([
+        ['graph.yaml', 'templatePacks: []\n'],
+        ['components/orders/order.yaml', 'id: order-renamed\n'],
+      ]), 'second', { replaceGraphContent: true })
+
+      assert.equal(fs.readFileSync(path.join(tmpDir, 'notes.txt'), 'utf-8'), 'kept by user')
+      assert.equal(
+        fs.readFileSync(path.join(tmpDir, 'components/orders/order.yaml'), 'utf-8'),
+        'id: order-renamed\n',
+      )
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('commit with replaceGraphContent removes stale yaml files no longer present in the ContentMap', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-file-source-stale-'))
+    try {
+      const source = new FileGraphSource({ graphDir: tmpDir, defaultBranch: 'local' })
+      await source.commit('local', new Map([
+        ['graph.yaml', 'templatePacks: []\n'],
+        ['components/orders/order.yaml', 'id: order\n'],
+        ['components/orders/payment.yaml', 'id: payment\n'],
+      ]), 'first', { replaceGraphContent: true })
+
+      await source.commit('local', new Map([
+        ['graph.yaml', 'templatePacks: []\n'],
+        ['components/orders/order.yaml', 'id: order\n'],
+      ]), 'second', { replaceGraphContent: true })
+
+      assert.equal(fs.existsSync(path.join(tmpDir, 'components/orders/payment.yaml')), false)
+      assert.equal(fs.existsSync(path.join(tmpDir, 'components/orders/order.yaml')), true)
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('commit with replaceGraphContent never deletes the whole graphDir before the new content exists on disk', async () => {
+    // Regression guard for the crash-window bug: the old implementation did
+    // rmSync(graphDir) then wrote files one by one, so a crash mid-write left
+    // the graph gone. We can't literally kill the process mid-call, but we can
+    // assert the graphDir is never observably empty by monkey-patching rmSync
+    // to record whether it was ever called while old content is still the only content.
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-file-source-crash-'))
+    try {
+      const source = new FileGraphSource({ graphDir: tmpDir, defaultBranch: 'local' })
+      await source.commit('local', new Map([
+        ['graph.yaml', 'templatePacks: []\n'],
+        ['components/orders/order.yaml', 'id: order\n'],
+      ]), 'first', { replaceGraphContent: true })
+
+      const originalRmSync = fs.rmSync
+      let sawGraphDirFullyRemoved = false
+      fs.rmSync = ((target: fs.PathLike, opts?: fs.RmOptions) => {
+        const result = originalRmSync(target, opts)
+        if (String(target) === tmpDir && !fs.existsSync(tmpDir)) {
+          sawGraphDirFullyRemoved = true
+        }
+        return result
+      }) as typeof fs.rmSync
+
+      try {
+        await source.commit('local', new Map([
+          ['graph.yaml', 'templatePacks: []\n'],
+          ['components/orders/order.yaml', 'id: order-v2\n'],
+        ]), 'second', { replaceGraphContent: true })
+      } finally {
+        fs.rmSync = originalRmSync
+      }
+
+      assert.equal(sawGraphDirFullyRemoved, false, 'graphDir itself must never be fully removed during replaceGraphContent commit')
+      assert.equal(
+        fs.readFileSync(path.join(tmpDir, 'components/orders/order.yaml'), 'utf-8'),
+        'id: order-v2\n',
+      )
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('commit with replaceGraphContent falls back to selective yaml delete when graphDir is itself a git repo root', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-file-source-selfrepo-'))
+    try {
+      await git.init({ fs, dir: tmpDir, defaultBranch: 'main' })
+      const source = new FileGraphSource({ graphDir: tmpDir, defaultBranch: 'local' })
+      await source.commit('local', new Map([
+        ['graph.yaml', 'templatePacks: []\n'],
+        ['components/orders/order.yaml', 'id: order\n'],
+      ]), 'first', { replaceGraphContent: true })
+
+      fs.writeFileSync(path.join(tmpDir, 'notes.txt'), 'kept by user')
+
+      await source.commit('local', new Map([
+        ['graph.yaml', 'templatePacks: []\n'],
+      ]), 'second', { replaceGraphContent: true })
+
+      assert.equal(fs.existsSync(path.join(tmpDir, '.git')), true, '.git must survive replaceGraphContent')
+      assert.equal(fs.readFileSync(path.join(tmpDir, 'notes.txt'), 'utf-8'), 'kept by user')
+      assert.equal(fs.existsSync(path.join(tmpDir, 'components/orders/order.yaml')), false, 'stale yaml removed')
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('commit records a git commit when graphDir lives inside a git repository', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-file-source-git-'))
+    try {
+      await git.init({ fs, dir: tmpDir, defaultBranch: 'main' })
+      const graphDir = path.join(tmpDir, '.corum', 'graph')
+      const source = new FileGraphSource({ graphDir })
+      const branch = await source.defaultBranch()
+      await source.commit(branch, new Map([
+        ['graph.yaml', 'templatePacks: []\n'],
+        ['components/orders/order.yaml', 'id: order\n'],
+      ]), 'corum: write snapshot')
+
+      const [head] = await git.log({ fs, dir: tmpDir, depth: 1 })
+      assert.match(head.commit.message, /corum: write snapshot/)
+
+      const matrix = await git.statusMatrix({ fs, dir: tmpDir })
+      for (const [filepath, headStatus, workdir, stage] of matrix) {
+        assert.deepEqual(
+          [headStatus, workdir, stage],
+          [1, 1, 1],
+          `expected ${filepath} to be committed and clean`,
+        )
+      }
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('commit makes no git commit when nothing changed', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-file-source-git-noop-'))
+    try {
+      await git.init({ fs, dir: tmpDir, defaultBranch: 'main' })
+      const graphDir = path.join(tmpDir, '.corum', 'graph')
+      const source = new FileGraphSource({ graphDir })
+      const branch = await source.defaultBranch()
+      const changes = new Map([['graph.yaml', 'templatePacks: []\n']])
+      await source.commit(branch, changes, 'first')
+      await source.commit(branch, changes, 'second')
+
+      const log = await git.log({ fs, dir: tmpDir })
+      assert.equal(log.length, 1)
+      assert.match(log[0].commit.message, /first/)
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('GitCacheManager', () => {
@@ -379,5 +541,54 @@ describe('GitGraphSource write path', () => {
       () => source.commit('feat/bad-key', new Map([['../outside.yaml', 'id: outside\n']]), 'bad'),
       (err: unknown) => err instanceof SourceError,
     )
+  })
+
+  it('commit refuses to move a branch that is checked out in a local repo', async () => {
+    const source = new GitGraphSource({ localPath: tmpDir })
+    await git.branch({ fs, dir: tmpDir, ref: 'feat/checked-out', checkout: true })
+    try {
+      await assert.rejects(
+        () => source.commit('feat/checked-out', new Map([['components/orders/x.yaml', 'id: x\n']]), 'msg'),
+        /checked out/,
+      )
+    } finally {
+      await git.checkout({ fs, dir: tmpDir, ref: 'main' })
+    }
+  })
+
+  it('commit rejects an unknown branch without createBranchIfMissing', async () => {
+    const source = new GitGraphSource({ localPath: tmpDir })
+    await assert.rejects(
+      () => source.commit('feat/does-not-exist', new Map([['a.yaml', 'id: a\n']]), 'msg'),
+      (err: unknown) => err instanceof SourceError,
+    )
+  })
+
+  it('commit creates a missing branch from the default branch head when createBranchIfMissing', async () => {
+    const source = new GitGraphSource({ localPath: tmpDir })
+    const mainHead = await git.resolveRef({ fs, dir: tmpDir, ref: 'main' })
+    await source.commit('feat/created-by-commit', new Map([
+      ['components/orders/created.yaml', 'id: orders.DomainModel.created\n'],
+    ]), 'create branch on commit', { createBranchIfMissing: true })
+
+    const content = await source.loadGraphContent('feat/created-by-commit')
+    assert.ok(content.has('components/orders/created.yaml'))
+
+    const branchHead = await git.resolveRef({ fs, dir: tmpDir, ref: 'feat/created-by-commit' })
+    const { commit } = await git.readCommit({ fs, dir: tmpDir, oid: branchHead })
+    assert.deepEqual(commit.parent, [mainHead])
+  })
+
+  it('concurrent commits to the same branch are serialised, not lost', async () => {
+    const source = new GitGraphSource({ localPath: tmpDir })
+    await git.branch({ fs, dir: tmpDir, ref: 'feat/concurrent', checkout: false })
+    await Promise.all([
+      source.commit('feat/concurrent', new Map([['components/orders/a.yaml', 'id: orders.DomainModel.a\n']]), 'add a'),
+      source.commit('feat/concurrent', new Map([['components/orders/b.yaml', 'id: orders.DomainModel.b\n']]), 'add b'),
+    ])
+
+    const content = await source.loadGraphContent('feat/concurrent')
+    assert.ok(content.has('components/orders/a.yaml'), 'first concurrent commit was lost')
+    assert.ok(content.has('components/orders/b.yaml'), 'second concurrent commit was lost')
   })
 })

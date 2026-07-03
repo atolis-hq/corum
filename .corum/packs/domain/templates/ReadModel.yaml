@@ -7,9 +7,11 @@ info:
     A derived query projection optimised for reads. It captures a view of
     domain data shaped for consumption rather than mutation.
 
-edges:
+edge-types:
   incoming:
     - reads
+    - derived-from
+  outgoing:
     - derived-from
 
 ui:

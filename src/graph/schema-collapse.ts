@@ -1,5 +1,6 @@
 import type { Edge, Graph, Node } from '../schema/index.js'
-import { STRUCTURAL_EDGE_TYPES, STRUCTURAL_NODE_TEMPLATES } from './index.js'
+import { getStructuralNodeTemplates, isVisibleEdgeType } from './index.js'
+import { getTemplateRole } from './roles.js'
 import type { ClusterViewResult } from './index.js'
 
 export type CollapsedField = {
@@ -31,75 +32,76 @@ export function collapseClusterSchemas(graph: Graph, cluster: ClusterViewResult)
 
   // Indexes keyed by local name or parent ID
   const schemaChildIds = new Set<string>()
-  const schemaNames = new Map<string, true>()                          // localName → exists
-  const enumNames = new Map<string, true>()                            // localName → exists
+  const schemaNames = new Map<string, string>()                        // localName → nodeId
+  const enumNames = new Map<string, string>()                          // localName → nodeId
   const fieldsByParentId = new Map<string, Map<string, Node>>()        // parentId → fieldName → Node
   const valuesByEnumId = new Map<string, string[]>()                   // enumId → value names
   const valuesBySchemaId = new Map<string, string[]>()                 // schemaId → value names (enum-like schemas)
   const mappingsByParentId = new Map<string, Map<string, Node>>()      // parentSchemaId → mapName → Node
   const semanticDescendants: Node[] = []
 
+  // Classification is role- and ownership-driven: a node's template role
+  // (resolved through the extends chain) decides how it collapses, and its
+  // materialised parentId decides where. Section names never matter here, so
+  // packs may own schemas/fields under any section name.
+  const localName = (n: Node): string => n.id.slice(n.id.lastIndexOf('.') + 1)
+  const parentRole = (n: Node): string | undefined => {
+    const parent = n.parentId !== undefined ? graph.nodesById.get(n.parentId) : undefined
+    return parent ? getTemplateRole(graph.templates, parent.template) : undefined
+  }
+
   for (const n of cluster.descendants) {
     if (!n.id.startsWith(rootPrefix)) {
       semanticDescendants.push(n)
       continue
     }
-    const suffix = n.id.slice(rootPrefix.length)
+    const role = getTemplateRole(graph.templates, n.template)
 
-    if (n.template === 'Schema') {
-      const m = /^schemas\.([^.]+)$/.exec(suffix)
-      if (m) { schemaNames.set(m[1], true); schemaChildIds.add(n.id); continue }
+    if (role === 'type-container' && n.parentId === rootId) {
+      schemaNames.set(localName(n), n.id)
+      schemaChildIds.add(n.id)
+      continue
     }
 
-    if (n.template === 'EnumDefinition') {
-      const m = /^enums\.([^.]+)$/.exec(suffix)
-      if (m) { enumNames.set(m[1], true); schemaChildIds.add(n.id); continue }
+    if (role === 'enum-container' && n.parentId === rootId) {
+      enumNames.set(localName(n), n.id)
+      schemaChildIds.add(n.id)
+      continue
     }
 
-    if (n.template === 'Field') {
-      const m = /^(.+)\.fields\.([^.]+)$/.exec(suffix)
-      if (m) {
-        const parentId = `${rootId}.${m[1]}`
-        const existing = fieldsByParentId.get(parentId) ?? new Map<string, Node>()
-        existing.set(m[2], n)
-        fieldsByParentId.set(parentId, existing)
+    if (role === 'field' && n.parentId !== undefined) {
+      const existing = fieldsByParentId.get(n.parentId) ?? new Map<string, Node>()
+      existing.set(localName(n), n)
+      fieldsByParentId.set(n.parentId, existing)
+      schemaChildIds.add(n.id)
+      continue
+    }
+
+    if (role === 'value' && n.parentId !== undefined) {
+      const owner = parentRole(n)
+      if (owner === 'enum-container') {
+        const values = valuesByEnumId.get(n.parentId) ?? []
+        values.push(typeof n.properties.name === 'string' ? n.properties.name : localName(n))
+        valuesByEnumId.set(n.parentId, values)
+        schemaChildIds.add(n.id)
+        continue
+      }
+      // Enum-like schemas: value nodes owned directly by a type-container
+      if (owner === 'type-container') {
+        const values = valuesBySchemaId.get(n.parentId) ?? []
+        values.push(typeof n.properties.name === 'string' ? n.properties.name : localName(n))
+        valuesBySchemaId.set(n.parentId, values)
         schemaChildIds.add(n.id)
         continue
       }
     }
 
-    if (n.template === 'EnumValue') {
-      const enumM = /^enums\.([^.]+)\.values\.([^.]+)$/.exec(suffix)
-      if (enumM) {
-        const enumId = `${rootId}.enums.${enumM[1]}`
-        const values = valuesByEnumId.get(enumId) ?? []
-        values.push(typeof n.properties.name === 'string' ? n.properties.name : enumM[2])
-        valuesByEnumId.set(enumId, values)
-        schemaChildIds.add(n.id)
-        continue
-      }
-      // Also handle EnumValue nodes under schemas section (enum-like schemas)
-      const schemaM = /^schemas\.([^.]+)\.values\.([^.]+)$/.exec(suffix)
-      if (schemaM) {
-        const schemaId = `${rootId}.schemas.${schemaM[1]}`
-        const values = valuesBySchemaId.get(schemaId) ?? []
-        values.push(typeof n.properties.name === 'string' ? n.properties.name : schemaM[2])
-        valuesBySchemaId.set(schemaId, values)
-        schemaChildIds.add(n.id)
-        continue
-      }
-    }
-
-    if (n.template === 'Mapping') {
-      const m = /^schemas\.([^.]+)\.mappings\.([^.]+)$/.exec(suffix)
-      if (m) {
-        const parentId = `${rootId}.schemas.${m[1]}`
-        const existing = mappingsByParentId.get(parentId) ?? new Map<string, Node>()
-        existing.set(m[2], n)
-        mappingsByParentId.set(parentId, existing)
-        schemaChildIds.add(n.id)
-        continue
-      }
+    if (role === 'mapping' && n.parentId !== undefined && parentRole(n) === 'type-container') {
+      const existing = mappingsByParentId.get(n.parentId) ?? new Map<string, Node>()
+      existing.set(localName(n), n)
+      mappingsByParentId.set(n.parentId, existing)
+      schemaChildIds.add(n.id)
+      continue
     }
 
     semanticDescendants.push(n)
@@ -108,8 +110,7 @@ export function collapseClusterSchemas(graph: Graph, cluster: ClusterViewResult)
   // Build schemas output
   const schemas: Record<string, Record<string, CollapsedField>> = {}
   const schemaEnums: Record<string, { values: string[] }> = {}
-  for (const localName of schemaNames.keys()) {
-    const schemaId = `${rootId}.schemas.${localName}`
+  for (const [localName, schemaId] of schemaNames) {
     const fields = fieldsByParentId.get(schemaId) ?? new Map()
 
     // Enum-like schema: has EnumValue children but no Field children
@@ -129,16 +130,16 @@ export function collapseClusterSchemas(graph: Graph, cluster: ClusterViewResult)
 
   // Build enums output
   const enums: Record<string, { values: string[] }> = {}
-  for (const localName of enumNames.keys()) {
-    const enumId = `${rootId}.enums.${localName}`
+  for (const [localName, enumId] of enumNames) {
     enums[localName] = { values: valuesByEnumId.get(enumId) ?? [] }
   }
 
-  // Filter edges: drop structural edge types and any edge originating from a schema child
-  const filteredEdges = cluster.edges.filter(e => !STRUCTURAL_EDGE_TYPES.has(e.type) && !schemaChildIds.has(e.from))
+  // Filter edges: drop structural/hidden edge types and any edge originating from a schema child
+  const filteredEdges = cluster.edges.filter(e => isVisibleEdgeType(graph, e.type) && !schemaChildIds.has(e.from))
 
   // Filter includedNodes: drop structural template nodes
-  const filteredIncludedNodes = cluster.includedNodes.filter(n => !STRUCTURAL_NODE_TEMPLATES.has(n.template))
+  const structuralTemplates = getStructuralNodeTemplates(graph)
+  const filteredIncludedNodes = cluster.includedNodes.filter(n => !structuralTemplates.has(n.template))
 
   return {
     root: cluster.root,
@@ -165,14 +166,13 @@ function buildField(
 
   const ref = typeof props.$ref === 'string' ? props.$ref : undefined
 
-  if (ref?.startsWith('#/mappings/')) {
-    const mapName = ref.slice('#/mappings/'.length)
-    const mapNode = parentMappings.get(mapName)
-    if (mapNode) {
-      field = buildMappingField(mapNode, graph)
-    } else {
-      field = { $ref: ref }
-    }
+  // Local refs (#/{section}/{name}) to a sibling mapping node collapse inline.
+  // Mapping-ness comes from the collected role-mapping siblings, not from the
+  // section name in the ref.
+  const localRefMatch = ref !== undefined ? /^#\/[^/]+\/(.+)$/.exec(ref) : null
+  const mapNode = localRefMatch ? parentMappings.get(localRefMatch[1]) : undefined
+  if (ref !== undefined && mapNode) {
+    field = buildMappingField(mapNode, graph, new Set([mapNode.id]))
   } else if (ref) {
     field = { $ref: ref }
     if (isArray) field.collection = 'array'
@@ -198,7 +198,7 @@ function buildField(
   return field
 }
 
-function buildMappingField(mapNode: Node, graph: Graph): CollapsedField {
+function buildMappingField(mapNode: Node, graph: Graph, seen: Set<string>): CollapsedField {
   const props = mapNode.properties
   const key = typeof props['key-type'] === 'string' ? (props['key-type'] as string) : 'string'
   const isArrayValue = props['value-collection'] === 'array'
@@ -209,9 +209,9 @@ function buildMappingField(mapNode: Node, graph: Graph): CollapsedField {
   } else if (typeof props.$ref === 'string') {
     const ref = props.$ref as string
     const refNode = graph.nodesById.get(ref)
-    if (refNode?.template === 'Mapping') {
-      // Nested mapping — recurse once (no further recursion guard needed for realistic depths)
-      valueField = buildMappingField(refNode, graph)
+    if (refNode && getTemplateRole(graph.templates, refNode.template) === 'mapping' && !seen.has(refNode.id)) {
+      seen.add(refNode.id)
+      valueField = buildMappingField(refNode, graph, seen)
     } else {
       valueField = { $ref: ref }
     }

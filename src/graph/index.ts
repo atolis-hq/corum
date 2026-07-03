@@ -3,6 +3,7 @@ import type {
   ClusterOverlayField,
   Edge,
   EdgeType,
+  EdgeTypeDef,
   GhostState,
   Graph,
   MultiGraph,
@@ -11,18 +12,39 @@ import type {
   State,
 } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
+import { CORE_EDGE_TYPE_MAP } from '../loader/constants.js'
+import { getDataTemplates, getStructuralTemplates, templateHasRole } from './roles.js'
 
-export const STRUCTURAL_EDGE_TYPES = new Set<EdgeType>(['has-field', 'has-value', 'renamed-from'])
-export const STRUCTURAL_NODE_TEMPLATES = new Set(['Field', 'Schema', 'EnumDefinition', 'EnumValue', 'Mapping'])
-export const SEMANTIC_EDGE_TYPES = new Set<EdgeType>([
-  'triggers',
-  'produces',
-  'reads',
-  'calls',
-  'implements',
-  'maps-to',
-  'derived-from',
-])
+/** Templates whose nodes are structural children, derived from declared template roles. */
+export function getStructuralNodeTemplates(graph: Graph): Set<string> {
+  return getStructuralTemplates(graph.templates)
+}
+
+export function getEdgeTypeDef(graph: Graph, type: string): EdgeTypeDef | undefined {
+  return (graph.edgeTypes ?? CORE_EDGE_TYPE_MAP).get(type)
+}
+
+/** Structural edges encode containment (has-field, has-value, pack-declared structural types). */
+export function isStructuralEdgeType(graph: Graph, type: string): boolean {
+  return getEdgeTypeDef(graph, type)?.category === 'structural'
+}
+
+/**
+ * Visible edges appear in summaries, lineage defaults, and collapsed cluster
+ * views: everything that is neither structural containment nor hidden
+ * bookkeeping (e.g. renamed-from).
+ */
+export function isVisibleEdgeType(graph: Graph, type: string): boolean {
+  const def = getEdgeTypeDef(graph, type)
+  if (!def) return true
+  return def.category !== 'structural' && def.hidden !== true
+}
+
+export function getVisibleEdgeTypes(graph: Graph): EdgeType[] {
+  return [...(graph.edgeTypes ?? CORE_EDGE_TYPE_MAP).values()]
+    .filter(def => def.category !== 'structural' && def.hidden !== true)
+    .map(def => def.name)
+}
 
 export type ListNodesFilter = {
   templates?: string[]
@@ -100,6 +122,7 @@ export type GetLineageOptions = {
   excludeNodeTypes?: string[]
   nodeTypes?: string[]
   includeDanglingEdges?: boolean
+  /** When true (default), excludes both `reads` and `uses-type` from inbound traversal. */
   readsOutboundOnly?: boolean
 }
 
@@ -142,11 +165,13 @@ export function getCluster(graph: Graph, nodeId: string): ClusterResult {
   return { root, children, edges }
 }
 
-// Shared data-type templates whose structural children (fields, values) and referenced types
-// are included when expanding external node references into a cluster view.
-// Operational templates (DomainEvent, Command, APIEndpoint, etc.) are excluded — callers get
-// only their root metadata, not their internal schema trees.
-const DATA_NODE_TEMPLATES = new Set(['Schema', 'EnumDefinition'])
+// Shared data-type templates (role type-container/enum-container) whose structural children
+// (fields, values) and referenced types are included when expanding external node references
+// into a cluster view. Operational templates (DomainEvent, Command, APIEndpoint, etc.) are
+// excluded — callers get only their root metadata, not their internal schema trees.
+function isDataNodeTemplate(graph: Graph, templateName: string): boolean {
+  return getDataTemplates(graph.templates).has(templateName)
+}
 
 export function getClusterView(graph: Graph, nodeId: string, includeEdgeTypes: EdgeType[] = []): ClusterViewResult {
   const cluster = getCluster(graph, nodeId)
@@ -161,9 +186,9 @@ export function getClusterView(graph: Graph, nodeId: string, includeEdgeTypes: E
 
   const clusterIds = new Set([cluster.root.id, ...cluster.children.map(node => node.id)])
   const requestedTypes = new Set(includeEdgeTypes)
-  // reads edges are directional (consumer → type); only follow outbound so viewing a shared
-  // Schema doesn't pull in every endpoint that references it
-  const inboundTypes = new Set([...requestedTypes].filter(t => t !== 'reads') as EdgeType[])
+  // reads and uses-type edges are directional (consumer → type); only follow outbound so
+  // viewing a shared Schema doesn't pull in every endpoint that references it
+  const inboundTypes = new Set([...requestedTypes].filter(t => t !== 'reads' && t !== 'uses-type') as EdgeType[])
   const edges = [...cluster.edges]
   const seen = new Set(cluster.edges.map(edge => edge.id))
 
@@ -200,7 +225,7 @@ export function getClusterView(graph: Graph, nodeId: string, includeEdgeTypes: E
  *
  * Policy:
  *   - Schema and EnumDefinition nodes: include structural children (fields/values) and
- *     follow their outbound `reads` edges one hop to collect referenced data types.
+ *     follow their outbound `uses-type` edges one hop to collect referenced data types.
  *   - All other templates: include only the root node (metadata for connectivity panels).
  */
 export function expandExternalNodes(graph: Graph, externalIds: Iterable<string>): Node[] {
@@ -222,7 +247,7 @@ export function expandExternalNodes(graph: Graph, externalIds: Iterable<string>)
     if (!graph.nodesById.has(rawId) || result.has(rawId)) continue
     result.add(rawId)
     const node = graph.nodesById.get(rawId)!
-    if (DATA_NODE_TEMPLATES.has(node.template)) dataQueue.push(rawId)
+    if (isDataNodeTemplate(graph, node.template)) dataQueue.push(rawId)
   }
 
   for (const id of dataQueue) {
@@ -231,13 +256,13 @@ export function expandExternalNodes(graph: Graph, externalIds: Iterable<string>)
     for (const childId of graph.nodesById.keys()) {
       if (childId.startsWith(prefix)) result.add(childId)
     }
-    // Follow outbound reads one hop to collect referenced enum/schema types
+    // Follow outbound uses-type one hop to collect referenced enum/schema types
     for (const edge of graph.edgesByFrom.get(id) ?? []) {
-      if (edge.type !== 'reads' || result.has(edge.to)) continue
+      if (edge.type !== 'uses-type' || result.has(edge.to)) continue
       const target = graph.nodesById.get(edge.to)
       if (!target) continue
       result.add(edge.to)
-      if (DATA_NODE_TEMPLATES.has(target.template)) {
+      if (isDataNodeTemplate(graph, target.template)) {
         const targetPrefix = `${edge.to}.`
         for (const childId of graph.nodesById.keys()) {
           if (childId.startsWith(targetPrefix)) result.add(childId)
@@ -258,7 +283,7 @@ export function getLinkedFields(graph: Graph, nodeId: string): LinkedFieldsResul
   const prefix = `${nodeId}.`
   const ownedFieldIds = new Set(
     [...graph.nodesById.entries()]
-      .filter(([id, node]) => id.startsWith(prefix) && node.template === 'Field')
+      .filter(([id, node]) => id.startsWith(prefix) && templateHasRole(graph.templates, node.template, 'field'))
       .map(([id]) => id),
   )
 
@@ -284,6 +309,13 @@ export function getLinkedFields(graph: Graph, nodeId: string): LinkedFieldsResul
 }
 
 function findParent(graph: Graph, nodeId: string): string | undefined {
+  const node = graph.nodesById.get(nodeId)
+  if (node?.parentId !== undefined && graph.nodesById.has(node.parentId)) {
+    return node.parentId
+  }
+
+  // Fallback for nodes without a materialised parentId (e.g. adapter output
+  // before a load round-trip): walk the ID hierarchy in 2-segment strides.
   const parts = nodeId.split('.')
   let endIdx = parts.length - 2
   while (endIdx >= 1) {
@@ -349,7 +381,7 @@ export function getGraphSummary(graph: Graph): GraphSummary {
   const edgesByType: Record<string, number> = {}
   for (const edgeList of graph.edgesByFrom.values()) {
     for (const edge of edgeList) {
-      if (!SEMANTIC_EDGE_TYPES.has(edge.type)) continue
+      if (!isVisibleEdgeType(graph, edge.type)) continue
       edgesByType[edge.type] = (edgesByType[edge.type] ?? 0) + 1
       nodesWithEdges.add(edge.from)
       nodesWithEdges.add(edge.to)
@@ -440,11 +472,15 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
   const defaultEdgeTypes = new Set<EdgeType>()
   for (const edgeList of graph.edgesByFrom.values()) {
     for (const edge of edgeList) {
-      if (!STRUCTURAL_EDGE_TYPES.has(edge.type)) defaultEdgeTypes.add(edge.type)
+      if (isVisibleEdgeType(graph, edge.type)) defaultEdgeTypes.add(edge.type)
     }
   }
   const edgeTypeSet = options.edgeTypes ? new Set(options.edgeTypes) : defaultEdgeTypes
-  const inboundTypeSet = new Set([...edgeTypeSet].filter(type => !(readsOutboundOnly && type === 'reads')))
+  // reads and uses-type are directional (consumer → type); readsOutboundOnly (default true)
+  // excludes both from inbound traversal so a shared type doesn't pull in every consumer
+  const inboundTypeSet = new Set(
+    [...edgeTypeSet].filter(type => !(readsOutboundOnly && (type === 'reads' || type === 'uses-type'))),
+  )
 
   const useAllowlist = (options.nodeTypes?.length ?? 0) > 0
   const allowedTemplates = useAllowlist ? new Set(options.nodeTypes) : null
@@ -452,7 +488,7 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
     ? null
     : options.excludeNodeTypes?.length
       ? new Set(options.excludeNodeTypes)
-      : STRUCTURAL_NODE_TEMPLATES
+      : getStructuralNodeTemplates(graph)
 
   function isIncluded(node: Node): boolean {
     if (allowedTemplates) return allowedTemplates.has(node.template)

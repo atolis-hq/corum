@@ -1,6 +1,7 @@
 import { parse as parseYaml } from 'yaml'
 import path from 'node:path'
 import { loadGraph } from '../loader/index.js'
+import { isStructuralEdgeType } from '../graph/index.js'
 import { serializeGraph } from '../writer/graph-writer.js'
 import { getAdapter } from '../adapters/index.js'
 import { diffNodes } from '../reconcile/index.js'
@@ -16,9 +17,43 @@ export interface RunResult {
   diagnostics: Diagnostic[]
 }
 
-export async function runImport(config: ImportConfig, runtimeConfig: GraphRuntimeConfig): Promise<RunResult> {
+export interface RunImportOptions {
+  /** Target branch to commit the import to. Defaults to the source's default branch. */
+  branch?: string
+}
+
+export async function runImport(
+  config: ImportConfig,
+  runtimeConfig: GraphRuntimeConfig,
+  options: RunImportOptions = {},
+): Promise<RunResult> {
   const allDiagnostics: Diagnostic[] = []
-  const graph = await loadGraph({ source: runtimeConfig.source })
+  const source = runtimeConfig.source
+  const defaultBranch = await source.defaultBranch()
+  const targetBranch = options.branch ?? defaultBranch
+
+  if (runtimeConfig.kind === 'git' && targetBranch === defaultBranch) {
+    return {
+      diagnostics: [{
+        severity: 'error',
+        file: runtimeConfig.graphPath,
+        message: `git sources are read-only on the default branch '${defaultBranch}' — pass --branch <name> to import into a design branch`,
+      }],
+    }
+  }
+
+  let targetBranchExists = targetBranch === defaultBranch
+  if (!targetBranchExists) {
+    try {
+      targetBranchExists = (await source.listBranches()).includes(targetBranch)
+    } catch {
+      targetBranchExists = false
+    }
+  }
+
+  // Diff against the branch we are importing into, so repeated imports to the
+  // same design branch stay idempotent; a new branch starts from the default.
+  const graph = await loadGraph({ source, ref: targetBranchExists ? targetBranch : defaultBranch })
 
   const entryResults: EntryResult[] = []
 
@@ -54,8 +89,6 @@ export async function runImport(config: ImportConfig, runtimeConfig: GraphRuntim
     entryResults.splice(0, entryResults.length, ...deduped)
   }
 
-  const STRUCTURAL_EDGE_TYPES = new Set(['has-field', 'has-value'])
-
   for (const er of entryResults) {
     const { toAdd, toUpdate, toRemove } = diffNodes(er.nodes, graph.nodesById, er.specPath)
 
@@ -64,7 +97,7 @@ export async function runImport(config: ImportConfig, runtimeConfig: GraphRuntim
     }
 
     for (const edge of er.edges) {
-      if (STRUCTURAL_EDGE_TYPES.has(edge.type)) continue
+      if (isStructuralEdgeType(graph, edge.type)) continue
       const existing = graph.edgesByFrom.get(edge.from) ?? []
       if (!existing.some(e => e.id === edge.id)) {
         graph.edgesByFrom.set(edge.from, [...existing, edge])
@@ -76,11 +109,11 @@ export async function runImport(config: ImportConfig, runtimeConfig: GraphRuntim
 
   const graphPath = runtimeConfig.kind === 'filesystem' ? runtimeConfig.graphPath : undefined
   const contentMap = serializeGraph(graph, { sourceGraphPath: graphPath, outputGraphPath: graphPath })
-  await runtimeConfig.source.commit(
-    await runtimeConfig.source.defaultBranch(),
+  await source.commit(
+    targetBranch,
     contentMap,
     'corum import',
-    { replaceGraphContent: true },
+    { replaceGraphContent: true, ...(targetBranchExists ? {} : { createBranchIfMissing: true }) },
   )
 
   return { diagnostics: allDiagnostics }

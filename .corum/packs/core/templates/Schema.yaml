@@ -2,6 +2,7 @@ name: Schema
 info:
   version: "1.0.0"
   core: true
+  role: type-container
   abstract: false
   description: |
     A reusable object-shaped contract that owns Field nodes. Schema is the
@@ -11,7 +12,7 @@ info:
     When fields are defined inline within a Schema cluster file, has-field edges
     are implied by structure and extracted automatically. Standalone Schema nodes
     referenced by node ID from another node (e.g. an APIEndpoint via objectRef)
-    generate an explicit reads edge.
+    generate an explicit uses-type edge.
 
 properties:
   type: object
@@ -36,7 +37,7 @@ mappings:
 edge-types:
   outgoing:
     - has-field
-    - reads
+    - uses-type
 
 ui:
   icon: layer-group

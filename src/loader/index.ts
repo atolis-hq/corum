@@ -16,7 +16,9 @@ import { LoadError, QueryError } from '../schema/index.js'
 import { computeDiff, computeOverlay } from '../graph/overlay.js'
 import { loadClusters } from './cluster-loader.js'
 import { loadEdges } from './edge-loader.js'
+import { loadEdgeTypes } from './edge-type-loader.js'
 import { loadPacks } from './pack-loader.js'
+import { lintGraph } from '../linter/index.js'
 
 export async function loadGraph(options: LoadOptions): Promise<Graph> {
   const { strict = true } = options
@@ -31,10 +33,11 @@ export async function loadGraph(options: LoadOptions): Promise<Graph> {
 
   const packContent = await source.loadPackContent(defaultRef)
   const templates = loadPacks(packContent, diagnostics)
+  const edgeTypes = loadEdgeTypes(packContent, diagnostics)
 
   const graphContent = await source.loadGraphContent(ref)
   const clusterResult = loadClusters(graphContent, templates, diagnostics)
-  const edgeResult = loadEdges(graphContent, clusterResult.nodes, diagnostics)
+  const edgeResult = loadEdges(graphContent, clusterResult.nodes, diagnostics, edgeTypes)
 
   const edgesByFrom = cloneEdgeMap(clusterResult.edgesByFrom)
   const edgesByTo = cloneEdgeMap(clusterResult.edgesByTo)
@@ -46,9 +49,12 @@ export async function loadGraph(options: LoadOptions): Promise<Graph> {
     edgesByFrom,
     edgesByTo,
     templates,
+    edgeTypes,
     diagnostics,
     sourceContent: graphContent,
   }
+
+  diagnostics.push(...lintGraph(graph))
 
   if (strict && diagnostics.some(d => d.severity === 'error')) {
     throw new LoadError(diagnostics)

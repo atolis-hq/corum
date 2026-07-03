@@ -2,7 +2,7 @@ import type { Diagnostic, Edge, EdgeType, Node } from '../../schema/index.js'
 import type { CorumInterchangeDocument, CorumInterchangeEdge, CorumInterchangeProvenance } from './parser.js'
 
 const VALID_EDGE_TYPES = new Set<string>([
-  'triggers', 'produces', 'reads', 'calls', 'implements',
+  'triggers', 'produces', 'reads', 'uses-type', 'calls', 'implements',
   'maps-to', 'derived-from', 'renamed-from', 'has-field', 'has-value',
 ])
 const UNRESOLVED_COMPONENT = '_unresolved'
@@ -381,7 +381,7 @@ function materializeStandaloneSchema(
       if (typeof value !== 'string') continue
       const valueId = `${schemaId}.values.${value}`
       refToNodeId.set(`${schemaRef}/properties/${value}`, valueId)
-      nodes.push(makeNode('EnumValue', component, specPath, valueId, undefined, { value }))
+      nodes.push(makeNode('EnumValue', component, specPath, valueId, undefined, { name: value }))
       edges.push(makeHasValueEdge(schemaId, valueId))
     }
     return schemaId
@@ -448,7 +448,7 @@ function expandSchema(
         if (typeof value !== 'string') continue
         const valueId = `${enumId}.values.${value}`
         refToNodeId.set(`${schemaRef}/properties/${value}`, valueId)
-        nodes.push(makeNode('EnumValue', enumComponent, specPath, valueId, undefined, { value }))
+        nodes.push(makeNode('EnumValue', enumComponent, specPath, valueId, undefined, { name: value }))
         edges.push(makeHasValueEdge(enumId, valueId))
       }
     }

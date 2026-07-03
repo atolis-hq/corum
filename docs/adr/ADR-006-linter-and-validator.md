@@ -184,3 +184,9 @@ The rule set in v1 is the set of rules derived from all previous ADRs, catalogue
 - ADR-004: Template pack format — template schema compliance and pack integrity rules collected in ADR-006-rules.md
 - ADR-004b: Edge type vocabulary — edge constraint rules collected in ADR-006-rules.md
 - ADR-005: MCP interface design — MCP server runs startup subset defined in ADR-006-rules.md
+
+---
+
+## Implementation note: 2026-07-03
+
+A v1 subset is implemented in `src/linter/index.ts` and runs on every graph load (diagnostics channel, warning severity): node property validation against template schemas (T-003/T-004/T-005), edge endpoint constraint enforcement against template `edge-types:` declarations (E-005/E-006), and edge property validation against pack-declared edge-type schemas. `corum lint` provides the CLI entry point. Implemented natively in TypeScript with no new dependencies — a deliberate deviation from ADR-006b's yamllint/Spectral tooling proposal, not from this ADR's architecture or severity model.

@@ -2,6 +2,7 @@ name: Field
 info:
   version: "1.0.0"
   core: true
+  role: field
   abstract: false
   description: |
     A named property within a Schema node. Fields are the atomic unit of

@@ -3,6 +3,7 @@ import type { Node, Edge, Diagnostic } from '../../schema/index.js'
 import type { AdapterPackConfig } from '../index.js'
 import type { ComponentMapping, OpenAPIImportEntry, ComponentNameReplacement } from '../../import/config.js'
 import { applyComponentNameReplacements } from '../../import/config.js'
+import { sanitizeIdSegment } from '../../loader/id-grammar.js'
 
 export interface MapResult {
   nodes: Node[]
@@ -53,8 +54,10 @@ export function deriveNodeId(
   parentId?: string,
   section?: string,
 ): string {
-  if (kind === 'operation') return `${component}.APIEndpoint.${name}`
-  return `${parentId}.${section}.${name}`
+  // Spec-supplied names (operationIds, schema names) may contain dots or other
+  // characters reserved by the node ID grammar — sanitise them to one segment.
+  if (kind === 'operation') return `${sanitizeIdSegment(component ?? '')}.APIEndpoint.${sanitizeIdSegment(name)}`
+  return `${parentId}.${section}.${sanitizeIdSegment(name)}`
 }
 
 export function refName(ref: string): string {

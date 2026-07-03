@@ -2,6 +2,7 @@ name: EnumDefinition
 info:
   version: "1.0.0"
   core: true
+  role: enum-container
   abstract: false
   description: |
     A named set of discrete values. EnumDefinition is the boundary node for an

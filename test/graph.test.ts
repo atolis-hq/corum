@@ -59,6 +59,28 @@ function createMergedLineageGraph(): Graph {
   }
 }
 
+function createUsesTypeGraph(): Graph {
+  const consumer = createNode('orders.APIEndpoint.create-order')
+  const sharedType = createNode('orders.Schema.shared-type')
+  const edge: Edge = {
+    id: 'orders.APIEndpoint.create-order__uses-type__orders.Schema.shared-type',
+    from: consumer.id,
+    to: sharedType.id,
+    type: 'uses-type',
+    state: 'agreed',
+    stability: 'stable',
+    generated: true,
+  }
+
+  return {
+    nodesById: new Map([[consumer.id, consumer], [sharedType.id, sharedType]]),
+    edgesByFrom: new Map([[consumer.id, [edge]]]),
+    edgesByTo: new Map([[sharedType.id, [edge]]]),
+    templates: new Map(),
+    diagnostics: [],
+  }
+}
+
 describe('graph queries', () => {
   let graph: Graph
 
@@ -335,6 +357,30 @@ describe('graph queries', () => {
         'orders.DomainModel.order.operations.complete',
         'orders.DomainModel.order.operations.place',
       ])
+    })
+
+    it('follows uses-type outbound from a consumer to the shared type it references', () => {
+      const usesTypeGraph = createUsesTypeGraph()
+      const result = getLineage(usesTypeGraph, ['orders.APIEndpoint.create-order'])
+      const ids = result.nodes.map((n: { id: string }) => n.id)
+      assert.ok(ids.includes('orders.Schema.shared-type'))
+    })
+
+    it('does not pull a consumer inbound when starting lineage from the shared type it uses', () => {
+      const usesTypeGraph = createUsesTypeGraph()
+      const result = getLineage(usesTypeGraph, ['orders.Schema.shared-type'], { direction: 'upstream' })
+      const ids = result.nodes.map((n: { id: string }) => n.id)
+      assert.ok(!ids.includes('orders.APIEndpoint.create-order'))
+    })
+
+    it('does pull the consumer inbound when readsOutboundOnly is disabled', () => {
+      const usesTypeGraph = createUsesTypeGraph()
+      const result = getLineage(usesTypeGraph, ['orders.Schema.shared-type'], {
+        direction: 'upstream',
+        readsOutboundOnly: false,
+      })
+      const ids = result.nodes.map((n: { id: string }) => n.id)
+      assert.ok(ids.includes('orders.APIEndpoint.create-order'))
     })
 
     it('returns empty result for unknown start node', () => {

@@ -57,6 +57,7 @@ $defs:
       - triggers
       - produces
       - reads
+      - uses-type
       - calls
       - implements
       - maps-to
@@ -67,7 +68,9 @@ $defs:
     description: |
       triggers     — Source node's occurrence causes the target to happen.
       produces     — Source operation produces the target event or schema.
-      reads        — Source node reads from the target.
+      reads        — Source node behaviourally reads runtime data from the target.
+      uses-type    — Source node's contract references the target as a shared type
+                      (auto-generated from node-ref properties; never authored).
       calls        — Source operation invokes the target contract boundary.
       implements   — Source is a concrete realisation of the target contract.
       maps-to      — Source field corresponds to target field across a schema boundary.

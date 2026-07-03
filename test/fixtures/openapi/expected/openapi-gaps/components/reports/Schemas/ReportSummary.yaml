@@ -37,11 +37,11 @@ fields:
     nullable: true
 mappings:
   groupedMetrics:
-    value-collection: array
     $ref: reports.Schema.Metric
-  labelsByGroup:
     value-collection: array
+  labelsByGroup:
     type: string
+    value-collection: array
   metricsByCategory:
     $ref: reports.Schema.Metric
   nestedMetrics:

@@ -207,6 +207,13 @@ describe('deriveNodeId', () => {
       'orders.IntegrationEvent.order-placed.schemas.order-placed.fields.orderId',
     )
   })
+
+  it('sanitises dotted message names so they cannot corrupt the id hierarchy', () => {
+    assert.equal(
+      deriveNodeId('event', 'orders', 'orders.placed', { template: 'IntegrationEvent' }),
+      'orders.IntegrationEvent.orders-placed',
+    )
+  })
 })
 
 function makeDoc(schemaNames: string[], messages: Array<{ name: string; payloadRef?: string }>) {

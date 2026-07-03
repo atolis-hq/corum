@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import fs from 'node:fs'
 import path from 'node:path'
 import * as git from 'isomorphic-git'
@@ -6,6 +6,7 @@ import { parse as parseYaml } from 'yaml'
 import { isPackRef } from '../loader/fs-utils.js'
 import type { CommitOptions, ContentMap, GraphSource } from './index.js'
 import { SourceError } from './index.js'
+import { resolveContentPath } from './safe-path.js'
 
 export interface FileGraphSourceOptions {
   graphDir?: string
@@ -86,24 +87,123 @@ export class FileGraphSource implements GraphSource {
     }
   }
 
-  async commit(branch: string, changes: ContentMap, _message: string, options: CommitOptions = {}): Promise<void> {
+  async commit(branch: string, changes: ContentMap, message: string, options: CommitOptions = {}): Promise<void> {
     const defaultBranch = await this.defaultBranch()
     if (branch !== defaultBranch) {
       throw new SourceError(`FileGraphSource only supports its local branch '${defaultBranch}', got '${branch}'`)
     }
 
-    if (options.replaceGraphContent && existsSync(this.graphDir)) {
-      rmSync(this.graphDir, { recursive: true, force: true })
+    if (options.replaceGraphContent) {
+      this.replaceGraphContent(changes)
+    } else {
+      writeContentMap(this.graphDir, changes)
     }
 
-    for (const [key, content] of changes) {
-      const filePath = resolveContentPath(this.graphDir, key)
-      mkdirSync(path.dirname(filePath), { recursive: true })
-      writeFileSync(filePath, content)
-    }
-    // TODO: create a git commit for these changes via git.add() + git.commit().
-    // Currently _message is unused — file writes are persisted but not committed to git history.
+    await commitToGitIfRepo(this.graphDir, message)
   }
+
+  /**
+   * Replace the full graph directory contents with `changes`, closing the
+   * crash window that a naive `rmSync` + rewrite leaves open (a crash between
+   * delete and rewrite used to lose the graph entirely) and never deleting
+   * non-YAML files a user kept alongside the graph.
+   *
+   * Approach: stage the new content in a sibling temp directory (copying over
+   * the old directory first so untouched non-YAML files survive, then
+   * overlaying the new files and dropping stale YAML that's no longer in the
+   * ContentMap), then atomically swap it in via two renames. The original
+   * directory is never observably empty or partially written.
+   *
+   * Exception: if `graphDir` is itself a git repository root (contains a
+   * `.git` entry), renaming it away would move `.git` too, so we fall back to
+   * an in-place selective delete — write new content first, then remove only
+   * the stale `.yaml` files no longer present in `changes`.
+   */
+  private replaceGraphContent(changes: ContentMap): void {
+    if (!existsSync(this.graphDir)) {
+      writeContentMap(this.graphDir, changes)
+      return
+    }
+
+    if (existsSync(path.join(this.graphDir, '.git'))) {
+      writeContentMap(this.graphDir, changes)
+      deleteStaleYamlFiles(this.graphDir, changes)
+      return
+    }
+
+    const parent = path.dirname(this.graphDir)
+    const base = path.basename(this.graphDir)
+    const suffix = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const tmpDir = path.join(parent, `${base}.corum-tmp-${suffix}`)
+    const oldDir = path.join(parent, `${base}.corum-old-${suffix}`)
+
+    rmSync(tmpDir, { recursive: true, force: true })
+    cpSync(this.graphDir, tmpDir, { recursive: true })
+    writeContentMap(tmpDir, changes)
+    deleteStaleYamlFiles(tmpDir, changes)
+
+    renameSync(this.graphDir, oldDir)
+    try {
+      renameSync(tmpDir, this.graphDir)
+    } catch (err) {
+      renameSync(oldDir, this.graphDir)
+      throw err
+    }
+    rmSync(oldDir, { recursive: true, force: true })
+  }
+}
+
+function writeContentMap(baseDir: string, changes: ContentMap): void {
+  for (const [key, content] of changes) {
+    const filePath = resolveContentPath(baseDir, key)
+    mkdirSync(path.dirname(filePath), { recursive: true })
+    writeFileSync(filePath, content)
+  }
+}
+
+function deleteStaleYamlFiles(baseDir: string, changes: ContentMap): void {
+  const existingYaml: ContentMap = new Map()
+  walkYamlFilesIntoMap(baseDir, baseDir, existingYaml)
+  for (const key of existingYaml.keys()) {
+    if (!changes.has(key)) {
+      rmSync(resolveContentPath(baseDir, key), { force: true })
+    }
+  }
+}
+
+async function commitToGitIfRepo(graphDir: string, message: string): Promise<void> {
+  let repoRoot: string
+  try {
+    repoRoot = await git.findRoot({ fs, filepath: path.resolve(graphDir) })
+  } catch {
+    return // Not inside a git repo — plain directory writes only.
+  }
+
+  const rel = path.relative(repoRoot, path.resolve(graphDir)).split(path.sep).join('/')
+  const matrix = await git.statusMatrix({
+    fs,
+    dir: repoRoot,
+    filepaths: rel === '' ? undefined : [rel],
+  })
+
+  let staged = false
+  for (const [filepath, head, workdir] of matrix) {
+    if (head === 1 && workdir === 0) {
+      await git.remove({ fs, dir: repoRoot, filepath })
+      staged = true
+    } else if (workdir === 2) {
+      await git.add({ fs, dir: repoRoot, filepath })
+      staged = true
+    }
+  }
+  if (!staged) return
+
+  await git.commit({
+    fs,
+    dir: repoRoot,
+    message,
+    author: { name: 'corum', email: 'corum@localhost' },
+  })
 }
 
 function readPackTemplatesIntoMap(packDir: string, map: ContentMap): void {
@@ -114,30 +214,6 @@ function readPackTemplatesIntoMap(packDir: string, map: ContentMap): void {
   for (const [relKey, content] of packContent) {
     map.set(`${packName}/${relKey}`, content)
   }
-}
-
-function resolveContentPath(baseDir: string, key: string): string {
-  if (
-    key.includes('\\') ||
-    key.includes('\0') ||
-    path.posix.isAbsolute(key) ||
-    path.win32.isAbsolute(key)
-  ) {
-    throw new SourceError(`invalid ContentMap key: ${key}`)
-  }
-
-  const normalised = path.posix.normalize(key)
-  if (normalised === '..' || normalised.startsWith('../') || normalised === '.') {
-    throw new SourceError(`invalid ContentMap key: ${key}`)
-  }
-
-  const resolvedBase = path.resolve(baseDir)
-  const resolvedPath = path.resolve(resolvedBase, ...normalised.split('/'))
-  const relative = path.relative(resolvedBase, resolvedPath)
-  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-    throw new SourceError(`ContentMap key escapes graphDir: ${key}`)
-  }
-  return resolvedPath
 }
 
 function walkYamlFilesIntoMap(

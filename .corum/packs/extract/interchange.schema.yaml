@@ -123,6 +123,7 @@ properties:
             - triggers
             - produces
             - reads
+            - uses-type
             - calls
             - implements
             - maps-to

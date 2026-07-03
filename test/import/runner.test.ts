@@ -8,6 +8,8 @@ import { loadGraph } from '../../src/loader/index.js'
 import { saveGraph } from '../../src/writer/graph-writer.js'
 import { runImport } from '../../src/import/runner.js'
 import { createGraphRuntimeConfig } from '../../src/source/config.js'
+import { FileGraphSource } from '../../src/source/file-source.js'
+import type { CommitOptions, ContentMap, GraphSource } from '../../src/source/index.js'
 import type { ImportConfig } from '../../src/import/config.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -198,6 +200,92 @@ describe('import runner — orphan removal', () => {
     } finally {
       cleanup()
     }
+  })
+})
+
+describe('import runner — target branch', () => {
+  class RecordingSource implements GraphSource {
+    readonly commits: Array<{ branch: string; changes: ContentMap; message: string; options?: CommitOptions }> = []
+    readonly graphContentRequests: string[] = []
+
+    constructor(
+      private readonly packContent: ContentMap,
+      private readonly graphContentByBranch: Map<string, ContentMap>,
+    ) {}
+
+    async defaultBranch(): Promise<string> {
+      return 'main'
+    }
+
+    async listBranches(): Promise<string[]> {
+      return [...this.graphContentByBranch.keys()]
+    }
+
+    async loadPackContent(_ref: string): Promise<ContentMap> {
+      return this.packContent
+    }
+
+    async loadGraphContent(ref: string): Promise<ContentMap> {
+      this.graphContentRequests.push(ref)
+      const content = this.graphContentByBranch.get(ref)
+      if (!content) throw new Error(`unknown branch: ${ref}`)
+      return content
+    }
+
+    async commit(branch: string, changes: ContentMap, message: string, options?: CommitOptions): Promise<void> {
+      this.commits.push({ branch, changes, message, options })
+    }
+  }
+
+  async function makeRecordingSource(branches: string[]): Promise<RecordingSource> {
+    const fixtureSource = new FileGraphSource({ graphDir: fixtureGraphDir })
+    const packContent = await fixtureSource.loadPackContent('main')
+    const graphContent = await fixtureSource.loadGraphContent('main')
+    const byBranch = new Map(branches.map(branch => [branch, graphContent]))
+    return new RecordingSource(packContent, byBranch)
+  }
+
+  function importConfig(): ImportConfig {
+    return {
+      imports: [{
+        adapter: 'openapi',
+        spec: path.join(specsDir, 'orders-simple.yaml'),
+        componentMapping: { strategy: 'uri-segment', segment: 0 },
+      }],
+    }
+  }
+
+  it('commits to the requested branch, creating it when missing', async () => {
+    const source = await makeRecordingSource(['main'])
+    const runtimeConfig = { kind: 'git' as const, source, graphPath: 'git:fake/.corum/graph' }
+    const result = await runImport(importConfig(), runtimeConfig, { branch: 'feat/import' })
+
+    assert.ok(!result.diagnostics.some(d => d.severity === 'error'), 'expected no error diagnostics')
+    assert.equal(source.commits.length, 1)
+    assert.equal(source.commits[0].branch, 'feat/import')
+    assert.equal(source.commits[0].options?.createBranchIfMissing, true)
+  })
+
+  it('diffs against the target branch when it already exists', async () => {
+    const source = await makeRecordingSource(['main', 'feat/import'])
+    const runtimeConfig = { kind: 'git' as const, source, graphPath: 'git:fake/.corum/graph' }
+    await runImport(importConfig(), runtimeConfig, { branch: 'feat/import' })
+
+    assert.ok(source.graphContentRequests.includes('feat/import'), 'expected graph load from target branch')
+    assert.equal(source.commits[0].branch, 'feat/import')
+    assert.ok(!source.commits[0].options?.createBranchIfMissing)
+  })
+
+  it('errors clearly when importing to a git source without a target branch', async () => {
+    const source = await makeRecordingSource(['main'])
+    const runtimeConfig = { kind: 'git' as const, source, graphPath: 'git:fake/.corum/graph' }
+    const result = await runImport(importConfig(), runtimeConfig)
+
+    assert.ok(
+      result.diagnostics.some(d => d.severity === 'error' && /--branch/.test(d.message)),
+      'expected an error diagnostic mentioning --branch',
+    )
+    assert.equal(source.commits.length, 0)
   })
 })
 
