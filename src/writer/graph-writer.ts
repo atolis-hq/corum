@@ -3,6 +3,8 @@ import path from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import type { Edge, Graph, Node } from '../schema/index.js'
 import { getOwnedSections } from '../loader/pack-loader.js'
+import { getPropertySchemasFromTemplate } from '../loader/template-props.js'
+import { isStructuralEdgeType } from '../graph/index.js'
 import { isPackRef } from '../loader/fs-utils.js'
 import type { ContentMap } from '../source/index.js'
 import { FileGraphSource } from '../source/file-source.js'
@@ -18,7 +20,6 @@ export interface SerializeGraphOptions {
   outputGraphPath?: string
 }
 
-const STRUCTURAL_EDGE_TYPES = new Set(['has-field', 'has-value'])
 const YAML_STRINGIFY_OPTIONS = { singleQuote: true }
 
 export function serializeGraph(graph: Graph, options: SerializeGraphOptions = {}): ContentMap {
@@ -30,11 +31,11 @@ export function serializeGraph(graph: Graph, options: SerializeGraphOptions = {}
   }
 
   const explicitEdges = getAllEdges(graph)
-    .filter(edge => !STRUCTURAL_EDGE_TYPES.has(edge.type) && edge.generated !== true)
+    .filter(edge => !isStructuralEdgeType(graph, edge.type) && edge.generated !== true)
     .sort((a, b) => a.id.localeCompare(b.id))
 
   if (explicitEdges.length > 0) {
-    map.set('edges/corum.edges.yaml', stringifyGraphYaml({ edges: explicitEdges.map(toEdgeDocument) }))
+    map.set('edges/corum.edges.yaml', stringifyGraphYaml({ edges: explicitEdges.map(edge => toEdgeDocument(graph, edge)) }))
   }
 
   return map
@@ -105,7 +106,7 @@ function toClusterDocument(graph: Graph, root: Node): Record<string, unknown> {
   }
 
   if (Object.keys(root.properties).length > 0) {
-    doc.properties = root.properties
+    doc.properties = orderNodeProperties(graph, root)
   }
 
   appendOwnedSections(graph, root, doc)
@@ -122,7 +123,7 @@ function appendOwnedSections(graph: Graph, parent: Node, target: Record<string, 
 
     const section: Record<string, unknown> = {}
     for (const child of children) {
-      const childDoc: Record<string, unknown> = { ...child.properties }
+      const childDoc: Record<string, unknown> = { ...orderNodeProperties(graph, child) }
       if (child.state !== parent.state) childDoc.state = child.state
       if (child.stability !== parent.stability) childDoc.stability = child.stability
       appendOwnedSections(graph, child, childDoc)
@@ -151,7 +152,44 @@ function stringifyGraphYaml(value: unknown): string {
   return stringifyYaml(value, YAML_STRINGIFY_OPTIONS)
 }
 
-function toEdgeDocument(edge: Edge): Record<string, unknown> {
+/**
+ * Canonical property key order at serialisation time: template-declared
+ * property order first, then any remaining (undeclared) keys alphabetically.
+ * This keeps git diffs stable across import/merge paths that spread-merge
+ * properties in arbitrary insertion order (see reconcile/index.ts).
+ */
+function orderNodeProperties(graph: Graph, node: Node): Record<string, unknown> {
+  const template = graph.templates.get(node.template)
+  const declaredOrder = template?.properties
+    ? Object.keys(getPropertySchemasFromTemplate(template.properties))
+    : []
+  return orderKeys(node.properties, declaredOrder)
+}
+
+function orderEdgeProperties(graph: Graph, edge: Edge): Record<string, unknown> {
+  const edgeTypeDef = graph.edgeTypes?.get(edge.type)
+  const declaredOrder = edgeTypeDef?.properties
+    ? Object.keys(getPropertySchemasFromTemplate(edgeTypeDef.properties))
+    : []
+  return orderKeys(edge.properties ?? {}, declaredOrder)
+}
+
+function orderKeys(obj: Record<string, unknown>, preferredOrder: string[]): Record<string, unknown> {
+  const ordered: Record<string, unknown> = {}
+  const remaining = new Set(Object.keys(obj))
+  for (const key of preferredOrder) {
+    if (remaining.has(key)) {
+      ordered[key] = obj[key]
+      remaining.delete(key)
+    }
+  }
+  for (const key of [...remaining].sort()) {
+    ordered[key] = obj[key]
+  }
+  return ordered
+}
+
+function toEdgeDocument(graph: Graph, edge: Edge): Record<string, unknown> {
   const doc: Record<string, unknown> = {
     from: edge.from,
     to: edge.to,
@@ -160,6 +198,9 @@ function toEdgeDocument(edge: Edge): Record<string, unknown> {
   if (edge.state !== 'proposed') doc.state = edge.state
   if (edge.stability !== 'unstable') doc.stability = edge.stability
   if (edge.notes !== undefined) doc.notes = edge.notes
+  if (edge.properties !== undefined && Object.keys(edge.properties).length > 0) {
+    doc.properties = orderEdgeProperties(graph, edge)
+  }
   return doc
 }
 

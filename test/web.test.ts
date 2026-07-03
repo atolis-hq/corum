@@ -51,12 +51,12 @@ function makeTestGraph(): Graph {
   })
   templates.set('Field', {
     name: 'Field',
-    info: { version: '1', core: true },
+    info: { version: '1', core: true, role: 'field' },
     ui: { displayName: 'Field' },
   })
   templates.set('Schema', {
     name: 'Schema',
-    info: { version: '1', core: true },
+    info: { version: '1', core: true, role: 'type-container' },
     ui: { displayName: 'Schema' },
   })
 
@@ -832,7 +832,7 @@ describe('web server', () => {
     it('only includes semantic edge types — structural types are absent', async () => {
       const res = await fetch(`http://localhost:${handle.port}/api/graph`)
       const body = await res.json() as { edges: Array<{ type: string }> }
-      const semanticTypes = new Set(['triggers', 'produces', 'reads', 'calls', 'implements', 'maps-to', 'derived-from'])
+      const semanticTypes = new Set(['triggers', 'produces', 'reads', 'uses-type', 'calls', 'implements', 'maps-to', 'derived-from'])
       const structuralTypes = new Set(['has-field', 'has-value', 'renamed-from'])
       assert.ok(
         body.edges.every(e => semanticTypes.has(e.type) && !structuralTypes.has(e.type)),
@@ -1010,6 +1010,62 @@ describe('web server', () => {
           body => body.some(template => template.name === 'Thing' && template.ui?.displayName === 'Renamed Thing'),
         )
         assert.ok(templates.some(template => template.name === 'Thing' && template.ui?.displayName === 'Renamed Thing'))
+      } finally {
+        if (watchedHandle) await watchedHandle.close()
+        fs.rmSync(tmp, { recursive: true, force: true })
+      }
+    })
+
+    it('preserves sourceContent and edgeTypes on the served graph object after a reload', async () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-watch-'))
+      let watchedHandle: WebServerHandle | undefined
+      try {
+        const { graphPath, nodePath } = writeWatcherFixture(tmp)
+        // Start from a Graph object that was NOT produced by loadGraph (no sourceContent/edgeTypes
+        // set yet), mirroring the shape a caller may pass in. A correct reload must populate
+        // these fields from the freshly loaded graph so buildGraphYaml never regresses to
+        // templatePacks: [].
+        // makeTestGraph() builds a Graph literal with no sourceContent/edgeTypes field set.
+        const watchedGraph = makeTestGraph()
+
+        watchedHandle = await startWebServer(watchedGraph, {
+          port: 0,
+          graphPath,
+          fileWatcher: true,
+          fileWatcherDebounceMs: 25,
+          logger: () => {},
+        })
+
+        fs.writeFileSync(
+          nodePath,
+          [
+            'id: orders.Thing.first',
+            'template: Thing',
+            'schemaVersion: "1"',
+            'metadata:',
+            '  component: orders',
+            '  state: agreed',
+            '  stability: stable',
+            '  lastModifiedAt: "2026-04-25"',
+            'properties:',
+            '  description: Second version',
+            '',
+          ].join('\n'),
+        )
+
+        await eventually(
+          async () => fetch(`http://localhost:${watchedHandle!.port}/api/nodes`).then(res => res.json()) as Promise<Array<{ id: string; state: string }>>,
+          body => body.some(node => node.id === 'orders.Thing.first' && node.state === 'agreed'),
+        )
+
+        assert.ok(
+          watchedGraph.sourceContent?.get('graph.yaml')?.includes('templatePacks'),
+          'sourceContent for graph.yaml must survive a file-watcher reload so buildGraphYaml does not regress templatePacks to []',
+        )
+        assert.ok(
+          watchedGraph.edgeTypes && watchedGraph.edgeTypes.size > 0,
+          'edgeTypes must survive a file-watcher reload',
+        )
       } finally {
         if (watchedHandle) await watchedHandle.close()
         fs.rmSync(tmp, { recursive: true, force: true })

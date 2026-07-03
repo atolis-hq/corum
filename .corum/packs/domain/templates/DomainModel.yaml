@@ -19,7 +19,7 @@ info:
     Reference resolution order for objectRef and schema values:
       1. Local schemas block — resolved to {node-id}.schemas.{local-name}
       2. Local enums block  — resolved to {node-id}.enums.{local-name}
-      3. Global node ID     — resolved against the graph; generates a reads edge
+      3. Global node ID     — resolved against the graph; generates a uses-type edge
 
 properties:
   type: object

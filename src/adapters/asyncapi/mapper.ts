@@ -3,6 +3,7 @@ import type { Node, Edge, Diagnostic } from '../../schema/index.js'
 import type { AdapterPackConfig } from '../index.js'
 import type { AsyncAPIImportEntry, FieldStrategy, ComponentNameReplacement } from '../../import/config.js'
 import { applyComponentNameReplacements } from '../../import/config.js'
+import { sanitizeIdSegment } from '../../loader/id-grammar.js'
 
 export interface MapResult {
   nodes: Node[]
@@ -106,8 +107,10 @@ export function deriveNodeId(
   name: string,
   opts?: { template?: string; parentId?: string; section?: string },
 ): string {
-  if (kind === 'event') return `${component}.${opts?.template ?? 'IntegrationEvent'}.${name}`
-  return `${opts!.parentId}.${opts!.section}.${name}`
+  // Spec-supplied names (message names, schema names) may contain dots or other
+  // characters reserved by the node ID grammar — sanitise them to one segment.
+  if (kind === 'event') return `${sanitizeIdSegment(component)}.${opts?.template ?? 'IntegrationEvent'}.${sanitizeIdSegment(name)}`
+  return `${opts!.parentId}.${opts!.section}.${sanitizeIdSegment(name)}`
 }
 
 // Extract the original component schema name from a resolved schema object.

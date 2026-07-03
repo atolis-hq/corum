@@ -1,11 +1,25 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { collapseClusterSchemas } from '../src/graph/schema-collapse.js'
-import type { Edge, Graph, Node } from '../src/schema/index.js'
+import type { Edge, Graph, Node, Template } from '../src/schema/index.js'
 import type { ClusterViewResult } from '../src/graph/index.js'
 
+// Collapse is role-driven: templates declare capability roles, and loaded
+// nodes carry parentId. Mirror what the loader produces.
+const TEMPLATES = new Map<string, Template>([
+  ['DomainModel', { name: 'DomainModel', info: { version: '1' } }],
+  ['Schema', { name: 'Schema', info: { version: '1', role: 'type-container' } }],
+  ['EnumDefinition', { name: 'EnumDefinition', info: { version: '1', role: 'enum-container' } }],
+  ['Field', { name: 'Field', info: { version: '1', role: 'field' } }],
+  ['EnumValue', { name: 'EnumValue', info: { version: '1', role: 'value' } }],
+  ['Mapping', { name: 'Mapping', info: { version: '1', role: 'mapping' } }],
+  ['APIEndpoint', { name: 'APIEndpoint', info: { version: '1' } }],
+])
+
 function node(id: string, template: string, properties: Record<string, unknown> = {}): Node {
-  return { id, template, component: 'test', state: 'agreed', stability: 'stable', schemaVersion: '1', lastModifiedAt: '2026-07-01', properties }
+  const parts = id.split('.')
+  const parentId = parts.length > 3 ? parts.slice(0, -2).join('.') : undefined
+  return { id, ...(parentId !== undefined && { parentId }), template, component: 'test', state: 'agreed', stability: 'stable', schemaVersion: '1', lastModifiedAt: '2026-07-01', properties }
 }
 
 function edge(from: string, to: string, type: Edge['type']): Edge {
@@ -20,7 +34,7 @@ function graph(nodes: Node[], edges: Edge[] = []): Graph {
     const f = edgesByFrom.get(e.from) ?? []; f.push(e); edgesByFrom.set(e.from, f)
     const t = edgesByTo.get(e.to) ?? []; t.push(e); edgesByTo.set(e.to, t)
   }
-  return { nodesById, edgesByFrom, edgesByTo, templates: new Map(), diagnostics: [] }
+  return { nodesById, edgesByFrom, edgesByTo, templates: TEMPLATES, diagnostics: [] }
 }
 
 function cluster(root: Node, descendants: Node[], edges: Edge[] = [], includedNodes: Node[] = []): ClusterViewResult {

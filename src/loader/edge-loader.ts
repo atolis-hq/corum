@@ -1,7 +1,7 @@
 import { parse as parseYaml } from 'yaml'
 import type { ContentMap } from '../source/index.js'
-import type { Diagnostic, Edge, EdgeType, Node, Stability, State } from '../schema/index.js'
-import { VALID_EDGE_TYPE_SET } from './constants.js'
+import type { Diagnostic, Edge, EdgeType, EdgeTypeDef, Node, Stability, State } from '../schema/index.js'
+import { CORE_EDGE_TYPE_MAP, VALID_STABILITY_SET, VALID_STATE_SET } from './constants.js'
 import { listYamlKeys, readYaml } from '../source/content-utils.js'
 
 type EdgeResult = {
@@ -13,6 +13,7 @@ export function loadEdges(
   content: ContentMap,
   nodes: Map<string, Node>,
   diagnostics: Diagnostic[],
+  edgeTypes: ReadonlyMap<string, EdgeTypeDef> = CORE_EDGE_TYPE_MAP,
 ): EdgeResult {
   const result: EdgeResult = { edgesByFrom: new Map(), edgesByTo: new Map() }
 
@@ -36,7 +37,7 @@ export function loadEdges(
         diagnostics.push({ severity: 'error', file: key, message: 'edge missing required from, to, or type' })
         continue
       }
-      if (!VALID_EDGE_TYPE_SET.has(edgeRecord.type)) {
+      if (!edgeTypes.has(edgeRecord.type)) {
         diagnostics.push({ severity: 'error', file: key, message: `invalid edge type: ${edgeRecord.type}` })
         continue
       }
@@ -52,19 +53,37 @@ export function loadEdges(
       }
       if (unresolvedEndpoint) continue
 
+      const properties = edgeRecord.properties
       addEdge(result, {
         id: `${edgeRecord.from}__${edgeRecord.type}__${edgeRecord.to}`,
         from: edgeRecord.from,
         to: edgeRecord.to,
         type: edgeRecord.type as EdgeType,
-        state: typeof edgeRecord.state === 'string' ? edgeRecord.state as State : 'proposed',
-        stability: typeof edgeRecord.stability === 'string' ? edgeRecord.stability as Stability : 'unstable',
+        state: resolveState(edgeRecord.state, diagnostics, key),
+        stability: resolveStability(edgeRecord.stability, diagnostics, key),
         notes: typeof edgeRecord.notes === 'string' ? edgeRecord.notes : undefined,
+        ...(typeof properties === 'object' && properties !== null && !Array.isArray(properties) && {
+          properties: properties as Record<string, unknown>,
+        }),
       })
     }
   }
 
   return result
+}
+
+function resolveState(value: unknown, diagnostics: Diagnostic[], file: string): State {
+  if (value === undefined) return 'proposed'
+  if (typeof value === 'string' && VALID_STATE_SET.has(value)) return value as State
+  diagnostics.push({ severity: 'warning', file, message: `invalid edge state '${String(value)}', defaulting to 'proposed'` })
+  return 'proposed'
+}
+
+function resolveStability(value: unknown, diagnostics: Diagnostic[], file: string): Stability {
+  if (value === undefined) return 'unstable'
+  if (typeof value === 'string' && VALID_STABILITY_SET.has(value)) return value as Stability
+  diagnostics.push({ severity: 'warning', file, message: `invalid edge stability '${String(value)}', defaulting to 'unstable'` })
+  return 'unstable'
 }
 
 function addEdge(result: EdgeResult, edge: Edge): void {

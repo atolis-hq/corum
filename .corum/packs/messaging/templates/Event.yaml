@@ -38,11 +38,12 @@ properties:
           description:
             type: string
 
-edges:
+edge-types:
   outgoing:
     - triggers
   incoming:
     - produces
+    - triggers
 
 ui:
   icon: bolt

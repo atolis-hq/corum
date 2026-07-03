@@ -2,6 +2,7 @@ name: EnumValue
 info:
   version: "1.0.0"
   core: true
+  role: value
   abstract: false
   description: |
     A single constant within an EnumDefinition. EnumValue is a first-class node
@@ -33,6 +34,9 @@ properties:
         (e.g. PENDING, CONFIRMED, order_placed). Convention is
         SCREAMING_SNAKE_CASE for domain constants; follow the format used
         by the owning system if extracting from existing code.
+    description:
+      type: string
+      description: "Human-readable description of what this value represents."
 
 edge-types:
   incoming:

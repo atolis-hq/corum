@@ -1,10 +1,17 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { parse } from 'yaml'
+import { resolveContentPath } from '../source/safe-path.js'
 
 interface PackMeta {
   templates: string[]
   files?: string[]
+}
+
+function validateTemplateName(name: string): void {
+  if (!/^[^/\\]+$/.test(name) || name === '.' || name === '..') {
+    throw new Error(`invalid template name in pack.yaml: ${name}`)
+  }
 }
 
 export async function installPackFiles(
@@ -18,6 +25,14 @@ export async function installPackFiles(
   const packText = await packRes.text()
   const meta = parse(packText) as PackMeta
 
+  // Remote pack.yaml content is untrusted: validate every declared name/path
+  // before any file is written so a malicious pack cannot escape destDir.
+  for (const templateName of meta.templates) validateTemplateName(templateName)
+  const fileDests = new Map<string, string>()
+  for (const filePath of meta.files ?? []) {
+    fileDests.set(filePath, resolveContentPath(destDir, filePath))
+  }
+
   await mkdir(path.join(destDir, 'templates'), { recursive: true })
   await writeFile(path.join(destDir, 'pack.yaml'), packText)
 
@@ -28,11 +43,10 @@ export async function installPackFiles(
     await writeFile(path.join(destDir, 'templates', `${templateName}.yaml`), await res.text())
   }
 
-  for (const filePath of meta.files ?? []) {
+  for (const [filePath, dest] of fileDests) {
     const fileUrl = `${baseUrl}/${filePath}`
     const res = await fetchFn(fileUrl)
     if (!res.ok) throw new Error(`Failed to fetch file ${filePath}: ${res.status} ${res.statusText}`)
-    const dest = path.join(destDir, filePath)
     await mkdir(path.dirname(dest), { recursive: true })
     await writeFile(dest, await res.text())
   }

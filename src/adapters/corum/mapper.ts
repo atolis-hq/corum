@@ -2,7 +2,7 @@ import type { Diagnostic, Edge, EdgeType, Node } from '../../schema/index.js'
 import type { CorumInterchangeDocument, CorumInterchangeEdge, CorumInterchangeProvenance } from './parser.js'
 
 const VALID_EDGE_TYPES = new Set<string>([
-  'triggers', 'produces', 'reads', 'calls', 'implements',
+  'triggers', 'produces', 'reads', 'uses-type', 'calls', 'implements',
   'maps-to', 'derived-from', 'renamed-from', 'has-field', 'has-value',
 ])
 const UNRESOLVED_COMPONENT = '_unresolved'

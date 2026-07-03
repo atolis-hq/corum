@@ -70,6 +70,67 @@ describe('installPackFiles', () => {
     }
   })
 
+  it('rejects files entries that traverse outside the pack directory', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-test-'))
+    try {
+      const baseUrl = 'https://raw.githubusercontent.com/a/b/v1/.corum/packs/core'
+      const evilPackYaml = `name: core\nversion: "1.0.0"\ntemplates: []\nfiles:\n  - ../../evil.yaml\n`
+      const mockFetch = makeMockFetch({
+        [`${baseUrl}/pack.yaml`]: evilPackYaml,
+        [`${baseUrl}/../../evil.yaml`]: 'pwned: true\n',
+      })
+      await assert.rejects(
+        () => installPackFiles(baseUrl, path.join(dir, 'packs', 'core'), mockFetch),
+        /invalid|escapes/,
+      )
+      assert.equal(fs.existsSync(path.join(dir, 'evil.yaml')), false)
+    } finally {
+      fs.rmSync(dir, { recursive: true })
+    }
+  })
+
+  it('rejects files entries with absolute paths or backslashes', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-test-'))
+    try {
+      const baseUrl = 'https://raw.githubusercontent.com/a/b/v1/.corum/packs/core'
+      for (const entry of ['/etc/cron.d/evil', 'C:/evil.yaml', 'sub\\..\\..\\evil.yaml']) {
+        const evilPackYaml = `name: core\nversion: "1.0.0"\ntemplates: []\nfiles:\n  - "${entry.replace(/\\/g, '\\\\')}"\n`
+        const mockFetch = makeMockFetch({
+          [`${baseUrl}/pack.yaml`]: evilPackYaml,
+          [`${baseUrl}/${entry}`]: 'pwned: true\n',
+        })
+        await assert.rejects(
+          () => installPackFiles(baseUrl, path.join(dir, 'core'), mockFetch),
+          /invalid|escapes/,
+          `expected rejection for files entry: ${entry}`,
+        )
+      }
+    } finally {
+      fs.rmSync(dir, { recursive: true })
+    }
+  })
+
+  it('rejects template names containing path separators or traversal', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-test-'))
+    try {
+      const baseUrl = 'https://raw.githubusercontent.com/a/b/v1/.corum/packs/core'
+      for (const name of ['../../evil', 'sub/evil', 'sub\\evil', '..']) {
+        const evilPackYaml = `name: core\nversion: "1.0.0"\ntemplates:\n  - "${name.replace(/\\/g, '\\\\')}"\n`
+        const mockFetch = makeMockFetch({
+          [`${baseUrl}/pack.yaml`]: evilPackYaml,
+          [`${baseUrl}/templates/${name}.yaml`]: 'name: evil\n',
+        })
+        await assert.rejects(
+          () => installPackFiles(baseUrl, path.join(dir, 'core'), mockFetch),
+          /invalid/,
+          `expected rejection for template name: ${name}`,
+        )
+      }
+    } finally {
+      fs.rmSync(dir, { recursive: true })
+    }
+  })
+
   it('throws if a template file fetch fails', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-test-'))
     try {

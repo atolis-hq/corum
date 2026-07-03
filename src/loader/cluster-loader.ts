@@ -1,9 +1,18 @@
 import { parse as parseYaml } from 'yaml'
 import type { ContentMap } from '../source/index.js'
-import type { Diagnostic, Edge, Node, Stability, State, Template } from '../schema/index.js'
+import type { Diagnostic, Edge, EdgeType, Node, Stability, State, Template } from '../schema/index.js'
 import { getOwnedSections } from './pack-loader.js'
 import { listYamlKeys, readYaml } from '../source/content-utils.js'
-import { STRUCTURAL_EDGE_BY_ITEM_TEMPLATE, VALID_STABILITY_SET, VALID_STATE_SET } from './constants.js'
+import { VALID_STABILITY_SET, VALID_STATE_SET } from './constants.js'
+import { validateRootId, validateSegment } from './id-grammar.js'
+import { getTemplateRole } from '../graph/roles.js'
+import { getPropertySchemasFromTemplate } from './template-props.js'
+
+/** Containment edge generated for owned children, keyed by the child template's declared role. */
+const STRUCTURAL_EDGE_BY_ROLE: Partial<Record<string, EdgeType>> = {
+  field: 'has-field',
+  value: 'has-value',
+}
 
 type ClusterResult = {
   nodes: Map<string, Node>
@@ -49,12 +58,18 @@ export function loadClusters(
       continue
     }
 
+    const idError = validateRootId(record.id)
+    if (idError) {
+      diagnostics.push({ severity: 'error', file: key, message: idError })
+      continue
+    }
+
     const root: Node = {
       id: record.id,
       template: record.template,
       component: meta.component,
-      state: asState(meta.state, 'proposed'),
-      stability: asStability(meta.stability, 'unstable'),
+      state: asState(meta.state, 'proposed', diagnostics, key, record.id),
+      stability: asStability(meta.stability, 'unstable', diagnostics, key, record.id),
       schemaVersion: record.schemaVersion,
       lastModifiedAt: meta.lastModifiedAt,
       ...(typeof meta.extractedFrom === 'string' && { extractedFrom: meta.extractedFrom }),
@@ -67,11 +82,11 @@ export function loadClusters(
     const rootTemplate = templates.get(root.template)
     if (rootTemplate) {
       for (const target of getNodeRefTargets(root, rootTemplate)) {
-        const readsId = `${root.id}__reads__${target}`
+        const usesTypeId = `${root.id}__uses-type__${target}`
         const existingFrom = result.edgesByFrom.get(root.id) ?? []
-        if (!existingFrom.some(e => e.id === readsId)) {
+        if (!existingFrom.some(e => e.id === usesTypeId)) {
           addEdge(result, {
-            id: readsId, from: root.id, to: target, type: 'reads',
+            id: usesTypeId, from: root.id, to: target, type: 'uses-type',
             state: root.state, stability: root.stability, generated: true,
           })
         }
@@ -81,20 +96,6 @@ export function loadClusters(
   }
 
   return result
-}
-
-function getPropertySchemasFromTemplate(props: Record<string, unknown>): Record<string, Record<string, unknown>> {
-  if (Array.isArray(props.allOf)) {
-    const merged: Record<string, Record<string, unknown>> = {}
-    for (const schema of props.allOf) {
-      Object.assign(merged, getPropertySchemasFromTemplate(schema as Record<string, unknown>))
-    }
-    return merged
-  }
-  if (typeof props.properties === 'object' && props.properties !== null) {
-    return props.properties as Record<string, Record<string, unknown>>
-  }
-  return {}
 }
 
 function getNodeRefTargets(node: Node, template: Template): string[] {
@@ -143,6 +144,17 @@ function materialiseChildren(
     if (!isRecord(section)) continue
 
     for (const [localName, value] of Object.entries(section)) {
+      const segmentError = validateSegment(localName)
+      if (segmentError) {
+        diagnostics.push({
+          severity: 'error',
+          file: filePath,
+          nodeId: parent.id,
+          message: `owned item name '${localName}' in ${sectionName}: ${segmentError}`,
+        })
+        continue
+      }
+
       if (!isRecord(value)) {
         diagnostics.push({
           severity: 'error',
@@ -156,17 +168,19 @@ function materialiseChildren(
       const childId = `${parent.id}.${sectionName}.${localName}`
       const child: Node = {
         id: childId,
+        parentId: parent.id,
         template: childTemplateName,
         component: parent.component,
-        state: asState(value.state, parent.state),
-        stability: asStability(value.stability, parent.stability),
+        state: asState(value.state, parent.state, diagnostics, filePath, childId),
+        stability: asStability(value.stability, parent.stability, diagnostics, filePath, childId),
         schemaVersion: parent.schemaVersion,
         lastModifiedAt: parent.lastModifiedAt,
         properties: stripOwnedSections(value, childTemplateName, templates),
       }
 
       addNode(result, child, filePath, diagnostics)
-      const edgeType = STRUCTURAL_EDGE_BY_ITEM_TEMPLATE[childTemplateName]
+      const childRole = getTemplateRole(templates, childTemplateName)
+      const edgeType = childRole !== undefined ? STRUCTURAL_EDGE_BY_ROLE[childRole] : undefined
       if (edgeType) {
         addEdge(result, {
           id: `${parent.id}__${edgeType}__${child.id}`,
@@ -180,14 +194,14 @@ function materialiseChildren(
       const childTemplate = templates.get(child.template)
       if (childTemplate) {
         for (const target of getNodeRefTargets(child, childTemplate)) {
-          const readsId = `${clusterRoot.id}__reads__${target}`
+          const usesTypeId = `${clusterRoot.id}__uses-type__${target}`
           const existingFrom = result.edgesByFrom.get(clusterRoot.id) ?? []
-          if (!existingFrom.some(e => e.id === readsId)) {
+          if (!existingFrom.some(e => e.id === usesTypeId)) {
             addEdge(result, {
-              id: readsId,
+              id: usesTypeId,
               from: clusterRoot.id,
               to: target,
-              type: 'reads',
+              type: 'uses-type',
               state: clusterRoot.state,
               stability: clusterRoot.stability,
               generated: true,
@@ -234,10 +248,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function asState(value: unknown, fallback: State): State {
-  return typeof value === 'string' && VALID_STATE_SET.has(value) ? value as State : fallback
+function asState(value: unknown, fallback: State, diagnostics: Diagnostic[], file: string, nodeId: string): State {
+  if (value === undefined) return fallback
+  if (typeof value === 'string' && VALID_STATE_SET.has(value)) return value as State
+  diagnostics.push({ severity: 'warning', file, nodeId, message: `invalid state '${String(value)}', defaulting to '${fallback}'` })
+  return fallback
 }
 
-function asStability(value: unknown, fallback: Stability): Stability {
-  return typeof value === 'string' && VALID_STABILITY_SET.has(value) ? value as Stability : fallback
+function asStability(value: unknown, fallback: Stability, diagnostics: Diagnostic[], file: string, nodeId: string): Stability {
+  if (value === undefined) return fallback
+  if (typeof value === 'string' && VALID_STABILITY_SET.has(value)) return value as Stability
+  diagnostics.push({ severity: 'warning', file, nodeId, message: `invalid stability '${String(value)}', defaulting to '${fallback}'` })
+  return fallback
 }

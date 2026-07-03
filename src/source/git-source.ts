@@ -22,6 +22,9 @@ export interface GitGraphSourceOptions {
 
 const DEFAULT_GRAPH_DIR = '.corum/graph'
 
+// Module-level so two GitGraphSource instances in one process still serialise.
+const commitLocks = new Map<string, Promise<void>>()
+
 export class GitGraphSource implements GraphSource {
   private readonly graphDir: string
   private readonly localPath: string | undefined
@@ -191,62 +194,129 @@ export class GitGraphSource implements GraphSource {
   }
 
   async commit(branch: string, changes: ContentMap, message: string, options: CommitOptions = {}): Promise<void> {
+    const dir = await this.dir()
+
+    if (this.localPath) {
+      let checkedOut: string | undefined
+      try {
+        checkedOut = (await git.currentBranch({ fs, dir })) ?? undefined
+      } catch {
+        checkedOut = undefined
+      }
+      if (checkedOut === branch) {
+        throw new SourceError(
+          `cannot commit to branch '${branch}' - it is checked out in ${dir}; ` +
+          `moving the ref would silently diverge the working tree. Switch to another branch first.`,
+        )
+      }
+    }
+
     const defaultBranch = await this.defaultBranch()
     if (branch === defaultBranch) {
       throw new SourceError(`cannot commit to default branch '${branch}' - it is read-only`)
     }
 
-    const dir = await this.dir()
+    // Serialise in-process writers per repo+branch so concurrent commits stack
+    // instead of racing; the CAS check in commitLocked covers external writers.
+    const lockKey = `${dir}|${branch}`
+    const previous = commitLocks.get(lockKey) ?? Promise.resolve()
+    const run = previous
+      .catch(() => {})
+      .then(() => this.commitLocked(dir, branch, defaultBranch, changes, message, options))
+    commitLocks.set(lockKey, run.then(() => {}, () => {}))
+    return run
+  }
+
+  private async commitLocked(
+    dir: string,
+    branch: string,
+    defaultBranch: string,
+    changes: ContentMap,
+    message: string,
+    options: CommitOptions,
+  ): Promise<void> {
     const prefix = this.graphDir.endsWith('/') ? this.graphDir : `${this.graphDir}/`
+    const MAX_ATTEMPTS = 3
 
-    let parentSha: string
-    try {
-      parentSha = await this.resolveBranchOid(branch)
-    } catch (err) {
-      throw new SourceError(`cannot resolve branch '${branch}'`, err)
-    }
-    const { commit: parentCommit } = await git.readCommit({ fs, dir, oid: parentSha })
-
-    const blobMap = new Map<string, string>()
-    for (const [key, content] of changes) {
-      const repoPath = `${prefix}${normalizeContentKey(key)}`
-      const oid = await git.writeBlob({ fs, dir, blob: Buffer.from(content, 'utf-8') })
-      blobMap.set(repoPath, oid)
-    }
-
-    const newTreeOid = options.replaceGraphContent
-      ? await buildReplacedGraphTree(fs, dir, parentCommit.tree, prefix, blobMap)
-      : await buildUpdatedTree(fs, dir, parentCommit.tree, blobMap)
-
-    const now = Math.floor(Date.now() / 1000)
-    const newCommitOid = await git.writeCommit({
-      fs,
-      dir,
-      commit: {
-        tree: newTreeOid,
-        parent: [parentSha],
-        message,
-        author: { name: 'corum', email: 'corum@localhost', timestamp: now, timezoneOffset: 0 },
-        committer: { name: 'corum', email: 'corum@localhost', timestamp: now, timezoneOffset: 0 },
-      },
-    })
-
-    await git.writeRef({ fs, dir, ref: `refs/heads/${branch}`, value: newCommitOid, force: true })
-
-    if (this.remoteUrl) {
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      let parentSha: string
+      let branchExisted = true
       try {
-        await git.push({
-          fs,
-          http: (await import('isomorphic-git/http/node')).default,
-          dir,
-          remote: 'origin',
-          ref: branch,
-          onAuth: this.onAuth(),
-        })
+        parentSha = await this.resolveBranchOid(branch)
       } catch (err) {
-        throw new SourceError(`failed to push branch '${branch}'`, err)
+        if (!options.createBranchIfMissing) {
+          throw new SourceError(`cannot resolve branch '${branch}'`, err)
+        }
+        branchExisted = false
+        try {
+          parentSha = await this.resolveBranchOid(defaultBranch)
+        } catch (err2) {
+          throw new SourceError(`cannot resolve default branch '${defaultBranch}' to create '${branch}'`, err2)
+        }
       }
+      const { commit: parentCommit } = await git.readCommit({ fs, dir, oid: parentSha })
+
+      const blobMap = new Map<string, string>()
+      for (const [key, content] of changes) {
+        const repoPath = `${prefix}${normalizeContentKey(key)}`
+        const oid = await git.writeBlob({ fs, dir, blob: Buffer.from(content, 'utf-8') })
+        blobMap.set(repoPath, oid)
+      }
+
+      const newTreeOid = options.replaceGraphContent
+        ? await buildReplacedGraphTree(fs, dir, parentCommit.tree, prefix, blobMap)
+        : await buildUpdatedTree(fs, dir, parentCommit.tree, blobMap)
+
+      const now = Math.floor(Date.now() / 1000)
+      const newCommitOid = await git.writeCommit({
+        fs,
+        dir,
+        commit: {
+          tree: newTreeOid,
+          parent: [parentSha],
+          message,
+          author: { name: 'corum', email: 'corum@localhost', timestamp: now, timezoneOffset: 0 },
+          committer: { name: 'corum', email: 'corum@localhost', timestamp: now, timezoneOffset: 0 },
+        },
+      })
+
+      // Compare-and-swap: if the ref moved while we built the commit, rebuild
+      // on the new parent instead of silently discarding the other write.
+      let currentSha: string | undefined
+      try {
+        currentSha = await this.resolveBranchOid(branch)
+      } catch {
+        currentSha = undefined
+      }
+      if (branchExisted ? currentSha !== parentSha : currentSha !== undefined) continue
+
+      await git.writeRef({ fs, dir, ref: `refs/heads/${branch}`, value: newCommitOid, force: true })
+
+      if (this.remoteUrl) {
+        try {
+          await git.push({
+            fs,
+            http: (await import('isomorphic-git/http/node')).default,
+            dir,
+            remote: 'origin',
+            ref: branch,
+            onAuth: this.onAuth(),
+          })
+        } catch (err) {
+          // Roll the local ref back so the cached clone does not diverge from
+          // origin; otherwise the committed data becomes invisible on next read.
+          if (branchExisted) {
+            await git.writeRef({ fs, dir, ref: `refs/heads/${branch}`, value: parentSha, force: true })
+          } else {
+            await git.deleteRef({ fs, dir, ref: `refs/heads/${branch}` }).catch(() => {})
+          }
+          throw new SourceError(`failed to push branch '${branch}'`, err)
+        }
+      }
+      return
     }
+
+    throw new SourceError(`concurrent updates to branch '${branch}' - retries exhausted`)
   }
 
   async reloadSignature(): Promise<string> {

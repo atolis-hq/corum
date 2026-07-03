@@ -1,5 +1,6 @@
 import { describe, it, before } from 'node:test'
 import assert from 'node:assert/strict'
+import { spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -7,12 +8,14 @@ import { fileURLToPath } from 'node:url'
 import * as git from 'isomorphic-git'
 import { parse as parseYaml } from 'yaml'
 import { decode as decodeToon } from '@toon-format/toon'
-import { createMcpHandlers, getMcpToolDefinitions } from '../src/mcp/index.js'
+import { createMcpHandlers, ensureGraphLoaded, getMcpToolDefinitions } from '../src/mcp/index.js'
 import { USAGE_GUIDE_PROMPT } from '../src/mcp/prompts/usage-guide.js'
 import { loadGraph } from '../src/loader/index.js'
 import type { Graph } from '../src/schema/index.js'
 import { FileGraphSource } from '../src/source/file-source.js'
 import { GitGraphSource } from '../src/source/git-source.js'
+import { createMultiGraphCache, startWebServer, type WebServerHandle } from '../src/web/server.js'
+import type { ContentMap, GraphSource } from '../src/source/index.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..', '..')
@@ -733,6 +736,103 @@ describe('MCP handlers', () => {
     })
   })
 
+  describe('ensureGraphLoaded (startup load failure recovery)', () => {
+    it('does not call the loader when there is no existing loadError', async () => {
+      let calls = 0
+      const result = await ensureGraphLoaded(graph, undefined, async () => {
+        calls += 1
+        return graph
+      })
+
+      assert.equal(result, undefined)
+      assert.equal(calls, 0)
+    })
+
+    it('retries the load when loadError is set, and clears the error on success', async () => {
+      const staleGraph: Graph = {
+        nodesById: new Map(),
+        edgesByFrom: new Map(),
+        edgesByTo: new Map(),
+        templates: new Map(),
+        diagnostics: [],
+      }
+      let calls = 0
+      const result = await ensureGraphLoaded(staleGraph, 'previous failure', async () => {
+        calls += 1
+        return graph
+      })
+
+      assert.equal(result, undefined)
+      assert.equal(calls, 1)
+      assert.equal(staleGraph.nodesById.size, graph.nodesById.size)
+      assert.ok(staleGraph.nodesById.size > 0)
+    })
+
+    it('returns a fresh error and leaves the graph untouched when the retry also fails', async () => {
+      const staleGraph: Graph = {
+        nodesById: new Map(),
+        edgesByFrom: new Map(),
+        edgesByTo: new Map(),
+        templates: new Map(),
+        diagnostics: [],
+      }
+      const result = await ensureGraphLoaded(staleGraph, 'previous failure', async () => {
+        throw new Error('still broken')
+      })
+
+      assert.match(result ?? '', /still broken/)
+      assert.equal(staleGraph.nodesById.size, 0)
+    })
+
+    it('invokes onReload only when the retry succeeds', async () => {
+      let reloadCount = 0
+      await ensureGraphLoaded(graph, 'previous failure', async () => graph, () => { reloadCount += 1 })
+      assert.equal(reloadCount, 1)
+
+      reloadCount = 0
+      await ensureGraphLoaded(graph, 'previous failure', async () => { throw new Error('nope') }, () => { reloadCount += 1 })
+      assert.equal(reloadCount, 0)
+    })
+  })
+
+  describe('branch-scoped cache reuse', () => {
+    it('without a cache, each branch-scoped list_nodes call reloads all branches from the source', async () => {
+      const source = new CountingBranchSource()
+      const handlers = createMcpHandlers(graph, source)
+
+      await handlers.list_nodes({ branch: 'main' })
+      await handlers.list_nodes({ branch: 'main' })
+
+      assert.equal(source.loadCount, 2)
+    })
+
+    it('with a MultiGraphCache, branch-scoped list_nodes calls reuse the cached load', async () => {
+      const source = new CountingBranchSource()
+      const cache = createMultiGraphCache(source)
+      const handlers = createMcpHandlers(graph, source, cache)
+
+      await handlers.list_nodes({ branch: 'main' })
+      await handlers.list_nodes({ branch: 'main' })
+      await handlers.get_graph_summary({ branch: 'main' })
+      await handlers.list_branches({})
+      await handlers.diff_branch({ branch: 'main' })
+
+      assert.equal(source.loadCount, 1)
+    })
+
+    it('invalidating the cache forces the next branch-scoped call to reload', async () => {
+      const source = new CountingBranchSource()
+      const cache = createMultiGraphCache(source)
+      const handlers = createMcpHandlers(graph, source, cache)
+
+      await handlers.list_nodes({ branch: 'main' })
+      cache.invalidate()
+      await handlers.list_nodes({ branch: 'main' })
+
+      assert.equal(source.loadCount, 2)
+    })
+  })
+
   describe('tool definitions', () => {
     it('advertises the lean lineage and discovery-first workflow', () => {
       const tools = getMcpToolDefinitions()
@@ -754,6 +854,54 @@ describe('MCP handlers', () => {
       assert.equal((lineage!.inputSchema.properties.lean as { description: string }).description, 'Return minimal lineage node shape. Default true.')
       assert.equal((lineage!.inputSchema.properties.include_edges as { description: string }).description, 'Include the edges list in the response. Default false.')
     })
+  })
+})
+
+describe('standalone MCP entrypoint', () => {
+  it('keeps serving MCP over stdio when the web port is already in use', async () => {
+    let webHandle: WebServerHandle | undefined
+    let child: ChildProcess | undefined
+    try {
+      // Occupy a port with a real web server, then point the MCP process's default web port
+      // at it via CORUM_WEB_PORT so startWebServer's listen() call inside startMcpServer fails.
+      webHandle = await startWebServer(await loadGraph({ graphPath: fixtureGraphDir }), { port: 0, logger: () => {} })
+
+      let stderr = ''
+      let exited = false
+      child = spawn(process.execPath, [path.join(repoRoot, 'dist/src/mcp/index.js')], {
+        env: {
+          ...process.env,
+          CORUM_GRAPH_PATH: fixtureGraphDir,
+          CORUM_WEB_PORT: String(webHandle.port),
+        },
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+      child.on('exit', () => { exited = true })
+      child.stderr!.on('data', chunk => { stderr += chunk.toString() })
+
+      const deadline = Date.now() + 5000
+      while (!stderr.includes('web server failed to start') && !exited && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 50))
+      }
+
+      assert.ok(!exited, `MCP process should not exit when the web port is busy; stderr: ${stderr}`)
+      assert.match(stderr, /web server failed to start/)
+
+      // Confirm the MCP server is still alive and responsive over stdio despite the web
+      // server startup failure — send a tools/list request and wait for a JSON-RPC reply.
+      let stdout = ''
+      child.stdout!.on('data', chunk => { stdout += chunk.toString() })
+      child.stdin!.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })}\n`)
+
+      const rpcDeadline = Date.now() + 5000
+      while (!stdout.includes('"tools"') && !exited && Date.now() < rpcDeadline) {
+        await new Promise(resolve => setTimeout(resolve, 50))
+      }
+      assert.match(stdout, /"tools"/, `expected a tools/list JSON-RPC response over stdio; stdout: ${stdout}`)
+    } finally {
+      if (child && child.exitCode === null) child.kill()
+      if (webHandle) await webHandle.close()
+    }
   })
 })
 
@@ -793,4 +941,29 @@ metadata:
   stability: ${stability}
   lastModifiedAt: "2026-01-01"
 `
+}
+
+class CountingBranchSource implements GraphSource {
+  loadCount = 0
+
+  async defaultBranch(): Promise<string> {
+    return 'main'
+  }
+
+  async listBranches(): Promise<string[]> {
+    this.loadCount += 1
+    return ['main']
+  }
+
+  async loadPackContent(): Promise<ContentMap> {
+    return new Map()
+  }
+
+  async loadGraphContent(): Promise<ContentMap> {
+    return new Map()
+  }
+
+  async commit(): Promise<void> {
+    throw new Error('not implemented')
+  }
 }

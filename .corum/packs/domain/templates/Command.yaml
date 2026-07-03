@@ -7,7 +7,7 @@ info:
     An explicit intent to change state. Useful when a team models commands
     distinctly from transport concerns such as HTTP endpoints.
 
-edges:
+edge-types:
   outgoing:
     - triggers
   incoming:

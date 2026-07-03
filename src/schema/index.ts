@@ -2,14 +2,33 @@ import type { ContentMap, GraphSource } from '../source/index.js'
 
 export type State = 'draft' | 'proposed' | 'agreed' | 'future' | 'removed' | 'implemented'
 export type Stability = 'unstable' | 'stable' | 'deprecated'
-export type EdgeType =
-  | 'triggers' | 'produces' | 'reads' | 'calls' | 'implements'
-  | 'maps-to' | 'derived-from' | 'renamed-from' | 'has-field' | 'has-value'
+
+/**
+ * Edge types are an open, pack-extensible vocabulary. Core types are declared
+ * in `loader/constants.ts` (CORE_EDGE_TYPES); packs add more via
+ * `edge-types.yaml`. Engine behaviour keys off EdgeTypeDef.category, never
+ * off hardcoded name lists.
+ */
+export type EdgeType = string
+
+export type EdgeCategory = 'structural' | 'semantic' | 'lineage'
+
+export interface EdgeTypeDef {
+  name: string
+  category: EdgeCategory
+  description?: string
+  /** JSON-schema for edge properties of this type. */
+  properties?: Record<string, unknown>
+  /** Hidden edges are bookkeeping (e.g. renamed-from): excluded from summaries, lineage defaults, and collapsed views. */
+  hidden?: boolean
+}
 
 export interface Node {
   id: string
   template: string
   component: string
+  /** Owning parent node id, materialised at load time for owned children. */
+  parentId?: string
   state: State
   stability: Stability
   schemaVersion: string
@@ -28,6 +47,7 @@ export interface Edge {
   state: State
   stability: Stability
   notes?: string
+  properties?: Record<string, unknown>
   derivation?: 'determined' | 'inferred' | 'manual'
   derivedBy?: string
   generated?: true
@@ -40,6 +60,8 @@ export interface Template {
     core?: boolean
     abstract?: boolean
     description?: string
+    /** Capability role (field, value, type-container, enum-container, mapping); inherited via extends. */
+    role?: string
   }
   extends?: string
   properties?: Record<string, unknown>
@@ -77,6 +99,8 @@ export interface Graph {
   edgesByFrom: Map<string, Edge[]>
   edgesByTo: Map<string, Edge[]>
   templates: Map<string, Template>
+  /** Core + pack-declared edge type definitions. Absent maps fall back to core. */
+  edgeTypes?: Map<string, EdgeTypeDef>
   diagnostics: Diagnostic[]
   sourceContent?: ContentMap
 }

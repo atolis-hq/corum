@@ -2,6 +2,7 @@ name: Mapping
 info:
   version: "1.0.0"
   core: true
+  role: mapping
   abstract: false
   description: |
     A keyed collection type: associates keys of a specific type with values of

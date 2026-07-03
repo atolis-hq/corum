@@ -13,6 +13,8 @@ import {
   getGraphSummary,
   expandExternalNodes,
   getLineage,
+  getStructuralNodeTemplates,
+  isVisibleEdgeType,
   listNodes,
   searchNodes,
   type GetLineageOptions,
@@ -20,8 +22,9 @@ import {
   type ListNodesFilter,
 } from '../graph/index.js'
 import { loadGraph, loadMultiGraph } from '../loader/index.js'
-import { VALID_EDGE_TYPE_SET } from '../loader/constants.js'
+import { CORE_EDGE_TYPES } from '../loader/constants.js'
 import { getOwnedSections } from '../loader/pack-loader.js'
+import { getPropertySchemasFromTemplate } from '../loader/template-props.js'
 import type { EdgeType, Graph, MultiGraph, Node, Template } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
 import { createGraphRuntimeConfig } from '../source/config.js'
@@ -39,6 +42,8 @@ export type WebServerOptions = {
   fileWatcherDebounceMs?: number
   gitPollSeconds?: number
   logger?: (message: string) => void
+  /** Called after the served graph is reloaded (file watcher, git poll, or manual reload). */
+  onReload?: () => void
 }
 
 export type WebServerHandle = {
@@ -67,7 +72,7 @@ type PollableGraphSource = GraphSource & {
   reloadSignature(): Promise<string>
 }
 
-function createMultiGraphCache(source: GraphSource): MultiGraphCache {
+export function createMultiGraphCache(source: GraphSource): MultiGraphCache {
   let cache: MultiGraph | null = null
   return {
     async get(): Promise<MultiGraph> {
@@ -128,10 +133,10 @@ function summarizeNodeForNavigation(graph: Graph, node: Node): Node & { parentId
 
 type NodeRefValue = { display: string; nodeId: string } | { display: string }
 
-function resolveLocalRef(graph: Graph, nodeId: string, section: string, name: string): string | undefined {
+function resolveLocalRef(graph: Graph, node: Node, section: string, name: string): string | undefined {
   // Walk up the node ID hierarchy to find the nearest ancestor owning section.name.
-  // This handles refs on both root nodes and nested Field nodes correctly.
-  let ancestor = nodeId.replace(/\.fields\.[^.]+$/, '')
+  // This handles refs on both root nodes and nested child nodes correctly.
+  let ancestor = node.parentId ?? node.id
   while (ancestor.length > 0) {
     const candidate = `${ancestor}.${section}.${name}`
     if (graph.nodesById.has(candidate)) return candidate
@@ -143,42 +148,21 @@ function resolveLocalRef(graph: Graph, nodeId: string, section: string, name: st
 }
 
 function resolveNodeRef(graph: Graph, node: Node, rawValue: string): NodeRefValue {
-  if (rawValue.startsWith('#/schemas/')) {
-    const name = rawValue.slice(10)
-    const id = resolveLocalRef(graph, node.id, 'schemas', name)
-    return id ? { display: name, nodeId: id } : { display: name }
-  }
-  if (rawValue.startsWith('#/enums/')) {
-    const name = rawValue.slice(8)
-    const id = resolveLocalRef(graph, node.id, 'enums', name)
-    return id ? { display: name, nodeId: id } : { display: name }
-  }
-  if (rawValue.startsWith('#/mappings/')) {
-    const name = rawValue.slice(11)
-    const id = resolveLocalRef(graph, node.id, 'mappings', name)
+  // Local refs use #/{section}/{name} for any owned section — section names
+  // are pack-defined, so no fixed prefix list here.
+  const local = /^#\/([^/]+)\/(.+)$/.exec(rawValue)
+  if (local) {
+    const [, section, name] = local
+    const id = resolveLocalRef(graph, node, section, name)
     return id ? { display: name, nodeId: id } : { display: name }
   }
   if (graph.nodesById.has(rawValue)) return { display: rawValue, nodeId: rawValue }
   return { display: rawValue }
 }
 
-function getPropertySchemas(templateProperties: Record<string, unknown>): Record<string, Record<string, unknown>> {
-  if (Array.isArray(templateProperties.allOf)) {
-    const merged: Record<string, Record<string, unknown>> = {}
-    for (const schema of templateProperties.allOf) {
-      Object.assign(merged, getPropertySchemas(schema as Record<string, unknown>))
-    }
-    return merged
-  }
-  if (typeof templateProperties.properties === 'object' && templateProperties.properties !== null) {
-    return templateProperties.properties as Record<string, Record<string, unknown>>
-  }
-  return {}
-}
-
 function annotateNodeRefProperties(graph: Graph, node: Node, template: Template): Record<string, unknown> {
   if (!template.properties) return node.properties
-  const propSchemas = getPropertySchemas(template.properties as Record<string, unknown>)
+  const propSchemas = getPropertySchemasFromTemplate(template.properties as Record<string, unknown>)
   const result: Record<string, unknown> = { ...node.properties }
 
   for (const [key, schema] of Object.entries(propSchemas)) {
@@ -211,12 +195,13 @@ function annotateNode(graph: Graph, node: Node): Node {
   return template ? { ...node, properties: annotateNodeRefProperties(graph, node, template) } : node
 }
 
-function parseIncludeEdges(value: unknown): EdgeType[] {
+function parseIncludeEdges(value: unknown, graph: Graph): EdgeType[] {
   if (typeof value !== 'string' || value.trim() === '') return []
+  const known = graph.edgeTypes ?? new Map(Object.entries(CORE_EDGE_TYPES))
   const types = value
     .split(',')
     .map(item => item.trim())
-    .filter((item): item is EdgeType => VALID_EDGE_TYPE_SET.has(item))
+    .filter((item): item is EdgeType => known.has(item))
   return [...new Set(types)]
 }
 
@@ -244,12 +229,14 @@ function createReloadEvents(): ReloadEvents {
   }
 }
 
-function replaceGraph(target: Graph, source: Graph): void {
+export function replaceGraph(target: Graph, source: Graph): void {
   target.nodesById = source.nodesById
   target.edgesByFrom = source.edgesByFrom
   target.edgesByTo = source.edgesByTo
   target.templates = source.templates
   target.diagnostics = source.diagnostics
+  target.edgeTypes = source.edgeTypes
+  target.sourceContent = source.sourceContent
 }
 
 function isFileWatcherEnabled(options: WebServerOptions): boolean {
@@ -438,12 +425,6 @@ export function createApp(
     res.json(nodes)
   })
 
-  const GRAPH_EXCLUDED_TEMPLATES = new Set([
-    'Schema', 'EnumDefinition', 'Field', 'EnumValue', 'Mapping',
-  ])
-  const GRAPH_SEMANTIC_EDGE_TYPES = new Set<EdgeType>([
-    'triggers', 'produces', 'reads', 'calls', 'implements', 'maps-to', 'derived-from',
-  ])
 
   app.get('/api/graph', async (req, res) => {
     try {
@@ -464,7 +445,7 @@ export function createApp(
         ? null
         : filterExcludeTemplates?.length
           ? new Set(filterExcludeTemplates)
-          : GRAPH_EXCLUDED_TEMPLATES
+          : getStructuralNodeTemplates(targetGraph)
 
       const nodes: Array<{ id: string; template: string; component: string; state: string; stability: string; parentId: string | null }> = []
       for (const node of targetGraph.nodesById.values()) {
@@ -489,7 +470,7 @@ export function createApp(
       const edges = []
       for (const edgeList of targetGraph.edgesByFrom.values()) {
         for (const edge of edgeList) {
-          if (!GRAPH_SEMANTIC_EDGE_TYPES.has(edge.type)) continue
+          if (!isVisibleEdgeType(targetGraph, edge.type)) continue
           if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) continue
           edges.push({ id: edge.id, from: edge.from, to: edge.to, type: edge.type })
         }
@@ -562,8 +543,9 @@ export function createApp(
       const direction = (['downstream', 'upstream', 'both'] as const).includes(req.query.direction as LineageDirection)
         ? req.query.direction as LineageDirection
         : 'downstream'
+      const knownEdgeTypes = targetGraph.edgeTypes ?? new Map(Object.entries(CORE_EDGE_TYPES))
       const edgeTypes = Array.isArray(req.query.edge_types)
-        ? req.query.edge_types.filter((type): type is EdgeType => typeof type === 'string' && VALID_EDGE_TYPE_SET.has(type))
+        ? req.query.edge_types.filter((type): type is EdgeType => typeof type === 'string' && knownEdgeTypes.has(type))
         : undefined
       const excludeNodeTypes = Array.isArray(req.query.exclude_node_types)
         ? req.query.exclude_node_types.filter((type): type is string => typeof type === 'string')
@@ -596,7 +578,7 @@ export function createApp(
         targetGraph = await getGraphForRef(req.query.ref, multiCache, graph)
       }
 
-      const cluster = getClusterView(targetGraph, nodeId, parseIncludeEdges(req.query.includeEdges))
+      const cluster = getClusterView(targetGraph, nodeId, parseIncludeEdges(req.query.includeEdges, targetGraph))
       const rawOverlayRefs = req.query.overlayRefs
       const overlayRefs = Array.isArray(rawOverlayRefs)
         ? rawOverlayRefs.filter((r): r is string => typeof r === 'string' && r.length > 0)
@@ -736,6 +718,7 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
         : await loadGraph({ graphPath, strict: true })
       replaceGraph(graph, nextGraph)
       multiCache?.invalidate()
+      options.onReload?.()
       reloadEvents.notify()
       logger(`[corum] graph reloaded after ${reason}`)
     })()
@@ -755,6 +738,7 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
         logger,
         onReload: () => {
           multiCache?.invalidate()
+          options.onReload?.()
           reloadEvents.notify()
         },
       })
