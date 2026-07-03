@@ -57,6 +57,7 @@ edge-types:
   supports:
     - reads
     - derived-from
+    - maps-to
 
 ui:
   icon: sitemap

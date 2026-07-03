@@ -12,6 +12,7 @@ edge-types:
     - triggers
   incoming:
     - produces
+    - triggers
 
 ui:
   icon: terminal

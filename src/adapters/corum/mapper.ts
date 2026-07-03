@@ -381,7 +381,7 @@ function materializeStandaloneSchema(
       if (typeof value !== 'string') continue
       const valueId = `${schemaId}.values.${value}`
       refToNodeId.set(`${schemaRef}/properties/${value}`, valueId)
-      nodes.push(makeNode('EnumValue', component, specPath, valueId, undefined, { value }))
+      nodes.push(makeNode('EnumValue', component, specPath, valueId, undefined, { name: value }))
       edges.push(makeHasValueEdge(schemaId, valueId))
     }
     return schemaId
@@ -448,7 +448,7 @@ function expandSchema(
         if (typeof value !== 'string') continue
         const valueId = `${enumId}.values.${value}`
         refToNodeId.set(`${schemaRef}/properties/${value}`, valueId)
-        nodes.push(makeNode('EnumValue', enumComponent, specPath, valueId, undefined, { value }))
+        nodes.push(makeNode('EnumValue', enumComponent, specPath, valueId, undefined, { name: value }))
         edges.push(makeHasValueEdge(enumId, valueId))
       }
     }

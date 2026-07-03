@@ -39,8 +39,12 @@ properties:
       description: "Human-readable description of what this value represents."
 
 edge-types:
+  outgoing:
+    - maps-to
   incoming:
     - has-value
+    - derived-from
+    - maps-to
 
 ui:
   icon: tag

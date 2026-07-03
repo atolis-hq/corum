@@ -129,6 +129,7 @@ edge-types:
     - reads
     - calls
     - produces
+    - triggers
   incoming:
     - triggers
 
