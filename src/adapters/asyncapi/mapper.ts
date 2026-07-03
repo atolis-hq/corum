@@ -4,6 +4,7 @@ import type { AdapterPackConfig } from '../index.js'
 import type { AsyncAPIImportEntry, FieldStrategy, ComponentNameReplacement } from '../../import/config.js'
 import { applyComponentNameReplacements } from '../../import/config.js'
 import { sanitizeIdSegment } from '../../loader/id-grammar.js'
+import { shapeDriftDiagnostic } from '../shared/schema-reuse.js'
 
 export interface MapResult {
   nodes: Node[]
@@ -334,12 +335,9 @@ export function mapDocument(
       // silently merging it. Never create a duplicate/inline node for a reused schema.
       const incomingFields = new Set(Object.keys(s.properties ?? {}))
       const existingFields = existingSchemas.get(registeredId)
-      if (existingFields && !setsEqual(incomingFields, existingFields)) {
-        diagnostics.push({
-          severity: 'warning',
-          file: entry.spec,
-          message: `Schema "${name}" reused from existing standalone schema ${registeredId}, but its field set differs (shape drift): incoming [${[...incomingFields].sort().join(', ')}] vs existing [${[...existingFields].sort().join(', ')}]`,
-        })
+      if (existingFields) {
+        const drift = shapeDriftDiagnostic(name, registeredId, incomingFields, existingFields, entry.spec)
+        if (drift) diagnostics.push(drift)
       }
       continue
     }
@@ -462,12 +460,6 @@ function makeNode(template: string, component: string, specPath: string, id: str
 
 function refName(ref: string): string {
   return ref.split('/').pop() ?? ref
-}
-
-function setsEqual(a: Set<string>, b: Set<string>): boolean {
-  if (a.size !== b.size) return false
-  for (const value of a) if (!b.has(value)) return false
-  return true
 }
 
 function isRefSchema(schema: unknown): schema is { $ref: string } {

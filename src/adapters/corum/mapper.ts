@@ -1,5 +1,6 @@
 import type { Diagnostic, Edge, EdgeType, Node } from '../../schema/index.js'
 import type { CorumInterchangeDocument, CorumInterchangeEdge, CorumInterchangeProvenance } from './parser.js'
+import { shapeDriftDiagnostic } from '../shared/schema-reuse.js'
 
 const VALID_EDGE_TYPES = new Set<string>([
   'triggers', 'produces', 'reads', 'uses-type', 'calls', 'implements',
@@ -478,13 +479,8 @@ function expandSchema(
     if (!refToNodeId.has(schemaRef)) refToNodeId.set(schemaRef, reuseCandidateId)
 
     const incomingFields = new Set(Object.keys(schemaDef?.properties ?? {}))
-    if (!setsEqual(incomingFields, existingFields)) {
-      diagnostics.push({
-        severity: 'warning',
-        file: specPath,
-        message: `Schema "${schemaName}" reused from existing standalone schema ${reuseCandidateId}, but its field set differs (shape drift): incoming [${[...incomingFields].sort().join(', ')}] vs existing [${[...existingFields].sort().join(', ')}]`,
-      })
-    }
+    const drift = shapeDriftDiagnostic(schemaName, reuseCandidateId, incomingFields, existingFields, specPath)
+    if (drift) diagnostics.push(drift)
     return reuseCandidateId
   }
 
@@ -635,12 +631,6 @@ function createMapping(
   mappingNode.properties = props
   nodes.push(mappingNode)
   return mappingId
-}
-
-function setsEqual(a: Set<string>, b: Set<string>): boolean {
-  if (a.size !== b.size) return false
-  for (const value of a) if (!b.has(value)) return false
-  return true
 }
 
 function mapScalar(type: string, format: string | undefined): string {
