@@ -8,6 +8,7 @@ import { diffNodes } from '../reconcile/index.js'
 import { deduplicateResults } from './dedup.js'
 import type { EntryResult } from './dedup.js'
 import { buildExistingSchemaIndex, detectSchemaPromotions, rewritePromotedSchemaEdges } from './schema-promotion.js'
+import { resolveEdgeCasing } from './edge-casing.js'
 import type { ImportConfig } from './config.js'
 import type { AdapterPackConfig } from '../adapters/index.js'
 import type { Diagnostic } from '../schema/index.js'
@@ -104,15 +105,22 @@ export async function runImport(
     }
   }
 
+  // Merge every entry's nodes first, so casing resolution below sees the
+  // fully-merged node set regardless of import order among entries.
   for (const er of entryResults) {
     const { toAdd, toUpdate, toRemove } = diffNodes(er.nodes, graph.nodesById, er.specPath)
-
     for (const node of [...toAdd, ...toUpdate, ...toRemove]) {
       graph.nodesById.set(node.id, node)
     }
+  }
 
-    for (const edge of er.edges) {
-      if (isStructuralEdgeType(graph, edge.type)) continue
+  for (const er of entryResults) {
+    let edgesToAppend = er.edges.filter(edge => !isStructuralEdgeType(graph, edge.type))
+    if (config.edgeCasing === 'match') {
+      edgesToAppend = resolveEdgeCasing(graph, edgesToAppend, allDiagnostics)
+    }
+
+    for (const edge of edgesToAppend) {
       const existing = graph.edgesByFrom.get(edge.from) ?? []
       if (!existing.some(e => e.id === edge.id)) {
         graph.edgesByFrom.set(edge.from, [...existing, edge])

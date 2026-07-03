@@ -50,9 +50,21 @@ export interface CorumImportEntry {
 
 export type ImportEntry = OpenAPIImportEntry | AsyncAPIImportEntry | CorumImportEntry
 
+export type EdgeCasingMode = 'preserve' | 'match'
+
 export interface ImportConfig {
   componentNameReplacements?: ComponentNameReplacement[]
   deduplication?: DeduplicationRule[]
+  /**
+   * How to resolve an edge endpoint that fails an exact match against the
+   * final merged node set. 'preserve' (default) leaves it untouched — it
+   * surfaces as an "unresolved node" diagnostic at load time, as today.
+   * 'match' retries case-insensitively and rewrites to the exact surviving
+   * casing when the match is unambiguous — fixes cross-source field-casing
+   * drift (e.g. a secondary adapter's `fields.Amount` edge after dedup kept
+   * the primary adapter's `fields.amount` node).
+   */
+  edgeCasing?: EdgeCasingMode
   imports: ImportEntry[]
 }
 
@@ -76,6 +88,9 @@ export function loadImportConfig(filePath: string): ImportConfig {
     if (!rule.primary || !rule.secondary) {
       throw new Error(`Invalid import config: deduplication entries must have non-empty "primary" and "secondary"`)
     }
+  }
+  if (cfg.edgeCasing !== undefined && cfg.edgeCasing !== 'preserve' && cfg.edgeCasing !== 'match') {
+    throw new Error(`Invalid import config: edgeCasing must be "preserve" or "match"`)
   }
   return cfg
 }

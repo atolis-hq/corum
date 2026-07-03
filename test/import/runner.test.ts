@@ -365,6 +365,117 @@ describe('import runner — target branch', () => {
   })
 })
 
+describe('import runner — edgeCasing (cross-source field-casing drift)', () => {
+  // Reproduces the real PRL scenario: an OpenAPI spec and a corum-native spec both
+  // define the same schema name; dedup drops the corum copy in favour of OpenAPI's
+  // (exact schema-id collision), but corum's own edges still reference its original
+  // (differently-cased) field id, which no longer exists after dedup.
+  function moneyOpenApiSpec(): string {
+    return JSON.stringify({
+      openapi: '3.0.3',
+      info: { title: 'Orders API', version: '1.0' },
+      components: { schemas: { Money: { type: 'object', properties: { amount: { type: 'integer' } } } } },
+      paths: {
+        '/orders/create': {
+          post: { operationId: 'createOrder', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Money' } } } }, responses: {} },
+        },
+        '/orders/refund': {
+          post: { operationId: 'refundOrder', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Money' } } } }, responses: {} },
+        },
+      },
+    })
+  }
+
+  function moneyCorumSpec(): string {
+    return [
+      "corum: '1.0'",
+      'info:',
+      '  source:',
+      '    analyser: corum-extract',
+      '    language: csharp',
+      'nodes:',
+      '  orders.Schema.Money:',
+      '    type: Schema',
+      '    title: Money',
+      '    schema:',
+      "      $ref: '#/components/schemas/Money'",
+      '    provenance:',
+      '      derivation: determined',
+      '      derivedBy: extractor:treesitter',
+      '      extractedFrom: ../test-repo',
+      'components:',
+      '  schemas:',
+      '    Money:',
+      '      type: object',
+      '      properties:',
+      '        Amount:',
+      '          type: integer',
+      'edges:',
+      '  - type: maps-to',
+      '    from: orders.DomainModel.order.schemas.order.fields.id',
+      '    to: orders.Schema.Money.fields.Amount',
+      '',
+    ].join('\n')
+  }
+
+  async function runMoneyImport(edgeCasing?: 'preserve' | 'match') {
+    const { graphDir, cleanup } = await setupGraphDir()
+    const openapiSpecPath = path.join(graphDir, 'money-openapi.json')
+    const corumSpecPath = path.join(graphDir, 'money-corum.yaml')
+    fs.writeFileSync(openapiSpecPath, moneyOpenApiSpec())
+    fs.writeFileSync(corumSpecPath, moneyCorumSpec())
+
+    const config: ImportConfig = {
+      deduplication: [{ primary: 'openapi', secondary: 'corum' }],
+      ...(edgeCasing ? { edgeCasing } : {}),
+      imports: [
+        { adapter: 'openapi', spec: openapiSpecPath, componentMapping: { strategy: 'uri-segment', segment: 0 } },
+        { adapter: 'corum', spec: corumSpecPath },
+      ],
+    }
+    const result = await runImport(config, makeRuntimeConfig(graphDir))
+    return { graphDir, cleanup, result }
+  }
+
+  it('by default (preserve), the corum edge is left pointing at the dropped PascalCase field', async () => {
+    const { graphDir, cleanup, result } = await runMoneyImport()
+    try {
+      assert.ok(!result.diagnostics.some(d => d.severity === 'error'), `expected no errors: ${JSON.stringify(result.diagnostics)}`)
+
+      const graph = await loadGraph({ graphPath: graphDir })
+      assert.ok(graph.nodesById.has('orders.Schema.Money.fields.amount'), 'openapi field survives dedup')
+      assert.ok(!graph.nodesById.has('orders.Schema.Money.fields.Amount'), 'corum field was dropped by dedup')
+
+      assert.ok(
+        graph.diagnostics.some(d => d.message.includes('edge to unresolved node: orders.Schema.Money.fields.Amount')),
+        'the corum-authored edge should dangle without edgeCasing: match',
+      )
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('with edgeCasing: match, the corum edge is rewritten to the surviving camelCase field', async () => {
+    const { graphDir, cleanup, result } = await runMoneyImport('match')
+    try {
+      assert.ok(!result.diagnostics.some(d => d.severity === 'error'), `expected no errors: ${JSON.stringify(result.diagnostics)}`)
+      assert.ok(result.diagnostics.some(d => d.message.includes('[INFO] Resolved edge casing mismatch')))
+
+      const graph = await loadGraph({ graphPath: graphDir })
+      assert.ok(
+        !graph.diagnostics.some(d => d.message.includes('unresolved node') && d.message.includes('Money')),
+        `expected no dangling Money field refs, got: ${JSON.stringify(graph.diagnostics)}`,
+      )
+
+      const rewritten = (graph.edgesByTo.get('orders.Schema.Money.fields.amount') ?? []).filter(e => e.type === 'maps-to')
+      assert.equal(rewritten.length, 1)
+      assert.equal(rewritten[0].from, 'orders.DomainModel.order.schemas.order.fields.id')
+    } finally {
+      cleanup()
+    }
+  })
+})
+
 describe('import runner — invalid spec', () => {
   it('returns error diagnostic and writes no new nodes for an invalid spec', async () => {
     const { graphDir, cleanup: cleanupInvalid } = await setupGraphDir()
