@@ -234,6 +234,9 @@ describe('import runner — target branch', () => {
 
     async commit(branch: string, changes: ContentMap, message: string, options?: CommitOptions): Promise<void> {
       this.commits.push({ branch, changes, message, options })
+      // Mirrors real git-source behaviour: a commit with replaceGraphContent
+      // becomes what the next loadGraphContent(branch) call sees.
+      this.graphContentByBranch.set(branch, new Map(changes))
     }
   }
 
@@ -286,6 +289,190 @@ describe('import runner — target branch', () => {
       'expected an error diagnostic mentioning --branch',
     )
     assert.equal(source.commits.length, 0)
+  })
+
+  it('mechanically rewrites a hand-authored edge on a git-backed source when a re-import promotes a schema', async () => {
+    const source = await makeRecordingSource(['main'])
+    const runtimeConfig = { kind: 'git' as const, source, graphPath: 'git:fake/.corum/graph' }
+    const specDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-git-promotion-'))
+    try {
+      const specPath = path.join(specDir, 'money-spec.json')
+      const moneySpec = (paths: Record<string, unknown>) => JSON.stringify({
+        openapi: '3.0.3',
+        info: { title: 'Orders API', version: '1.0' },
+        components: { schemas: { Money: { type: 'object', properties: { amount: { type: 'integer' } } } } },
+        paths,
+      })
+      const singleUsePaths = {
+        '/orders/create': {
+          post: {
+            operationId: 'createOrder',
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Money' } } } },
+            responses: {},
+          },
+        },
+      }
+      fs.writeFileSync(specPath, moneySpec(singleUsePaths))
+
+      const importConfig = (): ImportConfig => ({
+        imports: [{ adapter: 'openapi', spec: specPath, componentMapping: { strategy: 'uri-segment', segment: 0 } }],
+      })
+
+      await runImport(importConfig(), runtimeConfig, { branch: 'feat/import' })
+      assert.equal(source.commits.length, 1)
+      assert.ok(
+        source.commits[0].changes.has('components/orders/APIEndpoints/createOrder.yaml'),
+        'expected the inline schema to be nested under the endpoint cluster file',
+      )
+
+      // Hand-author an edge pointing at the inline schema's field, committed directly to the branch —
+      // simulating an agent/UI-authored design link that lands between imports.
+      const branchContent = new Map(source.commits[0].changes)
+      branchContent.set('edges/money-test.edges.yaml', [
+        'edges:',
+        '  - from: orders.DomainModel.order.schemas.order.fields.id',
+        '    to: orders.APIEndpoint.createOrder.schemas.Money.fields.amount',
+        '    type: maps-to',
+        '',
+      ].join('\n'))
+      await source.commit('feat/import', branchContent, 'hand-author a design edge')
+
+      const twoUsePaths = {
+        ...singleUsePaths,
+        '/orders/refund': {
+          post: {
+            operationId: 'refundOrder',
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Money' } } } },
+            responses: {},
+          },
+        },
+      }
+      fs.writeFileSync(specPath, moneySpec(twoUsePaths))
+      const result = await runImport(importConfig(), runtimeConfig, { branch: 'feat/import' })
+      assert.ok(!result.diagnostics.some(d => d.severity === 'error'), `expected no errors: ${JSON.stringify(result.diagnostics)}`)
+
+      const finalChanges = source.commits[source.commits.length - 1].changes
+      assert.ok(finalChanges.has('components/orders/Schemas/Money.yaml'), 'Money should be promoted to a standalone cluster file')
+
+      // serializeGraph consolidates all explicit edges into a single canonical file, regardless
+      // of which source file they were originally read from.
+      const rewrittenEdgesYaml = finalChanges.get('edges/corum.edges.yaml') ?? ''
+      assert.match(rewrittenEdgesYaml, /to: orders\.Schema\.Money\.fields\.amount/, 'hand-authored edge should be rewritten to the new standalone field')
+      assert.doesNotMatch(rewrittenEdgesYaml, /orders\.APIEndpoint\.createOrder\.schemas\.Money\.fields\.amount/, 'old inline field id should no longer appear in the rewritten edge')
+    } finally {
+      fs.rmSync(specDir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('import runner — edgeCasing (cross-source field-casing drift)', () => {
+  // Reproduces the real PRL scenario: an OpenAPI spec and a corum-native spec both
+  // define the same schema name; dedup drops the corum copy in favour of OpenAPI's
+  // (exact schema-id collision), but corum's own edges still reference its original
+  // (differently-cased) field id, which no longer exists after dedup.
+  function moneyOpenApiSpec(): string {
+    return JSON.stringify({
+      openapi: '3.0.3',
+      info: { title: 'Orders API', version: '1.0' },
+      components: { schemas: { Money: { type: 'object', properties: { amount: { type: 'integer' } } } } },
+      paths: {
+        '/orders/create': {
+          post: { operationId: 'createOrder', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Money' } } } }, responses: {} },
+        },
+        '/orders/refund': {
+          post: { operationId: 'refundOrder', requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Money' } } } }, responses: {} },
+        },
+      },
+    })
+  }
+
+  function moneyCorumSpec(): string {
+    return [
+      "corum: '1.0'",
+      'info:',
+      '  source:',
+      '    analyser: corum-extract',
+      '    language: csharp',
+      'nodes:',
+      '  orders.Schema.Money:',
+      '    type: Schema',
+      '    title: Money',
+      '    schema:',
+      "      $ref: '#/components/schemas/Money'",
+      '    provenance:',
+      '      derivation: determined',
+      '      derivedBy: extractor:treesitter',
+      '      extractedFrom: ../test-repo',
+      'components:',
+      '  schemas:',
+      '    Money:',
+      '      type: object',
+      '      properties:',
+      '        Amount:',
+      '          type: integer',
+      'edges:',
+      '  - type: maps-to',
+      '    from: orders.DomainModel.order.schemas.order.fields.id',
+      '    to: orders.Schema.Money.fields.Amount',
+      '',
+    ].join('\n')
+  }
+
+  async function runMoneyImport(edgeCasing?: 'preserve' | 'match') {
+    const { graphDir, cleanup } = await setupGraphDir()
+    const openapiSpecPath = path.join(graphDir, 'money-openapi.json')
+    const corumSpecPath = path.join(graphDir, 'money-corum.yaml')
+    fs.writeFileSync(openapiSpecPath, moneyOpenApiSpec())
+    fs.writeFileSync(corumSpecPath, moneyCorumSpec())
+
+    const config: ImportConfig = {
+      deduplication: [{ primary: 'openapi', secondary: 'corum' }],
+      ...(edgeCasing ? { edgeCasing } : {}),
+      imports: [
+        { adapter: 'openapi', spec: openapiSpecPath, componentMapping: { strategy: 'uri-segment', segment: 0 } },
+        { adapter: 'corum', spec: corumSpecPath },
+      ],
+    }
+    const result = await runImport(config, makeRuntimeConfig(graphDir))
+    return { graphDir, cleanup, result }
+  }
+
+  it('by default (preserve), the corum edge is left pointing at the dropped PascalCase field', async () => {
+    const { graphDir, cleanup, result } = await runMoneyImport()
+    try {
+      assert.ok(!result.diagnostics.some(d => d.severity === 'error'), `expected no errors: ${JSON.stringify(result.diagnostics)}`)
+
+      const graph = await loadGraph({ graphPath: graphDir })
+      assert.ok(graph.nodesById.has('orders.Schema.Money.fields.amount'), 'openapi field survives dedup')
+      assert.ok(!graph.nodesById.has('orders.Schema.Money.fields.Amount'), 'corum field was dropped by dedup')
+
+      assert.ok(
+        graph.diagnostics.some(d => d.message.includes('edge to unresolved node: orders.Schema.Money.fields.Amount')),
+        'the corum-authored edge should dangle without edgeCasing: match',
+      )
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('with edgeCasing: match, the corum edge is rewritten to the surviving camelCase field', async () => {
+    const { graphDir, cleanup, result } = await runMoneyImport('match')
+    try {
+      assert.ok(!result.diagnostics.some(d => d.severity === 'error'), `expected no errors: ${JSON.stringify(result.diagnostics)}`)
+      assert.ok(result.diagnostics.some(d => d.message.includes('[INFO] Resolved edge casing mismatch')))
+
+      const graph = await loadGraph({ graphPath: graphDir })
+      assert.ok(
+        !graph.diagnostics.some(d => d.message.includes('unresolved node') && d.message.includes('Money')),
+        `expected no dangling Money field refs, got: ${JSON.stringify(graph.diagnostics)}`,
+      )
+
+      const rewritten = (graph.edgesByTo.get('orders.Schema.Money.fields.amount') ?? []).filter(e => e.type === 'maps-to')
+      assert.equal(rewritten.length, 1)
+      assert.equal(rewritten[0].from, 'orders.DomainModel.order.schemas.order.fields.id')
+    } finally {
+      cleanup()
+    }
   })
 })
 
@@ -340,5 +527,85 @@ describe('import runner — existing tests unaffected', () => {
     const graph = await loadGraph({ graphPath: fixtureGraphDir })
     assert.ok(graph.nodesById.size > 0)
     assert.equal(graph.diagnostics.filter(d => d.severity === 'error').length, 0)
+  })
+})
+
+describe('import runner — schema promotion (ADR-009b rule 4)', () => {
+  function moneySpec(operations: Record<string, unknown>): string {
+    return JSON.stringify({
+      openapi: '3.0.3',
+      info: { title: 'Orders API', version: '1.0' },
+      components: {
+        schemas: {
+          Money: { type: 'object', properties: { amount: { type: 'integer' } } },
+        },
+      },
+      paths: operations,
+    })
+  }
+
+  it('mechanically rewrites a hand-authored edge when a re-import promotes an inline schema to standalone', async () => {
+    const { graphDir, cleanup } = await setupGraphDir()
+    try {
+      const specPath = path.join(graphDir, 'money-spec.json')
+      const singleUsePaths = {
+        '/orders/create': {
+          post: {
+            operationId: 'createOrder',
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Money' } } } },
+            responses: {},
+          },
+        },
+      }
+      fs.writeFileSync(specPath, moneySpec(singleUsePaths))
+
+      const importConfig = (): ImportConfig => ({
+        imports: [{ adapter: 'openapi', spec: specPath, componentMapping: { strategy: 'uri-segment', segment: 0 } }],
+      })
+
+      await runImport(importConfig(), makeRuntimeConfig(graphDir))
+      const afterFirstImport = await loadGraph({ graphPath: graphDir })
+      assert.ok(
+        afterFirstImport.nodesById.has('orders.APIEndpoint.createOrder.schemas.Money'),
+        'Money should be inlined after the first import',
+      )
+
+      // Hand-author an edge pointing at the inline schema's field, simulating agent/UI-authored design links.
+      const edgesFile = path.join(graphDir, 'edges', 'money-test.edges.yaml')
+      fs.writeFileSync(edgesFile, [
+        'edges:',
+        '  - from: orders.DomainModel.order.schemas.order.fields.id',
+        '    to: orders.APIEndpoint.createOrder.schemas.Money.fields.amount',
+        '    type: maps-to',
+        '',
+      ].join('\n'))
+
+      // Second import: a new operation also references Money, pushing it over the 2+ usage threshold.
+      const twoUsePaths = {
+        ...singleUsePaths,
+        '/orders/refund': {
+          post: {
+            operationId: 'refundOrder',
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Money' } } } },
+            responses: {},
+          },
+        },
+      }
+      fs.writeFileSync(specPath, moneySpec(twoUsePaths))
+      const result = await runImport(importConfig(), makeRuntimeConfig(graphDir))
+      assert.ok(!result.diagnostics.some(d => d.severity === 'error'), `expected no errors: ${JSON.stringify(result.diagnostics)}`)
+
+      const finalGraph = await loadGraph({ graphPath: graphDir })
+      assert.ok(finalGraph.nodesById.has('orders.Schema.Money'), 'Money should be promoted to standalone')
+
+      const rewrittenEdges = (finalGraph.edgesByTo.get('orders.Schema.Money.fields.amount') ?? []).filter(e => e.type === 'maps-to')
+      assert.equal(rewrittenEdges.length, 1, 'hand-authored edge should have been rewritten to point at the new standalone field')
+      assert.equal(rewrittenEdges[0].from, 'orders.DomainModel.order.schemas.order.fields.id')
+
+      const staleEdges = (finalGraph.edgesByTo.get('orders.APIEndpoint.createOrder.schemas.Money.fields.amount') ?? []).filter(e => e.type === 'maps-to')
+      assert.equal(staleEdges.length, 0, 'no maps-to edge should still point at the old inline field')
+    } finally {
+      cleanup()
+    }
   })
 })

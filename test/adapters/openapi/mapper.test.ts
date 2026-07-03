@@ -433,3 +433,243 @@ describe('mapDocument — additionalProperties (Mapping nodes)', () => {
     assert.ok(mapping!.properties['$ref'], '$ref is set')
   })
 })
+
+describe('mapDocument — schema usage counting is a structural ref-walk', () => {
+  it('does not count ref-like text in descriptions as a real usage', () => {
+    const doc: OpenAPIV3.Document = {
+      openapi: '3.0.0',
+      info: { title: 'Test', version: '1.0' },
+      components: {
+        schemas: {
+          Money: {
+            type: 'object',
+            properties: { amount: { type: 'integer' } },
+          },
+        },
+      },
+      paths: {
+        '/orders/create': {
+          post: {
+            operationId: 'createOrder',
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/Money' },
+                },
+              },
+            },
+            responses: {},
+          },
+        },
+        '/orders/list': {
+          get: {
+            operationId: 'listOrders',
+            // The description's entire text happens to equal the ref path — a JSON-substring
+            // scan finds `"#/components/schemas/Money"` here even though there is no real $ref.
+            description: '#/components/schemas/Money',
+            responses: {},
+          },
+        },
+      },
+    }
+    const { nodes } = mapDocument(doc, ENTRY, PACK_CONFIG)
+
+    // Money is genuinely referenced by only one operation, so it must stay inlined
+    // under that operation, not be promoted to a standalone orders.Schema.Money node.
+    assert.ok(!nodes.some(n => n.id === 'orders.Schema.Money'), 'Money should not be promoted to standalone')
+    assert.ok(
+      nodes.some(n => n.id === 'orders.APIEndpoint.createOrder.schemas.Money'),
+      'Money should be inlined under createOrder',
+    )
+  })
+
+  it('still shares schemas referenced by 2+ real operations', () => {
+    const doc: OpenAPIV3.Document = {
+      openapi: '3.0.0',
+      info: { title: 'Test', version: '1.0' },
+      components: {
+        schemas: {
+          Money: {
+            type: 'object',
+            properties: { amount: { type: 'integer' } },
+          },
+        },
+      },
+      paths: {
+        '/orders/create': {
+          post: {
+            operationId: 'createOrder',
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/Money' },
+                },
+              },
+            },
+            responses: {},
+          },
+        },
+        '/orders/refund': {
+          post: {
+            operationId: 'refundOrder',
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/Money' },
+                },
+              },
+            },
+            responses: {},
+          },
+        },
+      },
+    }
+    const { nodes } = mapDocument(doc, ENTRY, PACK_CONFIG)
+
+    assert.ok(nodes.some(n => n.id === 'orders.Schema.Money'), 'Money should be promoted to standalone')
+  })
+})
+
+describe('mapDocument — reuse before inline (ADR-009b rule 1/3)', () => {
+  function makeSingleUseDoc(): OpenAPIV3.Document {
+    return {
+      openapi: '3.0.0',
+      info: { title: 'Test', version: '1.0' },
+      components: {
+        schemas: {
+          Money: {
+            type: 'object',
+            properties: { amount: { type: 'integer' } },
+          },
+        },
+      },
+      paths: {
+        '/orders/create': {
+          post: {
+            operationId: 'createOrder',
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/Money' },
+                },
+              },
+            },
+            responses: {},
+          },
+        },
+      },
+    }
+  }
+
+  it('references an existing standalone schema instead of inlining a single-use match', () => {
+    const existingSchemas = new Map<string, Set<string>>([
+      ['orders.Schema.Money', new Set(['amount'])],
+    ])
+    const { nodes } = mapDocument(makeSingleUseDoc(), ENTRY, PACK_CONFIG, [], existingSchemas)
+
+    assert.ok(!nodes.some(n => n.id === 'orders.APIEndpoint.createOrder.schemas.Money'), 'must not inline a copy')
+    assert.ok(!nodes.some(n => n.id === 'orders.Schema.Money'), 'must not recreate the existing standalone node')
+
+    const endpoint = nodes.find(n => n.id === 'orders.APIEndpoint.createOrder')
+    assert.equal(endpoint!.properties.request, 'orders.Schema.Money')
+  })
+
+  it('without an existing standalone schema, single-use still inlines as before', () => {
+    const { nodes } = mapDocument(makeSingleUseDoc(), ENTRY, PACK_CONFIG)
+    assert.ok(nodes.some(n => n.id === 'orders.APIEndpoint.createOrder.schemas.Money'), 'expected inline copy')
+    assert.ok(!nodes.some(n => n.id === 'orders.Schema.Money'))
+  })
+
+  it('registers newly promoted standalone schemas into the shared existingSchemas map for later entries in the same run', () => {
+    const doc: OpenAPIV3.Document = {
+      openapi: '3.0.0',
+      info: { title: 'Test', version: '1.0' },
+      components: {
+        schemas: {
+          Money: { type: 'object', properties: { amount: { type: 'integer' } } },
+        },
+      },
+      paths: {
+        '/orders/create': {
+          post: {
+            operationId: 'createOrder',
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Money' } } } },
+            responses: {},
+          },
+        },
+        '/orders/refund': {
+          post: {
+            operationId: 'refundOrder',
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Money' } } } },
+            responses: {},
+          },
+        },
+      },
+    }
+    const existingSchemas = new Map<string, Set<string>>()
+    mapDocument(doc, ENTRY, PACK_CONFIG, [], existingSchemas)
+
+    assert.ok(existingSchemas.has('orders.Schema.Money'), 'promoted schema should be registered for reuse by later entries')
+    assert.deepEqual(existingSchemas.get('orders.Schema.Money'), new Set(['amount']))
+  })
+})
+
+describe('mapDocument — shape-drift warning on reuse (ADR-009b rule 2)', () => {
+  it('warns when the incoming schema field set differs from the existing standalone schema', () => {
+    const existingSchemas = new Map<string, Set<string>>([
+      ['orders.Schema.Money', new Set(['amount', 'currency'])],
+    ])
+    const doc: OpenAPIV3.Document = {
+      openapi: '3.0.0',
+      info: { title: 'Test', version: '1.0' },
+      components: {
+        schemas: {
+          // Missing "currency" and adds "cents" — a genuine shape drift vs the existing node.
+          Money: { type: 'object', properties: { amount: { type: 'integer' }, cents: { type: 'integer' } } },
+        },
+      },
+      paths: {
+        '/orders/create': {
+          post: {
+            operationId: 'createOrder',
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Money' } } } },
+            responses: {},
+          },
+        },
+      },
+    }
+    const { diagnostics } = mapDocument(doc, ENTRY, PACK_CONFIG, [], existingSchemas)
+
+    assert.ok(
+      diagnostics.some(d => d.severity === 'warning' && /shape drift|field set differs/i.test(d.message) && d.message.includes('Money')),
+      `expected shape-drift warning, got: ${JSON.stringify(diagnostics)}`,
+    )
+  })
+
+  it('does not warn when the reused schema fields match', () => {
+    const existingSchemas = new Map<string, Set<string>>([
+      ['orders.Schema.Money', new Set(['amount'])],
+    ])
+    const doc: OpenAPIV3.Document = {
+      openapi: '3.0.0',
+      info: { title: 'Test', version: '1.0' },
+      components: {
+        schemas: {
+          Money: { type: 'object', properties: { amount: { type: 'integer' } } },
+        },
+      },
+      paths: {
+        '/orders/create': {
+          post: {
+            operationId: 'createOrder',
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Money' } } } },
+            responses: {},
+          },
+        },
+      },
+    }
+    const { diagnostics } = mapDocument(doc, ENTRY, PACK_CONFIG, [], existingSchemas)
+
+    assert.ok(!diagnostics.some(d => /shape drift|field set differs/i.test(d.message)))
+  })
+})

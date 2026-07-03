@@ -229,6 +229,38 @@ describe('lintGraph — edge property validation', () => {
   })
 })
 
+describe('lintGraph — inline/standalone schema name collisions (ADR-009b rule 5)', () => {
+  it('flags an inline schema whose (component, name) matches an existing standalone schema', () => {
+    const standalone = makeNode({ id: 'orders.Schema.Money', template: 'Schema' })
+    const inline = makeNode({ id: 'orders.APIEndpoint.createOrder.schemas.Money', template: 'Schema' })
+    const diagnostics = lintGraph(makeGraph([], [standalone, inline]))
+
+    assert.ok(
+      diagnostics.some(d => d.severity === 'warning' && d.nodeId === 'orders.APIEndpoint.createOrder.schemas.Money' && /standalone/i.test(d.message)),
+      `expected a collision warning, got: ${JSON.stringify(diagnostics)}`,
+    )
+  })
+
+  it('does not flag an inline schema with no matching standalone schema', () => {
+    const inline = makeNode({ id: 'orders.APIEndpoint.createOrder.schemas.Money', template: 'Schema' })
+    const diagnostics = lintGraph(makeGraph([], [inline]))
+    assert.equal(diagnostics.length, 0)
+  })
+
+  it('does not flag a standalone schema against itself', () => {
+    const standalone = makeNode({ id: 'orders.Schema.Money', template: 'Schema' })
+    const diagnostics = lintGraph(makeGraph([], [standalone]))
+    assert.equal(diagnostics.length, 0)
+  })
+
+  it('does not flag an inline schema when the standalone schema is in a different component', () => {
+    const standalone = makeNode({ id: 'payments.Schema.Money', template: 'Schema' })
+    const inline = makeNode({ id: 'orders.APIEndpoint.createOrder.schemas.Money', template: 'Schema' })
+    const diagnostics = lintGraph(makeGraph([], [standalone, inline]))
+    assert.equal(diagnostics.length, 0)
+  })
+})
+
 describe('lintGraph — fixture graph integration', () => {
   it('lints the fixture sample graph cleanly (warnings only, none expected)', async () => {
     const source = new FileGraphSource({ graphDir: fixtureGraphDir })

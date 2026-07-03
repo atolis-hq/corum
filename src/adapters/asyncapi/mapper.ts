@@ -4,6 +4,7 @@ import type { AdapterPackConfig } from '../index.js'
 import type { AsyncAPIImportEntry, FieldStrategy, ComponentNameReplacement } from '../../import/config.js'
 import { applyComponentNameReplacements } from '../../import/config.js'
 import { sanitizeIdSegment } from '../../loader/id-grammar.js'
+import { shapeDriftDiagnostic } from '../shared/schema-reuse.js'
 
 export interface MapResult {
   nodes: Node[]
@@ -243,12 +244,14 @@ export function mapDocument(
   entry: AsyncAPIImportEntry,
   packConfig: AdapterPackConfig,
   componentNameReplacements: ComponentNameReplacement[] = [],
+  existingSchemas: Map<string, Set<string>> = new Map(),
 ): MapResult {
   const nodes: Node[] = []
   const edges: Edge[] = []
   const diagnostics: Diagnostic[] = []
   const sharedSchemas = new Map<string, string>()
   const sourceSchemas = new Map<string, unknown>()
+  const reusedSchemaNames = new Set<string>()
 
   const rawDoc = document.json() as { components?: { schemas?: Record<string, unknown> } }
 
@@ -292,8 +295,17 @@ export function mapDocument(
     const component = schemaComponents.get(name) ?? 'shared'
     if (s.enum) {
       sharedSchemas.set(name, `${component}.EnumDefinition.${name}`)
-    } else if (sharedSchemaNames.has(name)) {
-      sharedSchemas.set(name, `${component}.Schema.${name}`)
+    } else {
+      const candidateId = `${component}.Schema.${name}`
+      // ADR-009b rule 1: reuse an existing standalone schema before inlining —
+      // never demote it, and never duplicate it, even if this document would
+      // otherwise treat it as single-use.
+      if (existingSchemas.has(candidateId)) {
+        sharedSchemas.set(name, candidateId)
+        reusedSchemaNames.add(name)
+      } else if (sharedSchemaNames.has(name)) {
+        sharedSchemas.set(name, candidateId)
+      }
     }
   }
 
@@ -315,10 +327,24 @@ export function mapDocument(
       continue
     }
 
-    if (!sharedSchemaNames.has(name)) continue
+    if (!sharedSchemaNames.has(name) && !reusedSchemaNames.has(name)) continue
     const [component] = registeredId.split('.')
+
+    if (reusedSchemaNames.has(name)) {
+      // ADR-009b rule 2: shape-drift warning — surface contract drift instead of
+      // silently merging it. Never create a duplicate/inline node for a reused schema.
+      const incomingFields = new Set(Object.keys(s.properties ?? {}))
+      const existingFields = existingSchemas.get(registeredId)
+      if (existingFields) {
+        const drift = shapeDriftDiagnostic(name, registeredId, incomingFields, existingFields, entry.spec)
+        if (drift) diagnostics.push(drift)
+      }
+      continue
+    }
+
     nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, entry.spec, registeredId))
     emitFields(s, registeredId, 'fields', undefined, packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, new Map(), new Map())
+    existingSchemas.set(registeredId, new Set(Object.keys(s.properties ?? {})))
   }
 
   const seenMessages = new Map<string, string>()

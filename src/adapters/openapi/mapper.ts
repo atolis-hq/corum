@@ -4,6 +4,7 @@ import type { AdapterPackConfig } from '../index.js'
 import type { ComponentMapping, OpenAPIImportEntry, ComponentNameReplacement } from '../../import/config.js'
 import { applyComponentNameReplacements } from '../../import/config.js'
 import { sanitizeIdSegment } from '../../loader/id-grammar.js'
+import { shapeDriftDiagnostic } from '../shared/schema-reuse.js'
 
 export interface MapResult {
   nodes: Node[]
@@ -69,12 +70,14 @@ export function mapDocument(
   entry: OpenAPIImportEntry,
   packConfig: AdapterPackConfig,
   componentNameReplacements: ComponentNameReplacement[] = [],
+  existingSchemas: Map<string, Set<string>> = new Map(),
 ): MapResult {
   const nodes: Node[] = []
   const edges: Edge[] = []
   const diagnostics: Diagnostic[] = []
   const sharedSchemas = new Map<string, string>()
   const sourceSchemas = new Map<string, OpenAPIV3.SchemaObject>()
+  const reusedSchemaNames = new Set<string>()
 
   for (const [name, schema] of Object.entries(document.components?.schemas ?? {})) {
     if (!isRefSchema(schema)) sourceSchemas.set(name, schema as OpenAPIV3.SchemaObject)
@@ -94,8 +97,17 @@ export function mapDocument(
       if (!component) continue
       if (s.type !== 'object' && s.enum) {
         sharedSchemas.set(name, `${component}.EnumDefinition.${name}`)
-      } else if (sharedSchemaNames.has(name)) {
-        sharedSchemas.set(name, `${component}.Schema.${name}`)
+      } else {
+        const candidateId = `${component}.Schema.${name}`
+        // ADR-009b rule 1: reuse an existing standalone schema before inlining —
+        // never demote it, and never duplicate it, even if this document would
+        // otherwise treat it as single-use.
+        if (existingSchemas.has(candidateId)) {
+          sharedSchemas.set(name, candidateId)
+          reusedSchemaNames.add(name)
+        } else if (sharedSchemaNames.has(name)) {
+          sharedSchemas.set(name, candidateId)
+        }
       }
     }
   }
@@ -122,17 +134,31 @@ export function mapDocument(
         continue
       }
 
-      if (!sharedSchemaNames.has(name)) continue
+      if (!sharedSchemaNames.has(name) && !reusedSchemaNames.has(name)) continue
 
       const schemaId = sharedSchemas.get(name)
       if (!schemaId) {
         diagnostics.push({ severity: 'warning', file: entry.spec, message: `Cannot derive component for schema ${name}, skipping` })
         continue
       }
+
+      if (reusedSchemaNames.has(name)) {
+        // ADR-009b rule 2: shape-drift warning — surface contract drift instead of
+        // silently merging it. Never create a duplicate/inline node for a reused schema.
+        const incomingFields = new Set(Object.keys(s.properties ?? {}))
+        const existingFields = existingSchemas.get(schemaId)
+        if (existingFields) {
+          const drift = shapeDriftDiagnostic(name, schemaId, incomingFields, existingFields, entry.spec)
+          if (drift) diagnostics.push(drift)
+        }
+        continue
+      }
+
       const [component] = schemaId.split('.')
       const node = makeNode(packConfig.constructs.requestSchema?.template ?? 'Schema', component, entry.spec, schemaId)
       nodes.push(node)
       emitFields(s, schemaId, 'fields', undefined, packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, new Map(), new Map())
+      existingSchemas.set(schemaId, new Set(Object.keys(s.properties ?? {})))
     }
   }
 
@@ -202,20 +228,41 @@ export function mapDocument(
   return { nodes, edges, diagnostics }
 }
 
+// Structural walk of $ref values — visits every object/array reachable from the
+// root and calls `visit` on any literal `#/components/schemas/{name}` ref found.
+// Never treats plain strings (descriptions, examples, defaults) as refs.
+function walkRefs(node: unknown, visit: (schemaName: string) => void): void {
+  if (Array.isArray(node)) {
+    for (const item of node) walkRefs(item, visit)
+    return
+  }
+  if (typeof node !== 'object' || node === null) return
+
+  const obj = node as Record<string, unknown>
+  const ref = obj['$ref']
+  if (typeof ref === 'string' && ref.startsWith('#/components/schemas/')) {
+    visit(ref.slice('#/components/schemas/'.length))
+  }
+  for (const value of Object.values(obj)) {
+    walkRefs(value, visit)
+  }
+}
+
 function countSchemaOperationUsage(document: OpenAPIV3.Document): Map<string, number> {
   const counts = new Map<string, number>()
-  const schemaNames = Object.keys(document.components?.schemas ?? {})
+  const schemaNames = new Set(Object.keys(document.components?.schemas ?? {}))
   for (const [, pathItem] of Object.entries(document.paths ?? {})) {
     if (!pathItem) continue
     const methods = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options'] as const
     for (const method of methods) {
       const operation = (pathItem as Record<string, unknown>)[method] as OpenAPIV3.OperationObject | undefined
       if (!operation) continue
-      const opJson = JSON.stringify(operation)
-      for (const name of schemaNames) {
-        if (opJson.includes(`"#/components/schemas/${name}"`)) {
-          counts.set(name, (counts.get(name) ?? 0) + 1)
-        }
+      const referenced = new Set<string>()
+      walkRefs(operation, (name) => {
+        if (schemaNames.has(name)) referenced.add(name)
+      })
+      for (const name of referenced) {
+        counts.set(name, (counts.get(name) ?? 0) + 1)
       }
     }
   }
@@ -236,7 +283,9 @@ function collectAllSharedSchemaNames(document: OpenAPIV3.Document, opCounts: Map
       for (const sharedName of shared) {
         const sharedSchema = document.components?.schemas?.[sharedName]
         if (isRefSchema(sharedSchema)) continue
-        if (JSON.stringify(sharedSchema).includes(`"#/components/schemas/${candidateName}"`)) {
+        let references = false
+        walkRefs(sharedSchema, (name) => { if (name === candidateName) references = true })
+        if (references) {
           shared.add(candidateName)
           changed = true
           break
@@ -606,7 +655,7 @@ function deriveComponentForSchema(name: string, document: OpenAPIV3.Document, en
   if (directComponents.size === 1) return [...directComponents][0]
   for (const [schemaName, schema] of Object.entries(document.components?.schemas ?? {})) {
     if (schemaName === name || isRefSchema(schema)) continue
-    if (JSON.stringify(schema).includes(`"#/components/schemas/${name}"`)) {
+    if (referencesSchema(schema, name)) {
       const comp = deriveComponentForSchema(schemaName, document, entry, componentNameReplacements, visited)
       if (comp) return comp
     }
@@ -614,6 +663,8 @@ function deriveComponentForSchema(name: string, document: OpenAPIV3.Document, en
   return undefined
 }
 
-function referencesSchema(operation: OpenAPIV3.OperationObject, schemaName: string): boolean {
-  return JSON.stringify(operation).includes(`"#/components/schemas/${schemaName}"`)
+function referencesSchema(container: unknown, schemaName: string): boolean {
+  let found = false
+  walkRefs(container, (name) => { if (name === schemaName) found = true })
+  return found
 }

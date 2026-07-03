@@ -84,6 +84,38 @@ imports: []
     assert.throws(() => loadImportConfig(filePath), /Invalid import config/)
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
+
+  it('parses a valid edgeCasing value', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-config-'))
+    const filePath = path.join(tmpDir, 'imports.yaml')
+    fs.writeFileSync(filePath, `
+edgeCasing: match
+imports: []
+`)
+    const config = loadImportConfig(filePath)
+    assert.equal(config.edgeCasing, 'match')
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  it('leaves edgeCasing undefined when absent', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-config-'))
+    const filePath = path.join(tmpDir, 'imports.yaml')
+    fs.writeFileSync(filePath, `imports: []`)
+    const config = loadImportConfig(filePath)
+    assert.equal(config.edgeCasing, undefined)
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  it('throws on an invalid edgeCasing value', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-config-'))
+    const filePath = path.join(tmpDir, 'bad.yaml')
+    fs.writeFileSync(filePath, `
+edgeCasing: normalize
+imports: []
+`)
+    assert.throws(() => loadImportConfig(filePath), /edgeCasing must be "preserve" or "match"/)
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
 })
 
 describe('buildOpenAPIConfig', () => {
