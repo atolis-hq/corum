@@ -1458,6 +1458,127 @@ button {
 
 .graph-nav-link:hover { color: var(--ink-2); }
 
+/* Flat/Grouped layout mode toggle */
+.graph-layout-toggle {
+  display: flex;
+  gap: 4px;
+}
+
+/* External (cross-component) node cards, faded to de-emphasise */
+.graph-node-card.faded {
+  opacity: 0.5;
+}
+
+/* Focal node highlight: solid outline with a gentle glowing pulse */
+.graph-node-card.focal {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  animation: graph-focal-glow 2.4s ease-in-out infinite;
+}
+
+@keyframes graph-focal-glow {
+  0%, 100% { box-shadow: 0 0 6px 2px color-mix(in srgb, var(--accent) 45%, transparent); }
+  50% { box-shadow: 0 0 16px 5px color-mix(in srgb, var(--accent) 75%, transparent); }
+}
+
+/* Thread/aggregate scope popover */
+.graph-scope { position: relative; }
+
+.graph-scope-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 100;
+  background: var(--paper);
+  border: 1px solid var(--rule-2);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 240px;
+}
+
+.graph-scope-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.graph-scope-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-3);
+  width: 64px;
+  flex-shrink: 0;
+}
+
+.graph-scope-select {
+  font: inherit;
+  font-size: 11px;
+  flex: 1;
+  padding: 3px 6px;
+  border: 1px solid var(--rule-2);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.graph-scope-select:disabled { opacity: 0.5; }
+
+.graph-scope-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.graph-scope-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--paper-3);
+  color: var(--ink-2);
+  border: 1.5px solid var(--rule-2);
+  white-space: nowrap;
+}
+
+.graph-scope-pill-clear {
+  cursor: pointer;
+  color: var(--ink-3);
+  font-weight: 600;
+}
+
+.graph-scope-pill-clear:hover { color: var(--ink); }
+
+.graph-scope-count {
+  font-size: 11px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+/* Grouped-mode compound container card */
+.graph-group-card {
+  width: 100%;
+  height: 100%;
+  border: 1.5px dashed var(--ink-4);
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: var(--radius);
+  box-sizing: border-box;
+  padding: 6px 10px;
+}
+
+.graph-group-card-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+
 /* ── Dashboard ────────────────────────────────────── */
 
 .dashboard-hero {

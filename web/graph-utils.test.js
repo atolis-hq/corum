@@ -43,6 +43,44 @@ const { buildComponentMap, applyEdgeTypeFilter, getDisplayName } = graphUtils;
   const none = applyEdgeTypeFilter(edges, new Set([]));
   assert(none.length === 0, 'applyEdgeTypeFilter: empty set returns nothing');
 
+  const { computeConnectedComponents, filterThreadScope, filterOwnerScope } = graphUtils;
+
+  const ccAll = computeConnectedComponents(nodes, edges);
+  assert(ccAll.length === 1, 'computeConnectedComponents: fully linked graph is one component');
+  const ccSplit = computeConnectedComponents(nodes, [edges[0], edges[2]]);
+  assert(ccSplit.length === 2, 'computeConnectedComponents: removing bridge edge splits components');
+  const ccIsolated = computeConnectedComponents([...nodes, { id: 'lone.Node.x', template: 'X', component: 'lone' }], edges);
+  assert(ccIsolated.some(c => c.length === 1 && c[0] === 'lone.Node.x'), 'computeConnectedComponents: isolated node is own component');
+  const ccMerged = computeConnectedComponents(nodes, [edges[0], edges[2]], [{ from: 'orders.DomainModel.order', to: 'payments.DomainModel.payment' }]);
+  assert(ccMerged.length === 1, 'computeConnectedComponents: extraLinks merge components');
+
+  const splitEdges = [edges[0], edges[2]];
+  const scoped = filterThreadScope(nodes, splitEdges, { edgeType: 'reads', fromTemplate: 'RestAPI', toTemplate: null });
+  assert(scoped.threadCount === 2 && scoped.matchCount === 2, 'filterThreadScope: both threads have RestAPI reads');
+  const scopedNone = filterThreadScope(nodes, splitEdges, { edgeType: 'calls', fromTemplate: null, toTemplate: null });
+  assert(scopedNone.matchCount === 0 && scopedNone.nodeIds.size === 0, 'filterThreadScope: no matching threads yields empty set');
+  const scopedTo = filterThreadScope(nodes, splitEdges, { edgeType: 'reads', fromTemplate: null, toTemplate: 'DomainModel' });
+  assert(scopedTo.nodeIds.has('orders.RestAPI.ordersApi'), 'filterThreadScope: matching thread includes all its nodes');
+
+  const aggNodes = [
+    { id: 'a.T.agg', template: 'T', parentId: null },
+    { id: 'a.T.agg.ops.one', template: 'Op', parentId: 'a.T.agg' },
+    { id: 'a.T.agg.ops.two', template: 'Op', parentId: 'a.T.agg' },
+    { id: 'a.T.other', template: 'T', parentId: null },
+    { id: 'a.T.unrelated', template: 'T', parentId: null },
+  ];
+  const aggEdges = [
+    { id: 'ae1', from: 'a.T.agg.ops.one', to: 'a.T.other', type: 'reads' },
+    { id: 'ae2', from: 'a.T.unrelated', to: 'a.T.other', type: 'reads' },
+    { id: 'ae3', from: 'a.T.reader', to: 'a.T.agg', type: 'reads' },
+  ];
+  const aggScope = filterOwnerScope([...aggNodes, { id: 'a.T.reader', template: 'T', parentId: null }], aggEdges, 'a.T.agg');
+  assert(aggScope.has('a.T.agg.ops.one') && aggScope.has('a.T.agg.ops.two'), 'filterOwnerScope: keeps members');
+  assert(aggScope.has('a.T.agg'), 'filterOwnerScope: keeps the owner node itself');
+  assert(aggScope.has('a.T.other'), 'filterOwnerScope: keeps direct neighbours');
+  assert(aggScope.has('a.T.reader'), 'filterOwnerScope: keeps neighbours of the owner node');
+  assert(!aggScope.has('a.T.unrelated'), 'filterOwnerScope: drops unrelated nodes');
+
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);
 })();
