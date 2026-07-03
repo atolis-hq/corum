@@ -15,13 +15,17 @@ const { buildNavTree, buildOverlayIndicatorIds } = window.CorumNav;
 const { parseRoute, buildRoute } = window.CorumRouter;
 const { SearchModal } = window.CorumSearch;
 
-const PANEL_EDGE_TYPES = new Set(['triggers', 'produces', 'calls', 'implements']);
+// uses-type is excluded here: it's the auto-generated type-reference edge
+// (schema/field-level), surfaced via SchemaCard node-ref links and the
+// includedSchemaNodes panel instead of the root-to-root Connections list.
+const PANEL_EDGE_TYPES = new Set(['triggers', 'produces', 'calls', 'implements', 'reads']);
 
 const EDGE_TYPE_STYLES = {
   triggers: { background: '#fef3c7', color: '#b45309' },
   produces: { background: '#ccfbf1', color: '#0f766e' },
   calls: { background: '#ede9fe', color: '#6d28d9' },
   implements: { background: '#f1f5f9', color: '#475569' },
+  reads: { background: '#dbeafe', color: '#1d4ed8' },
 };
 
 function classifyEdges(edges, clusterIds) {
@@ -808,7 +812,7 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
     const overlayParam = overlayRefs && overlayRefs.length > 0
       ? '&' + overlayRefs.map(ref => `overlayRefs=${encodeURIComponent(ref)}`).join('&')
       : '';
-    fetch(`/api/cluster?nodeId=${encodeURIComponent(nodeId)}&includeEdges=maps-to,reads,triggers,produces,calls,implements${refParam}${overlayParam}`)
+    fetch(`/api/cluster?nodeId=${encodeURIComponent(nodeId)}&includeEdges=maps-to,reads,uses-type,triggers,produces,calls,implements${refParam}${overlayParam}`)
       .then(response => response.ok ? response.json() : Promise.reject(response.status))
       .then(setCluster)
       .catch(err => setError(String(err)));

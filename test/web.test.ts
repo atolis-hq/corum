@@ -1141,7 +1141,7 @@ describe('web server', () => {
       assert.match(app, /const refreshAllData = useCallback\(\(\) => \{/)
       assert.match(app, /eventSource\.addEventListener\('graph-reloaded', refreshAllData\)/)
       assert.match(app, /refreshToken/)
-      assert.match(app, /fetch\(`\/api\/cluster\?nodeId=\$\{encodeURIComponent\(nodeId\)\}&includeEdges=maps-to,reads,triggers,produces,calls,implements\$\{refParam\}\$\{overlayParam\}`\)/)
+      assert.match(app, /fetch\(`\/api\/cluster\?nodeId=\$\{encodeURIComponent\(nodeId\)\}&includeEdges=maps-to,reads,uses-type,triggers,produces,calls,implements\$\{refParam\}\$\{overlayParam\}`\)/)
     })
 
     it('app: SchemaCard receives allNodes including includedNodes', () => {
