@@ -181,6 +181,100 @@ Error shape: validation failures return the linter's diagnostic format (severity
 - Multi-session concurrency.
 - Thread primitives (`discussion`, `question`, etc.) attached to rename/collision events.
 
+## 14. Implementation notes — the tricky bits
+
+Precise guidance for the parts most likely to go wrong. Everything else in this spec is conventional.
+
+### 14a. Rename cascade algorithm
+
+Work against the `Graph` maps (`nodesById`, `edgesByFrom`, `edgesByTo`). **Validate everything before the first write** — all checks are pure reads, so a fully-validated operation needs no rollback. Never mutate a map while iterating it.
+
+```
+rename(graph, oldId, newName, recordTrail):
+  1. newId = replaceLastSegment(oldId, newName)
+     validate: segment grammar; graph.nodesById has no node with id == newId
+       or id starting `newId.`; warn (not error) if newId is a retired ID
+       in the alias map (see live-wins rule, 14b).
+  2. idMap = { oldId → newId } ∪ { d → newPrefix+rest : every descendant d }
+     (descendant = id starts with `oldId.`; exact-segment prefix, not string
+      prefix — `orders.x` must not match `orders.xy`).
+  3. affectedEdges = every edge whose from OR to is a key of idMap (exact
+     match only — edge endpoints are full IDs, prefix logic never applies here
+     because descendants are all in idMap already).
+  4. Apply, in this order:
+     a. remove affectedEdges from BOTH edgesByFrom and edgesByTo
+        (an edge with only its `to` rewritten still moves bucket in edgesByTo);
+     b. for each idMap entry: delete nodesById[old]; insert node with new id,
+        rewritten parentId (parentId is also in idMap when the parent moved);
+     c. rewrite endpoints via idMap, recompute edge.id = from__type__to,
+        reinsert into both indexes. Structural (generated) edges may instead
+        be dropped and regenerated from ownership — pick one strategy and
+        test both endpoints-rewritten and regenerated produce identical sets.
+  5. Trail (after step 4, so the new edge is not itself rewritten):
+     - append oldId to previousNames on the renamed node;
+     - insert edge {newId}__renamed-from__{oldId}.
+  6. Rename-back pruning: if newId appears in previousNames, this rename
+     restores a prior identity. Remove newId from previousNames and delete
+     the trail edge whose `to` == newId — otherwise step 4c has just produced
+     a self-loop ({newId}__renamed-from__{newId}) via the old trail edge whose
+     `from` was rewritten. Invariants: previousNames never contains the
+     current ID; no renamed-from edge is a self-loop.
+```
+
+Chain behaviour falls out of step 4c: `B__renamed-from__A` has `from = B ∈ idMap`, so it becomes `C__renamed-from__A` automatically. The retired `to` IDs are never in `idMap` (no live node has them) except in the rename-back case handled by step 6.
+
+### 14b. Alias map and resolution
+
+Build per branch graph from its own trail edges: for each `renamed-from` edge, `aliasMap[edge.to] = edge.from` (`from` is the live end). Resolution — **live always wins**:
+
+```
+resolveAlias(graph, id):
+  seen = {}
+  loop:
+    if graph.nodesById.has(id): return id          // live node wins outright
+    if id in seen: return id                        // cycle guard — give up
+    seen.add(id)
+    if aliasMap[id]: id = aliasMap[id]; continue    // exact hit
+    p = longest dot-boundary prefix of id with aliasMap[p]
+    if p: id = aliasMap[p] + id.slice(p.length); continue
+    return id                                       // unresolved — caller decides
+```
+
+Direction matters: you resolve *foreign* IDs through the *target* graph's map (`diff_branch`: branch IDs through the viewing/default graph's map; import: incoming IDs through the working graph's map). An unresolved ID is not an error — it is simply a genuinely new or unknown node.
+
+### 14c. Trail threshold set
+
+The session captures `defaultBranchIds: Set<string>` **once at session start** (node IDs of the default branch head; for file sources this is the committed graph, which is also the session base). Threshold check = set membership. Do not re-fetch per mutation — a moving default branch mid-session would make trail behaviour nondeterministic; head movement is handled at commit (§10).
+
+### 14d. Import reconciliation with aliases
+
+In the import pipeline, immediately before `diffNodes`: `incoming.id = resolveAlias(workingGraph, incoming.id)` (which also rewrites the IDs of the incoming node's children — apply the same prefix logic as 14a step 2). Ambiguity rule: if the incoming batch contains both a literal ID and another ID that resolves *to* it, keep the literal one authoritative, skip the resolution for the other, and emit a warning naming both. `previousNames` must be added to the `HUMAN_OWNED` preserved set in `mergeProperties` (rename it — it now holds system-owned keys too).
+
+### 14e. Squash guard and GraphSource extensions
+
+`GraphSource` needs two small, explicit extensions (both trivial for all three sources, but easy to miss):
+
+- `head(branch): Promise<string>` — current commit SHA (file source: a content hash or monotonic marker is sufficient for the §10 moved-head check).
+- `commit(..., { parentSha?, force? })` — commit whose parent is `parentSha` (for the squash) and force-push permission (remote only).
+
+Session records `baseSha = head(branch)` at start and every autosave WIP SHA it creates. At `commit_changes`:
+
+```
+shas = walk head(branch) back to baseSha (exclusive)
+if shas ⊆ sessionWipShas:              // guard holds
+    commit(final content, parentSha: baseSha, force: true)
+    on push failure: restore ref to the pre-squash WIP head (never leave
+    the branch pointing at an unpushed squash commit)
+else:                                   // external commit interleaved
+    normal commit on top; report "WIP checkpoints preserved"
+```
+
+The guard comparison must be by SHA set, not count — an external commit that touches nothing is still a guard failure.
+
+### 14f. `apply_cluster` replace-mode diff
+
+Diff document vs working graph **per owned section, matched by local name** (the YAML key). Present in both → update; only in document → create; only in graph → delete via §6 semantics. Never touch sections the template does not declare as owned, and never touch owned sections absent from the document in `merge` mode (in `replace` mode an absent section means "empty section" — delete all children; document this loudly in the tool description). The possible-rename warning fires per section when the same replace produces ≥1 delete and ≥1 create with the same template.
+
 ## Decision log
 
 | Decision | Choice |
