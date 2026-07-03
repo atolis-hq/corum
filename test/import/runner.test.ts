@@ -342,3 +342,83 @@ describe('import runner — existing tests unaffected', () => {
     assert.equal(graph.diagnostics.filter(d => d.severity === 'error').length, 0)
   })
 })
+
+describe('import runner — schema promotion (ADR-009b rule 4)', () => {
+  function moneySpec(operations: Record<string, unknown>): string {
+    return JSON.stringify({
+      openapi: '3.0.3',
+      info: { title: 'Orders API', version: '1.0' },
+      components: {
+        schemas: {
+          Money: { type: 'object', properties: { amount: { type: 'integer' } } },
+        },
+      },
+      paths: operations,
+    })
+  }
+
+  it('mechanically rewrites a hand-authored edge when a re-import promotes an inline schema to standalone', async () => {
+    const { graphDir, cleanup } = await setupGraphDir()
+    try {
+      const specPath = path.join(graphDir, 'money-spec.json')
+      const singleUsePaths = {
+        '/orders/create': {
+          post: {
+            operationId: 'createOrder',
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Money' } } } },
+            responses: {},
+          },
+        },
+      }
+      fs.writeFileSync(specPath, moneySpec(singleUsePaths))
+
+      const importConfig = (): ImportConfig => ({
+        imports: [{ adapter: 'openapi', spec: specPath, componentMapping: { strategy: 'uri-segment', segment: 0 } }],
+      })
+
+      await runImport(importConfig(), makeRuntimeConfig(graphDir))
+      const afterFirstImport = await loadGraph({ graphPath: graphDir })
+      assert.ok(
+        afterFirstImport.nodesById.has('orders.APIEndpoint.createOrder.schemas.Money'),
+        'Money should be inlined after the first import',
+      )
+
+      // Hand-author an edge pointing at the inline schema's field, simulating agent/UI-authored design links.
+      const edgesFile = path.join(graphDir, 'edges', 'money-test.edges.yaml')
+      fs.writeFileSync(edgesFile, [
+        'edges:',
+        '  - from: orders.DomainModel.order.schemas.order.fields.id',
+        '    to: orders.APIEndpoint.createOrder.schemas.Money.fields.amount',
+        '    type: maps-to',
+        '',
+      ].join('\n'))
+
+      // Second import: a new operation also references Money, pushing it over the 2+ usage threshold.
+      const twoUsePaths = {
+        ...singleUsePaths,
+        '/orders/refund': {
+          post: {
+            operationId: 'refundOrder',
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Money' } } } },
+            responses: {},
+          },
+        },
+      }
+      fs.writeFileSync(specPath, moneySpec(twoUsePaths))
+      const result = await runImport(importConfig(), makeRuntimeConfig(graphDir))
+      assert.ok(!result.diagnostics.some(d => d.severity === 'error'), `expected no errors: ${JSON.stringify(result.diagnostics)}`)
+
+      const finalGraph = await loadGraph({ graphPath: graphDir })
+      assert.ok(finalGraph.nodesById.has('orders.Schema.Money'), 'Money should be promoted to standalone')
+
+      const rewrittenEdges = (finalGraph.edgesByTo.get('orders.Schema.Money.fields.amount') ?? []).filter(e => e.type === 'maps-to')
+      assert.equal(rewrittenEdges.length, 1, 'hand-authored edge should have been rewritten to point at the new standalone field')
+      assert.equal(rewrittenEdges[0].from, 'orders.DomainModel.order.schemas.order.fields.id')
+
+      const staleEdges = (finalGraph.edgesByTo.get('orders.APIEndpoint.createOrder.schemas.Money.fields.amount') ?? []).filter(e => e.type === 'maps-to')
+      assert.equal(staleEdges.length, 0, 'no maps-to edge should still point at the old inline field')
+    } finally {
+      cleanup()
+    }
+  })
+})

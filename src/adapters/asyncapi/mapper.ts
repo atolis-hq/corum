@@ -243,12 +243,14 @@ export function mapDocument(
   entry: AsyncAPIImportEntry,
   packConfig: AdapterPackConfig,
   componentNameReplacements: ComponentNameReplacement[] = [],
+  existingSchemas: Map<string, Set<string>> = new Map(),
 ): MapResult {
   const nodes: Node[] = []
   const edges: Edge[] = []
   const diagnostics: Diagnostic[] = []
   const sharedSchemas = new Map<string, string>()
   const sourceSchemas = new Map<string, unknown>()
+  const reusedSchemaNames = new Set<string>()
 
   const rawDoc = document.json() as { components?: { schemas?: Record<string, unknown> } }
 
@@ -292,8 +294,17 @@ export function mapDocument(
     const component = schemaComponents.get(name) ?? 'shared'
     if (s.enum) {
       sharedSchemas.set(name, `${component}.EnumDefinition.${name}`)
-    } else if (sharedSchemaNames.has(name)) {
-      sharedSchemas.set(name, `${component}.Schema.${name}`)
+    } else {
+      const candidateId = `${component}.Schema.${name}`
+      // ADR-009b rule 1: reuse an existing standalone schema before inlining —
+      // never demote it, and never duplicate it, even if this document would
+      // otherwise treat it as single-use.
+      if (existingSchemas.has(candidateId)) {
+        sharedSchemas.set(name, candidateId)
+        reusedSchemaNames.add(name)
+      } else if (sharedSchemaNames.has(name)) {
+        sharedSchemas.set(name, candidateId)
+      }
     }
   }
 
@@ -315,10 +326,27 @@ export function mapDocument(
       continue
     }
 
-    if (!sharedSchemaNames.has(name)) continue
+    if (!sharedSchemaNames.has(name) && !reusedSchemaNames.has(name)) continue
     const [component] = registeredId.split('.')
+
+    if (reusedSchemaNames.has(name)) {
+      // ADR-009b rule 2: shape-drift warning — surface contract drift instead of
+      // silently merging it. Never create a duplicate/inline node for a reused schema.
+      const incomingFields = new Set(Object.keys(s.properties ?? {}))
+      const existingFields = existingSchemas.get(registeredId)
+      if (existingFields && !setsEqual(incomingFields, existingFields)) {
+        diagnostics.push({
+          severity: 'warning',
+          file: entry.spec,
+          message: `Schema "${name}" reused from existing standalone schema ${registeredId}, but its field set differs (shape drift): incoming [${[...incomingFields].sort().join(', ')}] vs existing [${[...existingFields].sort().join(', ')}]`,
+        })
+      }
+      continue
+    }
+
     nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, entry.spec, registeredId))
     emitFields(s, registeredId, 'fields', undefined, packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, new Map(), new Map())
+    existingSchemas.set(registeredId, new Set(Object.keys(s.properties ?? {})))
   }
 
   const seenMessages = new Map<string, string>()
@@ -434,6 +462,12 @@ function makeNode(template: string, component: string, specPath: string, id: str
 
 function refName(ref: string): string {
   return ref.split('/').pop() ?? ref
+}
+
+function setsEqual(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false
+  for (const value of a) if (!b.has(value)) return false
+  return true
 }
 
 function isRefSchema(schema: unknown): schema is { $ref: string } {

@@ -18,6 +18,14 @@ export interface AdapterContext {
   packConfig: AdapterPackConfig
   templates: Map<string, Template>
   componentNameReplacements: ComponentNameReplacement[]
+  /**
+   * ADR-009b rule 1: existing standalone schemas (`{component}.Schema.{name}`)
+   * mapped to their field names — from the target graph plus any already
+   * processed in this same import run. Adapters reuse-before-inline against
+   * this and mutate it in place when they create a new standalone schema, so
+   * later entries in the same run see it too.
+   */
+  existingSchemas?: Map<string, Set<string>>
 }
 
 export interface AdapterResult {

@@ -20,13 +20,40 @@ import { getTemplateSchema } from '../loader/template-props.js'
  *  - Edge property validation: edge.properties validated against the
  *    matching EdgeTypeDef's `properties` schema, using the same shallow
  *    validator as node properties.
+ *  - ADR-009b rule 5: flags an inline schema (`{rootId}.schemas.{name}`)
+ *    whose (component, name) matches an existing standalone schema
+ *    (`{component}.Schema.{name}`) — the order-dependent interim state
+ *    between an importer creating the inline copy and a later re-import
+ *    converging it via reuse-before-inline.
  */
 export function lintGraph(graph: Graph): Diagnostic[] {
   const diagnostics: Diagnostic[] = []
   lintNodeProperties(graph, diagnostics)
   lintEdgeTypeConstraints(graph, diagnostics)
   lintEdgeProperties(graph, diagnostics)
+  lintInlineStandaloneSchemaCollisions(graph, diagnostics)
   return diagnostics
+}
+
+function lintInlineStandaloneSchemaCollisions(graph: Graph, diagnostics: Diagnostic[]): void {
+  for (const node of graph.nodesById.values()) {
+    const parts = node.id.split('.')
+    // Only inline schema nodes themselves (`{rootId}.schemas.{name}`) — not their
+    // fields/descendants, and not standalone schemas (`{component}.Schema.{name}`).
+    if (parts.length < 3 || parts[parts.length - 2] !== 'schemas') continue
+
+    const name = parts[parts.length - 1]
+    const standaloneId = `${node.component}.Schema.${name}`
+    const standalone = graph.nodesById.get(standaloneId)
+    if (!standalone || standalone.state === 'removed') continue
+
+    diagnostics.push({
+      severity: 'warning',
+      file: approxFilePath(graph, node),
+      nodeId: node.id,
+      message: `inline schema '${node.id}' collides with existing standalone schema '${standaloneId}' — re-import to converge via reuse-before-inline`,
+    })
+  }
 }
 
 function lintNodeProperties(graph: Graph, diagnostics: Diagnostic[]): void {

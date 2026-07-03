@@ -448,3 +448,44 @@ describe('mapDocument — additionalProperties (Mapping nodes)', () => {
     )
   })
 })
+
+describe('mapDocument — reuse before inline (ADR-009b rule 1/3)', () => {
+  function makeSingleUseMoneyDoc(): any {
+    const moneySchema = { type: 'object', properties: { amount: { type: 'number' } } }
+    const message = {
+      name: () => 'OrderPlaced',
+      id: () => 'OrderPlaced',
+      tags: () => makeCollection([]),
+      hasHeaders: () => false,
+      json: () => ({ payload: { 'x-parser-schema-id': 'Money', ...moneySchema } }),
+    }
+    const op = {
+      action: () => 'send',
+      channels: () => makeCollection([{ address: () => 'orders.v1.order-placed' }]),
+      messages: () => makeCollection([message]),
+    }
+    return {
+      json: () => ({ components: { schemas: { Money: moneySchema } } }),
+      allOperations: () => makeCollection([op]),
+    }
+  }
+
+  it('references an existing standalone schema instead of inlining a single-use match', () => {
+    const existingSchemas = new Map<string, Set<string>>([
+      ['orders.Schema.Money', new Set(['amount'])],
+    ])
+    const { nodes } = mapDocument(makeSingleUseMoneyDoc(), ASYNCAPI_ENTRY, PACK_CONFIG, [], existingSchemas)
+
+    assert.ok(!nodes.some(n => n.id.endsWith('.schemas.Money')), 'must not inline a copy')
+    assert.ok(!nodes.some(n => n.id === 'orders.Schema.Money'), 'must not recreate the existing standalone node')
+
+    const event = nodes.find(n => n.id === 'orders.IntegrationEvent.OrderPlaced')
+    assert.equal(event!.properties.payload, 'orders.Schema.Money')
+  })
+
+  it('without an existing standalone schema, single-use still inlines as before', () => {
+    const { nodes } = mapDocument(makeSingleUseMoneyDoc(), ASYNCAPI_ENTRY, PACK_CONFIG)
+    assert.ok(nodes.some(n => n.id.endsWith('.schemas.Money')), 'expected inline copy')
+    assert.ok(!nodes.some(n => n.id === 'orders.Schema.Money'))
+  })
+})

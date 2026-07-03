@@ -7,6 +7,7 @@ import { getAdapter } from '../adapters/index.js'
 import { diffNodes } from '../reconcile/index.js'
 import { deduplicateResults } from './dedup.js'
 import type { EntryResult } from './dedup.js'
+import { buildExistingSchemaIndex, detectSchemaPromotions, rewritePromotedSchemaEdges } from './schema-promotion.js'
 import type { ImportConfig } from './config.js'
 import type { AdapterPackConfig } from '../adapters/index.js'
 import type { Diagnostic } from '../schema/index.js'
@@ -55,6 +56,11 @@ export async function runImport(
   // same design branch stay idempotent; a new branch starts from the default.
   const graph = await loadGraph({ source, ref: targetBranchExists ? targetBranch : defaultBranch })
 
+  // ADR-009b: snapshot of node identities before this run, and the shared
+  // reuse-before-inline index (target graph + same-run entries as they land).
+  const priorNodeIds = new Set(graph.nodesById.keys())
+  const existingSchemas = buildExistingSchemaIndex(graph)
+
   const entryResults: EntryResult[] = []
 
   for (const entry of config.imports) {
@@ -75,6 +81,7 @@ export async function runImport(
       packConfig,
       templates: graph.templates,
       componentNameReplacements: config.componentNameReplacements ?? [],
+      existingSchemas,
     })
     allDiagnostics.push(...result.diagnostics)
 
@@ -87,6 +94,14 @@ export async function runImport(
     const { results: deduped, diagnostics } = deduplicateResults(entryResults, config.deduplication)
     allDiagnostics.push(...diagnostics)
     entryResults.splice(0, entryResults.length, ...deduped)
+  }
+
+  const newlyCreatedSchemaIds = new Set<string>()
+  for (const er of entryResults) {
+    for (const node of er.nodes) {
+      const parts = node.id.split('.')
+      if (parts.length === 3 && parts[1] === 'Schema') newlyCreatedSchemaIds.add(node.id)
+    }
   }
 
   for (const er of entryResults) {
@@ -106,6 +121,11 @@ export async function runImport(
       }
     }
   }
+
+  // ADR-009b rule 4: mechanically rewrite edges when a schema was promoted
+  // inline → standalone by this run.
+  const promotions = detectSchemaPromotions(priorNodeIds, newlyCreatedSchemaIds)
+  rewritePromotedSchemaEdges(graph, promotions, allDiagnostics)
 
   const graphPath = runtimeConfig.kind === 'filesystem' ? runtimeConfig.graphPath : undefined
   const contentMap = serializeGraph(graph, { sourceGraphPath: graphPath, outputGraphPath: graphPath })
