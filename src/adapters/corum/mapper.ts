@@ -24,7 +24,11 @@ type SchemaOwnership =
   | { kind: 'unused' }
   | { kind: 'unresolved' }
 
-export function mapDocument(document: CorumInterchangeDocument, specPath: string): MapResult {
+export function mapDocument(
+  document: CorumInterchangeDocument,
+  specPath: string,
+  existingSchemas: Map<string, Set<string>> = new Map(),
+): MapResult {
   const nodes: Node[] = []
   const edges: Edge[] = []
   const diagnostics: Diagnostic[] = []
@@ -72,7 +76,7 @@ export function mapDocument(document: CorumInterchangeDocument, specPath: string
 
     if (schemaName) {
       const expanded = new Map<string, string>()
-      expandSchema(schemaName, normalizedNodeId, allSchemas, nodes, edges, specPath, component, expanded, refToNodeId, schemaComponents)
+      expandSchema(schemaName, normalizedNodeId, allSchemas, nodes, edges, specPath, component, expanded, refToNodeId, schemaComponents, existingSchemas, diagnostics)
     }
   }
 
@@ -96,16 +100,16 @@ export function mapDocument(document: CorumInterchangeDocument, specPath: string
         file: specPath,
         message: `Schema '${schemaName}' is only referenced by unresolved schema edges; keeping it under ${UNRESOLVED_COMPONENT}`,
       })
-      materializeStandaloneSchema(schemaName, UNRESOLVED_COMPONENT, allSchemas, nodes, edges, specPath, refToNodeId, schemaComponents)
+      materializeStandaloneSchema(schemaName, UNRESOLVED_COMPONENT, allSchemas, nodes, edges, specPath, refToNodeId, schemaComponents, existingSchemas, diagnostics)
       continue
     }
 
     if (ownership.kind === 'inline') {
-      expandSchema(schemaName, ownership.rootNodeId, allSchemas, nodes, edges, specPath, ownership.component, new Map(), refToNodeId, schemaComponents)
+      expandSchema(schemaName, ownership.rootNodeId, allSchemas, nodes, edges, specPath, ownership.component, new Map(), refToNodeId, schemaComponents, existingSchemas, diagnostics)
       continue
     }
 
-    materializeStandaloneSchema(schemaName, ownership.component, allSchemas, nodes, edges, specPath, refToNodeId, schemaComponents)
+    materializeStandaloneSchema(schemaName, ownership.component, allSchemas, nodes, edges, specPath, refToNodeId, schemaComponents, existingSchemas, diagnostics)
   }
 
   // Build case-insensitive fallback index to handle PascalCase/camelCase mismatches
@@ -363,6 +367,8 @@ function materializeStandaloneSchema(
   specPath: string,
   refToNodeId: Map<string, string>,
   schemaComponents: Map<string, string>,
+  existingSchemas: Map<string, Set<string>>,
+  diagnostics: Diagnostic[],
 ): string {
   const schemaLocalName = localSchemaName(schemaName)
   const schemaDef = allSchemas[schemaName] as { type?: string; properties?: Record<string, unknown>; required?: string[]; enum?: unknown[] } | undefined
@@ -398,12 +404,16 @@ function materializeStandaloneSchema(
     const required = Array.isArray(schemaDef?.required) && schemaDef.required.includes(fieldName)
     fieldNode.properties = resolveFieldProperties(
       fieldName, rawProp as Record<string, unknown>, required,
-      schemaId, schemaId, allSchemas, nodes, edges, specPath, component, expanded, localMappings, refToNodeId, schemaComponents,
+      schemaId, schemaId, allSchemas, nodes, edges, specPath, component, expanded, localMappings, refToNodeId, schemaComponents, existingSchemas, diagnostics,
     )
 
     nodes.push(fieldNode)
     edges.push(makeHasFieldEdge(schemaId, fieldId))
   }
+
+  // ADR-009b rule 1 support: register this newly-materialized standalone schema
+  // so later same-run entries (and expandSchema's reuse-before-inline check) see it.
+  existingSchemas.set(schemaId, new Set(Object.keys(schemaDef?.properties ?? {})))
 
   return schemaId
 }
@@ -419,6 +429,8 @@ function expandSchema(
   expanded: Map<string, string>,
   refToNodeId: Map<string, string>,
   schemaComponents: Map<string, string> = new Map(),
+  existingSchemas: Map<string, Set<string>> = new Map(),
+  diagnostics: Diagnostic[] = [],
 ): string {
   const existing = expanded.get(schemaName)
   if (existing) return existing
@@ -455,6 +467,27 @@ function expandSchema(
     return refToNodeId.get(schemaRef)!
   }
 
+  // ADR-009b rule 1: reuse an existing standalone schema before inlining it under
+  // this root — never create a duplicate copy of a schema that already stands
+  // alone (whether in the target graph or materialized earlier in this same run).
+  const reuseComponent = schemaComponents.get(schemaName) ?? component
+  const reuseCandidateId = `${reuseComponent}.Schema.${schemaLocalName}`
+  const existingFields = existingSchemas.get(reuseCandidateId)
+  if (existingFields) {
+    expanded.set(schemaName, reuseCandidateId)
+    if (!refToNodeId.has(schemaRef)) refToNodeId.set(schemaRef, reuseCandidateId)
+
+    const incomingFields = new Set(Object.keys(schemaDef?.properties ?? {}))
+    if (!setsEqual(incomingFields, existingFields)) {
+      diagnostics.push({
+        severity: 'warning',
+        file: specPath,
+        message: `Schema "${schemaName}" reused from existing standalone schema ${reuseCandidateId}, but its field set differs (shape drift): incoming [${[...incomingFields].sort().join(', ')}] vs existing [${[...existingFields].sort().join(', ')}]`,
+      })
+    }
+    return reuseCandidateId
+  }
+
   const schemaId = `${rootNodeId}.schemas.${schemaLocalName}`
   expanded.set(schemaName, schemaId)
 
@@ -475,7 +508,7 @@ function expandSchema(
 
     fieldNode.properties = resolveFieldProperties(
       fieldName, rawProp as Record<string, unknown>, required,
-      schemaId, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, localMappings, refToNodeId, schemaComponents,
+      schemaId, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, localMappings, refToNodeId, schemaComponents, existingSchemas, diagnostics,
     )
 
     nodes.push(fieldNode)
@@ -500,13 +533,15 @@ function resolveFieldProperties(
   localMappings: Map<string, string>,
   refToNodeId: Map<string, string>,
   schemaComponents: Map<string, string>,
+  existingSchemas: Map<string, Set<string>>,
+  diagnostics: Diagnostic[],
 ): Record<string, unknown> {
   const nullable = !required
 
   if (typeof prop.$ref === 'string') {
     const refName = schemaRefName(prop.$ref)
     if (refName) {
-      const refId = expandSchema(refName, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, refToNodeId, schemaComponents)
+      const refId = expandSchema(refName, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, refToNodeId, schemaComponents, existingSchemas, diagnostics)
       return { $ref: refId, nullable, collection: 'one' }
     }
     return { type: 'string', nullable, collection: 'one' }
@@ -519,7 +554,7 @@ function resolveFieldProperties(
     if (items && typeof items.$ref === 'string') {
       const refName = schemaRefName(items.$ref as string)
       if (refName) {
-        const refId = expandSchema(refName, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, refToNodeId, schemaComponents)
+        const refId = expandSchema(refName, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, refToNodeId, schemaComponents, existingSchemas, diagnostics)
         return { $ref: refId, nullable, collection: 'array' }
       }
     }
@@ -531,7 +566,7 @@ function resolveFieldProperties(
   }
 
   if (type === 'object' && prop.additionalProperties !== undefined) {
-    createMapping(fieldName, prop.additionalProperties, schemaId, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, localMappings, refToNodeId, schemaComponents)
+    createMapping(fieldName, prop.additionalProperties, schemaId, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, localMappings, refToNodeId, schemaComponents, existingSchemas, diagnostics)
     return { $ref: `#/mappings/${fieldName}`, nullable, collection: 'one' }
   }
 
@@ -553,6 +588,8 @@ function createMapping(
   localMappings: Map<string, string>,
   refToNodeId: Map<string, string>,
   schemaComponents: Map<string, string>,
+  existingSchemas: Map<string, Set<string>>,
+  diagnostics: Diagnostic[],
 ): string {
   const existing = localMappings.get(mappingName)
   if (existing) return existing
@@ -570,7 +607,7 @@ function createMapping(
     if (typeof addl.$ref === 'string') {
       const refName = schemaRefName(addl.$ref)
       if (refName) {
-        props.$ref = expandSchema(refName, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, refToNodeId, schemaComponents)
+        props.$ref = expandSchema(refName, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, refToNodeId, schemaComponents, existingSchemas, diagnostics)
       } else {
         props.type = 'string'
       }
@@ -580,7 +617,7 @@ function createMapping(
       if (items && typeof items.$ref === 'string') {
         const refName = schemaRefName(items.$ref as string)
         if (refName) {
-          props.$ref = expandSchema(refName, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, refToNodeId, schemaComponents)
+          props.$ref = expandSchema(refName, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, refToNodeId, schemaComponents, existingSchemas, diagnostics)
         } else {
           props.type = 'string'
         }
@@ -589,7 +626,7 @@ function createMapping(
       }
     } else if (addl.type === 'object' && addl.additionalProperties !== undefined) {
       const innerName = `${mappingName}-values`
-      props.$ref = createMapping(innerName, addl.additionalProperties, schemaId, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, localMappings, refToNodeId, schemaComponents)
+      props.$ref = createMapping(innerName, addl.additionalProperties, schemaId, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, localMappings, refToNodeId, schemaComponents, existingSchemas, diagnostics)
     } else {
       props.type = mapScalar((addl.type as string) ?? 'string', addl.format as string | undefined)
     }
@@ -598,6 +635,12 @@ function createMapping(
   mappingNode.properties = props
   nodes.push(mappingNode)
   return mappingId
+}
+
+function setsEqual(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false
+  for (const value of a) if (!b.has(value)) return false
+  return true
 }
 
 function mapScalar(type: string, format: string | undefined): string {
