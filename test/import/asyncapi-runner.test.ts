@@ -207,6 +207,123 @@ describe('asyncapi import runner — wrapped-payload.yaml', () => {
   })
 })
 
+describe('asyncapi import runner — schema promotion (ADR-009b rule 4)', () => {
+  function moneySpec(channels: string): string {
+    return [
+      'asyncapi: 3.0.0',
+      'info:',
+      '  title: Money Events',
+      '  version: 1.0.0',
+      'channels:',
+      channels,
+      'components:',
+      '  schemas:',
+      '    Money:',
+      '      type: object',
+      '      properties:',
+      '        amount:',
+      '          type: integer',
+      '',
+    ].join('\n')
+  }
+
+  const singleUseChannels = [
+    '  orders.money-noted:',
+    '    address: orders.money-noted',
+    '    messages:',
+    '      event:',
+    '        name: MoneyNoted',
+    '        payload:',
+    '          $ref: \'#/components/schemas/Money\'',
+    'operations:',
+    '  money-noted:',
+    '    action: send',
+    '    channel:',
+    '      $ref: \'#/channels/orders.money-noted\'',
+    '    messages:',
+    '      - $ref: \'#/channels/orders.money-noted/messages/event\'',
+  ].join('\n')
+
+  const twoUseChannels = [
+    '  orders.money-noted:',
+    '    address: orders.money-noted',
+    '    messages:',
+    '      event:',
+    '        name: MoneyNoted',
+    '        payload:',
+    '          $ref: \'#/components/schemas/Money\'',
+    '  orders.money-updated:',
+    '    address: orders.money-updated',
+    '    messages:',
+    '      event:',
+    '        name: MoneyUpdated',
+    '        payload:',
+    '          $ref: \'#/components/schemas/Money\'',
+    'operations:',
+    '  money-noted:',
+    '    action: send',
+    '    channel:',
+    '      $ref: \'#/channels/orders.money-noted\'',
+    '    messages:',
+    '      - $ref: \'#/channels/orders.money-noted/messages/event\'',
+    '  money-updated:',
+    '    action: send',
+    '    channel:',
+    '      $ref: \'#/channels/orders.money-updated\'',
+    '    messages:',
+    '      - $ref: \'#/channels/orders.money-updated/messages/event\'',
+  ].join('\n')
+
+  it('mechanically rewrites a hand-authored edge when a re-import promotes an inline schema to standalone', async () => {
+    const { graphDir, cleanup } = await setupGraphDir()
+    try {
+      const specPath = path.join(graphDir, 'money-spec.yaml')
+      fs.writeFileSync(specPath, moneySpec(singleUseChannels))
+
+      const importConfig = (): ImportConfig => ({
+        imports: [{
+          adapter: 'asyncapi',
+          spec: specPath,
+          componentMapping: { strategy: 'channel-segment', separator: '.', segment: 0 },
+        } as AsyncAPIImportEntry],
+      })
+
+      await runImport(importConfig(), makeRuntimeConfig(graphDir))
+      const afterFirstImport = await loadGraph({ graphPath: graphDir })
+      assert.ok(
+        afterFirstImport.nodesById.has('orders.IntegrationEvent.MoneyNoted.schemas.Money'),
+        'Money should be inlined after the first import',
+      )
+
+      // Hand-author an edge pointing at the inline schema's field, simulating agent/UI-authored design links.
+      const edgesFile = path.join(graphDir, 'edges', 'money-test.edges.yaml')
+      fs.writeFileSync(edgesFile, [
+        'edges:',
+        '  - from: orders.DomainModel.order.schemas.order.fields.id',
+        '    to: orders.IntegrationEvent.MoneyNoted.schemas.Money.fields.amount',
+        '    type: maps-to',
+        '',
+      ].join('\n'))
+
+      fs.writeFileSync(specPath, moneySpec(twoUseChannels))
+      const result = await runImport(importConfig(), makeRuntimeConfig(graphDir))
+      assert.ok(!result.diagnostics.some(d => d.severity === 'error'), `expected no errors: ${JSON.stringify(result.diagnostics)}`)
+
+      const finalGraph = await loadGraph({ graphPath: graphDir })
+      assert.ok(finalGraph.nodesById.has('orders.Schema.Money'), 'Money should be promoted to standalone')
+
+      const rewrittenEdges = (finalGraph.edgesByTo.get('orders.Schema.Money.fields.amount') ?? []).filter(e => e.type === 'maps-to')
+      assert.equal(rewrittenEdges.length, 1, 'hand-authored edge should have been rewritten to point at the new standalone field')
+      assert.equal(rewrittenEdges[0].from, 'orders.DomainModel.order.schemas.order.fields.id')
+
+      const staleEdges = (finalGraph.edgesByTo.get('orders.IntegrationEvent.MoneyNoted.schemas.Money.fields.amount') ?? []).filter(e => e.type === 'maps-to')
+      assert.equal(staleEdges.length, 0, 'no maps-to edge should still point at the old inline field')
+    } finally {
+      cleanup()
+    }
+  })
+})
+
 describe('runImport — componentNameReplacements', () => {
   it('rewrites extracted AsyncAPI component name in event node ID', async () => {
     const { graphDir, cleanup } = await setupGraphDir()
