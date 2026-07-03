@@ -1141,7 +1141,7 @@ describe('web server', () => {
       assert.match(app, /const refreshAllData = useCallback\(\(\) => \{/)
       assert.match(app, /eventSource\.addEventListener\('graph-reloaded', refreshAllData\)/)
       assert.match(app, /refreshToken/)
-      assert.match(app, /fetch\(`\/api\/cluster\?nodeId=\$\{encodeURIComponent\(nodeId\)\}&includeEdges=maps-to,reads,triggers,produces,calls,implements\$\{refParam\}\$\{overlayParam\}`\)/)
+      assert.match(app, /fetch\(`\/api\/cluster\?nodeId=\$\{encodeURIComponent\(nodeId\)\}&includeEdges=maps-to,reads,uses-type,triggers,produces,calls,implements\$\{refParam\}\$\{overlayParam\}`\)/)
     })
 
     it('app: SchemaCard receives allNodes including includedNodes', () => {
@@ -1248,7 +1248,8 @@ describe('web server', () => {
       assert.match(graph, /pendingViewportRef\.current = \{ type: 'full' \};/)
       assert.match(graph, /const focalChanged = lastFocusedNodeIdRef\.current !== focalNodeId;/)
       assert.match(graph, /if \(focalChanged\) \{[\s\S]*pendingViewportRef\.current = \{ type: 'focus', nodeId: focalNodeId \};/)
-      assert.match(graph, /const measuredNode = reactFlowInstance\.getNode\(pending\.nodeId\);/)
+      assert.match(graph, /const measuredId = pending\.type === 'focus' \? pending\.nodeId : rfNodes\[0\]\?\.id;/)
+      assert.match(graph, /const measuredNode = measuredId \? reactFlowInstance\.getNode\(measuredId\) : null;/)
       assert.match(graph, /if \(!measuredNode\?\.width \|\| !measuredNode\?\.height\) \{/)
       assert.match(graph, /requestAnimationFrame\(fitPendingViewport\)/)
       assert.match(graph, /pending\.type === 'focus'/)
