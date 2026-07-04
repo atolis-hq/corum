@@ -37,7 +37,7 @@ import { getTemplateSchema } from '../loader/template-props.js'
 export function lintGraph(graph: Graph): Diagnostic[] {
   const diagnostics: Diagnostic[] = []
   lintNodeProperties(graph, diagnostics)
-  lintPreviousNames(graph, diagnostics)
+  lintPreviousIds(graph, diagnostics)
   lintEdgeTypeConstraints(graph, diagnostics)
   lintEdgeProperties(graph, diagnostics)
   lintHiddenEdgeLiveEnds(graph, diagnostics)
@@ -49,8 +49,6 @@ export function lintGraph(graph: Graph): Diagnostic[] {
  * System-owned node properties, valid on any node regardless of the owning
  * template's property schema (see design §11: `previousNames` rename trail).
  */
-const SYSTEM_NODE_PROPERTIES = new Set(['previousNames'])
-
 function getEdgeTypeDefs(graph: Graph): ReadonlyMap<string, EdgeTypeDef> {
   return graph.edgeTypes ?? CORE_EDGE_TYPE_MAP
 }
@@ -63,7 +61,7 @@ function getEdgeTypeDefs(graph: Graph): ReadonlyMap<string, EdgeTypeDef> {
 export function lintNode(graph: Graph, node: Node): Diagnostic[] {
   const diagnostics: Diagnostic[] = []
   lintNodePropertiesFor(graph, node, diagnostics)
-  lintPreviousNamesFor(graph, node, diagnostics)
+  lintPreviousIdsFor(graph, node, diagnostics)
   return diagnostics
 }
 
@@ -117,7 +115,6 @@ function lintNodePropertiesFor(graph: Graph, node: Node, diagnostics: Diagnostic
 
   if (!schema.additionalProperties) {
     for (const key of Object.keys(node.properties)) {
-      if (SYSTEM_NODE_PROPERTIES.has(key)) continue
       if (!(key in schema.properties)) {
         diagnostics.push({
           severity: 'warning',
@@ -159,14 +156,14 @@ function lintNodePropertiesFor(graph: Graph, node: Node, diagnostics: Diagnostic
  * Design §11: `previousNames` (rename trail) must be a list of valid node
  * IDs, each expected to differ from the node's current ID. Warnings only.
  */
-function lintPreviousNames(graph: Graph, diagnostics: Diagnostic[]): void {
+function lintPreviousIds(graph: Graph, diagnostics: Diagnostic[]): void {
   for (const node of graph.nodesById.values()) {
-    lintPreviousNamesFor(graph, node, diagnostics)
+    lintPreviousIdsFor(graph, node, diagnostics)
   }
 }
 
-function lintPreviousNamesFor(graph: Graph, node: Node, diagnostics: Diagnostic[]): void {
-  const value = node.properties.previousNames
+function lintPreviousIdsFor(graph: Graph, node: Node, diagnostics: Diagnostic[]): void {
+  const value = node.corum?.identity?.previousIds
   if (value === undefined) return
   const file = approxFilePath(graph, node)
 
@@ -175,7 +172,7 @@ function lintPreviousNamesFor(graph: Graph, node: Node, diagnostics: Diagnostic[
       severity: 'warning',
       file,
       nodeId: node.id,
-      message: `property 'previousNames' must be a list of node ids but got '${describeType(value)}'`,
+      message: `corum.identity.previousIds must be a list of node ids but got '${describeType(value)}'`,
     })
     return
   }
@@ -186,7 +183,7 @@ function lintPreviousNamesFor(graph: Graph, node: Node, diagnostics: Diagnostic[
         severity: 'warning',
         file,
         nodeId: node.id,
-        message: `'previousNames' entries must be node id strings but got '${describeType(entry)}'`,
+        message: `corum.identity.previousIds entries must be node id strings but got '${describeType(entry)}'`,
       })
       continue
     }
@@ -196,14 +193,14 @@ function lintPreviousNamesFor(graph: Graph, node: Node, diagnostics: Diagnostic[
         severity: 'warning',
         file,
         nodeId: node.id,
-        message: `'previousNames' entry is not a valid node id: ${idError}`,
+        message: `corum.identity.previousIds entry is not a valid node id: ${idError}`,
       })
     } else if (entry === node.id) {
       diagnostics.push({
         severity: 'warning',
         file,
         nodeId: node.id,
-        message: `'previousNames' contains the node's current id '${node.id}'`,
+        message: `corum.identity.previousIds contains the node's current id '${node.id}'`,
       })
     }
   }

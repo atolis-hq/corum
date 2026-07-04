@@ -105,6 +105,10 @@ function toClusterDocument(graph: Graph, root: Node): Record<string, unknown> {
     metadata,
   }
 
+  if (root.corum !== undefined) {
+    doc.corum = root.corum
+  }
+
   if (Object.keys(root.properties).length > 0) {
     doc.properties = orderNodeProperties(graph, root)
   }
@@ -126,6 +130,7 @@ function appendOwnedSections(graph: Graph, parent: Node, target: Record<string, 
       const childDoc: Record<string, unknown> = { ...orderNodeProperties(graph, child) }
       if (child.state !== parent.state) childDoc.state = child.state
       if (child.stability !== parent.stability) childDoc.stability = child.stability
+      if (child.corum !== undefined) childDoc.corum = child.corum
       appendOwnedSections(graph, child, childDoc)
       section[getLocalName(child.id, parent.id, sectionName)] = childDoc
     }

@@ -246,7 +246,7 @@ describe('import runner — rename-aware reconciliation (design §6a)', () => {
       assert.ok(renamed, 'renamed node survives the re-import')
       assert.notEqual(renamed.state, 'removed', 'renamed node is not orphan-removed')
       assert.ok(!after.nodesById.has(oldId), 'old name is not re-added')
-      assert.deepEqual(renamed.properties.previousNames, [oldId], 'previousNames survives the determined merge')
+      assert.deepEqual(renamed.corum?.identity?.previousIds, [oldId], 'previousIds survives the determined merge')
       assert.ok(
         (after.edgesByFrom.get(newId) ?? []).some(e => e.type === 'renamed-from' && e.to === oldId),
         'renamed-from trail edge survives the re-import',

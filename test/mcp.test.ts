@@ -946,6 +946,16 @@ describe('MCP write tools', () => {
       assert.equal(cluster.root.properties.description, 'Updated contact')
       assert.ok(cluster.descendants.some((n: Record<string, unknown>) => n.id === 'orders.Schema.customer.fields.phone'))
 
+      const renamedRead = await handlers.get_cluster({
+        branch: 'feat/edit',
+        node_id: 'orders.Schema.bill',
+        collapse_schemas: false,
+        format: 'json',
+      })
+      assert.equal(renamedRead.isError, undefined, renamedRead.content[0].text)
+      const renamedCluster = JSON.parse(renamedRead.content[0].text)
+      assert.deepEqual(renamedCluster.root.corum?.identity?.previousIds, ['orders.Schema.invoice'])
+
       const pending = await handlers.pending_changes({ format: 'json' })
       assert.equal(pending.isError, undefined, pending.content[0].text)
       const pendingResult = JSON.parse(pending.content[0].text)
@@ -963,7 +973,7 @@ describe('MCP write tools', () => {
       const reloaded = await loadGraph({ source, ref: 'feat/edit', strict: false })
       assert.ok(reloaded.nodesById.has('orders.Schema.bill'))
       assert.ok(reloaded.nodesById.has('orders.Schema.customer.fields.phone'))
-      assert.deepEqual(reloaded.nodesById.get('orders.Schema.bill')?.properties.previousNames, ['orders.Schema.invoice'])
+      assert.deepEqual(reloaded.nodesById.get('orders.Schema.bill')?.corum?.identity?.previousIds, ['orders.Schema.invoice'])
 
       const main = await loadGraph({ source, ref: 'main', strict: false })
       assert.ok(main.nodesById.has('orders.Schema.invoice'), 'default branch untouched')

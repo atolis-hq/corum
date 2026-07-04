@@ -174,19 +174,18 @@ function classifyPresence<T>(
 
 function nodesEqual(a: Node, b: Node): boolean {
   return deepEqual(comparableProperties(a), comparableProperties(b))
+    && deepEqual(comparableCorum(a), comparableCorum(b))
     && a.state === b.state
     && a.stability === b.stability
 }
 
 /**
- * `previousNames` is system-owned rename bookkeeping (design §3): a branch
+ * `corum.identity.previousIds` is system-owned rename bookkeeping (design §3): a branch
  * predating a rename lacks it, and that alone must not read as a content
  * difference — an untouched carry-over stays equal to the renamed node.
  */
 function comparableProperties(node: Node): Record<string, unknown> {
-  if (!('previousNames' in node.properties)) return node.properties
-  const { previousNames: _previousNames, ...rest } = node.properties
-  return rest
+  return node.properties
 }
 
 function edgesEqual(a: Edge, b: Edge): boolean {
@@ -194,6 +193,21 @@ function edgesEqual(a: Edge, b: Edge): boolean {
     && a.state === b.state
     && a.stability === b.stability
     && a.notes === b.notes
+}
+
+// Return the subset of Corum-owned bookkeeping that should count for overlay equality.
+// Rename history (`corum.identity.previousIds`) is intentionally excluded so pre/post-rename
+// branches do not look content-different when the user-authored node data is otherwise identical.
+function comparableCorum(node: Node): Node['corum'] | undefined {
+  if (node.corum === undefined) return undefined
+  const identity = node.corum.identity === undefined
+    ? undefined
+    : Object.fromEntries(Object.entries(node.corum.identity).filter(([key]) => key !== 'previousIds'))
+  const rest = Object.fromEntries(
+    Object.entries(node.corum).filter(([key]) => key !== 'identity'),
+  ) as Record<string, unknown>
+  if (identity !== undefined && Object.keys(identity).length > 0) rest.identity = identity
+  return Object.keys(rest).length > 0 ? rest as Node['corum'] : undefined
 }
 
 function deepEqual(a: unknown, b: unknown): boolean {

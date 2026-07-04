@@ -169,7 +169,7 @@ describe('alias-aware overlay and diff (design §5)', () => {
   // the retired ID (intentionally dangling).
   const trailEdge = edge('emailAddress__renamed-from__customerEmail', 'emailAddress', 'customerEmail', 'renamed-from')
   const renamedNode = (properties: Record<string, unknown> = {}) =>
-    node('emailAddress', { ...properties, previousNames: ['customerEmail'] })
+    ({ ...node('emailAddress', properties), corum: { identity: { previousIds: ['customerEmail'] } } })
 
   describe('computeDiff', () => {
     it('matches a branch node held under a retired ID instead of reporting add+remove', () => {

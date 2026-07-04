@@ -270,7 +270,7 @@ describe('applyCluster (replace mode)', () => {
     assert.equal(session.graph.nodesById.get(EMAIL)?.state, 'removed')
   })
 
-  it('replaces root and child properties wholesale but preserves previousNames', async () => {
+  it('replaces root and child properties wholesale but preserves previousIds', async () => {
     const session = await openSession()
     const rename = await session.renameNode(EMAIL, 'emailAddress')
     assert.equal(rename.recordedTrail, true)
@@ -284,7 +284,7 @@ describe('applyCluster (replace mode)', () => {
 
     const field = session.graph.nodesById.get(newId)!
     assert.equal(field.properties.nullable, undefined, 'replace is authoritative — unmentioned property dropped')
-    assert.deepEqual(field.properties.previousNames, [EMAIL], 'system-owned rename trail survives a replace')
+    assert.deepEqual(field.corum?.identity?.previousIds, [EMAIL], 'system-owned rename trail survives a replace')
     assert.equal(session.graph.nodesById.get(CUSTOMER)?.properties.description, 'Replaced')
   })
 

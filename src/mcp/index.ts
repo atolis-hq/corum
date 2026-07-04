@@ -122,6 +122,7 @@ function fullNode(node: Graph['nodesById'] extends Map<string, infer T> ? T : ne
     component: node.component,
     state: node.state,
     stability: node.stability,
+    ...(node.corum !== undefined ? { corum: node.corum } : {}),
     properties: node.properties,
     ...(includeProvenance ? withProvenance(node) : {}),
   }
@@ -1177,14 +1178,14 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
     },
     {
       name: 'rename_node',
-      description: 'Rename a node (replace the last segment of its ID with new_name). Descendant IDs, parentId fields, and every edge endpoint are rewritten automatically; renaming a cluster root also moves its file at commit. Trail: by default, a rename records previousNames plus a renamed-from edge iff the node exists on the default branch head (i.e. the old name is shared history); record_trail forces (true) or suppresses (false) the trail. This is the ONLY rename path — apply_cluster and imports never infer renames. Requires an open session (start_changes).',
+      description: 'Rename a node (replace the last segment of its ID with new_name). Descendant IDs, parentId fields, and every edge endpoint are rewritten automatically; renaming a cluster root also moves its file at commit. Trail: by default, a rename records corum.identity.previousIds plus a renamed-from edge iff the node exists on the default branch head (i.e. the old name is shared history); record_trail forces (true) or suppresses (false) the trail. This is the ONLY rename path — apply_cluster and imports never infer renames. Requires an open session (start_changes).',
       inputSchema: {
         type: 'object',
         required: ['id', 'new_name'],
         properties: {
           id: { type: 'string', description: 'Fully qualified node ID to rename' },
           new_name: { type: 'string', description: 'New last segment (ID grammar: [A-Za-z0-9_-], no dots).' },
-          record_trail: { type: 'boolean', description: 'Override the trail threshold: true forces recording previousNames + renamed-from; false suppresses it.' },
+          record_trail: { type: 'boolean', description: 'Override the trail threshold: true forces recording corum.identity.previousIds + renamed-from; false suppresses it.' },
           format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
           compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
         },

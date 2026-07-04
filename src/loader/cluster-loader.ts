@@ -25,6 +25,7 @@ type RootRecord = Record<string, unknown> & {
   template?: unknown
   schemaVersion?: unknown
   metadata?: unknown
+  corum?: unknown
   properties?: unknown
 }
 
@@ -75,7 +76,8 @@ export function loadClusters(
       ...(typeof meta.extractedFrom === 'string' && { extractedFrom: meta.extractedFrom }),
       ...(typeof meta.derivation === 'string' && { derivation: meta.derivation as Node['derivation'] }),
       ...(typeof meta.derivedBy === 'string' && { derivedBy: meta.derivedBy }),
-      properties: isRecord(record.properties) ? record.properties : {},
+      ...(extractCorum(record.corum, record.properties) !== undefined && { corum: extractCorum(record.corum, record.properties) }),
+      properties: isRecord(record.properties) ? stripLegacyBookkeeping(record.properties) : {},
     }
 
     addNode(result, root, key, diagnostics)
@@ -181,6 +183,7 @@ export function materialiseChildren(
         stability: asStability(value.stability, parent.stability, diagnostics, filePath, childId),
         schemaVersion: parent.schemaVersion,
         lastModifiedAt: parent.lastModifiedAt,
+        ...(extractCorum(value.corum, value) !== undefined && { corum: extractCorum(value.corum, value) }),
         properties: stripOwnedSections(value, childTemplateName, templates),
       }
 
@@ -228,8 +231,34 @@ function stripOwnedSections(
   const ownedSections = new Set(Object.keys(getOwnedSections(
     templates.get(templateName) ?? ({ name: templateName, info: { version: 'unknown' } }),
   )))
-  const nodeMetadata = new Set(['state', 'stability'])
+  const nodeMetadata = new Set(['state', 'stability', 'corum', 'previousNames'])
   return Object.fromEntries(Object.entries(value).filter(([key]) => !ownedSections.has(key) && !nodeMetadata.has(key)))
+}
+
+function stripLegacyBookkeeping(properties: Record<string, unknown>): Record<string, unknown> {
+  const { previousNames: _previousNames, ...rest } = properties
+  return rest
+}
+
+function extractCorum(corumValue: unknown, propertySource?: unknown): Node['corum'] | undefined {
+  const previousIds = extractPreviousIds(corumValue)
+  if (previousIds !== undefined) return { identity: { previousIds } }
+
+  if (isRecord(propertySource) && Array.isArray(propertySource.previousNames)) {
+    return {
+      identity: {
+        previousIds: propertySource.previousNames.filter((value): value is string => typeof value === 'string'),
+      },
+    }
+  }
+  return undefined
+}
+
+function extractPreviousIds(corumValue: unknown): string[] | undefined {
+  if (!isRecord(corumValue)) return undefined
+  const identity = corumValue.identity
+  if (!isRecord(identity) || !Array.isArray(identity.previousIds)) return undefined
+  return identity.previousIds.filter((value): value is string => typeof value === 'string')
 }
 
 function addNode(result: ClusterResult, node: Node, file: string, diagnostics: Diagnostic[]): void {

@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { parse as parseYaml } from 'yaml'
 import { loadPacks } from '../src/loader/pack-loader.js'
 import { loadClusters } from '../src/loader/cluster-loader.js'
 import { loadEdges } from '../src/loader/edge-loader.js'
@@ -103,6 +104,21 @@ describe('cluster loader (ContentMap)', () => {
 })
 
 describe('cluster loader', () => {
+  it('core node schema reserves corum.identity.previousIds on root nodes', () => {
+    const schemaPath = path.join(repoRoot, '.corum/packs/core/node.schema.yaml')
+    const schema = parseYaml(fs.readFileSync(schemaPath, 'utf-8')) as Record<string, unknown>
+    const properties = schema.properties as Record<string, unknown>
+    const corum = properties.corum as Record<string, unknown>
+    const corumProperties = corum.properties as Record<string, unknown>
+    const identity = corumProperties.identity as Record<string, unknown>
+    const identityProperties = identity.properties as Record<string, unknown>
+    const previousIds = identityProperties.previousIds as Record<string, unknown>
+
+    assert.ok(corum, 'root node schema should reserve a corum block')
+    assert.equal(corum.additionalProperties, false)
+    assert.equal((previousIds.items as Record<string, unknown>).type, 'string')
+  })
+
   it('materialises 151 nodes from sample-graph fixtures', async () => {
     const diagnostics: Diagnostic[] = []
     const result = await loadSampleClusters(diagnostics)
@@ -276,6 +292,58 @@ describe('cluster loader', () => {
     assert.equal(field.properties.type, 'uuid')
     assert.equal(field.properties.nullable, false)
     assert.equal(field.properties.collection, undefined)
+  })
+
+  it('loads corum.identity.previousIds into node bookkeeping', async () => {
+    const diagnostics: Diagnostic[] = []
+    const templates = loadPacks(await buildPackContentMap(), diagnostics)
+    const content: ContentMap = new Map([
+      ['components/orders/Schemas/bill.yaml', [
+        'id: orders.Schema.bill',
+        'template: Schema',
+        'schemaVersion: "1"',
+        'metadata:',
+        '  component: orders',
+        '  state: agreed',
+        '  stability: stable',
+        '  lastModifiedAt: "2026-07-04"',
+        'corum:',
+        '  identity:',
+        '    previousIds:',
+        '      - orders.Schema.invoice',
+      ].join('\n')],
+    ])
+
+    const result = loadClusters(content, templates, diagnostics)
+    const node = result.nodes.get('orders.Schema.bill')
+    assert.ok(node)
+    assert.deepEqual(node.corum?.identity?.previousIds, ['orders.Schema.invoice'])
+    assert.equal(node.properties.previousNames, undefined)
+  })
+
+  it('loads legacy properties.previousNames into the same canonical bookkeeping field during migration', async () => {
+    const diagnostics: Diagnostic[] = []
+    const templates = loadPacks(await buildPackContentMap(), diagnostics)
+    const content: ContentMap = new Map([
+      ['components/orders/Schemas/bill.yaml', [
+        'id: orders.Schema.bill',
+        'template: Schema',
+        'schemaVersion: "1"',
+        'metadata:',
+        '  component: orders',
+        '  state: agreed',
+        '  stability: stable',
+        '  lastModifiedAt: "2026-07-04"',
+        'properties:',
+        '  previousNames:',
+        '    - orders.Schema.invoice',
+      ].join('\n')],
+    ])
+
+    const result = loadClusters(content, templates, diagnostics)
+    const node = result.nodes.get('orders.Schema.bill')
+    assert.ok(node)
+    assert.deepEqual(node.corum?.identity?.previousIds, ['orders.Schema.invoice'])
   })
 
   it('warns and falls back on an invalid root node state', async () => {

@@ -40,7 +40,7 @@ export function replaceLastSegment(id: string, newName: string): string {
  * First-class rename (design §3, §14a). Rewrites the node ID, every
  * descendant ID (exact-segment prefix), parentId fields, and every edge
  * endpoint referencing an affected ID; optionally records the trail
- * (`previousNames` + `renamed-from` edge). Validates everything before the
+ * (`corum.identity.previousIds` + `renamed-from` edge). Validates everything before the
  * first write — a thrown MutationError leaves the graph untouched.
  */
 export function renameNode(
@@ -129,11 +129,11 @@ export function renameNode(
 
   // -- Step 5: trail (after step 4 so the new edge is not itself rewritten) -
   if (recordTrail) {
-    const previous = Array.isArray(node.properties.previousNames)
-      ? [...(node.properties.previousNames as string[])]
+    const previous = Array.isArray(node.corum?.identity?.previousIds)
+      ? [...node.corum.identity.previousIds]
       : []
     previous.push(oldId)
-    node.properties.previousNames = previous
+    node.corum = { ...(node.corum ?? {}), identity: { ...(node.corum?.identity ?? {}), previousIds: previous } }
 
     const trailEdge: Edge = {
       id: `${newId}__renamed-from__${oldId}`,
@@ -147,13 +147,18 @@ export function renameNode(
   }
 
   // -- Step 6: rename-back pruning ------------------------------------------
-  // Invariants: previousNames never contains the current ID; no renamed-from
+  // Invariants: previousIds never contains the current ID; no renamed-from
   // edge is a self-loop (step 4c may have produced one by rewriting the old
   // trail edge whose `from` was the restored identity).
-  if (Array.isArray(node.properties.previousNames)) {
-    const pruned = (node.properties.previousNames as string[]).filter(name => name !== newId)
-    if (pruned.length === 0) delete node.properties.previousNames
-    else node.properties.previousNames = pruned
+  if (Array.isArray(node.corum?.identity?.previousIds)) {
+    const pruned = node.corum.identity.previousIds.filter(name => name !== newId)
+    if (pruned.length === 0) {
+      if (node.corum?.identity) delete node.corum.identity.previousIds
+      if (node.corum?.identity && Object.keys(node.corum.identity).length === 0) delete node.corum.identity
+      if (node.corum && Object.keys(node.corum).length === 0) delete node.corum
+    } else {
+      node.corum = { ...(node.corum ?? {}), identity: { ...(node.corum?.identity ?? {}), previousIds: pruned } }
+    }
   }
   for (const edge of [...(graph.edgesByFrom.get(newId) ?? [])]) {
     if (edge.type === 'renamed-from' && edge.to === newId) removeEdgeFromIndexes(graph, edge)

@@ -62,7 +62,7 @@ describe('round-trip determinism (P2.4)', () => {
     }
   })
 
-  it('rename trail (renamed-from edge with dangling to + previousNames) survives serialize -> reload (design §3/§11)', async () => {
+  it('rename trail (renamed-from edge with dangling to + corum.identity.previousIds) survives serialize -> reload (design §3/§11)', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-trail-roundtrip-'))
     try {
       const graph = await loadGraph({ graphPath: fixtureGraphDir })
@@ -71,7 +71,7 @@ describe('round-trip determinism (P2.4)', () => {
       const retiredId = 'orders.DomainModel.orderLegacy'
       const node = graph.nodesById.get(nodeId)
       assert.ok(node)
-      node.properties.previousNames = [retiredId]
+      node.corum = { identity: { previousIds: [retiredId] } }
 
       const trailEdge: Edge = {
         id: `${nodeId}__renamed-from__${retiredId}`,
@@ -96,7 +96,7 @@ describe('round-trip determinism (P2.4)', () => {
 
       const reloadedNode = reloaded.nodesById.get(nodeId)
       assert.ok(reloadedNode)
-      assert.deepEqual(reloadedNode.properties.previousNames, [retiredId], 'previousNames must survive the round trip')
+      assert.deepEqual(reloadedNode.corum?.identity?.previousIds, [retiredId], 'previousIds must survive the round trip')
 
       const reloadedEdge = (reloaded.edgesByFrom.get(nodeId) ?? []).find(e => e.type === 'renamed-from')
       assert.ok(reloadedEdge, 'renamed-from edge must survive the round trip')

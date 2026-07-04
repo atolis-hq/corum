@@ -16,10 +16,10 @@ export interface AliasResolutionResult {
 /**
  * Properties preserved across `derivation: determined` re-imports. Holds both
  * human-owned keys (state, stability, notes) and system-owned bookkeeping
- * (`previousNames` rename trail, design §6a) — a re-import must never erase
+ * (`corum.identity.previousIds` rename trail, design §6a) — a re-import must never erase
  * rename history.
  */
-const PRESERVED_PROPERTIES = new Set(['state', 'stability', 'notes', 'previousNames'])
+const PRESERVED_PROPERTIES = new Set(['state', 'stability', 'notes'])
 
 export function diffNodes(
   incoming: Node[],
@@ -40,6 +40,7 @@ export function diffNodes(
     const merged: Node = {
       ...current,
       properties: mergeProperties(current.properties, node.properties, node.derivation),
+      corum: mergeCorum(current.corum, node.corum, node.derivation),
       extractedFrom: node.extractedFrom,
       derivation: node.derivation,
       derivedBy: node.derivedBy,
@@ -79,6 +80,23 @@ function mergeProperties(
 
 function nodesEqual(a: Node, b: Node): boolean {
   return JSON.stringify(a) === JSON.stringify(b)
+}
+
+function mergeCorum(
+  current: Node['corum'] | undefined,
+  incoming: Node['corum'] | undefined,
+  derivation: string | undefined,
+): Node['corum'] | undefined {
+  if (derivation === 'determined' && current?.identity?.previousIds !== undefined && incoming?.identity?.previousIds === undefined) {
+    return {
+      ...(incoming ?? {}),
+      identity: {
+        ...(incoming?.identity ?? {}),
+        previousIds: current.identity.previousIds,
+      },
+    }
+  }
+  return incoming ?? current
 }
 
 /**

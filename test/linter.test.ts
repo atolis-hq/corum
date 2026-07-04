@@ -229,31 +229,31 @@ describe('lintGraph — edge property validation', () => {
   })
 })
 
-describe('lintGraph — previousNames system property (design §11)', () => {
+describe('lintGraph — corum.identity.previousIds bookkeeping field (design §11)', () => {
   const strictTemplate = makeTemplate('Field', {
     properties: { type: 'object', additionalProperties: false, properties: { nullable: { type: 'boolean' } } },
   })
 
-  it('accepts previousNames on any node regardless of template schema', () => {
-    const node = makeNode({ id: 'orders.Field.emailAddress', template: 'Field', properties: { previousNames: ['orders.Field.customerEmail'] } })
+  it('accepts corum.identity.previousIds on any node regardless of template schema', () => {
+    const node = makeNode({ id: 'orders.Field.emailAddress', template: 'Field', corum: { identity: { previousIds: ['orders.Field.customerEmail'] } } })
     const diagnostics = lintGraph(makeGraph([strictTemplate], [node]))
     assert.equal(diagnostics.length, 0, `expected no diagnostics, got: ${JSON.stringify(diagnostics)}`)
   })
 
-  it('warns when previousNames is not a list', () => {
-    const node = makeNode({ id: 'orders.Field.x', template: 'Field', properties: { previousNames: 'orders.Field.old' } })
+  it('warns when corum.identity.previousIds is not a list', () => {
+    const node = makeNode({ id: 'orders.Field.x', template: 'Field', corum: { identity: { previousIds: 'orders.Field.old' as unknown as string[] } } })
     const diagnostics = lintGraph(makeGraph([strictTemplate], [node]))
     assert.ok(diagnostics.some(d => d.severity === 'warning' && d.nodeId === node.id && d.message.includes("must be a list")))
   })
 
-  it('warns on a previousNames entry that is not a valid node id', () => {
-    const node = makeNode({ id: 'orders.Field.x', template: 'Field', properties: { previousNames: ['not a valid id!'] } })
+  it('warns on a previousIds entry that is not a valid node id', () => {
+    const node = makeNode({ id: 'orders.Field.x', template: 'Field', corum: { identity: { previousIds: ['not a valid id!'] } } })
     const diagnostics = lintGraph(makeGraph([strictTemplate], [node]))
     assert.ok(diagnostics.some(d => d.severity === 'warning' && d.nodeId === node.id && d.message.includes('not a valid node id')))
   })
 
-  it('warns when previousNames contains the node current id', () => {
-    const node = makeNode({ id: 'orders.Field.x', template: 'Field', properties: { previousNames: ['orders.Field.x'] } })
+  it('warns when previousIds contains the node current id', () => {
+    const node = makeNode({ id: 'orders.Field.x', template: 'Field', corum: { identity: { previousIds: ['orders.Field.x'] } } })
     const diagnostics = lintGraph(makeGraph([strictTemplate], [node]))
     assert.ok(diagnostics.some(d => d.severity === 'warning' && d.nodeId === node.id && d.message.includes("current id 'orders.Field.x'")))
   })

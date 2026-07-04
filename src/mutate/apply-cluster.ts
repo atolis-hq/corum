@@ -42,6 +42,7 @@ export interface ApplyClusterOutcome {
 interface PlannedUpdate {
   node: Node
   properties: Record<string, unknown>
+  corum?: Node['corum']
   state?: State
   stability?: Stability
 }
@@ -121,6 +122,7 @@ export function applyClusterToGraph(
   const updatedIds: string[] = []
   for (const update of plan.updates) {
     update.node.properties = update.properties
+    update.node.corum = update.corum
     if (update.state !== undefined) update.node.state = update.state
     if (update.stability !== undefined) update.node.stability = update.stability
     update.node.lastModifiedAt = timestamp
@@ -178,6 +180,7 @@ function planNode(
         !ownedSectionNames.has(key) && key !== 'state' && key !== 'stability'))
 
   let newProps: Record<string, unknown>
+  let newCorum: Node['corum'] | undefined
   if (mode === 'merge') {
     newProps = { ...node.properties }
     if (docProps) {
@@ -186,20 +189,19 @@ function planNode(
         else newProps[key] = value
       }
     }
+    newCorum = node.corum
   } else {
     newProps = { ...(docProps ?? {}) }
-    // System-owned rename history survives a replace unless explicitly supplied.
-    if (node.properties.previousNames !== undefined && !('previousNames' in newProps)) {
-      newProps.previousNames = node.properties.previousNames
-    }
+    newCorum = node.corum
   }
 
   const changed =
     JSON.stringify(newProps) !== JSON.stringify(node.properties) ||
+    JSON.stringify(newCorum) !== JSON.stringify(node.corum) ||
     (state !== undefined && state !== node.state) ||
     (stability !== undefined && stability !== node.stability)
   if (changed) {
-    plan.updates.push({ node, properties: newProps, state, stability })
+    plan.updates.push({ node, properties: newProps, corum: newCorum, state, stability })
   }
 
   // -- owned sections ----------------------------------------------------------

@@ -1,11 +1,27 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import {
+
+type SmokeToolResponse = {
+  isError: boolean
+  text: string
+}
+
+type SmokeCallTool = (
+  name: string,
+  args?: Record<string, unknown>,
+) => Promise<SmokeToolResponse>
+
+type SmokeModule = {
+  parseWriteSmokeCliArgs: (args: string[]) => { keepTemp: boolean }
+  runFilesystemWriteSmoke: (callTool: SmokeCallTool) => Promise<void>
+  runGitWriteSmoke: (callTool: SmokeCallTool, options: { branch: string; label: string }) => Promise<void>
+}
+
+const {
   parseWriteSmokeCliArgs,
   runFilesystemWriteSmoke,
   runGitWriteSmoke,
-  type SmokeCallTool,
-} from '../src/mcp/write-smoke.js'
+} = await import(new URL('../../scripts/mcp-write-smoke.mjs', import.meta.url).href) as SmokeModule
 
 type Mode = 'filesystem' | 'git'
 const CREATED_NODE_ID = 'orders.Schema.smoke-write'
@@ -16,7 +32,7 @@ type State = {
   branch: string
   pendingJournal: string[]
   commitCount: number
-  nodes: Map<string, { description: string; previousNames?: string[] }>
+  nodes: Map<string, { description: string; previousIds?: string[] }>
   edges: Array<{ id: string; from: string; to: string; type: string; notes?: string }>
   sawCreatedNodeRead: boolean
 }
@@ -78,8 +94,8 @@ function makeCallTool(mode: Mode): { callTool: SmokeCallTool; calls: string[]; s
             id,
             properties: {
               description: node.description,
-              ...(node.previousNames ? { previousNames: node.previousNames } : {}),
             },
+            ...(node.previousIds ? { corum: { identity: { previousIds: node.previousIds } } } : {}),
           },
           descendants: id === 'orders.Schema.smoke-write'
             ? [{ id: `${id}.fields.status`, properties: { type: 'string' } }]
@@ -102,7 +118,7 @@ function makeCallTool(mode: Mode): { callTool: SmokeCallTool; calls: string[]; s
         const node = state.nodes.get(oldId)
         assert.ok(node, `unknown rename node in stub: ${oldId}`)
         state.nodes.delete(oldId)
-        state.nodes.set(newId, { description: node.description, previousNames: [oldId] })
+        state.nodes.set(newId, { description: node.description, previousIds: [oldId] })
         state.edges = state.edges.map(edge => ({
           ...edge,
           from: edge.from === oldId ? newId : edge.from,
@@ -153,7 +169,7 @@ describe('MCP write smoke scenarios', () => {
     await runFilesystemWriteSmoke(callTool)
 
     assert.equal(state.nodes.get('orders.Schema.smoke-write')?.description, 'Discard persists')
-    assert.deepEqual(state.nodes.get('orders.Schema.bill')?.previousNames, ['orders.Schema.invoice'])
+    assert.deepEqual(state.nodes.get('orders.Schema.bill')?.previousIds, ['orders.Schema.invoice'])
     assert.ok(state.edges.some(edge => edge.id === 'orders.Schema.bill__uses-type__orders.Schema.smoke-write'))
     assert.ok(calls.includes('create_node'))
     assert.ok(calls.includes('create_edge'))
@@ -168,7 +184,7 @@ describe('MCP write smoke scenarios', () => {
 
     assert.equal(state.commitCount, 2)
     assert.equal(state.nodes.get('orders.Schema.smoke-write')?.description, 'Edited twice')
-    assert.deepEqual(state.nodes.get('orders.Schema.bill')?.previousNames, ['orders.Schema.invoice'])
+    assert.deepEqual(state.nodes.get('orders.Schema.bill')?.previousIds, ['orders.Schema.invoice'])
     assert.ok(state.edges.some(edge => edge.id === 'orders.Schema.bill__uses-type__orders.Schema.smoke-write'))
     assert.equal(calls[0], 'start_changes')
     assert.equal(calls.filter(name => name === 'commit_changes').length, 2)

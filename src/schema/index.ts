@@ -23,6 +23,14 @@ export interface EdgeTypeDef {
   hidden?: boolean
 }
 
+export interface NodeCorumIdentity {
+  previousIds?: string[]
+}
+
+export interface NodeCorum {
+  identity?: NodeCorumIdentity
+}
+
 export interface Node {
   id: string
   template: string
@@ -36,6 +44,7 @@ export interface Node {
   extractedFrom?: string
   derivation?: 'determined' | 'inferred' | 'manual'
   derivedBy?: string
+  corum?: NodeCorum
   properties: Record<string, unknown>
 }
 

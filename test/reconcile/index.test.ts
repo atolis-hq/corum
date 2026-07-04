@@ -133,9 +133,10 @@ describe('diffNodes', () => {
     assert.deepEqual(toUpdate[0].properties.parameters, newParams)
   })
 
-  it('preserves previousNames through determined re-imports', () => {
+  it('preserves previousIds through determined re-imports', () => {
     const original = makeNode('orders.APIEndpoint.createOrder', {
-      properties: { method: 'POST', previousNames: ['orders.APIEndpoint.create'] },
+      properties: { method: 'POST' },
+      corum: { identity: { previousIds: ['orders.APIEndpoint.create'] } },
     })
     const incoming = makeNode('orders.APIEndpoint.createOrder', {
       derivation: 'determined',
@@ -145,7 +146,7 @@ describe('diffNodes', () => {
     const { toUpdate } = diffNodes([incoming], existing, './specs/orders.yaml')
     assert.equal(toUpdate.length, 1)
     assert.equal(toUpdate[0].properties.method, 'PUT')
-    assert.deepEqual(toUpdate[0].properties.previousNames, ['orders.APIEndpoint.create'])
+    assert.deepEqual(toUpdate[0].corum?.identity?.previousIds, ['orders.APIEndpoint.create'])
   })
 })
 
@@ -154,7 +155,7 @@ describe('resolveIncomingAliases', () => {
   const NEW_ID = 'orders.APIEndpoint.createOrder'
 
   function renamedGraph(): Graph {
-    const live = makeNode(NEW_ID, { properties: { previousNames: [OLD_ID] } })
+    const live = makeNode(NEW_ID, { corum: { identity: { previousIds: [OLD_ID] } } })
     return makeGraph([live], [makeEdge(NEW_ID, 'renamed-from', OLD_ID)])
   }
 

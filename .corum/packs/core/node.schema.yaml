@@ -127,6 +127,21 @@ properties:
           e.g. adapter:openapi, extractor:treesitter, linker:llm.
           Omitted for human-authored nodes.
 
+  corum:
+    type: object
+    additionalProperties: false
+    description: Reserved Corum-owned bookkeeping namespace.
+    properties:
+      identity:
+        type: object
+        additionalProperties: false
+        properties:
+          previousIds:
+            type: array
+            items:
+              type: string
+            description: Prior full node IDs for this node, oldest first.
+
   properties:
     type: object
     description: Template-defined properties validated against the template's properties schema.

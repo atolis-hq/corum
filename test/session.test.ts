@@ -182,7 +182,7 @@ describe('working session (file source)', () => {
     const reloaded = await loadGraph({ source, strict: false })
     const client = reloaded.nodesById.get('orders.Schema.client')
     assert.ok(client)
-    assert.deepEqual(client.properties.previousNames, [CUSTOMER])
+    assert.deepEqual(client.corum?.identity?.previousIds, [CUSTOMER])
     assert.ok(reloaded.nodesById.has('orders.Schema.client.fields.email'), 'descendants renamed with the root')
   })
 
@@ -256,7 +256,7 @@ describe('working session (file source)', () => {
     assert.equal(rename.recordedTrail, false, 'node not on the default branch head at session start')
     const sketch = session.graph.nodesById.get('orders.Schema.sketch')
     assert.ok(sketch)
-    assert.equal(sketch.properties.previousNames, undefined)
+    assert.equal(sketch.corum?.identity?.previousIds, undefined)
 
     const rename2 = await session.renameNode(INVOICE, 'bill')
     assert.equal(rename2.recordedTrail, true, 'default-branch node records a trail')
@@ -501,7 +501,7 @@ describe('working session (local git source)', () => {
 
     const reloaded = await loadGraph({ source, ref: 'feat/work', strict: false })
     assert.ok(reloaded.nodesById.has('orders.Schema.client'))
-    assert.deepEqual(reloaded.nodesById.get('orders.Schema.client')?.properties.previousNames, [CUSTOMER])
+    assert.deepEqual(reloaded.nodesById.get('orders.Schema.client')?.corum?.identity?.previousIds, [CUSTOMER])
     assert.ok(!reloaded.nodesById.has(CUSTOMER))
 
     // Default branch untouched.

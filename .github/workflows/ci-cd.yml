@@ -17,6 +17,7 @@ jobs:
           node-version: '24'
       - run: npm ci
       - run: npm test
+      - run: npm run mcp:write-smoke
 
   tag:
     needs: test

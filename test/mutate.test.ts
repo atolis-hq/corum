@@ -166,7 +166,7 @@ describe('renameNode', () => {
 
     // trail recorded
     const renamed = graph.nodesById.get(newSchemaId)!
-    assert.deepEqual(renamed.properties.previousNames, [SCHEMA])
+    assert.deepEqual(renamed.corum?.identity?.previousIds, [SCHEMA])
     const trail = (graph.edgesByFrom.get(newSchemaId) ?? []).find(e => e.type === 'renamed-from')
     assert.ok(trail)
     assert.equal(trail.to, SCHEMA)
@@ -191,7 +191,7 @@ describe('renameNode', () => {
   it('records no trail when recordTrail is false', () => {
     const graph = makeRenameFixture()
     const { newId } = renameNode(graph, SCHEMA, 'client', false)
-    assert.equal(graph.nodesById.get(newId)!.properties.previousNames, undefined)
+    assert.equal(graph.nodesById.get(newId)!.corum?.identity?.previousIds, undefined)
     assert.ok(!(graph.edgesByFrom.get(newId) ?? []).some(e => e.type === 'renamed-from'))
   })
 
@@ -230,7 +230,7 @@ describe('renameNode', () => {
     assert.ok(graph.nodesById.has(SCHEMA), 'other took the retired name')
   })
 
-  it('chains: previousNames ordered oldest first, trail edges re-point to the live id', () => {
+  it('chains: previousIds ordered oldest first, trail edges re-point to the live id', () => {
     const graph = makeRenameFixture()
     renameNode(graph, SCHEMA, 'client', true)
     const { newId } = renameNode(graph, `${ROOT}.schemas.client`, 'consumer', true)
@@ -238,7 +238,7 @@ describe('renameNode', () => {
     const consumerId = `${ROOT}.schemas.consumer`
     assert.equal(newId, consumerId)
     const node = graph.nodesById.get(consumerId)!
-    assert.deepEqual(node.properties.previousNames, [SCHEMA, `${ROOT}.schemas.client`])
+    assert.deepEqual(node.corum?.identity?.previousIds, [SCHEMA, `${ROOT}.schemas.client`])
 
     const trails = (graph.edgesByFrom.get(consumerId) ?? []).filter(e => e.type === 'renamed-from')
     assert.deepEqual(
@@ -249,16 +249,16 @@ describe('renameNode', () => {
     assertIndexIntegrity(graph)
   })
 
-  it('rename-back prunes previousNames and never leaves a self-loop trail edge', () => {
+  it('rename-back prunes previousIds and never leaves a self-loop trail edge', () => {
     const graph = makeRenameFixture()
     renameNode(graph, SCHEMA, 'client', true)
     const { newId } = renameNode(graph, `${ROOT}.schemas.client`, 'customer', true)
 
     assert.equal(newId, SCHEMA)
     const node = graph.nodesById.get(SCHEMA)!
-    const previousNames = node.properties.previousNames as string[]
-    assert.ok(!previousNames.includes(SCHEMA), 'previousNames never contains the current id')
-    assert.deepEqual(previousNames, [`${ROOT}.schemas.client`])
+    const previousIds = node.corum?.identity?.previousIds as string[]
+    assert.ok(!previousIds.includes(SCHEMA), 'previousIds never contains the current id')
+    assert.deepEqual(previousIds, [`${ROOT}.schemas.client`])
 
     const trails = allEdges(graph).filter(e => e.type === 'renamed-from')
     assert.ok(trails.every(e => e.from !== e.to), 'no self-loop renamed-from edges')
