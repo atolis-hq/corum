@@ -229,6 +229,76 @@ describe('lintGraph — edge property validation', () => {
   })
 })
 
+describe('lintGraph — previousNames system property (design §11)', () => {
+  const strictTemplate = makeTemplate('Field', {
+    properties: { type: 'object', additionalProperties: false, properties: { nullable: { type: 'boolean' } } },
+  })
+
+  it('accepts previousNames on any node regardless of template schema', () => {
+    const node = makeNode({ id: 'orders.Field.emailAddress', template: 'Field', properties: { previousNames: ['orders.Field.customerEmail'] } })
+    const diagnostics = lintGraph(makeGraph([strictTemplate], [node]))
+    assert.equal(diagnostics.length, 0, `expected no diagnostics, got: ${JSON.stringify(diagnostics)}`)
+  })
+
+  it('warns when previousNames is not a list', () => {
+    const node = makeNode({ id: 'orders.Field.x', template: 'Field', properties: { previousNames: 'orders.Field.old' } })
+    const diagnostics = lintGraph(makeGraph([strictTemplate], [node]))
+    assert.ok(diagnostics.some(d => d.severity === 'warning' && d.nodeId === node.id && d.message.includes("must be a list")))
+  })
+
+  it('warns on a previousNames entry that is not a valid node id', () => {
+    const node = makeNode({ id: 'orders.Field.x', template: 'Field', properties: { previousNames: ['not a valid id!'] } })
+    const diagnostics = lintGraph(makeGraph([strictTemplate], [node]))
+    assert.ok(diagnostics.some(d => d.severity === 'warning' && d.nodeId === node.id && d.message.includes('not a valid node id')))
+  })
+
+  it('warns when previousNames contains the node current id', () => {
+    const node = makeNode({ id: 'orders.Field.x', template: 'Field', properties: { previousNames: ['orders.Field.x'] } })
+    const diagnostics = lintGraph(makeGraph([strictTemplate], [node]))
+    assert.ok(diagnostics.some(d => d.severity === 'warning' && d.nodeId === node.id && d.message.includes("current id 'orders.Field.x'")))
+  })
+})
+
+describe('lintGraph — hidden edge types (design §11)', () => {
+  it('does not flag a hidden-type edge with a dangling to, even under edge-type constraints', () => {
+    const template = makeTemplate('Field', { 'edge-types': { outgoing: ['maps-to'] } })
+    const liveNode = makeNode({ id: 'orders.Field.new', template: 'Field' })
+    const edge: Edge = { id: 'orders.Field.new__renamed-from__orders.Field.old', from: 'orders.Field.new', to: 'orders.Field.old', type: 'renamed-from', state: 'proposed', stability: 'unstable' }
+
+    const diagnostics = lintGraph(makeGraph([template], [liveNode], [edge]))
+    assert.equal(diagnostics.length, 0, `expected no diagnostics, got: ${JSON.stringify(diagnostics)}`)
+  })
+
+  it('errors on a hidden-type edge whose from does not resolve to a live node', () => {
+    const liveNode = makeNode({ id: 'orders.Field.other', template: 'Field' })
+    const edge: Edge = { id: 'orders.Field.gone__renamed-from__orders.Field.old', from: 'orders.Field.gone', to: 'orders.Field.old', type: 'renamed-from', state: 'proposed', stability: 'unstable' }
+
+    const diagnostics = lintGraph(makeGraph([], [liveNode], [edge]))
+    assert.ok(
+      diagnostics.some(d => d.severity === 'error' && d.message.includes("requires a live 'from' node: orders.Field.gone")),
+      `expected a live-end error, got: ${JSON.stringify(diagnostics)}`,
+    )
+  })
+
+  it('does not apply the live-end rule to non-hidden edge types', () => {
+    const liveNode = makeNode({ id: 'orders.Field.other', template: 'Field' })
+    const edge: Edge = { id: 'orders.Field.gone__reads__orders.Field.old', from: 'orders.Field.gone', to: 'orders.Field.old', type: 'reads', state: 'proposed', stability: 'unstable' }
+
+    const diagnostics = lintGraph(makeGraph([], [liveNode], [edge]))
+    assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0)
+  })
+
+  it('respects hidden flags from pack-provided edge type definitions', () => {
+    const edgeTypes = new Map<string, EdgeTypeDef>([
+      ['pack-hidden', { name: 'pack-hidden', category: 'lineage', hidden: true }],
+    ])
+    const edge: Edge = { id: 'orders.Field.gone__pack-hidden__orders.Field.old', from: 'orders.Field.gone', to: 'orders.Field.old', type: 'pack-hidden', state: 'proposed', stability: 'unstable' }
+
+    const diagnostics = lintGraph(makeGraph([], [], [edge], edgeTypes))
+    assert.ok(diagnostics.some(d => d.severity === 'error' && d.message.includes("hidden edge type 'pack-hidden'")))
+  })
+})
+
 describe('lintGraph — inline/standalone schema name collisions (ADR-009b rule 5)', () => {
   it('flags an inline schema whose (component, name) matches an existing standalone schema', () => {
     const standalone = makeNode({ id: 'orders.Schema.Money', template: 'Schema' })

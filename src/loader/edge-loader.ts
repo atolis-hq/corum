@@ -42,12 +42,19 @@ export function loadEdges(
         continue
       }
 
+      // Hidden edge types (bookkeeping such as renamed-from) legitimately
+      // point their `to` at a retired ID, so no resolution is required there —
+      // but the `from` is the live end and MUST resolve (design §3/§11).
+      const hidden = edgeTypes.get(edgeRecord.type)?.hidden === true
+
       let unresolvedEndpoint = false
       if (!nodes.has(edgeRecord.from)) {
-        diagnostics.push({ severity: 'warning', file: key, message: `edge from unresolved node: ${edgeRecord.from}` })
+        diagnostics.push(hidden
+          ? { severity: 'error', file: key, message: `hidden edge type '${edgeRecord.type}' requires a live 'from' node: ${edgeRecord.from}` }
+          : { severity: 'warning', file: key, message: `edge from unresolved node: ${edgeRecord.from}` })
         unresolvedEndpoint = true
       }
-      if (!nodes.has(edgeRecord.to)) {
+      if (!hidden && !nodes.has(edgeRecord.to)) {
         diagnostics.push({ severity: 'warning', file: key, message: `edge to unresolved node: ${edgeRecord.to}` })
         unresolvedEndpoint = true
       }

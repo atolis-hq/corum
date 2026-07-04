@@ -14,7 +14,7 @@ const STRUCTURAL_EDGE_BY_ROLE: Partial<Record<string, EdgeType>> = {
   value: 'has-value',
 }
 
-type ClusterResult = {
+export type ClusterResult = {
   nodes: Map<string, Node>
   edgesByFrom: Map<string, Edge[]>
   edgesByTo: Map<string, Edge[]>
@@ -124,7 +124,13 @@ function getNodeRefTargets(node: Node, template: Template): string[] {
   return targets
 }
 
-function materialiseChildren(
+/**
+ * Materialise owned children of `parent` from a cluster-style `source`
+ * record into `result` (nodes + structural edges), recursively. Exported for
+ * the mutation engine's `createNode` (design §7/§8), which reuses the exact
+ * loader semantics for owned-child creation instead of reimplementing them.
+ */
+export function materialiseChildren(
   result: ClusterResult,
   parent: Node,
   clusterRoot: Node,

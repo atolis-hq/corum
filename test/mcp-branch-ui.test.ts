@@ -82,6 +82,8 @@ describe('MCP handlers - MultiGraphCache support', () => {
     async loadPackContent(): Promise<ContentMap> { return new Map() }
     async loadGraphContent(): Promise<ContentMap> { return new Map() }
     async commit(): Promise<void> { throw new Error('not implemented') }
+    async head(): Promise<string> { return 'fake-head' }
+    async log(): Promise<string[]> { return [] }
   }
 
   function makeFakeMulti(graph: Graph): MultiGraph {

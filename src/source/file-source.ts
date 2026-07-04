@@ -1,4 +1,5 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import * as git from 'isomorphic-git'
@@ -85,6 +86,29 @@ export class FileGraphSource implements GraphSource {
     } catch {
       return []
     }
+  }
+
+  /**
+   * Content hash of the graph directory's YAML files — a head marker for the
+   * moved-head check (design §10/§14e). Not a commit SHA: file sources keep
+   * no history.
+   */
+  async head(branch: string): Promise<string> {
+    const content = await this.loadGraphContent(branch)
+    const hash = createHash('sha256')
+    for (const key of [...content.keys()].sort((a, b) => a.localeCompare(b))) {
+      hash.update(key)
+      hash.update('\0')
+      hash.update(content.get(key)!)
+      hash.update('\0')
+    }
+    return hash.digest('hex')
+  }
+
+  /** File sources keep no history: `[head]` when the content moved since `sinceSha`, else `[]`. */
+  async log(branch: string, sinceSha: string): Promise<string[]> {
+    const current = await this.head(branch)
+    return current === sinceSha ? [] : [current]
   }
 
   async commit(branch: string, changes: ContentMap, message: string, options: CommitOptions = {}): Promise<void> {

@@ -13,7 +13,23 @@ import type {
 } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
 import { CORE_EDGE_TYPE_MAP } from '../loader/constants.js'
+import { buildAliasMap, resolveAlias } from '../mutate/alias.js'
 import { getDataTemplates, getStructuralTemplates, templateHasRole } from './roles.js'
+
+/**
+ * Lazily-built alias resolver over a graph's `renamed-from` trail edges
+ * (design §5): retired IDs resolve to their live node. Live IDs
+ * short-circuit without building the map; the map is built at most once per
+ * resolver — create one per query call, never per edge.
+ */
+export function createAliasResolver(graph: Graph): (id: string) => string {
+  let aliasMap: Map<string, string> | undefined
+  return (id: string) => {
+    if (graph.nodesById.has(id)) return id
+    aliasMap ??= buildAliasMap(graph)
+    return resolveAlias(graph, aliasMap, id)
+  }
+}
 
 /** Templates whose nodes are structural children, derived from declared template roles. */
 export function getStructuralNodeTemplates(graph: Graph): Set<string> {
@@ -277,10 +293,12 @@ export function expandExternalNodes(graph: Graph, externalIds: Iterable<string>)
 }
 
 export function getLinkedFields(graph: Graph, nodeId: string): LinkedFieldsResult {
-  const root = graph.nodesById.get(nodeId)
+  const resolveLive = createAliasResolver(graph)
+  const rootId = resolveLive(nodeId)
+  const root = graph.nodesById.get(rootId)
   if (!root) throw new QueryError(`Node not found: ${nodeId}`)
 
-  const prefix = `${nodeId}.`
+  const prefix = `${rootId}.`
   const ownedFieldIds = new Set(
     [...graph.nodesById.entries()]
       .filter(([id, node]) => id.startsWith(prefix) && templateHasRole(graph.templates, node.template, 'field'))
@@ -291,12 +309,19 @@ export function getLinkedFields(graph: Graph, nodeId: string): LinkedFieldsResul
   const nodeIds = new Set<string>()
   const seen = new Set<string>()
 
-  for (const fieldId of ownedFieldIds) {
-    for (const edge of graph.edgesByFrom.get(fieldId) ?? []) {
-      collectMapsTo(edge, edges, nodeIds, seen)
-    }
-    for (const edge of graph.edgesByTo.get(fieldId) ?? []) {
-      collectMapsTo(edge, edges, nodeIds, seen)
+  // Scan maps-to edges with alias-resolved endpoints (design §5): an edge
+  // still referencing a retired field ID links to the live field rather than
+  // dangling. Edges are returned as authored; node IDs are the live ones.
+  for (const edgeList of graph.edgesByFrom.values()) {
+    for (const edge of edgeList) {
+      if (edge.type !== 'maps-to' || seen.has(edge.id)) continue
+      const from = resolveLive(edge.from)
+      const to = resolveLive(edge.to)
+      if (!ownedFieldIds.has(from) && !ownedFieldIds.has(to)) continue
+      edges.push(edge)
+      seen.add(edge.id)
+      nodeIds.add(from)
+      nodeIds.add(to)
     }
   }
 
@@ -324,14 +349,6 @@ function findParent(graph: Graph, nodeId: string): string | undefined {
     endIdx -= 2
   }
   return undefined
-}
-
-function collectMapsTo(edge: Edge, edges: Edge[], nodeIds: Set<string>, seen: Set<string>): void {
-  if (edge.type !== 'maps-to' || seen.has(edge.id)) return
-  edges.push(edge)
-  nodeIds.add(edge.from)
-  nodeIds.add(edge.to)
-  seen.add(edge.id)
 }
 
 
@@ -504,6 +521,11 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
     dir: 'upstream' | 'downstream'
   }
 
+  // Alias resolution (design §5): retired IDs — stale start IDs and edge
+  // endpoints referencing pre-rename names — resolve to the live node instead
+  // of dangling. The resolver builds the alias map at most once per call.
+  const resolveLive = createAliasResolver(graph)
+
   const annotations = new Map<string, Annotation>()
   const originSets = new Map<string, Set<string>>()
 
@@ -527,7 +549,7 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
     return true
   }
 
-  const validStartIds = startNodeIds.filter(id => graph.nodesById.has(id))
+  const validStartIds = [...new Set(startNodeIds.map(resolveLive))].filter(id => graph.nodesById.has(id))
   const startSet = new Set(validStartIds)
 
   function runDownstream(): void {
@@ -541,15 +563,16 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
 
       for (const edge of graph.edgesByFrom.get(current.id) ?? []) {
         if (!edgeTypeSet.has(edge.type)) continue
-        const node = graph.nodesById.get(edge.to)
+        const toId = resolveLive(edge.to)
+        const node = graph.nodesById.get(toId)
         if (!node || !isIncluded(node)) continue
-        if (visited.has(edge.to)) {
-          originSets.get(edge.to)?.add(current.originId)
+        if (visited.has(toId)) {
+          originSets.get(toId)?.add(current.originId)
           continue
         }
-        visited.add(edge.to)
-        tryRecord(edge.to, current.originId, current.distance + 1, edge.type, current.id, 'downstream')
-        queue.push({ id: edge.to, originId: current.originId, distance: current.distance + 1 })
+        visited.add(toId)
+        tryRecord(toId, current.originId, current.distance + 1, edge.type, current.id, 'downstream')
+        queue.push({ id: toId, originId: current.originId, distance: current.distance + 1 })
       }
     }
   }
@@ -565,15 +588,16 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
 
       for (const edge of graph.edgesByTo.get(current.id) ?? []) {
         if (!inboundTypeSet.has(edge.type)) continue
-        const node = graph.nodesById.get(edge.from)
+        const fromId = resolveLive(edge.from)
+        const node = graph.nodesById.get(fromId)
         if (!node || !isIncluded(node)) continue
-        if (visited.has(edge.from)) {
-          originSets.get(edge.from)?.add(current.originId)
+        if (visited.has(fromId)) {
+          originSets.get(fromId)?.add(current.originId)
           continue
         }
-        visited.add(edge.from)
-        tryRecord(edge.from, current.originId, current.distance + 1, edge.type, current.id, 'upstream')
-        queue.push({ id: edge.from, originId: current.originId, distance: current.distance + 1 })
+        visited.add(fromId)
+        tryRecord(fromId, current.originId, current.distance + 1, edge.type, current.id, 'upstream')
+        queue.push({ id: fromId, originId: current.originId, distance: current.distance + 1 })
       }
 
       const parentId = findParent(graph, current.id)
@@ -598,20 +622,21 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
   const combinedSet = new Set([...startSet, ...resultNodeIds])
   const edges: Edge[] = []
   const seenEdgeIds = new Set<string>()
+  const nodesWithEdges = new Set<string>()
   for (const id of combinedSet) {
     for (const edge of graph.edgesByFrom.get(id) ?? []) {
       if (seenEdgeIds.has(edge.id) || !edgeTypeSet.has(edge.type)) continue
-      if (combinedSet.has(edge.from) && combinedSet.has(edge.to)) {
+      // Endpoints resolve through the alias map so an edge referencing a
+      // retired ID still connects to the live node it was traversed to.
+      const from = resolveLive(edge.from)
+      const to = resolveLive(edge.to)
+      if (combinedSet.has(from) && combinedSet.has(to)) {
         edges.push(edge)
         seenEdgeIds.add(edge.id)
+        nodesWithEdges.add(from)
+        nodesWithEdges.add(to)
       }
     }
-  }
-
-  const nodesWithEdges = new Set<string>()
-  for (const edge of edges) {
-    nodesWithEdges.add(edge.from)
-    nodesWithEdges.add(edge.to)
   }
   const prunedIds = new Set([...resultNodeIds].filter(id => nodesWithEdges.has(id)))
 
@@ -623,7 +648,9 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
       for (const edge of [...(graph.edgesByFrom.get(id) ?? []), ...(graph.edgesByTo.get(id) ?? [])]) {
         if (danglingSeenIds.has(edge.id) || seenEdgeIds.has(edge.id)) continue
         if (!edgeTypeSet.has(edge.type)) continue
-        const otherId = edge.from === id ? edge.to : edge.from
+        const from = resolveLive(edge.from)
+        const to = resolveLive(edge.to)
+        const otherId = from === id ? to : from
         if (!combinedSet.has(otherId)) {
           danglingEdges.push(edge)
           danglingSeenIds.add(edge.id)

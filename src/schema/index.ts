@@ -173,10 +173,26 @@ export interface BranchOverlay {
   edges: Map<string, OverlayEdge>
 }
 
+/**
+ * Emitted when a branch modifies a node under an ID the default branch has
+ * since renamed — the branch edits a retired name and should rebase or apply
+ * the rename before merging.
+ */
+export interface BranchDiffWarning {
+  kind: 'retired-name-edit'
+  /** The retired ID as held on the branch. */
+  branchId: string
+  /** The live ID it resolves to on the default branch. */
+  resolvedId: string
+  message: string
+}
+
 export interface BranchDiff {
   added: Node[]
   modified: Node[]
   removed: Node[]
+  /** Present only when at least one warning applies. */
+  warnings?: BranchDiffWarning[]
 }
 
 export interface MultiGraph {

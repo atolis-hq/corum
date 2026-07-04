@@ -4,7 +4,8 @@ import { loadGraph } from '../loader/index.js'
 import { isStructuralEdgeType } from '../graph/index.js'
 import { serializeGraph } from '../writer/graph-writer.js'
 import { getAdapter } from '../adapters/index.js'
-import { diffNodes } from '../reconcile/index.js'
+import { diffNodes, detectPossibleRenames, resolveIncomingAliases } from '../reconcile/index.js'
+import { buildAliasMap } from '../mutate/alias.js'
 import { deduplicateResults } from './dedup.js'
 import type { EntryResult } from './dedup.js'
 import { buildExistingSchemaIndex, detectSchemaPromotions, rewritePromotedSchemaEdges } from './schema-promotion.js'
@@ -97,6 +98,17 @@ export async function runImport(
     entryResults.splice(0, entryResults.length, ...deduped)
   }
 
+  // Design §6a: resolve incoming IDs through the target graph's rename-trail
+  // alias map before diffing, so specs still using retired names merge into
+  // the renamed nodes (reported as in-flight drift, not add+remove).
+  const aliasMap = buildAliasMap(graph)
+  for (const er of entryResults) {
+    const { nodes, edges, diagnostics } = resolveIncomingAliases(graph, aliasMap, er.nodes, er.edges, er.specPath)
+    er.nodes = nodes
+    er.edges = edges
+    allDiagnostics.push(...diagnostics)
+  }
+
   const newlyCreatedSchemaIds = new Set<string>()
   for (const er of entryResults) {
     for (const node of er.nodes) {
@@ -108,8 +120,11 @@ export async function runImport(
   // Merge every entry's nodes first, so casing resolution below sees the
   // fully-merged node set regardless of import order among entries.
   for (const er of entryResults) {
-    const { toAdd, toUpdate, toRemove } = diffNodes(er.nodes, graph.nodesById, er.specPath)
-    for (const node of [...toAdd, ...toUpdate, ...toRemove]) {
+    const diff = diffNodes(er.nodes, graph.nodesById, er.specPath)
+    // Design §6a: warning-only rename suggestion (delete+add, same parent +
+    // template). Renames stay explicit via rename_node.
+    allDiagnostics.push(...detectPossibleRenames(diff, er.specPath))
+    for (const node of [...diff.toAdd, ...diff.toUpdate, ...diff.toRemove]) {
       graph.nodesById.set(node.id, node)
     }
   }

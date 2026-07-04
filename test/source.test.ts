@@ -275,6 +275,44 @@ describe('FileGraphSource', () => {
     }
   })
 
+  it('head returns a stable content hash that changes when the graph content changes', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-file-source-head-'))
+    try {
+      const source = new FileGraphSource({ graphDir: tmpDir, defaultBranch: 'local' })
+      await source.commit('local', new Map([['graph.yaml', 'templatePacks: []\n']]), 'first', { replaceGraphContent: true })
+
+      const head1 = await source.head('local')
+      const head1Again = await source.head('local')
+      assert.equal(head1, head1Again, 'head must be deterministic for unchanged content')
+
+      await source.commit('local', new Map([
+        ['graph.yaml', 'templatePacks: []\n'],
+        ['components/orders/order.yaml', 'id: order\n'],
+      ]), 'second', { replaceGraphContent: true })
+      assert.notEqual(await source.head('local'), head1, 'head must move when content changes')
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('log returns [] when unchanged and [head] when the content moved', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-file-source-log-'))
+    try {
+      const source = new FileGraphSource({ graphDir: tmpDir, defaultBranch: 'local' })
+      await source.commit('local', new Map([['graph.yaml', 'templatePacks: []\n']]), 'first', { replaceGraphContent: true })
+      const base = await source.head('local')
+      assert.deepEqual(await source.log('local', base), [])
+
+      await source.commit('local', new Map([
+        ['graph.yaml', 'templatePacks: []\n'],
+        ['components/orders/order.yaml', 'id: order\n'],
+      ]), 'second', { replaceGraphContent: true })
+      assert.deepEqual(await source.log('local', base), [await source.head('local')])
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
   it('commit makes no git commit when nothing changed', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-file-source-git-noop-'))
     try {
@@ -590,5 +628,46 @@ describe('GitGraphSource write path', () => {
     const content = await source.loadGraphContent('feat/concurrent')
     assert.ok(content.has('components/orders/a.yaml'), 'first concurrent commit was lost')
     assert.ok(content.has('components/orders/b.yaml'), 'second concurrent commit was lost')
+  })
+
+  it('head returns the current commit SHA of a branch', async () => {
+    const source = new GitGraphSource({ localPath: tmpDir })
+    assert.equal(await source.head('main'), await git.resolveRef({ fs, dir: tmpDir, ref: 'main' }))
+  })
+
+  it('log walks from head back to a base SHA, exclusive, newest first', async () => {
+    const source = new GitGraphSource({ localPath: tmpDir })
+    await git.branch({ fs, dir: tmpDir, ref: 'feat/log-walk', checkout: false })
+    const base = await source.head('feat/log-walk')
+    assert.deepEqual(await source.log('feat/log-walk', base), [])
+
+    await source.commit('feat/log-walk', new Map([['components/orders/c.yaml', 'id: orders.DomainModel.c\n']]), 'add c')
+    const first = await source.head('feat/log-walk')
+    await source.commit('feat/log-walk', new Map([['components/orders/d.yaml', 'id: orders.DomainModel.d\n']]), 'add d')
+    const second = await source.head('feat/log-walk')
+
+    assert.deepEqual(await source.log('feat/log-walk', base), [second, first])
+  })
+
+  it('commit with parentSha writes a commit parented at the given SHA (squash)', async () => {
+    const source = new GitGraphSource({ localPath: tmpDir })
+    await git.branch({ fs, dir: tmpDir, ref: 'feat/squash', checkout: false })
+    const base = await source.head('feat/squash')
+
+    await source.commit('feat/squash', new Map([['components/orders/wip1.yaml', 'id: orders.DomainModel.wip1\n']]), 'corum-wip: one')
+    await source.commit('feat/squash', new Map([['components/orders/wip2.yaml', 'id: orders.DomainModel.wip2\n']]), 'corum-wip: two')
+
+    await source.commit('feat/squash', new Map([
+      ['components/orders/final.yaml', 'id: orders.DomainModel.final\n'],
+    ]), 'squashed', { parentSha: base, force: true })
+
+    const head = await source.head('feat/squash')
+    const { commit } = await git.readCommit({ fs, dir: tmpDir, oid: head })
+    assert.deepEqual(commit.parent, [base], 'squash commit must be parented at the base SHA')
+    assert.match(commit.message, /squashed/)
+    assert.deepEqual(await source.log('feat/squash', base), [head], 'WIP run must be replaced by the single squash commit')
+
+    const content = await source.loadGraphContent('feat/squash')
+    assert.ok(content.has('components/orders/final.yaml'))
   })
 })

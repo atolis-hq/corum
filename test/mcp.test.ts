@@ -1,4 +1,4 @@
-import { describe, it, before } from 'node:test'
+import { afterEach, describe, it, before } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
@@ -16,6 +16,7 @@ import { FileGraphSource } from '../src/source/file-source.js'
 import { GitGraphSource } from '../src/source/git-source.js'
 import { createMultiGraphCache, startWebServer, type WebServerHandle } from '../src/web/server.js'
 import type { ContentMap, GraphSource } from '../src/source/index.js'
+import { discardSession, getActiveSession } from '../src/mutate/index.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..', '..')
@@ -857,6 +858,226 @@ describe('MCP handlers', () => {
   })
 })
 
+describe('MCP write tools', () => {
+  let graph: Graph
+
+  before(async () => {
+    graph = await loadGraph({ graphPath: fixtureGraphDir })
+  })
+
+  afterEach(() => {
+    discardSession()
+  })
+
+  it('mutations without an open session return a helpful error pointing at start_changes', async () => {
+    const handlers = createMcpHandlers(graph)
+    for (const call of [
+      handlers.update_node({ id: 'orders.DomainModel.order', state: 'agreed' }),
+      handlers.rename_node({ id: 'orders.DomainModel.order', new_name: 'orders2' }),
+      handlers.delete_node({ id: 'orders.DomainModel.order' }),
+      handlers.apply_cluster({ document: { id: 'x.Y.z' }, mode: 'merge' }),
+      handlers.pending_changes({}),
+      handlers.commit_changes({}),
+      handlers.discard_changes({}),
+    ]) {
+      const result = await call
+      assert.equal(result.isError, true)
+      assert.match(result.content[0].text, /no working session is open/)
+      assert.match(result.content[0].text, /start_changes/)
+    }
+  })
+
+  it('start_changes without a graph source returns an error', async () => {
+    const handlers = createMcpHandlers(graph)
+    const result = await handlers.start_changes({})
+    assert.equal(result.isError, true)
+    assert.match(result.content[0].text, /GraphSource/)
+  })
+
+  it('runs the full flow: start_changes → apply_cluster → rename_node → pending_changes → commit_changes', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-mcp-write-'))
+    try {
+      const source = await createWriteRepo(tmpDir)
+      const mainGraph = await loadGraph({ source, strict: false })
+      const handlers = createMcpHandlers(mainGraph, source)
+
+      const started = await handlers.start_changes({ branch: 'feat/edit', create: true, format: 'json' })
+      assert.equal(started.isError, undefined, started.content[0].text)
+      const session = JSON.parse(started.content[0].text)
+      assert.equal(session.branch, 'feat/edit')
+      assert.equal(session.default_branch, 'main')
+      assert.equal(session.autosave, false)
+
+      const applied = await handlers.apply_cluster({
+        document: {
+          id: 'orders.Schema.customer',
+          properties: { description: 'Updated contact' },
+          fields: { phone: { type: 'string', nullable: true } },
+        },
+        mode: 'merge',
+        format: 'json',
+      })
+      assert.equal(applied.isError, undefined, applied.content[0].text)
+      const applyResult = JSON.parse(applied.content[0].text)
+      assert.deepEqual(applyResult.createdIds, ['orders.Schema.customer.fields.phone'])
+      assert.ok(applyResult.updatedIds.includes('orders.Schema.customer'))
+
+      const renamed = await handlers.rename_node({ id: 'orders.Schema.invoice', new_name: 'bill', format: 'json' })
+      assert.equal(renamed.isError, undefined, renamed.content[0].text)
+      const renameResult = JSON.parse(renamed.content[0].text)
+      assert.equal(renameResult.newId, 'orders.Schema.bill')
+      assert.equal(renameResult.recordedTrail, true, 'invoice exists on the default branch head')
+
+      // Reads reflect the working session mid-session — with and without a branch arg.
+      const midSession = await handlers.list_nodes({ format: 'json' })
+      const midNodes = JSON.parse(midSession.content[0].text) as Array<Record<string, unknown>>
+      assert.ok(midNodes.some(n => n.id === 'orders.Schema.bill'), 'rename visible to un-branched reads')
+      assert.ok(midNodes.some(n => n.id === 'orders.Schema.customer.fields.phone'), 'created child visible')
+      assert.ok(!midNodes.some(n => n.id === 'orders.Schema.invoice'))
+
+      const branchRead = await handlers.get_cluster({
+        branch: 'feat/edit',
+        node_id: 'orders.Schema.customer',
+        collapse_schemas: false,
+        format: 'json',
+      })
+      assert.equal(branchRead.isError, undefined, branchRead.content[0].text)
+      const cluster = JSON.parse(branchRead.content[0].text)
+      assert.equal(cluster.root.properties.description, 'Updated contact')
+      assert.ok(cluster.descendants.some((n: Record<string, unknown>) => n.id === 'orders.Schema.customer.fields.phone'))
+
+      const pending = await handlers.pending_changes({ format: 'json' })
+      assert.equal(pending.isError, undefined, pending.content[0].text)
+      const pendingResult = JSON.parse(pending.content[0].text)
+      assert.equal(pendingResult.branch, 'feat/edit')
+      assert.equal(pendingResult.journal.length, 2)
+      assert.ok(pendingResult.diff.nodes.added >= 2, 'phone + renamed nodes count as added')
+
+      const committed = await handlers.commit_changes({ message: 'design edits', format: 'json' })
+      assert.equal(committed.isError, undefined, committed.content[0].text)
+      const commitResult = JSON.parse(committed.content[0].text)
+      assert.equal(commitResult.committed, true)
+      assert.equal(commitResult.message, 'design edits')
+      assert.equal(getActiveSession(), null, 'commit closes the session')
+
+      const reloaded = await loadGraph({ source, ref: 'feat/edit', strict: false })
+      assert.ok(reloaded.nodesById.has('orders.Schema.bill'))
+      assert.ok(reloaded.nodesById.has('orders.Schema.customer.fields.phone'))
+      assert.deepEqual(reloaded.nodesById.get('orders.Schema.bill')?.properties.previousNames, ['orders.Schema.invoice'])
+
+      const main = await loadGraph({ source, ref: 'main', strict: false })
+      assert.ok(main.nodesById.has('orders.Schema.invoice'), 'default branch untouched')
+
+      // With the session closed, un-branched reads fall back to the base graph.
+      const postSession = await handlers.list_nodes({ format: 'json' })
+      const postNodes = JSON.parse(postSession.content[0].text) as Array<Record<string, unknown>>
+      assert.ok(postNodes.some(n => n.id === 'orders.Schema.invoice'))
+      assert.ok(!postNodes.some(n => n.id === 'orders.Schema.bill'))
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('validation failures return linter-style diagnostics so agents can self-correct', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-mcp-write-'))
+    try {
+      const source = await createWriteRepo(tmpDir)
+      const mainGraph = await loadGraph({ source, strict: false })
+      const handlers = createMcpHandlers(mainGraph, source)
+
+      await handlers.start_changes({ branch: 'feat/diag', create: true, format: 'json' })
+
+      const badEdge = await handlers.create_edge({
+        from: 'orders.Schema.invoice',
+        to: 'orders.Schema.customer',
+        type: 'not-a-type',
+        format: 'json',
+      })
+      assert.equal(badEdge.isError, true)
+      const payload = JSON.parse(badEdge.content[0].text)
+      assert.ok(Array.isArray(payload.diagnostics))
+      assert.equal(payload.diagnostics[0].severity, 'error')
+      assert.match(payload.diagnostics[0].message, /unknown edge type/)
+
+      const badNode = await handlers.update_node({ id: 'orders.Schema.ghost', state: 'agreed', format: 'json' })
+      assert.equal(badNode.isError, true)
+      const nodePayload = JSON.parse(badNode.content[0].text)
+      assert.equal(nodePayload.diagnostics[0].nodeId, 'orders.Schema.ghost')
+
+      // Failed mutations leave no pending changes behind.
+      const pending = await handlers.pending_changes({ format: 'json' })
+      assert.equal(JSON.parse(pending.content[0].text).journal.length, 0)
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('discard_changes aborts the session and reads revert to the committed state', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-mcp-write-'))
+    try {
+      const source = await createWriteRepo(tmpDir)
+      const mainGraph = await loadGraph({ source, strict: false })
+      const handlers = createMcpHandlers(mainGraph, source)
+
+      await handlers.start_changes({ branch: 'feat/abort', create: true, format: 'json' })
+      await handlers.update_node({
+        id: 'orders.Schema.invoice',
+        properties: { description: 'Never lands' },
+        format: 'json',
+      })
+
+      const midSession = await handlers.list_nodes({ format: 'json' })
+      assert.equal(midSession.isError, undefined)
+
+      const discarded = await handlers.discard_changes({ format: 'json' })
+      assert.equal(discarded.isError, undefined, discarded.content[0].text)
+      assert.deepEqual(JSON.parse(discarded.content[0].text), { discarded: true, branch: 'feat/abort' })
+      assert.equal(getActiveSession(), null)
+
+      const postDiscard = await handlers.get_cluster({ node_id: 'orders.Schema.invoice', collapse_schemas: false, format: 'json' })
+      const cluster = JSON.parse(postDiscard.content[0].text)
+      assert.equal(cluster.root.properties.description, 'Invoice', 'working change gone after discard')
+
+      const again = await handlers.discard_changes({})
+      assert.equal(again.isError, true)
+      assert.match(again.content[0].text, /start_changes/)
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('advertises the write tools with the load-bearing warnings in their descriptions', () => {
+    const tools = getMcpToolDefinitions()
+    const names = tools.map(tool => tool.name)
+    for (const expected of [
+      'start_changes', 'apply_cluster', 'create_node', 'update_node', 'rename_node', 'delete_node',
+      'create_edge', 'update_edge', 'delete_edge', 'pending_changes', 'discard_changes', 'commit_changes',
+    ]) {
+      assert.ok(names.includes(expected), `missing tool definition: ${expected}`)
+    }
+
+    const applyCluster = tools.find(tool => tool.name === 'apply_cluster')!
+    assert.match(applyCluster.description, /ABSENT owned section means an EMPTY section/i)
+    assert.match(applyCluster.description, /ALL of its children are DELETED/i)
+    assert.match(applyCluster.description, /NEVER treated as a rename/i)
+
+    const renameNode = tools.find(tool => tool.name === 'rename_node')!
+    assert.match(renameNode.description, /record_trail/)
+    const deleteNode = tools.find(tool => tool.name === 'delete_node')!
+    assert.match(deleteNode.description, /purge/)
+    assert.match(deleteNode.description, /soft/i)
+    const startChanges = tools.find(tool => tool.name === 'start_changes')!
+    assert.match(startChanges.description, /autosave/)
+    const commitChanges = tools.find(tool => tool.name === 'commit_changes')!
+    assert.match(commitChanges.description, /squash/i)
+    const createNode = tools.find(tool => tool.name === 'create_node')!
+    assert.match(createNode.description, /proposed/)
+    assert.match(createNode.description, /unstable/)
+    const diffBranch = tools.find(tool => tool.name === 'diff_branch')!
+    assert.match(diffBranch.description, /edits a retired name/)
+  })
+})
+
 describe('standalone MCP entrypoint', () => {
   it('keeps serving MCP over stdio when the web port is already in use', async () => {
     let webHandle: WebServerHandle | undefined
@@ -931,6 +1152,89 @@ info:
   await git.checkout({ fs, dir: tmpDir, ref: 'main' })
 }
 
+/**
+ * Git repo fixture for the write tools: a Schema template with an owned
+ * `fields` section (Field children) plus two committed clusters, so
+ * apply_cluster/rename/delete exercise owned-section semantics.
+ */
+async function createWriteRepo(tmpDir: string): Promise<GitGraphSource> {
+  await git.init({ fs, dir: tmpDir, defaultBranch: 'main' })
+  const files: Record<string, string> = {
+    '.corum/packs/testpack/templates/Schema.yaml': `name: Schema
+info:
+  version: '1.0.0'
+  role: type-container
+properties:
+  type: object
+  additionalProperties: false
+  properties:
+    description:
+      type: string
+fields:
+  item-template: Field
+edge-types:
+  outgoing:
+    - has-field
+    - uses-type
+  incoming:
+    - uses-type
+`,
+    '.corum/packs/testpack/templates/Field.yaml': `name: Field
+info:
+  version: '1.0.0'
+  role: field
+properties:
+  type: object
+  additionalProperties: false
+  properties:
+    type:
+      type: string
+    nullable:
+      type: boolean
+edge-types:
+  incoming:
+    - has-field
+  supports:
+    - maps-to
+`,
+    '.corum/graph/graph.yaml': `schemaVersion: '1'\ntemplatePacks:\n  - name: testpack\n    path: ../packs/testpack\n`,
+    '.corum/graph/components/orders/Schemas/customer.yaml': `id: orders.Schema.customer
+template: Schema
+schemaVersion: '1.0'
+metadata:
+  component: orders
+  state: agreed
+  stability: stable
+  lastModifiedAt: '2026-07-01'
+properties:
+  description: 'Customer contact'
+fields:
+  email:
+    type: string
+    nullable: false
+`,
+    '.corum/graph/components/orders/Schemas/invoice.yaml': `id: orders.Schema.invoice
+template: Schema
+schemaVersion: '1.0'
+metadata:
+  component: orders
+  state: proposed
+  stability: unstable
+  lastModifiedAt: '2026-07-01'
+properties:
+  description: 'Invoice'
+`,
+  }
+  for (const [rel, content] of Object.entries(files)) {
+    const filePath = path.join(tmpDir, ...rel.split('/'))
+    fs.mkdirSync(path.dirname(filePath), { recursive: true })
+    fs.writeFileSync(filePath, content)
+    await git.add({ fs, dir: tmpDir, filepath: rel })
+  }
+  await git.commit({ fs, dir: tmpDir, message: 'initial', author: { name: 'Test', email: 'test@test.com' } })
+  return new GitGraphSource({ localPath: tmpDir })
+}
+
 function clusterYaml(id: string, state: string, stability: string): string {
   return `id: ${id}
 template: DomainModel
@@ -965,5 +1269,13 @@ class CountingBranchSource implements GraphSource {
 
   async commit(): Promise<void> {
     throw new Error('not implemented')
+  }
+
+  async head(): Promise<string> {
+    return 'fake-head'
+  }
+
+  async log(): Promise<string[]> {
+    return []
   }
 }

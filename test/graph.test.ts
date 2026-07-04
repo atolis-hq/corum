@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { listNodes, getCluster, getLinkedFields, getGraphSummary, searchNodes, getLineage } from '../src/graph/index.js'
 import { loadGraph } from '../src/loader/index.js'
 import { QueryError } from '../src/schema/index.js'
-import type { Edge, Graph, Node } from '../src/schema/index.js'
+import type { Edge, Graph, Node, Template } from '../src/schema/index.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..', '..')
@@ -77,6 +77,78 @@ function createUsesTypeGraph(): Graph {
     edgesByFrom: new Map([[consumer.id, [edge]]]),
     edgesByTo: new Map([[sharedType.id, [edge]]]),
     templates: new Map(),
+    diagnostics: [],
+  }
+}
+
+function createRenamedLineageGraph(): Graph {
+  // orders.Schema.customer-email was renamed to orders.Schema.email-address
+  // (renamed-from trail edge with intentionally dangling `to`); a stale edge
+  // still references the retired ID.
+  const endpoint = createNode('orders.APIEndpoint.create-order')
+  const emailSchema = createNode('orders.Schema.email-address')
+  const audit = createNode('orders.DomainEvent.email-changed')
+  const staleEdge = createEdge('stale-produces', endpoint.id, 'orders.Schema.customer-email')
+  const liveEdge = createEdge('live-produces', emailSchema.id, audit.id)
+  const trailEdge: Edge = {
+    id: 'orders.Schema.email-address__renamed-from__orders.Schema.customer-email',
+    from: emailSchema.id,
+    to: 'orders.Schema.customer-email',
+    type: 'renamed-from',
+    state: 'proposed',
+    stability: 'unstable',
+  }
+
+  return {
+    nodesById: new Map([endpoint, emailSchema, audit].map(node => [node.id, node])),
+    edgesByFrom: new Map([
+      [endpoint.id, [staleEdge]],
+      [emailSchema.id, [liveEdge, trailEdge]],
+    ]),
+    edgesByTo: new Map([
+      ['orders.Schema.customer-email', [staleEdge, trailEdge]],
+      [audit.id, [liveEdge]],
+    ]),
+    templates: new Map(),
+    diagnostics: [],
+  }
+}
+
+function createRenamedLinkedFieldsGraph(): Graph {
+  // orders.Schema.customer was renamed to orders.Schema.order; a maps-to edge
+  // authored before the rename still targets a field under the retired prefix.
+  const fieldTemplate: Template = { name: 'Field', info: { version: '1.0', role: 'field' } }
+  const root: Node = { ...createNode('orders.Schema.order'), template: 'Schema' }
+  const field: Node = { ...createNode('orders.Schema.order.fields.email'), template: 'Field', parentId: root.id }
+  const external: Node = { ...createNode('api.Schema.request.fields.email'), template: 'Field' }
+  const staleMapsTo: Edge = {
+    id: 'api.Schema.request.fields.email__maps-to__orders.Schema.customer.fields.email',
+    from: external.id,
+    to: 'orders.Schema.customer.fields.email',
+    type: 'maps-to',
+    state: 'proposed',
+    stability: 'unstable',
+  }
+  const trailEdge: Edge = {
+    id: 'orders.Schema.order__renamed-from__orders.Schema.customer',
+    from: root.id,
+    to: 'orders.Schema.customer',
+    type: 'renamed-from',
+    state: 'proposed',
+    stability: 'unstable',
+  }
+
+  return {
+    nodesById: new Map([root, field, external].map(node => [node.id, node])),
+    edgesByFrom: new Map([
+      [external.id, [staleMapsTo]],
+      [root.id, [trailEdge]],
+    ]),
+    edgesByTo: new Map([
+      ['orders.Schema.customer.fields.email', [staleMapsTo]],
+      ['orders.Schema.customer', [trailEdge]],
+    ]),
+    templates: new Map([[fieldTemplate.name, fieldTemplate]]),
     diagnostics: [],
   }
 }
@@ -194,6 +266,22 @@ describe('graph queries', () => {
         () => getLinkedFields(graph, 'nonexistent.Node.id'),
         (err: unknown) => err instanceof QueryError,
       )
+    })
+
+    it('resolves maps-to edges referencing retired field IDs to the live field', () => {
+      const renamedGraph = createRenamedLinkedFieldsGraph()
+      const result = getLinkedFields(renamedGraph, 'orders.Schema.order')
+      assert.deepEqual(result.edges.map(e => e.id), ['api.Schema.request.fields.email__maps-to__orders.Schema.customer.fields.email'])
+      const nodeIds = new Set(result.nodes.map(n => n.id))
+      assert.ok(nodeIds.has('orders.Schema.order.fields.email'))
+      assert.ok(nodeIds.has('api.Schema.request.fields.email'))
+    })
+
+    it('resolves a retired input ID to the live cluster root', () => {
+      const renamedGraph = createRenamedLinkedFieldsGraph()
+      const result = getLinkedFields(renamedGraph, 'orders.Schema.customer')
+      assert.equal(result.edges.length, 1)
+      assert.ok(result.nodes.some(n => n.id === 'orders.Schema.order.fields.email'))
     })
   })
 
@@ -387,6 +475,28 @@ describe('graph queries', () => {
       const result = getLineage(graph, ['nonexistent.Node.id'])
       assert.equal(result.nodes.length, 0)
       assert.equal(result.edges.length, 0)
+    })
+
+    it('traverses an edge referencing a retired ID through to the live node', () => {
+      const renamedGraph = createRenamedLineageGraph()
+      const result = getLineage(renamedGraph, ['orders.APIEndpoint.create-order'], { depth: 2 })
+      const ids = result.nodes.map(n => n.id)
+      assert.ok(ids.includes('orders.Schema.email-address'), 'stale edge endpoint resolves to the live node')
+      assert.ok(ids.includes('orders.DomainEvent.email-changed'), 'traversal continues from the resolved node')
+      assert.ok(result.edges.some(e => e.id === 'stale-produces'), 'the stale edge is included as authored')
+    })
+
+    it('excludes hidden renamed-from edges from lineage defaults', () => {
+      const renamedGraph = createRenamedLineageGraph()
+      const result = getLineage(renamedGraph, ['orders.APIEndpoint.create-order'], { depth: 2, direction: 'both' })
+      assert.ok(result.nodes.every(n => n.via_edge_type !== 'renamed-from'))
+      assert.ok(result.edges.every(e => e.type !== 'renamed-from'))
+    })
+
+    it('resolves a retired start ID to the live node', () => {
+      const renamedGraph = createRenamedLineageGraph()
+      const result = getLineage(renamedGraph, ['orders.Schema.customer-email'], { depth: 1 })
+      assert.deepEqual(result.nodes.map(n => n.id), ['orders.DomainEvent.email-changed'])
     })
   })
 })

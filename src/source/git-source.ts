@@ -193,6 +193,39 @@ export class GitGraphSource implements GraphSource {
     return map
   }
 
+  /** Current commit SHA of the branch head (design §14e). */
+  async head(branch: string): Promise<string> {
+    return this.resolveBranchOid(branch)
+  }
+
+  /**
+   * Commit SHAs from the branch head back to (and excluding) `sinceSha`,
+   * newest first, following first parents. If `sinceSha` is not an ancestor
+   * the walk stops at the root commit and returns everything seen — the
+   * squash guard treats that as "head moved externally".
+   */
+  async log(branch: string, sinceSha: string): Promise<string[]> {
+    const dir = await this.dir()
+    const shas: string[] = []
+    let oid = await this.resolveBranchOid(branch)
+    const MAX_WALK = 10_000
+    while (oid !== sinceSha) {
+      shas.push(oid)
+      if (shas.length > MAX_WALK) {
+        throw new SourceError(`log walk on branch '${branch}' exceeded ${MAX_WALK} commits without reaching ${sinceSha}`)
+      }
+      let parents: string[]
+      try {
+        parents = (await git.readCommit({ fs, dir, oid })).commit.parent
+      } catch (err) {
+        throw new SourceError(`cannot read commit ${oid} on branch '${branch}'`, err)
+      }
+      if (parents.length === 0) break
+      oid = parents[0]
+    }
+    return shas
+  }
+
   async commit(branch: string, changes: ContentMap, message: string, options: CommitOptions = {}): Promise<void> {
     const dir = await this.dir()
 
@@ -235,7 +268,10 @@ export class GitGraphSource implements GraphSource {
     message: string,
     options: CommitOptions,
   ): Promise<void> {
-    const prefix = this.graphDir.endsWith('/') ? this.graphDir : `${this.graphDir}/`
+    if (options.parentSha !== undefined) {
+      return this.commitWithExplicitParent(dir, branch, changes, message, options)
+    }
+
     const MAX_ATTEMPTS = 3
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
@@ -254,31 +290,8 @@ export class GitGraphSource implements GraphSource {
           throw new SourceError(`cannot resolve default branch '${defaultBranch}' to create '${branch}'`, err2)
         }
       }
-      const { commit: parentCommit } = await git.readCommit({ fs, dir, oid: parentSha })
 
-      const blobMap = new Map<string, string>()
-      for (const [key, content] of changes) {
-        const repoPath = `${prefix}${normalizeContentKey(key)}`
-        const oid = await git.writeBlob({ fs, dir, blob: Buffer.from(content, 'utf-8') })
-        blobMap.set(repoPath, oid)
-      }
-
-      const newTreeOid = options.replaceGraphContent
-        ? await buildReplacedGraphTree(fs, dir, parentCommit.tree, prefix, blobMap)
-        : await buildUpdatedTree(fs, dir, parentCommit.tree, blobMap)
-
-      const now = Math.floor(Date.now() / 1000)
-      const newCommitOid = await git.writeCommit({
-        fs,
-        dir,
-        commit: {
-          tree: newTreeOid,
-          parent: [parentSha],
-          message,
-          author: { name: 'corum', email: 'corum@localhost', timestamp: now, timezoneOffset: 0 },
-          committer: { name: 'corum', email: 'corum@localhost', timestamp: now, timezoneOffset: 0 },
-        },
-      })
+      const newCommitOid = await this.writeCommitObject(dir, changes, parentSha, message, options)
 
       // Compare-and-swap: if the ref moved while we built the commit, rebuild
       // on the new parent instead of silently discarding the other write.
@@ -294,14 +307,7 @@ export class GitGraphSource implements GraphSource {
 
       if (this.remoteUrl) {
         try {
-          await git.push({
-            fs,
-            http: (await import('isomorphic-git/http/node')).default,
-            dir,
-            remote: 'origin',
-            ref: branch,
-            onAuth: this.onAuth(),
-          })
+          await this.push(dir, branch, options.force === true)
         } catch (err) {
           // Roll the local ref back so the cached clone does not diverge from
           // origin; otherwise the committed data becomes invisible on next read.
@@ -317,6 +323,96 @@ export class GitGraphSource implements GraphSource {
     }
 
     throw new SourceError(`concurrent updates to branch '${branch}' - retries exhausted`)
+  }
+
+  /**
+   * Commit with an explicitly pinned parent — the working-session squash path
+   * (design §14e). No compare-and-swap retry: the caller has already run the
+   * squash guard, and the whole point is to replace the WIP run above
+   * `parentSha`. On push failure the ref is restored to the pre-squash WIP
+   * head, never left pointing at an unpushed squash commit.
+   */
+  private async commitWithExplicitParent(
+    dir: string,
+    branch: string,
+    changes: ContentMap,
+    message: string,
+    options: CommitOptions,
+  ): Promise<void> {
+    const parentSha = options.parentSha!
+    const newCommitOid = await this.writeCommitObject(dir, changes, parentSha, message, options)
+
+    let preRewriteSha: string | undefined
+    try {
+      preRewriteSha = await this.resolveBranchOid(branch)
+    } catch {
+      preRewriteSha = undefined
+    }
+
+    await git.writeRef({ fs, dir, ref: `refs/heads/${branch}`, value: newCommitOid, force: true })
+
+    if (this.remoteUrl) {
+      try {
+        await this.push(dir, branch, options.force === true)
+      } catch (err) {
+        // Restore the pre-squash WIP head so the branch never points at an
+        // unpushed squash commit (design §14e).
+        if (preRewriteSha !== undefined) {
+          await git.writeRef({ fs, dir, ref: `refs/heads/${branch}`, value: preRewriteSha, force: true })
+        } else {
+          await git.deleteRef({ fs, dir, ref: `refs/heads/${branch}` }).catch(() => {})
+        }
+        throw new SourceError(`failed to push branch '${branch}'`, err)
+      }
+    }
+  }
+
+  private async push(dir: string, branch: string, force: boolean): Promise<void> {
+    await git.push({
+      fs,
+      http: (await import('isomorphic-git/http/node')).default,
+      dir,
+      remote: 'origin',
+      ref: branch,
+      force,
+      onAuth: this.onAuth(),
+    })
+  }
+
+  /** Write blobs + tree + commit object for `changes` on top of `parentSha`; returns the new commit oid. */
+  private async writeCommitObject(
+    dir: string,
+    changes: ContentMap,
+    parentSha: string,
+    message: string,
+    options: CommitOptions,
+  ): Promise<string> {
+    const prefix = this.graphDir.endsWith('/') ? this.graphDir : `${this.graphDir}/`
+    const { commit: parentCommit } = await git.readCommit({ fs, dir, oid: parentSha })
+
+    const blobMap = new Map<string, string>()
+    for (const [key, content] of changes) {
+      const repoPath = `${prefix}${normalizeContentKey(key)}`
+      const oid = await git.writeBlob({ fs, dir, blob: Buffer.from(content, 'utf-8') })
+      blobMap.set(repoPath, oid)
+    }
+
+    const newTreeOid = options.replaceGraphContent
+      ? await buildReplacedGraphTree(fs, dir, parentCommit.tree, prefix, blobMap)
+      : await buildUpdatedTree(fs, dir, parentCommit.tree, blobMap)
+
+    const now = Math.floor(Date.now() / 1000)
+    return git.writeCommit({
+      fs,
+      dir,
+      commit: {
+        tree: newTreeOid,
+        parent: [parentSha],
+        message,
+        author: { name: 'corum', email: 'corum@localhost', timestamp: now, timezoneOffset: 0 },
+        committer: { name: 'corum', email: 'corum@localhost', timestamp: now, timezoneOffset: 0 },
+      },
+    })
   }
 
   async reloadSignature(): Promise<string> {

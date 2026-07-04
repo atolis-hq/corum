@@ -427,6 +427,52 @@ describe('edge loader', () => {
     const edge = [...result.edgesByFrom.values()].flat()[0]
     assert.equal(edge.stability, 'unstable', 'falls back to default stability')
   })
+
+  it('loads a hidden-type edge with a dangling to (retired id) without any diagnostic', () => {
+    const nodes = new Map<string, Node>([
+      ['a.DomainModel.new', { id: 'a.DomainModel.new', template: 'DomainModel', component: 'a', state: 'proposed', stability: 'unstable', schemaVersion: '1', lastModifiedAt: '2026-01-01', properties: {} }],
+    ])
+    const content: ContentMap = new Map([
+      ['edges/trail.edges.yaml', 'edges:\n  - from: a.DomainModel.new\n    to: a.DomainModel.old\n    type: renamed-from\n'],
+    ])
+    const diagnostics: Diagnostic[] = []
+    const result = loadEdges(content, nodes, diagnostics)
+
+    assert.equal(diagnostics.length, 0, `expected no diagnostics, got: ${JSON.stringify(diagnostics)}`)
+    const edge = [...result.edgesByFrom.values()].flat()[0]
+    assert.ok(edge, 'renamed-from edge must be loaded despite the retired to')
+    assert.equal(edge.id, 'a.DomainModel.new__renamed-from__a.DomainModel.old')
+    assert.equal(result.edgesByTo.get('a.DomainModel.old')?.length, 1, 'edge indexed by its retired to id')
+  })
+
+  it('errors and drops a hidden-type edge whose from (live end) does not resolve', () => {
+    const content: ContentMap = new Map([
+      ['edges/trail.edges.yaml', 'edges:\n  - from: a.DomainModel.missing\n    to: a.DomainModel.old\n    type: renamed-from\n'],
+    ])
+    const diagnostics: Diagnostic[] = []
+    const result = loadEdges(content, new Map<string, Node>(), diagnostics)
+
+    assert.ok(
+      diagnostics.some(d => d.severity === 'error' && d.message.includes("hidden edge type 'renamed-from' requires a live 'from' node: a.DomainModel.missing")),
+      `expected a live-end error, got: ${JSON.stringify(diagnostics)}`,
+    )
+    assert.equal([...result.edgesByFrom.values()].flat().length, 0, 'edge must be dropped')
+  })
+
+  it('keeps warn-and-drop behaviour for a non-hidden edge with a dangling to', () => {
+    const nodes = new Map<string, Node>([
+      ['a.DomainModel.a', { id: 'a.DomainModel.a', template: 'DomainModel', component: 'a', state: 'proposed', stability: 'unstable', schemaVersion: '1', lastModifiedAt: '2026-01-01', properties: {} }],
+    ])
+    const content: ContentMap = new Map([
+      ['edges/broken.edges.yaml', 'edges:\n  - from: a.DomainModel.a\n    to: a.DomainModel.gone\n    type: reads\n'],
+    ])
+    const diagnostics: Diagnostic[] = []
+    const result = loadEdges(content, nodes, diagnostics)
+
+    assert.ok(diagnostics.some(d => d.severity === 'warning' && d.message.includes('edge to unresolved node: a.DomainModel.gone')))
+    assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0)
+    assert.equal([...result.edgesByFrom.values()].flat().length, 0, 'non-hidden dangling edge is still dropped')
+  })
 })
 
 describe('loadGraph', () => {

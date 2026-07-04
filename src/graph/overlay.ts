@@ -1,14 +1,17 @@
 import type {
   BranchDiff,
+  BranchDiffWarning,
   BranchGraph,
   BranchOverlay,
   Edge,
   GhostState,
+  Graph,
   Node,
   OverlayEdge,
   OverlayNode,
 } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
+import { createAliasResolver, getEdgeTypeDef } from './index.js'
 
 export function computeOverlay(
   viewingRef: string,
@@ -16,15 +19,36 @@ export function computeOverlay(
   allBranches: BranchGraph[],
 ): BranchOverlay {
   const branches = uniqueBranches([defaultBranch, ...allBranches])
-  if (!branches.some(branch => branch.ref === viewingRef)) {
+  const viewingBranch = branches.find(branch => branch.ref === viewingRef)
+  if (!viewingBranch) {
     throw new QueryError(`branch '${viewingRef}' not found in loaded branches`)
   }
 
+  // Foreign IDs resolve through the viewing branch's alias map (design §5/§14b)
+  // so a branch still holding a retired ID overlays onto the renamed node.
+  const resolve = createAliasResolver(viewingBranch.graph)
+
+  // Per-branch node index keyed by canonical (viewing-resolved) ID.
+  const nodeIndexes = new Map<string, Map<string, Node>>()
+  const canonicalNodeIds = new Set<string>()
+  for (const branch of branches) {
+    const index = new Map<string, Node>()
+    for (const [id, node] of branch.graph.nodesById) {
+      const canonicalId = branch.ref === viewingRef ? id : resolve(id)
+      // On collision (branch holds both a retired and its live ID), the node
+      // whose literal ID matches the canonical ID wins.
+      const existing = index.get(canonicalId)
+      if (existing === undefined || node.id === canonicalId) index.set(canonicalId, node)
+      canonicalNodeIds.add(canonicalId)
+    }
+    nodeIndexes.set(branch.ref, index)
+  }
+
   const nodes = new Map<string, OverlayNode>()
-  for (const id of collectNodeIds(branches)) {
+  for (const id of canonicalNodeIds) {
     const presence = new Map<string, Node>()
     for (const branch of branches) {
-      const node = branch.graph.nodesById.get(id)
+      const node = nodeIndexes.get(branch.ref)?.get(id)
       if (node) presence.set(branch.ref, node)
     }
     nodes.set(id, {
@@ -34,11 +58,33 @@ export function computeOverlay(
     })
   }
 
+  // Per-branch edge index keyed by canonical edge ID: endpoints are resolved
+  // through the viewing branch's alias map and the composite ID recomputed, so
+  // a foreign edge whose endpoints are retired IDs matches the viewing
+  // branch's rewritten edge. Hidden edge types (renamed-from bookkeeping) keep
+  // their literal IDs — their `to` is a retired ID by design.
+  const edgeIndexes = new Map<string, Map<string, Edge>>()
+  const canonicalEdgeIds = new Set<string>()
+  for (const branch of branches) {
+    const index = new Map<string, Edge>()
+    for (const edgeList of branch.graph.edgesByFrom.values()) {
+      for (const edge of edgeList) {
+        const canonicalId = branch.ref === viewingRef
+          ? edge.id
+          : canonicalEdgeId(viewingBranch.graph, edge, resolve)
+        const existing = index.get(canonicalId)
+        if (existing === undefined || edge.id === canonicalId) index.set(canonicalId, edge)
+        canonicalEdgeIds.add(canonicalId)
+      }
+    }
+    edgeIndexes.set(branch.ref, index)
+  }
+
   const edges = new Map<string, OverlayEdge>()
-  for (const id of collectEdgeIds(branches)) {
+  for (const id of canonicalEdgeIds) {
     const presence = new Map<string, Edge>()
     for (const branch of branches) {
-      const edge = findEdge(branch, id)
+      const edge = edgeIndexes.get(branch.ref)?.get(id)
       if (edge) presence.set(branch.ref, edge)
     }
     edges.set(id, {
@@ -51,25 +97,55 @@ export function computeOverlay(
   return { viewingRef, nodes, edges }
 }
 
+function canonicalEdgeId(viewingGraph: Graph, edge: Edge, resolve: (id: string) => string): string {
+  if (getEdgeTypeDef(viewingGraph, edge.type)?.hidden === true) return edge.id
+  const from = resolve(edge.from)
+  const to = resolve(edge.to)
+  if (from === edge.from && to === edge.to) return edge.id
+  return `${from}__${edge.type}__${to}`
+}
+
 export function computeDiff(branch: BranchGraph, defaultBranch: BranchGraph): BranchDiff {
   const added: Node[] = []
   const modified: Node[] = []
   const removed: Node[] = []
+  const warnings: BranchDiffWarning[] = []
+
+  // Branch IDs resolve through the viewing (default) graph's alias map
+  // (design §5/§14b): a branch still holding a retired ID diffs against the
+  // renamed node instead of appearing as unrelated add+remove.
+  const resolve = createAliasResolver(defaultBranch.graph)
+  const matchedDefaultIds = new Set<string>()
 
   for (const [id, node] of branch.graph.nodesById) {
-    const defaultNode = defaultBranch.graph.nodesById.get(id)
+    const resolvedId = resolve(id)
+    const defaultNode = defaultBranch.graph.nodesById.get(resolvedId)
     if (!defaultNode) {
       added.push(node)
-    } else if (!nodesEqual(node, defaultNode)) {
+      continue
+    }
+    matchedDefaultIds.add(resolvedId)
+    const equal = nodesEqual(node, defaultNode)
+    if (!equal) {
       modified.push(node)
+      if (resolvedId !== id) {
+        warnings.push({
+          kind: 'retired-name-edit',
+          branchId: id,
+          resolvedId,
+          message: `branch edits retired name '${id}' (renamed to '${resolvedId}' on the default branch) — rebase or apply the rename`,
+        })
+      }
     }
   }
 
   for (const [id, node] of defaultBranch.graph.nodesById) {
-    if (!branch.graph.nodesById.has(id)) removed.push(node)
+    if (!branch.graph.nodesById.has(id) && !matchedDefaultIds.has(id)) removed.push(node)
   }
 
-  return { added, modified, removed }
+  const diff: BranchDiff = { added, modified, removed }
+  if (warnings.length > 0) diff.warnings = warnings
+  return diff
 }
 
 function classifyPresence<T>(
@@ -97,9 +173,20 @@ function classifyPresence<T>(
 }
 
 function nodesEqual(a: Node, b: Node): boolean {
-  return deepEqual(a.properties, b.properties)
+  return deepEqual(comparableProperties(a), comparableProperties(b))
     && a.state === b.state
     && a.stability === b.stability
+}
+
+/**
+ * `previousNames` is system-owned rename bookkeeping (design §3): a branch
+ * predating a rename lacks it, and that alone must not read as a content
+ * difference — an untouched carry-over stays equal to the renamed node.
+ */
+function comparableProperties(node: Node): Record<string, unknown> {
+  if (!('previousNames' in node.properties)) return node.properties
+  const { previousNames: _previousNames, ...rest } = node.properties
+  return rest
 }
 
 function edgesEqual(a: Edge, b: Edge): boolean {
@@ -133,30 +220,4 @@ function uniqueBranches(branches: BranchGraph[]): BranchGraph[] {
     if (!byRef.has(branch.ref)) byRef.set(branch.ref, branch)
   }
   return [...byRef.values()]
-}
-
-function collectNodeIds(branches: BranchGraph[]): Set<string> {
-  const ids = new Set<string>()
-  for (const branch of branches) {
-    for (const id of branch.graph.nodesById.keys()) ids.add(id)
-  }
-  return ids
-}
-
-function collectEdgeIds(branches: BranchGraph[]): Set<string> {
-  const ids = new Set<string>()
-  for (const branch of branches) {
-    for (const edgeList of branch.graph.edgesByFrom.values()) {
-      for (const edge of edgeList) ids.add(edge.id)
-    }
-  }
-  return ids
-}
-
-function findEdge(branch: BranchGraph, edgeId: string): Edge | undefined {
-  for (const edgeList of branch.graph.edgesByFrom.values()) {
-    const edge = edgeList.find(item => item.id === edgeId)
-    if (edge) return edge
-  }
-  return undefined
 }
