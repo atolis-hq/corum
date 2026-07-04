@@ -1,1 +1,0 @@
-- display name for nodes should not be based on file name or id. add as a property
