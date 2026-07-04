@@ -31,6 +31,17 @@ The graph reflects modeled relationships, not guaranteed complete truth. Missing
 
 When likely relationships are absent, treat naming, shared component context, schema similarity, and lineage adjacency as hypotheses. Then verify by inspecting the relevant nodes, clusters, and source material.
 
+## Minimal-output defaults
+
+Prefer the smallest response that answers the question.
+
+- Keep include_provenance off unless you need source traceability.
+- For get_lineage, keep lean: true, include_edges: false, and use the smallest depth possible.
+- Add edge_types, node_types, or exclude_node_types to narrow lineage before increasing depth.
+- For search_nodes, avoid full_nodes: true unless summaries are insufficient.
+- For get_cluster, start with collapse_schemas: true and leave include_edges and full structural expansion off unless needed.
+- Avoid branch, overlay_refs, and include_static_enums unless the task explicitly requires them.
+
 ## Recommended workflow
 
 1. Call get_graph_metadata first to discover which edge types are in use and what node templates exist.
@@ -39,13 +50,35 @@ When likely relationships are absent, treat naming, shared component context, sc
 
 3. Call get_lineage with multiple node_ids batched together rather than separate calls per node.
 
-4. Use direction "downstream" with depth 2 from events to trace event -> command -> operation chains.
+4. Use direction "downstream" with a bounded depth when you need to see what a node leads to next.
 
-5. Use direction "upstream" from a DomainModel node to find all writers to that aggregate.
+5. Use direction "upstream" when you need to find what leads into or influences a node.
 
 6. Avoid get_cluster for traversal questions - use it only when you need a node's full structural detail. Prefer get_lineage for following relationships.
 
 7. Add include_provenance: true only when you need to bridge a finding to the source codebase.
+
+## Write workflow
+
+When the task is to change the graph rather than inspect it:
+
+1. Call start_changes first. No write tool works without an open session.
+
+2. Use the write tools deliberately:
+   - apply_cluster for cluster-style upserts
+   - create_node / update_node / rename_node / delete_node for explicit node edits
+   - create_edge / update_edge / delete_edge for explicit edge edits
+
+3. Use pending_changes before commit_changes to inspect the journal and summary diff.
+
+4. Finish with commit_changes or discard_changes.
+
+Important mutation rules:
+- rename_node is the only rename path. apply_cluster and imports never infer renames.
+- apply_cluster mode "replace" is authoritative for owned sections: absent children are deleted, and an absent owned section means an empty section.
+- delete_node may soft-delete or hard-delete depending on whether the node is already shared history on the default branch.
+- While a session is open, normal read tools reflect the working graph for that session branch.
+
 
 ## Output format and token efficiency
 
@@ -53,35 +86,35 @@ Start with format "toon" and compact_keys true. TOON is the most token-efficient
 
 When compact_keys is true the following field names are shortened in the response:
 
-  id              → i      template        → t      component       → cp
-  state           → s      stability       → st     properties      → p
-  nodes           → n      edges           → e      root            → r
-  children        → ch     from            → fr     to              → to
-  type            → ty     notes           → nt     version         → v
-  core            → c      abstract        → a      extends         → ex
-  origin_id       → oi     depth           → d      via_edge_type   → vet
-  via_node_id     → vni    lastModifiedAt  → lm     extractedFrom   → xf
-  derivation      → dv     derivedBy       → db
+  id              -> i      template        -> t      component       -> cp
+  state           -> s      stability       -> st     properties      -> p
+  nodes           -> n      edges           -> e      root            -> r
+  children        -> ch     from            -> fr     to              -> to
+  type            -> ty     notes           -> nt     version         -> v
+  core            -> c      abstract        -> a      extends         -> ex
+  origin_id       -> oi     depth           -> d      via_edge_type   -> vet
+  via_node_id     -> vni    lastModifiedAt  -> lm     extractedFrom   -> xf
+  derivation      -> dv     derivedBy       -> db
 
 - get_lineage is lean by default: it returns only id (i), origin_id (oi), depth (d), via_edge_type (vet), and via_node_id (vni) unless lean is set to false.
 - get_lineage omits edges by default; add include_edges true when you need graph reconstruction or edge-level auditing.
 
 ## Common patterns
 
-All events in a component:
-  list_nodes - filter { templates: ["DomainEvent", "IntegrationEvent"], component: "orders" }
+All nodes of selected templates in a component:
+  list_nodes - filter { templates: ["TemplateA", "TemplateB"], component: "component-name" }, format: "toon", compact_keys: true
 
-What does an operation produce?
-  get_lineage - node_ids: ["orders.DomainModel.order.operations.place"], direction: "downstream"
+What does this node produce?
+  get_lineage - node_ids: ["component.Template.node"], direction: "downstream", edge_types: ["produces"], depth: 1, lean: true, include_edges: false, format: "toon", compact_keys: true
 
-What triggers an operation?
-  get_lineage - node_ids: ["orders.DomainModel.order.operations.complete"], direction: "upstream"
+What triggers this node?
+  get_lineage - node_ids: ["component.Template.node"], direction: "upstream", edge_types: ["triggers"], depth: 1, lean: true, include_edges: false, format: "toon", compact_keys: true
 
-Full event flow around a node:
-  get_lineage - node_ids: ["orders.DomainEvent.order-placed"], direction: "both", depth: 3
+Full relationship flow around a node:
+  get_lineage - node_ids: ["component.Template.node"], direction: "both", depth: 3, lean: true, include_edges: false, format: "toon", compact_keys: true
 
 Field-level mappings between nodes:
-  get_linked_fields - returns all maps-to edges touching fields owned by a root node
+  get_linked_fields - id plus connected maps-to edges for fields owned by a root node; keep format: "toon", compact_keys: true
 
 Schema / field details:
   get_cluster - root includes compact schemas and enums blocks by default. Each schema entry
@@ -89,5 +122,9 @@ Schema / field details:
   use $ref: '#/schemas/name' or $ref: '#/enums/name' pointing into the same blocks. Mapping
   fields appear as { type: map, key: string, value: { ... } } inline on the field. Field-level
   cross-cluster edges (maps-to, derived-from) appear as an edges block on the field. Pass
-  collapse_schemas: false to get the full structural node-per-field representation instead.
+  collapse_schemas: false only when the compact root.schemas / root.enums view is insufficient. Start with
+  format: "toon", compact_keys: true, collapse_schemas: true.
+
+Mutation session:
+  start_changes -> one or more write calls -> pending_changes -> commit_changes
 `.trim()
