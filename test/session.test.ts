@@ -160,23 +160,22 @@ const EMAIL = `${CUSTOMER}.fields.email`
 // -- file-source sessions -----------------------------------------------------
 
 describe('working session (file source)', () => {
-  it('defaults autosave ON and writes every mutation through to disk', async () => {
+  it('defaults autosave OFF and keeps mutations in memory until commitChanges', async () => {
     const { source, graphDir } = makeFileFixture()
     const session = await startSession(source)
-    assert.equal(session.autosave, true)
+    assert.equal(session.autosave, false)
     assert.equal(session.branch, 'local')
 
     const result = await session.renameNode(CUSTOMER, 'client')
     assert.equal(result.newId, 'orders.Schema.client')
     assert.equal(result.recordedTrail, true, 'committed file graph is the default branch — threshold met')
 
-    // Write-through: the rename is already on disk before commitChanges.
-    assert.ok(fs.existsSync(path.join(graphDir, 'components/orders/Schemas/client.yaml')))
-    assert.ok(!fs.existsSync(path.join(graphDir, 'components/orders/Schemas/customer.yaml')))
+    assert.ok(!fs.existsSync(path.join(graphDir, 'components/orders/Schemas/client.yaml')))
+    assert.ok(fs.existsSync(path.join(graphDir, 'components/orders/Schemas/customer.yaml')))
 
-    const commit = await session.commitChanges()
+    const commit = await session.commitChanges('rename customer to client')
     assert.equal(commit.committed, true)
-    assert.match(commit.note ?? '', /write-through/)
+    assert.equal(commit.message, 'rename customer to client')
     assert.equal(getActiveSession(), null, 'commit closes the session')
 
     const reloaded = await loadGraph({ source, strict: false })
@@ -186,36 +185,27 @@ describe('working session (file source)', () => {
     assert.ok(reloaded.nodesById.has('orders.Schema.client.fields.email'), 'descendants renamed with the root')
   })
 
-  it('autosave OFF keeps mutations in memory until commitChanges, then round-trips', async () => {
+  it('autosave ON writes every mutation through to disk', async () => {
     const { source, graphDir } = makeFileFixture()
-    const session = await startSession(source, { autosave: false })
+    const session = await startSession(source, { autosave: true })
+    assert.equal(session.autosave, true)
 
-    await session.renameNode(CUSTOMER, 'client')
-    await session.createEdge({ from: INVOICE, to: 'orders.Schema.client', type: 'uses-type' })
-    assert.ok(fs.existsSync(path.join(graphDir, 'components/orders/Schemas/customer.yaml')), 'disk untouched before commit')
+    const result = await session.renameNode(CUSTOMER, 'client')
+    assert.equal(result.newId, 'orders.Schema.client')
+    assert.equal(result.recordedTrail, true, 'committed file graph is the default branch — threshold met')
 
-    const pending = session.pendingChanges()
-    assert.equal(pending.journal.length, 2)
-    assert.ok(pending.diff.nodes.added >= 2, 'renamed node + field appear as added')
-    assert.ok(pending.diff.nodes.removed >= 2)
-    assert.ok(pending.diff.edges.added >= 1)
+    assert.ok(fs.existsSync(path.join(graphDir, 'components/orders/Schemas/client.yaml')))
+    assert.ok(!fs.existsSync(path.join(graphDir, 'components/orders/Schemas/customer.yaml')))
 
     const commit = await session.commitChanges()
     assert.equal(commit.committed, true)
-    assert.match(commit.message ?? '', /^corum: rename orders\.Schema\.customer/)
+    assert.match(commit.note ?? '', /write-through/)
 
     const reloaded = await loadGraph({ source, strict: false })
-    assert.deepEqual(
-      [...reloaded.nodesById.keys()].sort(),
-      [...session.graph.nodesById.keys()].sort(),
-      'reloaded graph has the same node ids as the working graph',
-    )
-    const edge = (reloaded.edgesByFrom.get(INVOICE) ?? []).find(e => e.type === 'uses-type')
-    assert.ok(edge, 'explicit edge survived the round trip')
-    assert.ok(
-      (reloaded.edgesByFrom.get('orders.Schema.client') ?? []).some(e => e.type === 'renamed-from' && e.to === CUSTOMER),
-      'trail edge survived the round trip',
-    )
+    const client = reloaded.nodesById.get('orders.Schema.client')
+    assert.ok(client)
+    assert.deepEqual(client.corum?.identity?.previousIds, [CUSTOMER])
+    assert.ok(reloaded.nodesById.has('orders.Schema.client.fields.email'), 'descendants renamed with the root')
   })
 
   it('rejects create: file sources have a single branch', async () => {

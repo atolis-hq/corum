@@ -63,6 +63,8 @@ Prefer the smallest response that answers the question.
 When the task is to change the graph rather than inspect it:
 
 1. Call start_changes first. No write tool works without an open session.
+   - Prefer autosave: false unless you explicitly want per-mutation checkpoints.
+   - With autosave: true on file sources, every mutation writes through immediately and may create granular history/noisy diffs.
 
 2. Use the write tools deliberately:
    - apply_cluster for cluster-style upserts
@@ -72,6 +74,7 @@ When the task is to change the graph rather than inspect it:
 3. Use pending_changes before commit_changes to inspect the journal and summary diff.
 
 4. Finish with commit_changes or discard_changes.
+   - discard_changes only rolls back in-memory session state; it does not undo file-source mutations that were autosaved write-through.
 
 Important mutation rules:
 - rename_node is the only rename path. apply_cluster and imports never infer renames.

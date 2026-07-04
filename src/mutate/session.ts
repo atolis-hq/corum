@@ -35,9 +35,10 @@ export interface StartSessionOptions {
   /** Fork a new branch from the default branch head (git sources only). */
   create?: boolean
   /**
-   * Autosave (design §7 table). Default: ON for file sources (write-through
-   * to disk per mutation), OFF for git sources (WIP checkpoint commit per
-   * mutation when ON, message `corum-wip: <op summary>`).
+   * Autosave (design §7 table). Default: OFF for both file and git sources.
+   * When ON, file sources write through to disk per mutation; git sources
+   * land a WIP checkpoint commit per mutation with message
+   * `corum-wip: <op summary>`.
    */
   autosave?: boolean
 }
@@ -232,7 +233,7 @@ export async function startSession(
   const defaultBranchIds = new Set(defaultGraph.nodesById.keys())
 
   const baseSha = await source.head(baseRef)
-  const autosave = options.autosave ?? isFileSource
+  const autosave = options.autosave ?? false
 
   const session = new WorkingSession(
     source, branch, defaultBranch, isFileSource, options.create === true, autosave,

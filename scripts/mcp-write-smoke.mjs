@@ -18,7 +18,7 @@ export function parseWriteSmokeCliArgs(args) {
 }
 
 export async function runFilesystemWriteSmoke(callTool) {
-  const started = await expectJson(callTool, 'start_changes')
+  const started = await expectJson(callTool, 'start_changes', { autosave: true })
   assert.equal(started.branch, started.default_branch)
   assert.equal(started.autosave, true)
 
@@ -30,7 +30,7 @@ export async function runFilesystemWriteSmoke(callTool) {
   })
   assert.equal(commit.committed, true)
 
-  const reopened = await expectJson(callTool, 'start_changes')
+  const reopened = await expectJson(callTool, 'start_changes', { autosave: true })
   assert.equal(reopened.autosave, true)
   await expectJson(callTool, 'update_node', {
     id: SMOKE_NODE_ID,

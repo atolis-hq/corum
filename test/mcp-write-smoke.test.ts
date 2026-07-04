@@ -69,10 +69,11 @@ function makeCallTool(mode: Mode): { callTool: SmokeCallTool; calls: string[]; s
           return err("cannot start a write session on the default branch 'main' - it is read-only")
         }
         state.sessionOpen = true
+        const autosave = typeof args.autosave === 'boolean' ? args.autosave : false
         return ok({
           branch: typeof args.branch === 'string' ? args.branch : state.branch,
           default_branch: mode === 'filesystem' ? 'local' : 'main',
-          autosave: mode === 'filesystem',
+          autosave: mode === 'filesystem' ? autosave : false,
         })
       }
       case 'create_node': {

@@ -1118,13 +1118,13 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
     },
     {
       name: 'start_changes',
-      description: 'Open a working session for graph mutations. All other write tools require an open session; while a session is open, read tools reflect the working (uncommitted) state. Mutations stay in the session until commit_changes; discard_changes aborts. autosave: file sources default ON (every mutation writes through to disk immediately); git sources default OFF (in-memory until commit) — when ON, each mutation lands a "corum-wip:" checkpoint commit, and commit_changes squashes the WIP run into a single commit provided no external commit interleaved. Git default branches are read-only for writes: pass a writable branch explicitly or use create: true to fork one from the default branch head. Starting while a session with pending changes is open is an error — commit_changes or discard_changes first; with no pending changes the old session is reset cleanly.',
+      description: 'Open a working session for graph mutations. All other write tools require an open session; while a session is open, read tools reflect the working (uncommitted) state. Mutations stay in the session until commit_changes; discard_changes aborts. autosave defaults OFF for both file and git sources — prefer leaving it off unless you explicitly want per-mutation checkpoints. When autosave is ON, file sources write through to disk immediately and git sources land a "corum-wip:" checkpoint commit per mutation; commit_changes squashes the WIP run into a single commit when no external commit interleaved. Git default branches are read-only for writes: pass a writable branch explicitly or use create: true to fork one from the default branch head. Starting while a session with pending changes is open is an error — commit_changes or discard_changes first; with no pending changes the old session is reset cleanly.',
       inputSchema: {
         type: 'object',
         properties: {
           branch: { type: 'string', description: 'Branch to load and commit to. Defaults to the source\'s default branch.' },
           create: { type: 'boolean', description: 'Fork a new branch from the default branch head (git sources only). Default false.' },
-          autosave: { type: 'boolean', description: 'Override the autosave default (file sources: ON/write-through; git sources: OFF, or WIP checkpoint commits when ON).' },
+          autosave: { type: 'boolean', description: 'Override the autosave default (OFF by default. When ON: file sources write through immediately; git sources create WIP checkpoint commits).' },
           format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
           compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
         },
@@ -1268,7 +1268,7 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
     },
     {
       name: 'discard_changes',
-      description: 'Abort the working session without committing. Note: with file-source autosave (write-through), mutations already written to disk are NOT rolled back. Requires an open session (start_changes).',
+      description: 'Abort the working session without committing. With the default autosave OFF, this drops the in-memory session changes. Note: if autosave was turned ON for a file source, mutations already written to disk are NOT rolled back. Requires an open session (start_changes).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -1279,7 +1279,7 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
     },
     {
       name: 'commit_changes',
-      description: 'Lint, serialise, and commit the working graph, then close the session. The full linter runs first: error diagnostics BLOCK the commit (the session stays open to fix and retry); warnings ride along. Default message summarises the journal. Git autosave sessions squash their "corum-wip:" checkpoint run into a single commit when no external commit interleaved (otherwise the final commit lands on top and checkpoints are preserved); file-source write-through sessions have already persisted each mutation, so this just closes the session. Fails if the branch head moved externally since session start.',
+      description: 'Lint, serialise, and commit the working graph, then close the session. The full linter runs first: error diagnostics BLOCK the commit (the session stays open to fix and retry); warnings ride along. Default message summarises the journal. Git autosave sessions squash their "corum-wip:" checkpoint run into a single commit when no external commit interleaved (otherwise the final commit lands on top and checkpoints are preserved); file-source autosave sessions have already persisted each mutation, so commit_changes just closes the session. Fails if the branch head moved externally since session start.',
       inputSchema: {
         type: 'object',
         properties: {

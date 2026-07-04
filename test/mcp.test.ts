@@ -1056,14 +1056,14 @@ describe('MCP write tools', () => {
     }
   })
 
-  it('discard_changes refreshes file-source reads to the autosaved on-disk state', async () => {
+  it('discard_changes refreshes file-source reads to the autosaved on-disk state when autosave is enabled', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-mcp-file-write-'))
     try {
       const source = createWriteFilesSource(tmpDir)
       const mainGraph = await loadGraph({ source, strict: false })
       const handlers = createMcpHandlers(mainGraph, source)
 
-      const started = await handlers.start_changes({ format: 'json' })
+      const started = await handlers.start_changes({ autosave: true, format: 'json' })
       assert.equal(started.isError, undefined, started.content[0].text)
 
       const updated = await handlers.update_node({

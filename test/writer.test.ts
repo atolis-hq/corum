@@ -287,6 +287,44 @@ describe('graph writer', () => {
     assert.deepEqual(propertyKeys, ['type', 'nullable'])
   })
 
+  it('preserves source field order when rewriting a cluster and appends new fields at the end', async () => {
+    const graph = await loadGraph({ graphPath: fixtureGraphDir })
+    const paymentFieldParent = 'payments.DomainModel.payment.schemas.payment'
+    const paymentFieldPath = path.join(fixtureGraphDir, 'components', 'payments', 'DomainModels', 'payment.yaml')
+    const originalDoc = parseYaml(fs.readFileSync(paymentFieldPath, 'utf-8')) as {
+      schemas: { payment: { fields: Record<string, unknown> } }
+    }
+    const originalOrder = Object.keys(originalDoc.schemas.payment.fields)
+
+    const statusField = graph.nodesById.get(`${paymentFieldParent}.fields.status`)
+    assert.ok(statusField)
+    statusField.properties.nullable = true
+
+    graph.nodesById.set(`${paymentFieldParent}.fields.adjustmentAmount`, {
+      id: `${paymentFieldParent}.fields.adjustmentAmount`,
+      template: 'Field',
+      component: 'payments',
+      parentId: paymentFieldParent,
+      state: 'agreed',
+      stability: 'stable',
+      schemaVersion: '1',
+      lastModifiedAt: '2026-07-04',
+      properties: { type: 'decimal', nullable: true },
+    })
+
+    const map = serializeGraph(graph)
+    const clusterYaml = map.get('components/payments/DomainModels/payment.yaml')
+    assert.ok(clusterYaml)
+    const doc = parseYaml(clusterYaml) as {
+      schemas: { payment: { fields: Record<string, unknown> } }
+    }
+
+    assert.deepEqual(
+      Object.keys(doc.schemas.payment.fields),
+      [...originalOrder, 'adjustmentAmount'],
+    )
+  })
+
   it('property key permutation does not change serialised output (determinism)', async () => {
     const graphA = await loadGraph({ graphPath: fixtureGraphDir })
     const mapA = serializeGraph(graphA)
