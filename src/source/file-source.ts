@@ -70,7 +70,7 @@ export class FileGraphSource implements GraphSource {
     const map: ContentMap = new Map()
     if (!existsSync(this.graphDir)) return map
     const excludeDirs = new Set(this.resolvePackDirs().map(d => path.resolve(d)))
-    walkYamlFilesIntoMap(this.graphDir, this.graphDir, map, excludeDirs)
+    walkManagedGraphYamlIntoMap(this.graphDir, this.graphDir, map, excludeDirs)
     return map
   }
 
@@ -117,13 +117,14 @@ export class FileGraphSource implements GraphSource {
       throw new SourceError(`FileGraphSource only supports its local branch '${defaultBranch}', got '${branch}'`)
     }
 
+    let touchedKeys: Set<string>
     if (options.replaceGraphContent) {
-      this.replaceGraphContent(changes)
+      touchedKeys = this.replaceGraphContent(changes)
     } else {
-      writeContentMap(this.graphDir, changes)
+      touchedKeys = writeContentMap(this.graphDir, changes)
     }
 
-    await commitToGitIfRepo(this.graphDir, message)
+    await commitToGitIfRepo(this.graphDir, message, touchedKeys)
   }
 
   /**
@@ -143,16 +144,15 @@ export class FileGraphSource implements GraphSource {
    * an in-place selective delete — write new content first, then remove only
    * the stale `.yaml` files no longer present in `changes`.
    */
-  private replaceGraphContent(changes: ContentMap): void {
+  private replaceGraphContent(changes: ContentMap): Set<string> {
     if (!existsSync(this.graphDir)) {
-      writeContentMap(this.graphDir, changes)
-      return
+      return writeContentMap(this.graphDir, changes)
     }
 
     if (existsSync(path.join(this.graphDir, '.git'))) {
-      writeContentMap(this.graphDir, changes)
-      deleteStaleYamlFiles(this.graphDir, changes)
-      return
+      const written = writeContentMap(this.graphDir, changes)
+      const deleted = deleteStaleGraphYamlFiles(this.graphDir, changes, this.resolvePackDirs())
+      return new Set([...written, ...deleted])
     }
 
     const parent = path.dirname(this.graphDir)
@@ -163,8 +163,8 @@ export class FileGraphSource implements GraphSource {
 
     rmSync(tmpDir, { recursive: true, force: true })
     cpSync(this.graphDir, tmpDir, { recursive: true })
-    writeContentMap(tmpDir, changes)
-    deleteStaleYamlFiles(tmpDir, changes)
+    const written = writeContentMap(tmpDir, changes)
+    const deleted = deleteStaleGraphYamlFiles(tmpDir, changes, this.resolvePackDirs())
 
     renameSync(this.graphDir, oldDir)
     try {
@@ -174,28 +174,36 @@ export class FileGraphSource implements GraphSource {
       throw err
     }
     rmSync(oldDir, { recursive: true, force: true })
+    return new Set([...written, ...deleted])
   }
 }
 
-function writeContentMap(baseDir: string, changes: ContentMap): void {
+function writeContentMap(baseDir: string, changes: ContentMap): Set<string> {
+  const touched = new Set<string>()
   for (const [key, content] of changes) {
     const filePath = resolveContentPath(baseDir, key)
     mkdirSync(path.dirname(filePath), { recursive: true })
     writeFileSync(filePath, content)
+    touched.add(normalizeContentKey(key))
   }
+  return touched
 }
 
-function deleteStaleYamlFiles(baseDir: string, changes: ContentMap): void {
+function deleteStaleGraphYamlFiles(baseDir: string, changes: ContentMap, packDirs: string[] = []): Set<string> {
   const existingYaml: ContentMap = new Map()
-  walkYamlFilesIntoMap(baseDir, baseDir, existingYaml)
+  const excludeDirs = new Set(packDirs.map(d => path.resolve(d)))
+  walkManagedGraphYamlIntoMap(baseDir, baseDir, existingYaml, excludeDirs)
+  const deleted = new Set<string>()
   for (const key of existingYaml.keys()) {
     if (!changes.has(key)) {
       rmSync(resolveContentPath(baseDir, key), { force: true })
+      deleted.add(normalizeContentKey(key))
     }
   }
+  return deleted
 }
 
-async function commitToGitIfRepo(graphDir: string, message: string): Promise<void> {
+async function commitToGitIfRepo(graphDir: string, message: string, touchedKeys: Set<string>): Promise<void> {
   let repoRoot: string
   try {
     repoRoot = await git.findRoot({ fs, filepath: path.resolve(graphDir) })
@@ -204,10 +212,14 @@ async function commitToGitIfRepo(graphDir: string, message: string): Promise<voi
   }
 
   const rel = path.relative(repoRoot, path.resolve(graphDir)).split(path.sep).join('/')
+  const filepaths = [...touchedKeys]
+    .map(key => rel === '' ? key : `${rel}/${key}`)
+    .sort((a, b) => a.localeCompare(b))
+  if (filepaths.length === 0) return
   const matrix = await git.statusMatrix({
     fs,
     dir: repoRoot,
-    filepaths: rel === '' ? undefined : [rel],
+    filepaths,
   })
 
   let staged = false
@@ -257,4 +269,25 @@ function walkYamlFilesIntoMap(
       map.set(key, readFileSync(fullPath, 'utf-8'))
     }
   }
+}
+
+function walkManagedGraphYamlIntoMap(
+  baseDir: string,
+  currentDir: string,
+  map: ContentMap,
+  excludeDirs: Set<string> = new Set(),
+): void {
+  const allYaml = new Map<string, string>()
+  walkYamlFilesIntoMap(baseDir, currentDir, allYaml, excludeDirs)
+  for (const [key, content] of allYaml) {
+    if (isManagedGraphYamlKey(key)) map.set(key, content)
+  }
+}
+
+function isManagedGraphYamlKey(key: string): boolean {
+  return key === 'graph.yaml' || key.startsWith('components/') || key.startsWith('edges/')
+}
+
+function normalizeContentKey(key: string): string {
+  return key.split(path.sep).join('/')
 }

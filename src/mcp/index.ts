@@ -743,11 +743,16 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
       }
     },
 
-    discard_changes(args) {
+    async discard_changes(args) {
       try {
         const session = requireSession()
         const branch = session.branch
         session.discard()
+        if (session.autosave && session.branch === session.defaultBranch && source) {
+          const fresh = await loadGraph({ source, ref: session.defaultBranch, strict: false })
+          cache?.invalidate()
+          replaceGraph(graph, fresh)
+        }
         return formatResult({ discarded: true, branch }, args.format, getCompactKeys(args))
       } catch (err) {
         return errorResult(err, args.format)
@@ -1112,7 +1117,7 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
     },
     {
       name: 'start_changes',
-      description: 'Open a working session for graph mutations. All other write tools require an open session; while a session is open, read tools reflect the working (uncommitted) state. Mutations stay in the session until commit_changes; discard_changes aborts. autosave: file sources default ON (every mutation writes through to disk immediately); git sources default OFF (in-memory until commit) — when ON, each mutation lands a "corum-wip:" checkpoint commit, and commit_changes squashes the WIP run into a single commit provided no external commit interleaved. create: true forks a new branch from the default branch head (git sources only). Starting while a session with pending changes is open is an error — commit_changes or discard_changes first; with no pending changes the old session is reset cleanly.',
+      description: 'Open a working session for graph mutations. All other write tools require an open session; while a session is open, read tools reflect the working (uncommitted) state. Mutations stay in the session until commit_changes; discard_changes aborts. autosave: file sources default ON (every mutation writes through to disk immediately); git sources default OFF (in-memory until commit) — when ON, each mutation lands a "corum-wip:" checkpoint commit, and commit_changes squashes the WIP run into a single commit provided no external commit interleaved. Git default branches are read-only for writes: pass a writable branch explicitly or use create: true to fork one from the default branch head. Starting while a session with pending changes is open is an error — commit_changes or discard_changes first; with no pending changes the old session is reset cleanly.',
       inputSchema: {
         type: 'object',
         properties: {

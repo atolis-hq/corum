@@ -1046,6 +1046,36 @@ describe('MCP write tools', () => {
     }
   })
 
+  it('discard_changes refreshes file-source reads to the autosaved on-disk state', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-mcp-file-write-'))
+    try {
+      const source = createWriteFilesSource(tmpDir)
+      const mainGraph = await loadGraph({ source, strict: false })
+      const handlers = createMcpHandlers(mainGraph, source)
+
+      const started = await handlers.start_changes({ format: 'json' })
+      assert.equal(started.isError, undefined, started.content[0].text)
+
+      const updated = await handlers.update_node({
+        id: 'orders.Schema.invoice',
+        properties: { description: 'Persisted on disk' },
+        format: 'json',
+      })
+      assert.equal(updated.isError, undefined, updated.content[0].text)
+
+      const discarded = await handlers.discard_changes({ format: 'json' })
+      assert.equal(discarded.isError, undefined, discarded.content[0].text)
+      assert.equal(getActiveSession(), null)
+
+      const postDiscard = await handlers.get_cluster({ node_id: 'orders.Schema.invoice', collapse_schemas: false, format: 'json' })
+      assert.equal(postDiscard.isError, undefined, postDiscard.content[0].text)
+      const cluster = JSON.parse(postDiscard.content[0].text)
+      assert.equal(cluster.root.properties.description, 'Persisted on disk')
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
   it('advertises the write tools with the load-bearing warnings in their descriptions', () => {
     const tools = getMcpToolDefinitions()
     const names = tools.map(tool => tool.name)
@@ -1159,8 +1189,32 @@ info:
  */
 async function createWriteRepo(tmpDir: string): Promise<GitGraphSource> {
   await git.init({ fs, dir: tmpDir, defaultBranch: 'main' })
-  const files: Record<string, string> = {
-    '.corum/packs/testpack/templates/Schema.yaml': `name: Schema
+  const files = writeToolFixtureFiles('.corum')
+  for (const [rel, content] of Object.entries(files)) {
+    const filePath = path.join(tmpDir, ...rel.split('/'))
+    fs.mkdirSync(path.dirname(filePath), { recursive: true })
+    fs.writeFileSync(filePath, content)
+    await git.add({ fs, dir: tmpDir, filepath: rel })
+  }
+  await git.commit({ fs, dir: tmpDir, message: 'initial', author: { name: 'Test', email: 'test@test.com' } })
+  return new GitGraphSource({ localPath: tmpDir })
+}
+
+function createWriteFilesSource(tmpDir: string): FileGraphSource {
+  const files = {
+    ...writeToolFixtureFiles(''),
+  }
+  for (const [rel, content] of Object.entries(files)) {
+    const filePath = path.join(tmpDir, ...rel.split('/').filter(Boolean))
+    fs.mkdirSync(path.dirname(filePath), { recursive: true })
+    fs.writeFileSync(filePath, content)
+  }
+  return new FileGraphSource({ graphDir: path.join(tmpDir, 'graph') })
+}
+
+function writeToolFixtureFiles(base: string): Record<string, string> {
+  return {
+    [`${base}/packs/testpack/templates/Schema.yaml`]: `name: Schema
 info:
   version: '1.0.0'
   role: type-container
@@ -1179,7 +1233,7 @@ edge-types:
   incoming:
     - uses-type
 `,
-    '.corum/packs/testpack/templates/Field.yaml': `name: Field
+    [`${base}/packs/testpack/templates/Field.yaml`]: `name: Field
 info:
   version: '1.0.0'
   role: field
@@ -1197,8 +1251,8 @@ edge-types:
   supports:
     - maps-to
 `,
-    '.corum/graph/graph.yaml': `schemaVersion: '1'\ntemplatePacks:\n  - name: testpack\n    path: ../packs/testpack\n`,
-    '.corum/graph/components/orders/Schemas/customer.yaml': `id: orders.Schema.customer
+    [`${base}/graph/graph.yaml`]: `schemaVersion: '1'\ntemplatePacks:\n  - name: testpack\n    path: ../packs/testpack\n`,
+    [`${base}/graph/components/orders/Schemas/customer.yaml`]: `id: orders.Schema.customer
 template: Schema
 schemaVersion: '1.0'
 metadata:
@@ -1213,7 +1267,7 @@ fields:
     type: string
     nullable: false
 `,
-    '.corum/graph/components/orders/Schemas/invoice.yaml': `id: orders.Schema.invoice
+    [`${base}/graph/components/orders/Schemas/invoice.yaml`]: `id: orders.Schema.invoice
 template: Schema
 schemaVersion: '1.0'
 metadata:
@@ -1225,14 +1279,6 @@ properties:
   description: 'Invoice'
 `,
   }
-  for (const [rel, content] of Object.entries(files)) {
-    const filePath = path.join(tmpDir, ...rel.split('/'))
-    fs.mkdirSync(path.dirname(filePath), { recursive: true })
-    fs.writeFileSync(filePath, content)
-    await git.add({ fs, dir: tmpDir, filepath: rel })
-  }
-  await git.commit({ fs, dir: tmpDir, message: 'initial', author: { name: 'Test', email: 'test@test.com' } })
-  return new GitGraphSource({ localPath: tmpDir })
 }
 
 function clusterYaml(id: string, state: string, stability: string): string {

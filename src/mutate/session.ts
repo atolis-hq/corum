@@ -212,6 +212,13 @@ export async function startSession(
     }
   }
 
+  if (!isFileSource && branch === defaultBranch) {
+    throw new MutationError([mutationDiagnostic(
+      'error',
+      `cannot start a write session on the default branch '${defaultBranch}' - it is read-only; specify a writable branch or use create: true`,
+    )])
+  }
+
   // In create mode the branch does not exist yet: the base is the default
   // branch head; the branch itself is created on first commit.
   const baseRef = options.create ? defaultBranch : branch
@@ -708,4 +715,3 @@ function diffCounts(base: Map<string, string>, current: Map<string, string>): Ch
   }
   return { added, modified, removed }
 }
-

@@ -411,6 +411,23 @@ describe('graph queries', () => {
       assert.ok(ids.includes('orders.DomainModel.order.operations.place'))
     })
 
+    it('upstream direction retains parent-only ancestors reached via the synthetic parent hop', () => {
+      const result = getLineage(graph, ['orders.DomainModel.order.operations.place'], {
+        direction: 'upstream',
+        depth: 1,
+        edgeTypes: ['triggers'],
+        excludeNodeTypes: [],
+      })
+      assert.ok(
+        result.nodes.some((n: { id: string }) => n.id === 'orders.DomainModel.order'),
+        'the parent reached via the synthetic parent hop should stay in the result even without a visible edge',
+      )
+      assert.ok(
+        result.nodes.some((n: { via_edge_type?: string }) => n.via_edge_type === 'parent'),
+        'the returned annotation should preserve that this hop came from the synthetic parent traversal',
+      )
+    })
+
     it('excludes start nodes from result', () => {
       const result = getLineage(graph, ['orders.DomainModel.order.operations.place'])
       assert.ok(!result.nodes.some((n: { id: string }) => n.id === 'orders.DomainModel.order.operations.place'))

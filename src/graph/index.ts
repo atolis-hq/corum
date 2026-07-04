@@ -638,7 +638,12 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
       }
     }
   }
-  const prunedIds = new Set([...resultNodeIds].filter(id => nodesWithEdges.has(id)))
+  // Keep parent-hop ancestors even when they were reached through the
+  // synthetic upstream parent traversal and therefore have no concrete edge
+  // object in the result edge set.
+  const prunedIds = new Set([...resultNodeIds].filter(id =>
+    nodesWithEdges.has(id) || annotations.get(id)?.viaEdgeType === 'parent',
+  ))
 
   let danglingEdges: Edge[] | undefined
   if (includeDanglingEdges) {

@@ -308,6 +308,7 @@ export class GitGraphSource implements GraphSource {
       if (this.remoteUrl) {
         try {
           await this.push(dir, branch, options.force === true)
+          await this.updateRemoteTrackingRef(dir, branch, newCommitOid)
         } catch (err) {
           // Roll the local ref back so the cached clone does not diverge from
           // origin; otherwise the committed data becomes invisible on next read.
@@ -354,6 +355,7 @@ export class GitGraphSource implements GraphSource {
     if (this.remoteUrl) {
       try {
         await this.push(dir, branch, options.force === true)
+        await this.updateRemoteTrackingRef(dir, branch, newCommitOid)
       } catch (err) {
         // Restore the pre-squash WIP head so the branch never points at an
         // unpushed squash commit (design §14e).
@@ -377,6 +379,10 @@ export class GitGraphSource implements GraphSource {
       force,
       onAuth: this.onAuth(),
     })
+  }
+
+  private async updateRemoteTrackingRef(dir: string, branch: string, oid: string): Promise<void> {
+    await git.writeRef({ fs, dir, ref: `refs/remotes/origin/${branch}`, value: oid, force: true })
   }
 
   /** Write blobs + tree + commit object for `changes` on top of `parentSha`; returns the new commit oid. */
@@ -434,6 +440,11 @@ export class GitGraphSource implements GraphSource {
   private async resolveBranchOid(branch: string): Promise<string> {
     const dir = await this.dir()
     if (this.remoteUrl) {
+      try {
+        return await git.resolveRef({ fs, dir, ref: `refs/heads/${branch}` })
+      } catch {
+        // Read-only remote branches may only exist as tracking refs.
+      }
       try {
         return await git.resolveRef({ fs, dir, ref: `refs/remotes/origin/${branch}` })
       } catch {

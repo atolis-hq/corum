@@ -471,6 +471,14 @@ describe('working session (file source)', () => {
 // -- git sessions --------------------------------------------------------------
 
 describe('working session (local git source)', () => {
+  it('fails fast when startSession defaults to the read-only default branch', async () => {
+    const { source } = await makeGitFixture()
+    await assert.rejects(
+      () => startSession(source),
+      (err: unknown) => err instanceof MutationError && /default branch/.test(err.message),
+    )
+  })
+
   it('defaults autosave OFF, commits once on commitChanges, and round-trips', async () => {
     const { source, repoDir } = await makeGitFixture(['feat/work'])
     const baseSha = await source.head('feat/work')
