@@ -1,21 +1,18 @@
 id: orders.APIEndpoint.get-order
 template: APIEndpoint
-schemaVersion: "1"
-
+schemaVersion: '1'
 metadata:
   component: orders
   state: agreed
   stability: stable
-  lastModifiedAt: "2026-04-23"
-
+  lastModifiedAt: 2026-04-23
 properties:
   method: GET
   path: /orders/{orderId}
   responses:
-    "200": '#/schemas/order-response'
-    "400": shared.Schema.problem-detail
-    "404": shared.Schema.problem-detail
-
+    '200': '#/schemas/order-response'
+    '400': shared.Schema.problem-detail
+    '404': shared.Schema.problem-detail
 schemas:
   order-response:
     description: Full order details for a single-order query
@@ -42,7 +39,6 @@ schemas:
       createdAt:
         type: datetime
         nullable: false
-
   order-line-item:
     description: A single line item within the order
     fields:

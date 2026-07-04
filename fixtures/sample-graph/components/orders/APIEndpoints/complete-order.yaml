@@ -1,22 +1,19 @@
 id: orders.APIEndpoint.complete-order
 template: APIEndpoint
-schemaVersion: "1"
-
+schemaVersion: '1'
 metadata:
   component: orders
   state: agreed
   stability: stable
-  lastModifiedAt: "2026-04-23"
-
+  lastModifiedAt: 2026-04-23
 properties:
   method: POST
   path: /orders/{orderId}/complete
   responses:
-    "200": '#/schemas/order-response'
-    "400": shared.Schema.problem-detail
-    "404": shared.Schema.problem-detail
-    "409": shared.Schema.problem-detail
-
+    '200': '#/schemas/order-response'
+    '400': shared.Schema.problem-detail
+    '404': shared.Schema.problem-detail
+    '409': shared.Schema.problem-detail
 schemas:
   order-response:
     description: Updated order details after completion
@@ -43,7 +40,6 @@ schemas:
       createdAt:
         type: datetime
         nullable: false
-
   order-line-item:
     description: A single line item within the order
     fields:

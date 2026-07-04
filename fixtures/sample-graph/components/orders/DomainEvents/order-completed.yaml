@@ -1,13 +1,11 @@
 id: orders.DomainEvent.order-completed
 template: DomainEvent
-schemaVersion: "1"
-
+schemaVersion: '1'
 metadata:
   component: orders
   state: agreed
   stability: stable
-  lastModifiedAt: "2026-04-23"
-
+  lastModifiedAt: 2026-04-23
 schemas:
   order-completed-payload:
     description: Payload carried by the order-completed domain event

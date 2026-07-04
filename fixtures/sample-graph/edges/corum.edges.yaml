@@ -1,0 +1,197 @@
+edges:
+  - from: orders.APIEndpoint.complete-order
+    to: orders.DomainModel.order.operations.complete
+    type: calls
+  - from: orders.APIEndpoint.complete-order.schemas.order-response.fields.createdAt
+    to: orders.ReadModel.order-detail.schemas.order-detail.fields.createdAt
+    type: maps-to
+  - from: orders.APIEndpoint.complete-order.schemas.order-response.fields.customerId
+    to: orders.ReadModel.order-detail.schemas.order-detail.fields.customerId
+    type: maps-to
+  - from: orders.APIEndpoint.complete-order.schemas.order-response.fields.items
+    to: orders.ReadModel.order-detail.schemas.order-detail.fields.items
+    type: maps-to
+  - from: orders.APIEndpoint.complete-order.schemas.order-response.fields.notes
+    to: orders.ReadModel.order-detail.schemas.order-detail.fields.notes
+    type: maps-to
+  - from: orders.APIEndpoint.complete-order.schemas.order-response.fields.orderId
+    to: orders.ReadModel.order-detail.schemas.order-detail.fields.id
+    type: maps-to
+  - from: orders.APIEndpoint.complete-order.schemas.order-response.fields.status
+    to: orders.ReadModel.order-detail.schemas.order-detail.fields.status
+    type: maps-to
+  - from: orders.APIEndpoint.complete-order.schemas.order-response.fields.totalAmount
+    to: orders.ReadModel.order-detail.schemas.order-detail.fields.totalAmount
+    type: maps-to
+  - from: orders.APIEndpoint.create-order
+    to: orders.DomainModel.order.operations.place
+    type: calls
+  - from: orders.APIEndpoint.create-order
+    to: orders.DomainModel.order
+    type: reads
+    notes: POST /orders creates and returns an Order aggregate
+  - from: orders.APIEndpoint.create-order.schemas.create-order-request.fields.customerId
+    to: orders.DomainModel.order.schemas.order.fields.customerId
+    type: maps-to
+  - from: orders.APIEndpoint.create-order.schemas.create-order-request.fields.notes
+    to: orders.DomainModel.order.schemas.order.fields.notes
+    type: maps-to
+  - from: orders.APIEndpoint.create-order.schemas.create-order-response.fields.customerId
+    to: orders.DomainModel.order.schemas.order.fields.customerId
+    type: maps-to
+  - from: orders.APIEndpoint.create-order.schemas.create-order-response.fields.items
+    to: orders.DomainModel.order.schemas.order.fields.items
+    type: maps-to
+  - from: orders.APIEndpoint.create-order.schemas.create-order-response.fields.orderId
+    to: orders.DomainModel.order.schemas.order.fields.id
+    type: maps-to
+  - from: orders.APIEndpoint.create-order.schemas.create-order-response.fields.status
+    to: orders.DomainModel.order.schemas.order.fields.status
+    type: maps-to
+  - from: orders.APIEndpoint.create-order.schemas.create-order-response.fields.totalAmount
+    to: orders.DomainModel.order.schemas.order.fields.totalAmount
+    type: maps-to
+  - from: orders.APIEndpoint.get-order
+    to: orders.ReadModel.order-detail
+    type: reads
+  - from: orders.APIEndpoint.get-order.schemas.order-response.fields.createdAt
+    to: orders.ReadModel.order-detail.schemas.order-detail.fields.createdAt
+    type: maps-to
+  - from: orders.APIEndpoint.get-order.schemas.order-response.fields.customerId
+    to: orders.ReadModel.order-detail.schemas.order-detail.fields.customerId
+    type: maps-to
+  - from: orders.APIEndpoint.get-order.schemas.order-response.fields.items
+    to: orders.ReadModel.order-detail.schemas.order-detail.fields.items
+    type: maps-to
+  - from: orders.APIEndpoint.get-order.schemas.order-response.fields.notes
+    to: orders.ReadModel.order-detail.schemas.order-detail.fields.notes
+    type: maps-to
+  - from: orders.APIEndpoint.get-order.schemas.order-response.fields.orderId
+    to: orders.ReadModel.order-detail.schemas.order-detail.fields.id
+    type: maps-to
+  - from: orders.APIEndpoint.get-order.schemas.order-response.fields.status
+    to: orders.ReadModel.order-detail.schemas.order-detail.fields.status
+    type: maps-to
+  - from: orders.APIEndpoint.get-order.schemas.order-response.fields.totalAmount
+    to: orders.ReadModel.order-detail.schemas.order-detail.fields.totalAmount
+    type: maps-to
+  - from: orders.APIEndpoint.list-orders
+    to: orders.ReadModel.order-summary
+    type: reads
+  - from: orders.APIEndpoint.list-orders.schemas.order-summary-response.fields.customerId
+    to: orders.ReadModel.order-summary.schemas.order-summary.fields.customerId
+    type: maps-to
+  - from: orders.APIEndpoint.list-orders.schemas.order-summary-response.fields.orderId
+    to: orders.ReadModel.order-summary.schemas.order-summary.fields.id
+    type: maps-to
+  - from: orders.APIEndpoint.list-orders.schemas.order-summary-response.fields.status
+    to: orders.ReadModel.order-summary.schemas.order-summary.fields.status
+    type: maps-to
+  - from: orders.APIEndpoint.list-orders.schemas.order-summary-response.fields.totalAmount
+    to: orders.ReadModel.order-summary.schemas.order-summary.fields.totalAmount
+    type: maps-to
+  - from: orders.DomainEvent.order-completed
+    to: orders.IntegrationEvent.order-completed
+    type: triggers
+  - from: orders.DomainEvent.order-placed
+    to: orders.IntegrationEvent.order-placed
+    type: triggers
+  - from: orders.DomainModel.order.operations.complete
+    to: orders.DomainEvent.order-completed
+    type: produces
+  - from: orders.DomainModel.order.operations.place
+    to: orders.DomainEvent.order-placed
+    type: produces
+  - from: orders.IntegrationEvent.order-completed.schemas.order-completed-payload.fields.customerId
+    to: orders.DomainModel.order.schemas.order.fields.customerId
+    type: maps-to
+  - from: orders.IntegrationEvent.order-completed.schemas.order-completed-payload.fields.orderId
+    to: orders.DomainModel.order.schemas.order.fields.id
+    type: maps-to
+  - from: orders.IntegrationEvent.order-completed.schemas.order-completed-payload.fields.totalAmount
+    to: orders.DomainModel.order.schemas.order.fields.totalAmount
+    type: maps-to
+  - from: orders.IntegrationEvent.order-placed.schemas.order-placed-payload.fields.customerId
+    to: orders.DomainModel.order.schemas.order.fields.customerId
+    type: maps-to
+  - from: orders.IntegrationEvent.order-placed.schemas.order-placed-payload.fields.orderId
+    to: orders.DomainModel.order.schemas.order.fields.id
+    type: maps-to
+  - from: orders.IntegrationEvent.order-placed.schemas.order-placed-payload.fields.totalAmount
+    to: orders.DomainModel.order.schemas.order.fields.totalAmount
+    type: maps-to
+  - from: orders.ReadModel.order-detail
+    to: orders.DomainModel.order
+    type: derived-from
+  - from: orders.ReadModel.order-detail.schemas.order-detail.fields.customerId
+    to: orders.DomainModel.order.schemas.order.fields.customerId
+    type: maps-to
+  - from: orders.ReadModel.order-detail.schemas.order-detail.fields.id
+    to: orders.DomainModel.order.schemas.order.fields.id
+    type: maps-to
+  - from: orders.ReadModel.order-detail.schemas.order-detail.fields.items
+    to: orders.DomainModel.order.schemas.order.fields.items
+    type: maps-to
+  - from: orders.ReadModel.order-detail.schemas.order-detail.fields.notes
+    to: orders.DomainModel.order.schemas.order.fields.notes
+    type: maps-to
+  - from: orders.ReadModel.order-detail.schemas.order-detail.fields.status
+    to: orders.DomainModel.order.schemas.order.fields.status
+    type: maps-to
+  - from: orders.ReadModel.order-detail.schemas.order-detail.fields.totalAmount
+    to: orders.DomainModel.order.schemas.order.fields.totalAmount
+    type: maps-to
+  - from: orders.ReadModel.order-summary
+    to: orders.DomainModel.order
+    type: derived-from
+  - from: orders.ReadModel.order-summary.schemas.order-summary.fields.customerId
+    to: orders.DomainModel.order.schemas.order.fields.customerId
+    type: maps-to
+  - from: orders.ReadModel.order-summary.schemas.order-summary.fields.id
+    to: orders.DomainModel.order.schemas.order.fields.id
+    type: maps-to
+  - from: orders.ReadModel.order-summary.schemas.order-summary.fields.status
+    to: orders.DomainModel.order.schemas.order.fields.status
+    type: maps-to
+  - from: orders.ReadModel.order-summary.schemas.order-summary.fields.totalAmount
+    to: orders.DomainModel.order.schemas.order.fields.totalAmount
+    type: maps-to
+  - from: payments.APIEndpoint.complete-payment
+    to: payments.DomainModel.payment.operations.capture
+    type: calls
+  - from: payments.APIEndpoint.complete-payment.schemas.payment-response.fields.amount
+    to: payments.DomainModel.payment.schemas.payment.fields.amount
+    type: maps-to
+  - from: payments.APIEndpoint.complete-payment.schemas.payment-response.fields.capturedAt
+    to: payments.DomainModel.payment.schemas.payment.fields.capturedAt
+    type: maps-to
+  - from: payments.APIEndpoint.complete-payment.schemas.payment-response.fields.id
+    to: payments.DomainModel.payment.schemas.payment.fields.id
+    type: maps-to
+  - from: payments.APIEndpoint.complete-payment.schemas.payment-response.fields.orderId
+    to: payments.DomainModel.payment.schemas.payment.fields.orderId
+    type: maps-to
+  - from: payments.APIEndpoint.complete-payment.schemas.payment-response.fields.status
+    to: payments.DomainModel.payment.schemas.payment.fields.status
+    type: maps-to
+  - from: payments.DomainEvent.payment-captured
+    to: payments.IntegrationEvent.payment-captured
+    type: triggers
+  - from: payments.DomainModel.payment.operations.capture
+    to: payments.DomainEvent.payment-captured
+    type: produces
+  - from: payments.IntegrationEvent.payment-captured
+    to: orders.DomainModel.order.operations.complete
+    type: triggers
+  - from: payments.IntegrationEvent.payment-captured.schemas.payment-captured-payload.fields.amount
+    to: payments.DomainModel.payment.schemas.payment.fields.amount
+    type: maps-to
+  - from: payments.IntegrationEvent.payment-captured.schemas.payment-captured-payload.fields.capturedAt
+    to: payments.DomainModel.payment.schemas.payment.fields.capturedAt
+    type: maps-to
+  - from: payments.IntegrationEvent.payment-captured.schemas.payment-captured-payload.fields.orderId
+    to: payments.DomainModel.payment.schemas.payment.fields.orderId
+    type: maps-to
+  - from: payments.IntegrationEvent.payment-captured.schemas.payment-captured-payload.fields.paymentId
+    to: payments.DomainModel.payment.schemas.payment.fields.id
+    type: maps-to

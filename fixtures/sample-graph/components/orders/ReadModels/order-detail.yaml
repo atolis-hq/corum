@@ -1,13 +1,11 @@
 id: orders.ReadModel.order-detail
 template: ReadModel
-schemaVersion: "1"
-
+schemaVersion: '1'
 metadata:
   component: orders
   state: agreed
   stability: stable
-  lastModifiedAt: "2026-04-23"
-
+  lastModifiedAt: 2026-04-23
 schemas:
   order-detail:
     description: Full order view for single-order queries
@@ -34,7 +32,6 @@ schemas:
       createdAt:
         type: datetime
         nullable: false
-
   order-line-item:
     description: A single line item within the order
     fields:
@@ -45,6 +42,6 @@ schemas:
         type: integer
         nullable: false
       unitPrice:
-        state: proposed
         type: decimal
         nullable: false
+        state: proposed
