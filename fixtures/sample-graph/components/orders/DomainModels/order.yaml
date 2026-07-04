@@ -1,17 +1,14 @@
 id: orders.DomainModel.order
 template: DomainModel
-schemaVersion: "1"
-
+schemaVersion: '1'
 metadata:
   component: orders
   state: agreed
   stability: stable
-  lastModifiedAt: "2026-04-23"
-
+  lastModifiedAt: 2026-04-23
 properties:
   description: A placed customer order; aggregate root for the orders bounded context
   schema: '#/schemas/order'
-
 schemas:
   order:
     description: Structure of the order aggregate
@@ -35,7 +32,6 @@ schemas:
       notes:
         type: string
         nullable: true
-
   order-line-item:
     description: A single line item within the order
     fields:
@@ -46,10 +42,9 @@ schemas:
         type: integer
         nullable: false
       unitPrice:
-        state: proposed
         type: decimal
         nullable: false
-
+        state: proposed
 enums:
   order-status:
     description: Lifecycle state of an order within the domain
@@ -66,13 +61,11 @@ enums:
       cancelled:
         name: CANCELLED
         description: Order cancelled before fulfilment
-
 invariants:
   must-have-items:
     description: An order must contain at least one line item at all times
   total-matches-items:
     description: totalAmount must equal the sum of (quantity Ã— unitPrice) across all items
-
 operations:
   place:
     description: Create a new order from validated customer intent
@@ -81,5 +74,5 @@ operations:
   complete:
     description: Mark the order as fully completed following successful payment capture
   cancel:
-    state: proposed
     description: Cancel an in-progress order, returning reserved stock
+    state: proposed

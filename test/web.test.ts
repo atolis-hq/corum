@@ -1404,6 +1404,14 @@ class FailingBranchSource implements GraphSource {
   async commit(): Promise<void> {
     throw new Error('not implemented')
   }
+
+  async head(): Promise<string> {
+    return 'fake-head'
+  }
+
+  async log(): Promise<string[]> {
+    return []
+  }
 }
 
 class MutableBranchSource implements GraphSource {
@@ -1462,6 +1470,14 @@ class MutableBranchSource implements GraphSource {
 
   async commit(): Promise<void> {
     throw new Error('not implemented')
+  }
+
+  async head(): Promise<string> {
+    return 'fake-head'
+  }
+
+  async log(): Promise<string[]> {
+    return []
   }
 
   async reloadSignature(): Promise<string> {

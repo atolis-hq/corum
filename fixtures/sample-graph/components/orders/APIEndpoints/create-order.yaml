@@ -1,22 +1,19 @@
 id: orders.APIEndpoint.create-order
 template: APIEndpoint
-schemaVersion: "1"
-
+schemaVersion: '1'
 metadata:
   component: orders
   state: agreed
   stability: stable
-  lastModifiedAt: "2026-04-17"
-
+  lastModifiedAt: 2026-04-17
 properties:
   method: POST
   path: /orders
   request: '#/schemas/create-order-request'
   responses:
-    "201": '#/schemas/create-order-response'
-    "400": shared.Schema.problem-detail
-    "409": shared.Schema.problem-detail
-
+    '201': '#/schemas/create-order-response'
+    '400': shared.Schema.problem-detail
+    '409': shared.Schema.problem-detail
 schemas:
   create-order-request:
     description: Request body for creating an order
@@ -31,7 +28,6 @@ schemas:
       notes:
         type: string
         nullable: true
-
   order-line-item:
     description: A single line item within the order
     fields:
@@ -42,10 +38,9 @@ schemas:
         type: integer
         nullable: false
       unitPrice:
-        state: draft
         type: decimal
         nullable: false
-
+        state: draft
   create-order-response:
     description: Confirmed order details returned on successful creation
     fields:
@@ -65,7 +60,6 @@ schemas:
       totalAmount:
         type: decimal
         nullable: false
-
 enums:
   order-status:
     description: Lifecycle state of an order as visible to API consumers

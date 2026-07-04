@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { loadGraph } from '../../src/loader/index.js'
 import { saveGraph } from '../../src/writer/graph-writer.js'
 import { runImport } from '../../src/import/runner.js'
+import { renameNode } from '../../src/mutate/index.js'
 import { createGraphRuntimeConfig } from '../../src/source/config.js'
 import { FileGraphSource } from '../../src/source/file-source.js'
 import type { CommitOptions, ContentMap, GraphSource } from '../../src/source/index.js'
@@ -203,6 +204,97 @@ describe('import runner — orphan removal', () => {
   })
 })
 
+describe('import runner — rename-aware reconciliation (design §6a)', () => {
+  it('re-import of an unrenamed spec merges into the renamed node and reports in-flight drift', async () => {
+    const { graphDir, cleanup: cleanupGraph } = await setupGraphDir()
+    // Spec lives outside graphDir so saveGraph's stale-YAML cleanup cannot touch it.
+    const specTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-rename-spec-'))
+    const cleanup = () => {
+      cleanupGraph()
+      fs.rmSync(specTmpDir, { recursive: true, force: true })
+    }
+    try {
+      const tempSpec = path.join(specTmpDir, 'test-spec.yaml')
+      fs.copyFileSync(path.join(specsDir, 'orders-simple.yaml'), tempSpec)
+      const makeConfig = (): ImportConfig => ({
+        imports: [{
+          adapter: 'openapi',
+          spec: tempSpec,
+          componentMapping: { strategy: 'uri-segment', segment: 0 },
+        }],
+      })
+
+      await runImport(makeConfig(), makeRuntimeConfig(graphDir))
+
+      // Rename the imported endpoint in the graph, recording a trail.
+      const graph = await loadGraph({ graphPath: graphDir })
+      const oldId = 'orders.APIEndpoint.createOrder'
+      assert.ok(graph.nodesById.has(oldId), 'endpoint exists after first import')
+      const { newId } = renameNode(graph, oldId, 'submitOrder', true)
+      await saveGraph(graph, { sourceGraphPath: graphDir, outputGraphPath: graphDir })
+
+      // Re-import the unchanged spec: it still uses the retired name.
+      const result = await runImport(makeConfig(), makeRuntimeConfig(graphDir))
+      assert.ok(!result.diagnostics.some(d => d.severity === 'error'), `expected no errors: ${JSON.stringify(result.diagnostics)}`)
+      assert.ok(
+        result.diagnostics.some(d => d.severity === 'warning' && /in-flight drift/.test(d.message) && d.message.includes(oldId) && d.message.includes(newId)),
+        `expected an in-flight drift warning, got: ${JSON.stringify(result.diagnostics)}`,
+      )
+
+      const after = await loadGraph({ graphPath: graphDir })
+      const renamed = after.nodesById.get(newId)
+      assert.ok(renamed, 'renamed node survives the re-import')
+      assert.notEqual(renamed.state, 'removed', 'renamed node is not orphan-removed')
+      assert.ok(!after.nodesById.has(oldId), 'old name is not re-added')
+      assert.deepEqual(renamed.corum?.identity?.previousIds, [oldId], 'previousIds survives the determined merge')
+      assert.ok(
+        (after.edgesByFrom.get(newId) ?? []).some(e => e.type === 'renamed-from' && e.to === oldId),
+        'renamed-from trail edge survives the re-import',
+      )
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('suggests rename_node when a re-import removes and adds a sibling with the same template', async () => {
+    const { graphDir, cleanup } = await setupGraphDir()
+    try {
+      const tempSpec = path.join(graphDir, 'test-spec.yaml')
+      const spec = fs.readFileSync(path.join(specsDir, 'orders-simple.yaml'), 'utf-8')
+      fs.writeFileSync(tempSpec, spec)
+      const makeConfig = (): ImportConfig => ({
+        imports: [{
+          adapter: 'openapi',
+          spec: tempSpec,
+          componentMapping: { strategy: 'uri-segment', segment: 0 },
+        }],
+      })
+
+      await runImport(makeConfig(), makeRuntimeConfig(graphDir))
+
+      // Rename the operation in the spec only (code renamed, graph not).
+      fs.writeFileSync(tempSpec, spec.replace(/createOrder/g, 'submitOrder'))
+      const result = await runImport(makeConfig(), makeRuntimeConfig(graphDir))
+
+      assert.ok(
+        result.diagnostics.some(d =>
+          d.severity === 'warning'
+          && /possible rename/.test(d.message)
+          && /rename_node/.test(d.message)
+          && d.message.includes('orders.APIEndpoint.createOrder')
+          && d.message.includes('orders.APIEndpoint.submitOrder')),
+        `expected a possible-rename warning, got: ${JSON.stringify(result.diagnostics)}`,
+      )
+
+      const after = await loadGraph({ graphPath: graphDir })
+      assert.equal(after.nodesById.get('orders.APIEndpoint.createOrder')?.state, 'removed', 'old node soft-removed')
+      assert.ok(after.nodesById.has('orders.APIEndpoint.submitOrder'), 'new node added')
+    } finally {
+      cleanup()
+    }
+  })
+})
+
 describe('import runner — target branch', () => {
   class RecordingSource implements GraphSource {
     readonly commits: Array<{ branch: string; changes: ContentMap; message: string; options?: CommitOptions }> = []
@@ -237,6 +329,14 @@ describe('import runner — target branch', () => {
       // Mirrors real git-source behaviour: a commit with replaceGraphContent
       // becomes what the next loadGraphContent(branch) call sees.
       this.graphContentByBranch.set(branch, new Map(changes))
+    }
+
+    async head(): Promise<string> {
+      return 'fake-head'
+    }
+
+    async log(): Promise<string[]> {
+      return []
     }
   }
 

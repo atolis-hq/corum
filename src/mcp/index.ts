@@ -22,8 +22,9 @@ import {
   type SearchNodesOptions,
 } from '../graph/index.js'
 import { loadGraph, loadMultiGraph } from '../loader/index.js'
-import type { BranchGraph, Edge, EdgeType, Graph } from '../schema/index.js'
+import type { BranchGraph, Edge, EdgeType, Graph, Stability, State } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
+import { MutationError, getActiveSession, startSession, type WorkingSession } from '../mutate/index.js'
 import { createGraphRuntimeConfig } from '../source/config.js'
 import type { GraphSource } from '../source/index.js'
 import { createMultiGraphCache, replaceGraph, startGraphFileWatcher, startWebServer, type MultiGraphCache } from '../web/server.js'
@@ -121,6 +122,7 @@ function fullNode(node: Graph['nodesById'] extends Map<string, infer T> ? T : ne
     component: node.component,
     state: node.state,
     stability: node.stability,
+    ...(node.corum !== undefined ? { corum: node.corum } : {}),
     properties: node.properties,
     ...(includeProvenance ? withProvenance(node) : {}),
   }
@@ -198,8 +200,37 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
   search_nodes: ToolHandler
   list_branches: ToolHandler
   diff_branch: ToolHandler
+  start_changes: ToolHandler
+  apply_cluster: ToolHandler
+  create_node: ToolHandler
+  update_node: ToolHandler
+  rename_node: ToolHandler
+  delete_node: ToolHandler
+  create_edge: ToolHandler
+  update_edge: ToolHandler
+  delete_edge: ToolHandler
+  pending_changes: ToolHandler
+  discard_changes: ToolHandler
+  commit_changes: ToolHandler
 } {
   const resolveMulti = (src: GraphSource) => cache ? cache.get() : loadMultiGraph({ source: src })
+
+  // Reads reflect the working session while one is open (design §7/§8):
+  // un-branched reads serve the session's working graph; branch-scoped reads
+  // for the session's own branch do too (see withBranchGraph). Behaviour with
+  // no open session is unchanged.
+  const readGraph = (): Graph => {
+    const session = getActiveSession()
+    return session && !session.isClosed() ? session.graph : graph
+  }
+
+  const requireSession = (): WorkingSession => {
+    const session = getActiveSession()
+    if (!session || session.isClosed()) {
+      throw new QueryError('no working session is open — call start_changes first')
+    }
+    return session
+  }
 
   return {
     list_nodes(args) {
@@ -215,7 +246,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
       }
 
       try {
-        return run(graph)
+        return run(readGraph())
       } catch (err) {
         return errorResult(err)
       }
@@ -230,7 +261,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
       }
 
       try {
-        return run(graph)
+        return run(readGraph())
       } catch (err) {
         return errorResult(err)
       }
@@ -266,7 +297,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
       }
 
       try {
-        return run(graph)
+        return run(readGraph())
       } catch (err) {
         return errorResult(err)
       }
@@ -292,7 +323,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
       }
 
       try {
-        return run(graph)
+        return run(readGraph())
       } catch (err) {
         return errorResult(err)
       }
@@ -301,7 +332,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
     get_template(args) {
       try {
         const name = String(args.name)
-        const template = graph.templates.get(name)
+        const template = readGraph().templates.get(name)
         if (!template) {
           throw new QueryError(`Template not found: ${name}`)
         }
@@ -395,7 +426,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
         return withBranchGraph(source, branchRef, branch => run(branch.graph, branchRef), cache)
       }
 
-      return run(graph).catch(err => errorResult(err))
+      return run(readGraph()).catch(err => errorResult(err))
     },
 
     get_graph(args) {
@@ -429,7 +460,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
       }
 
       try {
-        return run(graph)
+        return run(readGraph())
       } catch (err) {
         return errorResult(err)
       }
@@ -465,7 +496,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
       }
 
       try {
-        return run(graph)
+        return run(readGraph())
       } catch (err) {
         return errorResult(err)
       }
@@ -508,7 +539,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
       }
 
       try {
-        return run(graph)
+        return run(readGraph())
       } catch (err) {
         return errorResult(err)
       }
@@ -530,7 +561,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
       }
 
       try {
-        return run(graph)
+        return run(readGraph())
       } catch (err) {
         return errorResult(err)
       }
@@ -564,7 +595,199 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
         return errorResult(err)
       }
     },
+
+    // -- write tools (design §8): thin wrappers over the working session ------
+
+    async start_changes(args) {
+      try {
+        if (!source) throw new QueryError('GraphSource is required for start_changes')
+        const session = await startSession(source, {
+          branch: typeof args.branch === 'string' ? args.branch : undefined,
+          create: args.create === true,
+          ...(typeof args.autosave === 'boolean' ? { autosave: args.autosave } : {}),
+        })
+        return formatResult({
+          branch: session.branch,
+          default_branch: session.defaultBranch,
+          base_sha: session.baseSha,
+          autosave: session.autosave,
+        }, args.format, getCompactKeys(args))
+      } catch (err) {
+        return errorResult(err, args.format)
+      }
+    },
+
+    async apply_cluster(args) {
+      try {
+        const session = requireSession()
+        if (args.mode !== 'merge' && args.mode !== 'replace') {
+          throw new QueryError("mode must be 'merge' or 'replace'")
+        }
+        if (!isPlainObject(args.document)) {
+          throw new QueryError('document must be an object (cluster-style document)')
+        }
+        const result = await session.applyCluster(args.document, args.mode as 'merge' | 'replace')
+        return formatResult(result, args.format, getCompactKeys(args))
+      } catch (err) {
+        return errorResult(err, args.format)
+      }
+    },
+
+    async create_node(args) {
+      try {
+        const session = requireSession()
+        if (!isPlainObject(args.document)) {
+          throw new QueryError('document is required and must be an object')
+        }
+        const result = await session.createNode({
+          document: args.document,
+          parentId: typeof args.parent_id === 'string' ? args.parent_id : undefined,
+          section: typeof args.section === 'string' ? args.section : undefined,
+          name: typeof args.name === 'string' ? args.name : undefined,
+        })
+        return formatResult(result, args.format, getCompactKeys(args))
+      } catch (err) {
+        return errorResult(err, args.format)
+      }
+    },
+
+    async update_node(args) {
+      try {
+        const session = requireSession()
+        const result = await session.updateNode(requireString(args.id, 'id'), {
+          properties: isPlainObject(args.properties) ? args.properties : undefined,
+          state: args.state as State | undefined,
+          stability: args.stability as Stability | undefined,
+        })
+        return formatResult(result, args.format, getCompactKeys(args))
+      } catch (err) {
+        return errorResult(err, args.format)
+      }
+    },
+
+    async rename_node(args) {
+      try {
+        const session = requireSession()
+        const result = await session.renameNode(
+          requireString(args.id, 'id'),
+          requireString(args.new_name, 'new_name'),
+          typeof args.record_trail === 'boolean' ? args.record_trail : undefined,
+        )
+        return formatResult(result, args.format, getCompactKeys(args))
+      } catch (err) {
+        return errorResult(err, args.format)
+      }
+    },
+
+    async delete_node(args) {
+      try {
+        const session = requireSession()
+        const result = await session.deleteNode(requireString(args.id, 'id'), {
+          purge: args.purge === true,
+          recordTrail: typeof args.record_trail === 'boolean' ? args.record_trail : undefined,
+        })
+        return formatResult(result, args.format, getCompactKeys(args))
+      } catch (err) {
+        return errorResult(err, args.format)
+      }
+    },
+
+    async create_edge(args) {
+      try {
+        const session = requireSession()
+        const result = await session.createEdge({
+          from: requireString(args.from, 'from'),
+          to: requireString(args.to, 'to'),
+          type: requireString(args.type, 'type'),
+          state: args.state as State | undefined,
+          stability: args.stability as Stability | undefined,
+          notes: typeof args.notes === 'string' ? args.notes : undefined,
+          properties: isPlainObject(args.properties) ? args.properties : undefined,
+        })
+        return formatResult(result, args.format, getCompactKeys(args))
+      } catch (err) {
+        return errorResult(err, args.format)
+      }
+    },
+
+    async update_edge(args) {
+      try {
+        const session = requireSession()
+        const result = await session.updateEdge(requireString(args.id, 'id'), {
+          state: args.state as State | undefined,
+          stability: args.stability as Stability | undefined,
+          notes: args.notes === null ? null : typeof args.notes === 'string' ? args.notes : undefined,
+          properties: isPlainObject(args.properties) ? args.properties : undefined,
+        })
+        return formatResult(result, args.format, getCompactKeys(args))
+      } catch (err) {
+        return errorResult(err, args.format)
+      }
+    },
+
+    async delete_edge(args) {
+      try {
+        const session = requireSession()
+        const result = await session.deleteEdge(requireString(args.id, 'id'))
+        return formatResult(result, args.format, getCompactKeys(args))
+      } catch (err) {
+        return errorResult(err, args.format)
+      }
+    },
+
+    pending_changes(args) {
+      try {
+        const session = requireSession()
+        return formatResult(session.pendingChanges(), args.format, getCompactKeys(args))
+      } catch (err) {
+        return errorResult(err, args.format)
+      }
+    },
+
+    async discard_changes(args) {
+      try {
+        const session = requireSession()
+        const branch = session.branch
+        session.discard()
+        if (session.autosave && session.branch === session.defaultBranch && source) {
+          const fresh = await loadGraph({ source, ref: session.defaultBranch, strict: false })
+          cache?.invalidate()
+          replaceGraph(graph, fresh)
+        }
+        return formatResult({ discarded: true, branch }, args.format, getCompactKeys(args))
+      } catch (err) {
+        return errorResult(err, args.format)
+      }
+    },
+
+    async commit_changes(args) {
+      try {
+        const session = requireSession()
+        const result = await session.commitChanges(typeof args.message === 'string' ? args.message : undefined)
+        // Committed content invalidates branch-scoped caches; when the session
+        // was on the default branch, refresh the base graph in place so
+        // post-session reads see the committed state.
+        cache?.invalidate()
+        if (result.committed && session.branch === session.defaultBranch) {
+          replaceGraph(graph, session.graph)
+        }
+        return formatResult(result, args.format, getCompactKeys(args))
+      } catch (err) {
+        return errorResult(err, args.format)
+      }
+    },
   }
+}
+
+function requireString(value: unknown, name: string): string {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new QueryError(`${name} is required`)
+  }
+  return value
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 async function withBranchGraph(
@@ -574,6 +797,12 @@ async function withBranchGraph(
   cache?: MultiGraphCache,
 ): Promise<ToolResult> {
   try {
+    // While a working session is open, branch-scoped reads of the session's
+    // branch serve the working graph (design §7: reads see the working state).
+    const session = getActiveSession()
+    if (session && !session.isClosed() && session.branch === branchRef) {
+      return await fn({ ref: branchRef, isDefault: branchRef === session.defaultBranch, graph: session.graph })
+    }
     if (!source) throw new QueryError('GraphSource is required when branch is provided')
     const multi = cache ? await cache.get() : await loadMultiGraph({ source })
     const branch = multi.branches.find(item => item.ref === branchRef)
@@ -621,7 +850,26 @@ function getCompactKeys(args: Record<string, unknown>): boolean {
   return args.compact_keys === true || args.compactKeys === true
 }
 
-function errorResult(err: unknown): ToolResult {
+function errorResult(err: unknown, format?: unknown): ToolResult {
+  // Validation failures return the linter's diagnostic format (severity,
+  // message, nodeId) so agents can self-correct (design §8).
+  if (err instanceof MutationError) {
+    const payload = {
+      error: err.message,
+      diagnostics: err.diagnostics.map(d => ({
+        severity: d.severity,
+        message: d.message,
+        ...(d.nodeId !== undefined ? { nodeId: d.nodeId } : {}),
+      })),
+    }
+    let text: string
+    try {
+      text = getSerializer(format).serialize(payload)
+    } catch {
+      text = getSerializer(undefined).serialize(payload)
+    }
+    return { content: [{ type: 'text', text }], isError: true }
+  }
   const message = err instanceof QueryError ? err.message : String(err)
   return { content: [{ type: 'text', text: message }], isError: true }
 }
@@ -857,12 +1105,185 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
     },
     {
       name: 'diff_branch',
-      description: 'Diff a branch against the default branch.',
+      description: 'Diff a branch against the default branch. Rename-aware: branch IDs are resolved through the default branch\'s rename trail before matching, so a branch still holding an old name overlays onto the renamed node instead of appearing as add+remove. The result\'s warnings field flags branches that modify a node under a retired name ("edits a retired name") — rebase the branch or apply the rename.',
       inputSchema: {
         type: 'object',
         required: ['branch'],
         properties: {
           branch: { type: 'string', description: 'Branch ref to diff against the default branch' },
+          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+        },
+      },
+    },
+    {
+      name: 'start_changes',
+      description: 'Open a working session for graph mutations. All other write tools require an open session; while a session is open, read tools reflect the working (uncommitted) state. Mutations stay in the session until commit_changes; discard_changes aborts. autosave defaults OFF for both file and git sources — prefer leaving it off unless you explicitly want per-mutation checkpoints. When autosave is ON, file sources write through to disk immediately and git sources land a "corum-wip:" checkpoint commit per mutation; commit_changes squashes the WIP run into a single commit when no external commit interleaved. Git default branches are read-only for writes: pass a writable branch explicitly or use create: true to fork one from the default branch head. Starting while a session with pending changes is open is an error — commit_changes or discard_changes first; with no pending changes the old session is reset cleanly.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          branch: { type: 'string', description: 'Branch to load and commit to. Defaults to the source\'s default branch.' },
+          create: { type: 'boolean', description: 'Fork a new branch from the default branch head (git sources only). Default false.' },
+          autosave: { type: 'boolean', description: 'Override the autosave default (OFF by default. When ON: file sources write through immediately; git sources create WIP checkpoint commits).' },
+          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+        },
+      },
+    },
+    {
+      name: 'apply_cluster',
+      description: 'Upsert a cluster-style nested document — the same shape as cluster YAML: root node fields (id, template, properties, state/stability) plus owned sections keyed by child local name, with child properties flattened at the top level of each child. Requires an open session (start_changes).\n\nmode "merge": updates only what the document mentions — absent children and absent owned sections are left untouched (a null property value clears that key).\n\nmode "replace": WARNING — the document becomes AUTHORITATIVE for every owned section of the root\'s template. Children absent from the document are DELETED, and an ABSENT owned section means an EMPTY section: ALL of its children are DELETED (soft delete with state removed when the node exists on the default branch, hard purge otherwise). Only use replace with the complete intended contents of the cluster.\n\nA changed child key is NEVER treated as a rename: it is delete+add, and the response carries a possible-rename warning when a replace deletes and creates children with the same template under the same parent. To rename, use rename_node — it is the only rename path. Sections the template does not declare as owned are never touched.',
+      inputSchema: {
+        type: 'object',
+        required: ['document', 'mode'],
+        properties: {
+          document: { type: 'object', description: 'Cluster-style document (root node plus owned sections with named children).' },
+          mode: { type: 'string', enum: ['merge', 'replace'], description: 'merge: update what is present, leave the rest. replace: document is authoritative for owned sections — absent children/sections are DELETED.' },
+          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+        },
+      },
+    },
+    {
+      name: 'create_node',
+      description: 'Create a root cluster (omit parent_id; document requires id and template) or an owned child under an existing parent (pass parent_id, section, and name; document holds the child body with properties flattened at the top level). Nested owned children in the document are created in the same call and structural edges (has-field, has-value) generate automatically. Defaults: state "proposed", stability "unstable". Requires an open session (start_changes).',
+      inputSchema: {
+        type: 'object',
+        required: ['document'],
+        properties: {
+          document: { type: 'object', description: 'Cluster-style document. Roots: { id, template, properties?, ...ownedSections }. Owned children: the child body (properties flattened, optional nested owned sections).' },
+          parent_id: { type: 'string', description: 'Owning parent node ID — omit to create a root cluster.' },
+          section: { type: 'string', description: 'Owned section under the parent (e.g. "fields", "schemas"); required with parent_id.' },
+          name: { type: 'string', description: 'Local name for the new owned child; required with parent_id.' },
+          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+        },
+      },
+    },
+    {
+      name: 'update_node',
+      description: 'Patch a node\'s properties, state, or stability. properties is a patch: only the keys given are changed, and a null value clears that key. Cannot change the node\'s name — that is rename_node (names are identity, never a property edit). Requires an open session (start_changes).',
+      inputSchema: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string', description: 'Fully qualified node ID' },
+          properties: { type: 'object', description: 'Property patch — null clears a key.' },
+          state: { type: 'string', enum: [...STATE_VALUES], description: 'New lifecycle state.' },
+          stability: { type: 'string', enum: [...STABILITY_VALUES], description: 'New stability.' },
+          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+        },
+      },
+    },
+    {
+      name: 'rename_node',
+      description: 'Rename a node (replace the last segment of its ID with new_name). Descendant IDs, parentId fields, and every edge endpoint are rewritten automatically; renaming a cluster root also moves its file at commit. Trail: by default, a rename records corum.identity.previousIds plus a renamed-from edge iff the node exists on the default branch head (i.e. the old name is shared history); record_trail forces (true) or suppresses (false) the trail. This is the ONLY rename path — apply_cluster and imports never infer renames. Requires an open session (start_changes).',
+      inputSchema: {
+        type: 'object',
+        required: ['id', 'new_name'],
+        properties: {
+          id: { type: 'string', description: 'Fully qualified node ID to rename' },
+          new_name: { type: 'string', description: 'New last segment (ID grammar: [A-Za-z0-9_-], no dots).' },
+          record_trail: { type: 'boolean', description: 'Override the trail threshold: true forces recording corum.identity.previousIds + renamed-from; false suppresses it.' },
+          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+        },
+      },
+    },
+    {
+      name: 'delete_node',
+      description: 'Delete a node and its owned subtree. Two tiers: soft delete sets state "removed" on the subtree (nodes stay in YAML and remain queryable); hard delete removes the subtree and every edge touching it. Default tier: soft when the node exists on the default branch head (shared history), hard otherwise (pure design work leaves no tombstones). purge: true always hard-deletes; record_trail overrides the threshold (true forces soft, false forces hard). Requires an open session (start_changes).',
+      inputSchema: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string', description: 'Fully qualified node ID to delete' },
+          purge: { type: 'boolean', description: 'Force hard delete of the subtree and all touching edges. Default false.' },
+          record_trail: { type: 'boolean', description: 'Override the soft/hard threshold: true forces soft delete, false forces hard delete.' },
+          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+        },
+      },
+    },
+    {
+      name: 'create_edge',
+      description: 'Create an explicit edge between two nodes. Validated against endpoint existence and the pack edge-type vocabulary; edge-type constraint violations are returned as warnings. Defaults: state "proposed", stability "unstable". Requires an open session (start_changes).',
+      inputSchema: {
+        type: 'object',
+        required: ['from', 'to', 'type'],
+        properties: {
+          from: { type: 'string', description: 'Source node ID' },
+          to: { type: 'string', description: 'Target node ID' },
+          type: { type: 'string', description: 'Edge type (see get_graph_metadata valid_edge_types).' },
+          state: { type: 'string', enum: [...STATE_VALUES], description: 'Lifecycle state. Default "proposed".' },
+          stability: { type: 'string', enum: [...STABILITY_VALUES], description: 'Stability. Default "unstable".' },
+          notes: { type: 'string', description: 'Free-text notes on the edge.' },
+          properties: { type: 'object', description: 'Edge properties (validated against the pack edge-type schema).' },
+          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+        },
+      },
+    },
+    {
+      name: 'update_edge',
+      description: 'Patch an explicit edge\'s state, stability, notes, or properties. Endpoints and type are IMMUTABLE — delete_edge and create_edge instead. notes: null clears the notes; a null property value clears that key. Requires an open session (start_changes).',
+      inputSchema: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string', description: 'Edge ID ({from}__{type}__{to})' },
+          state: { type: 'string', enum: [...STATE_VALUES], description: 'New lifecycle state.' },
+          stability: { type: 'string', enum: [...STABILITY_VALUES], description: 'New stability.' },
+          notes: { description: 'New notes; null clears them.' },
+          properties: { type: 'object', description: 'Property patch — null clears a key.' },
+          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+        },
+      },
+    },
+    {
+      name: 'delete_edge',
+      description: 'Delete an edge. Always a hard removal — edges carry no subtree. To soft-remove a relationship instead, use update_edge with state "removed". Requires an open session (start_changes).',
+      inputSchema: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string', description: 'Edge ID ({from}__{type}__{to})' },
+          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+        },
+      },
+    },
+    {
+      name: 'pending_changes',
+      description: 'Show the open session\'s change journal and a summary diff (added/modified/removed node and edge counts) of the working graph against the session base. Requires an open session (start_changes).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+        },
+      },
+    },
+    {
+      name: 'discard_changes',
+      description: 'Abort the working session without committing. With the default autosave OFF, this drops the in-memory session changes. Note: if autosave was turned ON for a file source, mutations already written to disk are NOT rolled back. Requires an open session (start_changes).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
+          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+        },
+      },
+    },
+    {
+      name: 'commit_changes',
+      description: 'Lint, serialise, and commit the working graph, then close the session. The full linter runs first: error diagnostics BLOCK the commit (the session stays open to fix and retry); warnings ride along. Default message summarises the journal. Git autosave sessions squash their "corum-wip:" checkpoint run into a single commit when no external commit interleaved (otherwise the final commit lands on top and checkpoints are preserved); file-source autosave sessions have already persisted each mutation, so commit_changes just closes the session. Fails if the branch head moved externally since session start.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          message: { type: 'string', description: 'Commit message. Default: a summary of the session journal.' },
           format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
           compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
         },
@@ -988,6 +1409,30 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
         return await handlers.list_branches(args)
       case 'diff_branch':
         return await handlers.diff_branch(args)
+      case 'start_changes':
+        return await handlers.start_changes(args)
+      case 'apply_cluster':
+        return await handlers.apply_cluster(args)
+      case 'create_node':
+        return await handlers.create_node(args)
+      case 'update_node':
+        return await handlers.update_node(args)
+      case 'rename_node':
+        return await handlers.rename_node(args)
+      case 'delete_node':
+        return await handlers.delete_node(args)
+      case 'create_edge':
+        return await handlers.create_edge(args)
+      case 'update_edge':
+        return await handlers.update_edge(args)
+      case 'delete_edge':
+        return await handlers.delete_edge(args)
+      case 'pending_changes':
+        return await handlers.pending_changes(args)
+      case 'discard_changes':
+        return await handlers.discard_changes(args)
+      case 'commit_changes':
+        return await handlers.commit_changes(args)
       default:
         return { content: [{ type: 'text', text: `Unknown tool: ${request.params.name}` }], isError: true }
     }

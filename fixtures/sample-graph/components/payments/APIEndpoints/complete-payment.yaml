@@ -1,22 +1,19 @@
 id: payments.APIEndpoint.complete-payment
 template: APIEndpoint
-schemaVersion: "1"
-
+schemaVersion: '1'
 metadata:
   component: payments
   state: agreed
   stability: stable
-  lastModifiedAt: "2026-04-23"
-
+  lastModifiedAt: 2026-04-23
 properties:
   method: POST
   path: /payments/{paymentId}/complete
   responses:
-    "200": '#/schemas/payment-response'
-    "400": shared.Schema.problem-detail
-    "404": shared.Schema.problem-detail
-    "409": shared.Schema.problem-detail
-
+    '200': '#/schemas/payment-response'
+    '400': shared.Schema.problem-detail
+    '404': shared.Schema.problem-detail
+    '409': shared.Schema.problem-detail
 schemas:
   payment-response:
     description: Payment details returned after successful capture

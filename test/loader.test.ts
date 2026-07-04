@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { parse as parseYaml } from 'yaml'
 import { loadPacks } from '../src/loader/pack-loader.js'
 import { loadClusters } from '../src/loader/cluster-loader.js'
 import { loadEdges } from '../src/loader/edge-loader.js'
@@ -103,6 +104,21 @@ describe('cluster loader (ContentMap)', () => {
 })
 
 describe('cluster loader', () => {
+  it('core node schema reserves corum.identity.previousIds on root nodes', () => {
+    const schemaPath = path.join(repoRoot, '.corum/packs/core/node.schema.yaml')
+    const schema = parseYaml(fs.readFileSync(schemaPath, 'utf-8')) as Record<string, unknown>
+    const properties = schema.properties as Record<string, unknown>
+    const corum = properties.corum as Record<string, unknown>
+    const corumProperties = corum.properties as Record<string, unknown>
+    const identity = corumProperties.identity as Record<string, unknown>
+    const identityProperties = identity.properties as Record<string, unknown>
+    const previousIds = identityProperties.previousIds as Record<string, unknown>
+
+    assert.ok(corum, 'root node schema should reserve a corum block')
+    assert.equal(corum.additionalProperties, false)
+    assert.equal((previousIds.items as Record<string, unknown>).type, 'string')
+  })
+
   it('materialises 151 nodes from sample-graph fixtures', async () => {
     const diagnostics: Diagnostic[] = []
     const result = await loadSampleClusters(diagnostics)
@@ -278,6 +294,58 @@ describe('cluster loader', () => {
     assert.equal(field.properties.collection, undefined)
   })
 
+  it('loads corum.identity.previousIds into node bookkeeping', async () => {
+    const diagnostics: Diagnostic[] = []
+    const templates = loadPacks(await buildPackContentMap(), diagnostics)
+    const content: ContentMap = new Map([
+      ['components/orders/Schemas/bill.yaml', [
+        'id: orders.Schema.bill',
+        'template: Schema',
+        'schemaVersion: "1"',
+        'metadata:',
+        '  component: orders',
+        '  state: agreed',
+        '  stability: stable',
+        '  lastModifiedAt: "2026-07-04"',
+        'corum:',
+        '  identity:',
+        '    previousIds:',
+        '      - orders.Schema.invoice',
+      ].join('\n')],
+    ])
+
+    const result = loadClusters(content, templates, diagnostics)
+    const node = result.nodes.get('orders.Schema.bill')
+    assert.ok(node)
+    assert.deepEqual(node.corum?.identity?.previousIds, ['orders.Schema.invoice'])
+    assert.equal(node.properties.previousNames, undefined)
+  })
+
+  it('loads legacy properties.previousNames into the same canonical bookkeeping field during migration', async () => {
+    const diagnostics: Diagnostic[] = []
+    const templates = loadPacks(await buildPackContentMap(), diagnostics)
+    const content: ContentMap = new Map([
+      ['components/orders/Schemas/bill.yaml', [
+        'id: orders.Schema.bill',
+        'template: Schema',
+        'schemaVersion: "1"',
+        'metadata:',
+        '  component: orders',
+        '  state: agreed',
+        '  stability: stable',
+        '  lastModifiedAt: "2026-07-04"',
+        'properties:',
+        '  previousNames:',
+        '    - orders.Schema.invoice',
+      ].join('\n')],
+    ])
+
+    const result = loadClusters(content, templates, diagnostics)
+    const node = result.nodes.get('orders.Schema.bill')
+    assert.ok(node)
+    assert.deepEqual(node.corum?.identity?.previousIds, ['orders.Schema.invoice'])
+  })
+
   it('warns and falls back on an invalid root node state', async () => {
     const diagnostics: Diagnostic[] = []
     const templates = loadPacks(await buildPackContentMap(), diagnostics)
@@ -426,6 +494,52 @@ describe('edge loader', () => {
     assert.ok(diagnostics.some(d => d.severity === 'warning' && d.message.includes('invalid edge stability')))
     const edge = [...result.edgesByFrom.values()].flat()[0]
     assert.equal(edge.stability, 'unstable', 'falls back to default stability')
+  })
+
+  it('loads a hidden-type edge with a dangling to (retired id) without any diagnostic', () => {
+    const nodes = new Map<string, Node>([
+      ['a.DomainModel.new', { id: 'a.DomainModel.new', template: 'DomainModel', component: 'a', state: 'proposed', stability: 'unstable', schemaVersion: '1', lastModifiedAt: '2026-01-01', properties: {} }],
+    ])
+    const content: ContentMap = new Map([
+      ['edges/trail.edges.yaml', 'edges:\n  - from: a.DomainModel.new\n    to: a.DomainModel.old\n    type: renamed-from\n'],
+    ])
+    const diagnostics: Diagnostic[] = []
+    const result = loadEdges(content, nodes, diagnostics)
+
+    assert.equal(diagnostics.length, 0, `expected no diagnostics, got: ${JSON.stringify(diagnostics)}`)
+    const edge = [...result.edgesByFrom.values()].flat()[0]
+    assert.ok(edge, 'renamed-from edge must be loaded despite the retired to')
+    assert.equal(edge.id, 'a.DomainModel.new__renamed-from__a.DomainModel.old')
+    assert.equal(result.edgesByTo.get('a.DomainModel.old')?.length, 1, 'edge indexed by its retired to id')
+  })
+
+  it('errors and drops a hidden-type edge whose from (live end) does not resolve', () => {
+    const content: ContentMap = new Map([
+      ['edges/trail.edges.yaml', 'edges:\n  - from: a.DomainModel.missing\n    to: a.DomainModel.old\n    type: renamed-from\n'],
+    ])
+    const diagnostics: Diagnostic[] = []
+    const result = loadEdges(content, new Map<string, Node>(), diagnostics)
+
+    assert.ok(
+      diagnostics.some(d => d.severity === 'error' && d.message.includes("hidden edge type 'renamed-from' requires a live 'from' node: a.DomainModel.missing")),
+      `expected a live-end error, got: ${JSON.stringify(diagnostics)}`,
+    )
+    assert.equal([...result.edgesByFrom.values()].flat().length, 0, 'edge must be dropped')
+  })
+
+  it('keeps warn-and-drop behaviour for a non-hidden edge with a dangling to', () => {
+    const nodes = new Map<string, Node>([
+      ['a.DomainModel.a', { id: 'a.DomainModel.a', template: 'DomainModel', component: 'a', state: 'proposed', stability: 'unstable', schemaVersion: '1', lastModifiedAt: '2026-01-01', properties: {} }],
+    ])
+    const content: ContentMap = new Map([
+      ['edges/broken.edges.yaml', 'edges:\n  - from: a.DomainModel.a\n    to: a.DomainModel.gone\n    type: reads\n'],
+    ])
+    const diagnostics: Diagnostic[] = []
+    const result = loadEdges(content, nodes, diagnostics)
+
+    assert.ok(diagnostics.some(d => d.severity === 'warning' && d.message.includes('edge to unresolved node: a.DomainModel.gone')))
+    assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0)
+    assert.equal([...result.edgesByFrom.values()].flat().length, 0, 'non-hidden dangling edge is still dropped')
   })
 })
 

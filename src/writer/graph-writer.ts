@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import type { Edge, Graph, Node } from '../schema/index.js'
+import type { Edge, Graph, Node, Template } from '../schema/index.js'
 import { getOwnedSections } from '../loader/pack-loader.js'
 import { getPropertySchemasFromTemplate } from '../loader/template-props.js'
 import { isStructuralEdgeType } from '../graph/index.js'
@@ -88,6 +88,7 @@ function normalizeContentKey(value: string): string {
 }
 
 function toClusterDocument(graph: Graph, root: Node): Record<string, unknown> {
+  const sourceDoc = loadSourceClusterDocument(graph, root)
   const metadata: Record<string, unknown> = {
     component: root.component,
     state: root.state,
@@ -105,43 +106,79 @@ function toClusterDocument(graph: Graph, root: Node): Record<string, unknown> {
     metadata,
   }
 
+  if (root.corum !== undefined) {
+    doc.corum = root.corum
+  }
+
   if (Object.keys(root.properties).length > 0) {
     doc.properties = orderNodeProperties(graph, root)
   }
 
-  appendOwnedSections(graph, root, doc)
+  appendOwnedSections(graph, root, doc, sourceDoc)
   return doc
 }
 
-function appendOwnedSections(graph: Graph, parent: Node, target: Record<string, unknown>): void {
+function appendOwnedSections(
+  graph: Graph,
+  parent: Node,
+  target: Record<string, unknown>,
+  sourceDoc?: Record<string, unknown>,
+): void {
   const template = graph.templates.get(parent.template)
   if (!template) return
 
-  for (const [sectionName] of Object.entries(getOwnedSections(template))) {
-    const children = getDirectOwnedChildren(graph, parent.id, sectionName)
+  for (const sectionName of getOrderedOwnedSectionNames(template, sourceDoc)) {
+    const sourceSection = asRecord(sourceDoc?.[sectionName])
+    const children = getDirectOwnedChildren(graph, parent.id, sectionName, sourceSection)
     if (children.length === 0) continue
 
     const section: Record<string, unknown> = {}
     for (const child of children) {
+      const localName = getLocalName(child.id, parent.id, sectionName)
       const childDoc: Record<string, unknown> = { ...orderNodeProperties(graph, child) }
       if (child.state !== parent.state) childDoc.state = child.state
       if (child.stability !== parent.stability) childDoc.stability = child.stability
-      appendOwnedSections(graph, child, childDoc)
-      section[getLocalName(child.id, parent.id, sectionName)] = childDoc
+      if (child.corum !== undefined) childDoc.corum = child.corum
+      appendOwnedSections(graph, child, childDoc, asRecord(sourceSection?.[localName]))
+      section[localName] = childDoc
     }
     target[sectionName] = section
   }
 }
 
-function getDirectOwnedChildren(graph: Graph, parentId: string, sectionName: string): Node[] {
+function getDirectOwnedChildren(
+  graph: Graph,
+  parentId: string,
+  sectionName: string,
+  sourceSection?: Record<string, unknown>,
+): Node[] {
   const prefix = `${parentId}.${sectionName}.`
-  return [...graph.nodesById.values()]
+  const children = [...graph.nodesById.values()]
     .filter(node => {
       if (!node.id.startsWith(prefix)) return false
       const remaining = node.id.slice(prefix.length)
       return !remaining.includes('.')
-    })
-    .sort((a, b) => a.id.localeCompare(b.id))
+      })
+
+  if (!sourceSection) {
+    return children.sort((a, b) => a.id.localeCompare(b.id))
+  }
+
+  const byLocalName = new Map(children.map(node => [getLocalName(node.id, parentId, sectionName), node]))
+  const ordered: Node[] = []
+
+  for (const localName of Object.keys(sourceSection)) {
+    const node = byLocalName.get(localName)
+    if (!node) continue
+    ordered.push(node)
+    byLocalName.delete(localName)
+  }
+
+  const remaining = [...byLocalName.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([, node]) => node)
+
+  return [...ordered, ...remaining]
 }
 
 function getLocalName(childId: string, parentId: string, sectionName: string): string {
@@ -150,6 +187,36 @@ function getLocalName(childId: string, parentId: string, sectionName: string): s
 
 function stringifyGraphYaml(value: unknown): string {
   return stringifyYaml(value, YAML_STRINGIFY_OPTIONS)
+}
+
+function loadSourceClusterDocument(graph: Graph, root: Node): Record<string, unknown> | undefined {
+  const content = graph.sourceContent?.get(clusterPath(root))
+  if (!content) return undefined
+  return asRecord(parseYaml(content))
+}
+
+function getOrderedOwnedSectionNames(template: Template, sourceDoc?: Record<string, unknown>): string[] {
+  const templateSectionNames = Object.keys(getOwnedSections(template))
+  if (!sourceDoc) return templateSectionNames
+
+  const ordered: string[] = []
+  const remaining = new Set(templateSectionNames)
+  for (const key of Object.keys(sourceDoc)) {
+    if (!remaining.has(key)) continue
+    ordered.push(key)
+    remaining.delete(key)
+  }
+  for (const key of templateSectionNames) {
+    if (!remaining.has(key)) continue
+    ordered.push(key)
+    remaining.delete(key)
+  }
+  return ordered
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  return value as Record<string, unknown>
 }
 
 /**

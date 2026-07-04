@@ -1,13 +1,11 @@
 id: payments.DomainEvent.payment-captured
 template: DomainEvent
-schemaVersion: "1"
-
+schemaVersion: '1'
 metadata:
   component: payments
   state: agreed
   stability: stable
-  lastModifiedAt: "2026-04-23"
-
+  lastModifiedAt: 2026-04-23
 schemas:
   payment-captured-payload:
     description: Payload carried by the payment-captured domain event

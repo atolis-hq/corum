@@ -247,6 +247,34 @@ describe('FileGraphSource', () => {
     }
   })
 
+  it('commit with replaceGraphContent preserves unrelated yaml files when graphDir is itself a git repo root', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-file-source-selfrepo-yaml-'))
+    try {
+      await git.init({ fs, dir: tmpDir, defaultBranch: 'main' })
+      const source = new FileGraphSource({ graphDir: tmpDir, defaultBranch: 'local' })
+      await source.commit('local', new Map([
+        ['graph.yaml', 'templatePacks: []\n'],
+        ['components/orders/order.yaml', 'id: order\n'],
+      ]), 'first', { replaceGraphContent: true })
+
+      const workflowDir = path.join(tmpDir, '.github', 'workflows')
+      fs.mkdirSync(workflowDir, { recursive: true })
+      fs.writeFileSync(path.join(workflowDir, 'ci.yaml'), 'name: ci\n')
+
+      await source.commit('local', new Map([
+        ['graph.yaml', 'templatePacks: []\n'],
+      ]), 'second', { replaceGraphContent: true })
+
+      assert.equal(
+        fs.readFileSync(path.join(workflowDir, 'ci.yaml'), 'utf-8'),
+        'name: ci\n',
+        'replaceGraphContent must not delete unrelated repo yaml files',
+      )
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
   it('commit records a git commit when graphDir lives inside a git repository', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-file-source-git-'))
     try {
@@ -270,6 +298,81 @@ describe('FileGraphSource', () => {
           `expected ${filepath} to be committed and clean`,
         )
       }
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('commit at a repo-root graphDir does not sweep unrelated repo changes into the graph commit', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-file-source-root-commit-'))
+    try {
+      await git.init({ fs, dir: tmpDir, defaultBranch: 'main' })
+      fs.writeFileSync(path.join(tmpDir, 'README.md'), 'before\n')
+      await git.add({ fs, dir: tmpDir, filepath: 'README.md' })
+      await git.commit({
+        fs,
+        dir: tmpDir,
+        message: 'initial',
+        author: { name: 'Test', email: 'test@test.com' },
+      })
+
+      fs.writeFileSync(path.join(tmpDir, 'README.md'), 'after\n')
+
+      const source = new FileGraphSource({ graphDir: tmpDir })
+      const branch = await source.defaultBranch()
+      await source.commit(branch, new Map([
+        ['graph.yaml', 'templatePacks: []\n'],
+      ]), 'corum: graph only', { replaceGraphContent: true })
+
+      const [head] = await git.log({ fs, dir: tmpDir, depth: 1 })
+      assert.match(head.commit.message, /corum: graph only/)
+
+      const matrix = await git.statusMatrix({ fs, dir: tmpDir, filepaths: ['README.md'] })
+      const readme = matrix.find(([filepath]) => filepath === 'README.md')
+      assert.ok(readme, 'README.md should still be tracked by statusMatrix')
+      assert.deepEqual(
+        readme.slice(1),
+        [1, 2, 1],
+        'README.md should remain modified in the worktree instead of being swept into the graph commit',
+      )
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('head returns a stable content hash that changes when the graph content changes', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-file-source-head-'))
+    try {
+      const source = new FileGraphSource({ graphDir: tmpDir, defaultBranch: 'local' })
+      await source.commit('local', new Map([['graph.yaml', 'templatePacks: []\n']]), 'first', { replaceGraphContent: true })
+
+      const head1 = await source.head('local')
+      const head1Again = await source.head('local')
+      assert.equal(head1, head1Again, 'head must be deterministic for unchanged content')
+
+      await source.commit('local', new Map([
+        ['graph.yaml', 'templatePacks: []\n'],
+        ['components/orders/order.yaml', 'id: order\n'],
+      ]), 'second', { replaceGraphContent: true })
+      assert.notEqual(await source.head('local'), head1, 'head must move when content changes')
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('log returns [] when unchanged and [head] when the content moved', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-file-source-log-'))
+    try {
+      const source = new FileGraphSource({ graphDir: tmpDir, defaultBranch: 'local' })
+      await source.commit('local', new Map([['graph.yaml', 'templatePacks: []\n']]), 'first', { replaceGraphContent: true })
+      const base = await source.head('local')
+      assert.deepEqual(await source.log('local', base), [])
+
+      await source.commit('local', new Map([
+        ['graph.yaml', 'templatePacks: []\n'],
+        ['components/orders/order.yaml', 'id: order\n'],
+      ]), 'second', { replaceGraphContent: true })
+      assert.deepEqual(await source.log('local', base), [await source.head('local')])
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true })
     }
@@ -590,5 +693,70 @@ describe('GitGraphSource write path', () => {
     const content = await source.loadGraphContent('feat/concurrent')
     assert.ok(content.has('components/orders/a.yaml'), 'first concurrent commit was lost')
     assert.ok(content.has('components/orders/b.yaml'), 'second concurrent commit was lost')
+  })
+
+  it('head returns the current commit SHA of a branch', async () => {
+    const source = new GitGraphSource({ localPath: tmpDir })
+    assert.equal(await source.head('main'), await git.resolveRef({ fs, dir: tmpDir, ref: 'main' }))
+  })
+
+  it('log walks from head back to a base SHA, exclusive, newest first', async () => {
+    const source = new GitGraphSource({ localPath: tmpDir })
+    await git.branch({ fs, dir: tmpDir, ref: 'feat/log-walk', checkout: false })
+    const base = await source.head('feat/log-walk')
+    assert.deepEqual(await source.log('feat/log-walk', base), [])
+
+    await source.commit('feat/log-walk', new Map([['components/orders/c.yaml', 'id: orders.DomainModel.c\n']]), 'add c')
+    const first = await source.head('feat/log-walk')
+    await source.commit('feat/log-walk', new Map([['components/orders/d.yaml', 'id: orders.DomainModel.d\n']]), 'add d')
+    const second = await source.head('feat/log-walk')
+
+    assert.deepEqual(await source.log('feat/log-walk', base), [second, first])
+  })
+
+  it('remote-url sources resolve the branch head from the updated local ref after commit', async () => {
+    const remoteBranch = 'feat/remote-head'
+    await git.branch({ fs, dir: tmpDir, ref: remoteBranch, checkout: false })
+    await git.addRemote({ fs, dir: tmpDir, remote: 'origin', url: 'https://example.com/repo.git' })
+
+    const base = await git.resolveRef({ fs, dir: tmpDir, ref: remoteBranch })
+    await git.writeRef({ fs, dir: tmpDir, ref: 'refs/remotes/origin/main', value: await git.resolveRef({ fs, dir: tmpDir, ref: 'main' }), force: true })
+    await git.writeRef({ fs, dir: tmpDir, ref: `refs/remotes/origin/${remoteBranch}`, value: base, force: true })
+
+    const source = new GitGraphSource({ remoteUrl: 'https://example.com/repo.git' })
+    const patchedSource = source as any
+    patchedSource.cacheManager.ensureCloned = async () => tmpDir
+    patchedSource.cachedDir = tmpDir
+    patchedSource.push = async () => {}
+
+    await source.commit(remoteBranch, new Map([
+      ['components/orders/remote.yaml', 'id: orders.DomainModel.remote\n'],
+    ]), 'remote change')
+
+    const localHead = await git.resolveRef({ fs, dir: tmpDir, ref: `refs/heads/${remoteBranch}` })
+    assert.equal(await source.head(remoteBranch), localHead)
+    assert.deepEqual(await source.log(remoteBranch, base), [localHead])
+  })
+
+  it('commit with parentSha writes a commit parented at the given SHA (squash)', async () => {
+    const source = new GitGraphSource({ localPath: tmpDir })
+    await git.branch({ fs, dir: tmpDir, ref: 'feat/squash', checkout: false })
+    const base = await source.head('feat/squash')
+
+    await source.commit('feat/squash', new Map([['components/orders/wip1.yaml', 'id: orders.DomainModel.wip1\n']]), 'corum-wip: one')
+    await source.commit('feat/squash', new Map([['components/orders/wip2.yaml', 'id: orders.DomainModel.wip2\n']]), 'corum-wip: two')
+
+    await source.commit('feat/squash', new Map([
+      ['components/orders/final.yaml', 'id: orders.DomainModel.final\n'],
+    ]), 'squashed', { parentSha: base, force: true })
+
+    const head = await source.head('feat/squash')
+    const { commit } = await git.readCommit({ fs, dir: tmpDir, oid: head })
+    assert.deepEqual(commit.parent, [base], 'squash commit must be parented at the base SHA')
+    assert.match(commit.message, /squashed/)
+    assert.deepEqual(await source.log('feat/squash', base), [head], 'WIP run must be replaced by the single squash commit')
+
+    const content = await source.loadGraphContent('feat/squash')
+    assert.ok(content.has('components/orders/final.yaml'))
   })
 })

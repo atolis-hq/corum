@@ -164,6 +164,85 @@ describe('computeDiff', () => {
   })
 })
 
+describe('alias-aware overlay and diff (design §5)', () => {
+  // main renamed `customerEmail` → `emailAddress`; the trail edge's `to` is
+  // the retired ID (intentionally dangling).
+  const trailEdge = edge('emailAddress__renamed-from__customerEmail', 'emailAddress', 'customerEmail', 'renamed-from')
+  const renamedNode = (properties: Record<string, unknown> = {}) =>
+    ({ ...node('emailAddress', properties), corum: { identity: { previousIds: ['customerEmail'] } } })
+
+  describe('computeDiff', () => {
+    it('matches a branch node held under a retired ID instead of reporting add+remove', () => {
+      const def = branch('main', true, [renamedNode({ type: 'string' })], [trailEdge])
+      const feature = branch('feat/stale', false, [node('customerEmail', { type: 'string' })])
+
+      const diff = computeDiff(feature, def)
+
+      assert.deepEqual(diff.added, [])
+      assert.deepEqual(diff.removed, [])
+      assert.deepEqual(diff.modified, [])
+      assert.equal(diff.warnings, undefined)
+    })
+
+    it('flags a retired-name edit when the branch modified the node', () => {
+      const def = branch('main', true, [renamedNode({ type: 'string' })], [trailEdge])
+      const feature = branch('feat/stale', false, [node('customerEmail', { type: 'text' })])
+
+      const diff = computeDiff(feature, def)
+
+      assert.deepEqual(diff.modified.map(n => n.id), ['customerEmail'])
+      assert.deepEqual(diff.added, [])
+      assert.deepEqual(diff.removed, [])
+      assert.equal(diff.warnings?.length, 1)
+      assert.equal(diff.warnings?.[0].kind, 'retired-name-edit')
+      assert.equal(diff.warnings?.[0].branchId, 'customerEmail')
+      assert.equal(diff.warnings?.[0].resolvedId, 'emailAddress')
+      assert.match(diff.warnings?.[0].message ?? '', /rebase or apply the rename/)
+    })
+
+    it('does not warn when the branch edits the node under its live ID', () => {
+      const def = branch('main', true, [renamedNode({ type: 'string' })], [trailEdge])
+      const feature = branch('feat/fresh', false, [node('emailAddress', { type: 'text' })])
+
+      const diff = computeDiff(feature, def)
+
+      assert.deepEqual(diff.modified.map(n => n.id), ['emailAddress'])
+      assert.equal(diff.warnings, undefined)
+    })
+  })
+
+  describe('computeOverlay', () => {
+    it('overlays a branch node held under a retired ID onto the renamed node', () => {
+      const def = branch('main', true, [renamedNode()], [trailEdge])
+      const feature = branch('feat/stale', false, [node('customerEmail')])
+
+      const overlay = computeOverlay('main', def, [def, feature])
+
+      const merged = overlay.nodes.get('emailAddress')
+      assert.equal(merged?.ghostState, 'shared')
+      assert.deepEqual([...(merged?.presence.keys() ?? [])], ['main', 'feat/stale'])
+      assert.equal(overlay.nodes.has('customerEmail'), false)
+    })
+
+    it('matches branch edges with retired endpoints against the rewritten edges', () => {
+      const def = branch('main', true, [node('a'), renamedNode()], [
+        edge('a__calls__emailAddress', 'a', 'emailAddress', 'calls'),
+        trailEdge,
+      ])
+      const feature = branch('feat/stale', false, [node('a'), node('customerEmail')], [
+        edge('a__calls__customerEmail', 'a', 'customerEmail', 'calls'),
+      ])
+
+      const overlay = computeOverlay('main', def, [def, feature])
+
+      const merged = overlay.edges.get('a__calls__emailAddress')
+      assert.equal(merged?.ghostState, 'shared')
+      assert.deepEqual([...(merged?.presence.keys() ?? [])], ['main', 'feat/stale'])
+      assert.equal(overlay.edges.has('a__calls__customerEmail'), false)
+    })
+  })
+})
+
 describe('loadMultiGraph', () => {
   it('loads one branch from FileGraphSource and records it as loaded', async () => {
     const source = new FileGraphSource({ graphDir: fixtureGraphDir })
@@ -351,5 +430,13 @@ info:
 
   async commit(): Promise<void> {
     throw new Error('not implemented')
+  }
+
+  async head(): Promise<string> {
+    return 'fake-head'
+  }
+
+  async log(): Promise<string[]> {
+    return []
   }
 }
