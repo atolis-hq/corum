@@ -19,6 +19,7 @@
     "wireframes": "node design/wireframes/server.mjs",
     "mcp": "node dist/src/mcp/index.js",
     "mcp:smoke": "npm run build && node scripts/mcp-smoke.mjs",
+    "mcp:write-smoke": "npm run build && node scripts/mcp-write-smoke.mjs",
     "web": "node dist/src/web/server.js"
   },
   "dependencies": {
