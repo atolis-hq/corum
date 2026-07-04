@@ -32,58 +32,22 @@ The migration set is every markdown file directly under `docs/tasks/` except:
 
 ## 3. Issue template set
 
-The repository will define four markdown issue templates under `.github/ISSUE_TEMPLATE/`.
+The repository will define two markdown issue templates under `.github/ISSUE_TEMPLATE/`.
 
-### 3.1 Feature / Enhancement
+### 3.1 Backlog Item
 
-This is the default template and covers most backlog items.
+This is the default template and covers the entire migration set.
 
 Sections:
 
 - `Summary`
-- `Problem / opportunity`
-- `Desired outcome`
-- `Scope notes`
-- `Acceptance signals`
-- `Dependencies / related work`
-- `Open questions`
+- `Outcome`
+- `Notes`
 - `Source context`
 
-Use for product capability work such as dashboard, search, importers, custom UI, and user journeys.
+It is intentionally lean so the backlog can be migrated quickly and refined later without forcing early structure. Product work, research, and workflow/process work all use this same template.
 
-### 3.2 Research / Discovery
-
-This template is for exploratory work where the immediate output is clarity, a recommendation, or a design direction rather than implementation.
-
-Sections:
-
-- `Question to answer`
-- `Why it matters`
-- `Constraints`
-- `Expected deliverable`
-- `Exit criteria`
-- `Related work`
-- `Source context`
-
-Use for items such as graph visualisation exploration or semantic matching investigation.
-
-### 3.3 Process / Workflow
-
-This template is for development workflow, tooling, governance, CI, and operational surfaces.
-
-Sections:
-
-- `Problem in current workflow`
-- `Desired workflow`
-- `Affected surfaces`
-- `Constraints`
-- `Acceptance signals`
-- `Open questions`
-- `Source context`
-
-Use for items such as agent skills, CLI config discovery, GitHub Actions template, file watcher support, and review workflow.
-
-### 3.4 Bug / Regression
+### 3.2 Bug / Regression
 
 This template is included for future use because the repository already uses GitHub issues for bug tracking, but it is not expected to cover most items in this migration set.
 
@@ -120,43 +84,24 @@ Each template will provide:
 
 Recommended defaults:
 
-- `Feature / Enhancement` -> `enhancement`
-- `Research / Discovery` -> `discovery`
-- `Process / Workflow` -> `process`
+- `Backlog Item` -> `enhancement`
 - `Bug / Regression` -> `bug`
 
 If a label does not yet exist in the repository, the migration flow must create it before first use or fall back to unlabeled issue creation. Label setup is secondary to successful migration.
 
 ## 6. Migration mapping rules
 
-Migration should classify each selected task file into exactly one template type using simple, explicit rules. The purpose is consistency, not perfect taxonomy.
+Migration should classify each selected task file into exactly one template type using simple, explicit rules. The purpose is consistency and speed, not fine-grained taxonomy.
 
 ### 6.1 Default rule
 
-If no stronger rule matches, use `Feature / Enhancement`.
+Use `Backlog Item` for every selected migration file unless it is an actual bug report.
 
-### 6.2 Research / Discovery rule
+### 6.2 Bug rule
 
-Use when the task wording is primarily exploratory and asks to investigate approaches, define a best way, or discover useful behavior before implementation.
+Use `Bug / Regression` only when the source note is clearly describing broken existing behavior, expected behavior, and some form of reproduction or impact.
 
-Expected initial matches:
-
-- `graphvisualiser.md`
-- `semanticmatching.md`
-
-### 6.3 Process / Workflow rule
-
-Use when the task is primarily about development process, CI, repo workflow, operational tooling, MCP guidance, or review mechanics.
-
-Expected initial matches:
-
-- `agentskills.md`
-- `cliconfig.md`
-- `filewatcher.md`
-- `githubactionstemplate.md`
-- `nodereviewworkflow.md`
-
-All other selected migration files should start as `Feature / Enhancement` unless their content clearly fits `Research / Discovery`.
+For this migration set, the expected outcome is that every selected `docs/tasks/*.md` file maps to `Backlog Item`.
 
 ## 7. Issue body generation
 

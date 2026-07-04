@@ -1,1 +1,0 @@
-users can use the ui for editing. Create nodes, edit schemas and properties, delete etc.
