@@ -365,14 +365,15 @@ Or if installed globally:
 | `update_node` | Patch node properties, state, or stability |
 | `rename_node` | Rename a node while preserving identity trail metadata |
 | `delete_node` | Soft-delete or hard-delete a node subtree |
-| `create_edge` | Create an explicit edge |
+| `create_edges` | Batch-create explicit edges as one atomic operation |
 | `update_edge` | Patch an explicit edge |
 | `delete_edge` | Delete an explicit edge |
+| `create_fields` | Batch-create fields across schemas (grouped and applied per parent) |
 | `pending_changes` | Show the open session's journal and summary diff |
 | `discard_changes` | Abort the working session |
 | `commit_changes` | Lint, serialize, and persist the session's changes |
 
-All tools accept an optional `format` argument: `yaml` (default), `json`, or `toon`. All tools also accept `compact_keys: true` to shorten common keys before serialization, reducing token usage.
+All tools accept an optional `format` argument: `toon` (default; leanest for the LLM), `yaml`, or `json`. All tools also accept `compact_keys: true` to shorten common keys before serialization, reducing token usage further.
 
 All node-returning MCP tools accept `include_provenance: true` to include `extractedFrom`, `lastModifiedAt`, `derivation`, and `derivedBy`. These fields are omitted by default. `schemaVersion` is never returned by MCP.
 
@@ -395,7 +396,7 @@ Common notes:
 Corum's write tools are session-based:
 
 1. Call `start_changes`.
-2. Make one or more mutations with `apply_cluster`, `create_node`, `update_node`, `rename_node`, `delete_node`, `create_edge`, `update_edge`, or `delete_edge`.
+2. Make one or more mutations with `apply_cluster`, `create_node`, `update_node`, `rename_node`, `delete_node`, `create_edges`, `update_edge`, `delete_edge`, or `create_fields`.
 3. Inspect the session with `pending_changes`.
 4. Finish with `commit_changes` or abort with `discard_changes`.
 

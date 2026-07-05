@@ -75,9 +75,17 @@ describe('MCP handlers', () => {
       assert.equal(nodes.length, 113)
     })
 
-    it('returns YAML by default', async () => {
+    it('returns TOON by default', async () => {
       const handlers = createMcpHandlers(graph)
       const result = await handlers.list_nodes({ filter: { templates: ['APIEndpoint'] } })
+      const nodes = decodeToon(result.content[0].text) as Array<Record<string, unknown>>
+      assert.equal(nodes.length, 5)
+      assert.ok(nodes.some(n => n.id === 'orders.APIEndpoint.create-order'))
+    })
+
+    it('returns YAML when format is yaml', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.list_nodes({ filter: { templates: ['APIEndpoint'] }, format: 'yaml' })
       const nodes = parseYaml(result.content[0].text) as Array<Record<string, unknown>>
       assert.equal(nodes.length, 5)
       assert.ok(nodes.some(n => n.id === 'orders.APIEndpoint.create-order'))
@@ -115,7 +123,7 @@ describe('MCP handlers', () => {
 
     it('applies compact keys to YAML output when requested', async () => {
       const handlers = createMcpHandlers(graph)
-      const result = await handlers.list_nodes({ filter: { templates: ['APIEndpoint'] }, compactKeys: true })
+      const result = await handlers.list_nodes({ filter: { templates: ['APIEndpoint'] }, format: 'yaml', compactKeys: true })
       const nodes = parseYaml(result.content[0].text) as Array<Record<string, unknown>>
       assert.equal(nodes.length, 5)
       assert.ok(nodes.some(n => n.i === 'orders.APIEndpoint.create-order'))
@@ -236,9 +244,9 @@ describe('MCP handlers', () => {
       assert.ok(!('properties' in domainModel))
     })
 
-    it('returns YAML by default', async () => {
+    it('returns YAML when format is yaml', async () => {
       const handlers = createMcpHandlers(graph)
-      const result = await handlers.list_templates({})
+      const result = await handlers.list_templates({ format: 'yaml' })
       const templates = parseYaml(result.content[0].text) as Array<Record<string, unknown>>
 
       assert.ok(templates.some(template => template.name === 'DomainModel'))
@@ -299,7 +307,7 @@ describe('MCP handlers', () => {
   describe('get_cluster', () => {
     it('returns full cluster for DomainModel with collapse_schemas: false', async () => {
       const handlers = createMcpHandlers(graph)
-      const result = await handlers.get_cluster({ node_id: 'orders.DomainModel.order', format: 'json', collapse_schemas: false, include_edges: true })
+      const result = await handlers.get_cluster({ node_id: 'orders.DomainModel.order', format: 'json', collapse_schemas: false, include_edges: true, include_descendants: true })
       const cluster = JSON.parse(result.content[0].text)
       assert.equal(cluster.root.id, 'orders.DomainModel.order')
       assert.equal(cluster.descendants.length, 22)
@@ -312,7 +320,7 @@ describe('MCP handlers', () => {
 
     it('collapses schema children into schemas and enums blocks by default', async () => {
       const handlers = createMcpHandlers(graph)
-      const result = await handlers.get_cluster({ node_id: 'orders.DomainModel.order', format: 'json' })
+      const result = await handlers.get_cluster({ node_id: 'orders.DomainModel.order', format: 'json', include_descendants: true })
       const cluster = JSON.parse(result.content[0].text)
 
       // Only invariant and operation descendants remain (16 schema children removed)
@@ -394,6 +402,15 @@ describe('MCP handlers', () => {
       assert.ok('id' in cluster.edges[0])
     })
 
+    it('excludes descendants by default (opt-in via include_descendants)', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.get_cluster({ node_id: 'orders.DomainModel.order', format: 'json' })
+      const cluster = JSON.parse(result.content[0].text)
+      assert.ok(!('descendants' in cluster), 'descendants should be absent by default')
+      assert.ok(!('includedNodes' in cluster), 'includedNodes should be absent by default')
+      assert.ok(cluster.root.schemas, 'root still carries the collapsed schemas block')
+    })
+
     it('excludes descendants when include_descendants: false', async () => {
       const handlers = createMcpHandlers(graph)
       const result = await handlers.get_cluster({ node_id: 'orders.DomainModel.order', format: 'json', include_descendants: false })
@@ -405,7 +422,7 @@ describe('MCP handlers', () => {
 
     it('filters descendants by node_types', async () => {
       const handlers = createMcpHandlers(graph)
-      const result = await handlers.get_cluster({ node_id: 'orders.DomainModel.order', format: 'json', node_types: ['DomainOperation'] })
+      const result = await handlers.get_cluster({ node_id: 'orders.DomainModel.order', format: 'json', include_descendants: true, node_types: ['DomainOperation'] })
       const cluster = JSON.parse(result.content[0].text)
       assert.ok(Array.isArray(cluster.descendants))
       assert.ok(cluster.descendants.every((n: Record<string, unknown>) => n.template === 'DomainOperation'))
@@ -562,11 +579,11 @@ describe('MCP handlers', () => {
       const data = JSON.parse(result.content[0].text)
       assert.ok(Array.isArray(data))
       assert.ok(data.length > 0)
-      assert.ok(data.some((r: Record<string, unknown>) => {
-        const node = r.node as Record<string, unknown>
-        return typeof node.id === 'string' && node.id.includes('order')
-      }))
-      const firstNode = data[0].node as Record<string, unknown>
+      assert.ok(data.some((r: Record<string, unknown>) =>
+        typeof r.id === 'string' && (r.id as string).includes('order'),
+      ))
+      const firstNode = data[0] as Record<string, unknown>
+      assert.ok(!('score' in firstNode))
       assert.ok(!('schemaVersion' in firstNode))
       assert.ok(!('lastModifiedAt' in firstNode))
       assert.ok(!('properties' in firstNode))
@@ -576,7 +593,7 @@ describe('MCP handlers', () => {
       const handlers = createMcpHandlers(graph)
       const result = await handlers.search_nodes({ queries: ['order'], full_nodes: true, format: 'json' })
       const data = JSON.parse(result.content[0].text)
-      const firstNode = data[0].node as Record<string, unknown>
+      const firstNode = data[0] as Record<string, unknown>
       assert.ok('properties' in firstNode)
       assert.ok(!('schemaVersion' in firstNode))
     })
@@ -589,7 +606,7 @@ describe('MCP handlers', () => {
         format: 'json',
       })
       const data = JSON.parse(result.content[0].text)
-      const firstNode = data[0].node as Record<string, unknown>
+      const firstNode = data[0] as Record<string, unknown>
 
       assert.ok(!('schemaVersion' in firstNode))
       assert.ok('lastModifiedAt' in firstNode)
@@ -846,14 +863,14 @@ describe('MCP handlers', () => {
       assert.ok(cluster)
       assert.ok(search)
       assert.ok(lineage)
-      assert.match(metadata!.description, /Call this first before making traversal queries/i)
-      assert.match(cluster!.description, /Not suited for following relationships across the graph; use get_lineage/i)
-      assert.match(search!.description, /Prefer this over list_nodes/i)
-      assert.match(lineage!.description, /Pass multiple node_ids to expand all origins in parallel/i)
-      assert.match(lineage!.description, /Event fan-out/i)
-      assert.equal((lineage!.inputSchema.properties.include_provenance as { description: string }).description, 'Include provenance fields on returned nodes. Default false.')
-      assert.equal((lineage!.inputSchema.properties.lean as { description: string }).description, 'Return minimal lineage node shape. Default true.')
-      assert.equal((lineage!.inputSchema.properties.include_edges as { description: string }).description, 'Include the edges list in the response. Default false.')
+      assert.match(metadata!.description, /Call first/i)
+      assert.match(cluster!.description, /use get_lineage instead/i)
+      assert.match(search!.description, /use list_nodes only for exhaustive/i)
+      assert.match(lineage!.description, /Batch multiple node_ids/i)
+      assert.match(lineage!.description, /Lean by default/i)
+      assert.equal((lineage!.inputSchema.properties.include_provenance as { description: string }).description, 'Include node provenance (source/derivation). Default false.')
+      assert.equal((lineage!.inputSchema.properties.lean as { description: string }).description, 'Minimal node shape (ids + traversal annotations only). Default true.')
+      assert.equal((lineage!.inputSchema.properties.include_edges as { description: string }).description, 'Include edges. Default false.')
     })
   })
 })
@@ -939,6 +956,7 @@ describe('MCP write tools', () => {
         branch: 'feat/edit',
         node_id: 'orders.Schema.customer',
         collapse_schemas: false,
+        include_descendants: true,
         format: 'json',
       })
       assert.equal(branchRead.isError, undefined, branchRead.content[0].text)
@@ -997,10 +1015,12 @@ describe('MCP write tools', () => {
 
       await handlers.start_changes({ branch: 'feat/diag', create: true, format: 'json' })
 
-      const badEdge = await handlers.create_edge({
-        from: 'orders.Schema.invoice',
-        to: 'orders.Schema.customer',
-        type: 'not-a-type',
+      const badEdge = await handlers.create_edges({
+        edges: [{
+          from: 'orders.Schema.invoice',
+          to: 'orders.Schema.customer',
+          type: 'not-a-type',
+        }],
         format: 'json',
       })
       assert.equal(badEdge.isError, true)
@@ -1017,6 +1037,117 @@ describe('MCP write tools', () => {
       // Failed mutations leave no pending changes behind.
       const pending = await handlers.pending_changes({ format: 'json' })
       assert.equal(JSON.parse(pending.content[0].text).journal.length, 0)
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('create_edges is atomic: one invalid edge in a batch creates none of them', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-mcp-write-'))
+    try {
+      const source = await createWriteRepo(tmpDir)
+      const mainGraph = await loadGraph({ source, strict: false })
+      const handlers = createMcpHandlers(mainGraph, source)
+
+      await handlers.start_changes({ branch: 'feat/batch-edges', create: true, format: 'json' })
+
+      const result = await handlers.create_edges({
+        edges: [
+          { from: 'orders.Schema.invoice', to: 'orders.Schema.customer', type: 'uses-type' },
+          { from: 'orders.Schema.invoice', to: 'orders.Schema.customer', type: 'not-a-type' },
+        ],
+        format: 'json',
+      })
+      assert.equal(result.isError, true)
+      const payload = JSON.parse(result.content[0].text)
+      assert.match(payload.diagnostics[0].message, /edges\[1\]: unknown edge type/)
+
+      const pending = await handlers.pending_changes({ format: 'json' })
+      assert.equal(JSON.parse(pending.content[0].text).journal.length, 0, 'the valid first edge was not applied either')
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('create_fields groups fields by parent/schema into one merged, atomic apply_cluster call', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-mcp-write-'))
+    try {
+      const source = await createWriteRepo(tmpDir)
+      const mainGraph = await loadGraph({ source, strict: false })
+      const handlers = createMcpHandlers(mainGraph, source)
+
+      await handlers.start_changes({ branch: 'feat/batch-fields', create: true, format: 'json' })
+
+      const created = await handlers.create_fields({
+        fields: [
+          { parent_id: 'orders.Root.order', schema_name: 'order', name: 'id', type: 'uuid' },
+          { parent_id: 'orders.Root.order', schema_name: 'order', name: 'total', type: 'decimal', nullable: true },
+        ],
+        format: 'json',
+      })
+      assert.equal(created.isError, undefined, created.content[0].text)
+      const payload = JSON.parse(created.content[0].text)
+      assert.equal(payload.created, 2)
+      assert.equal(payload.applied.length, 1, 'both fields share a parent/schema so they merge into one apply_cluster call')
+
+      const cluster = await handlers.get_cluster({
+        branch: 'feat/batch-fields',
+        node_id: 'orders.Root.order',
+        collapse_schemas: false,
+        include_descendants: true,
+        format: 'json',
+      })
+      const clusterPayload = JSON.parse(cluster.content[0].text)
+      const fieldIds = clusterPayload.descendants.map((n: Record<string, unknown>) => n.id)
+      assert.ok(fieldIds.includes('orders.Root.order.schemas.order.fields.id'))
+      assert.ok(fieldIds.includes('orders.Root.order.schemas.order.fields.total'))
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('create_fields rejects a non-boolean nullable instead of silently coercing it', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-mcp-write-'))
+    try {
+      const source = await createWriteRepo(tmpDir)
+      const mainGraph = await loadGraph({ source, strict: false })
+      const handlers = createMcpHandlers(mainGraph, source)
+
+      await handlers.start_changes({ branch: 'feat/bad-nullable', create: true, format: 'json' })
+
+      const result = await handlers.create_fields({
+        fields: [
+          { parent_id: 'orders.Root.order', schema_name: 'order', name: 'id', type: 'uuid', nullable: 'true' },
+        ],
+        format: 'json',
+      })
+      assert.equal(result.isError, true)
+      assert.match(result.content[0].text, /fields\[0\]\.nullable must be a boolean/)
+
+      const pending = await handlers.pending_changes({ format: 'json' })
+      assert.equal(JSON.parse(pending.content[0].text).journal.length, 0)
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('create_fields with an empty parent_id does not silently fall back to parentId', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-mcp-write-'))
+    try {
+      const source = await createWriteRepo(tmpDir)
+      const mainGraph = await loadGraph({ source, strict: false })
+      const handlers = createMcpHandlers(mainGraph, source)
+
+      await handlers.start_changes({ branch: 'feat/empty-parent', create: true, format: 'json' })
+
+      const result = await handlers.create_fields({
+        fields: [
+          { parent_id: '', parentId: 'orders.Root.order', schema_name: 'order', name: 'id', type: 'uuid' },
+        ],
+        format: 'json',
+      })
+      assert.equal(result.isError, true)
+      assert.match(result.content[0].text, /fields\[0\]\.parent_id is required/)
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true })
     }
@@ -1091,15 +1222,15 @@ describe('MCP write tools', () => {
     const names = tools.map(tool => tool.name)
     for (const expected of [
       'start_changes', 'apply_cluster', 'create_node', 'update_node', 'rename_node', 'delete_node',
-      'create_edge', 'update_edge', 'delete_edge', 'pending_changes', 'discard_changes', 'commit_changes',
+      'create_fields', 'create_edges', 'update_edge', 'delete_edge', 'pending_changes', 'discard_changes', 'commit_changes',
     ]) {
       assert.ok(names.includes(expected), `missing tool definition: ${expected}`)
     }
 
     const applyCluster = tools.find(tool => tool.name === 'apply_cluster')!
-    assert.match(applyCluster.description, /ABSENT owned section means an EMPTY section/i)
-    assert.match(applyCluster.description, /ALL of its children are DELETED/i)
-    assert.match(applyCluster.description, /NEVER treated as a rename/i)
+    assert.match(applyCluster.description, /absent section means an empty section/i)
+    assert.match(applyCluster.description, /absent from it are DELETED/i)
+    assert.match(applyCluster.description, /never a rename/i)
 
     const renameNode = tools.find(tool => tool.name === 'rename_node')!
     assert.match(renameNode.description, /record_trail/)
@@ -1114,7 +1245,7 @@ describe('MCP write tools', () => {
     assert.match(createNode.description, /proposed/)
     assert.match(createNode.description, /unstable/)
     const diffBranch = tools.find(tool => tool.name === 'diff_branch')!
-    assert.match(diffBranch.description, /edits a retired name/)
+    assert.match(diffBranch.description, /editing a retired name/)
   })
 })
 
@@ -1287,6 +1418,29 @@ metadata:
   lastModifiedAt: '2026-07-01'
 properties:
   description: 'Invoice'
+`,
+    [`${base}/packs/testpack/templates/Root.yaml`]: `name: Root
+info:
+  version: '1.0.0'
+properties:
+  type: object
+  additionalProperties: false
+  properties:
+    description:
+      type: string
+schemas:
+  item-template: Schema
+`,
+    [`${base}/graph/components/orders/Roots/order.yaml`]: `id: orders.Root.order
+template: Root
+schemaVersion: '1.0'
+metadata:
+  component: orders
+  state: proposed
+  stability: unstable
+  lastModifiedAt: '2026-07-01'
+properties:
+  description: 'Order aggregate'
 `,
   }
 }

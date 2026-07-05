@@ -128,16 +128,20 @@ function makeCallTool(mode: Mode): { callTool: SmokeCallTool; calls: string[]; s
         state.pendingJournal.push(name)
         return ok({ newId, recordedTrail: true })
       }
-      case 'create_edge': {
-        assert.equal(state.sawCreatedNodeRead, true, 'edge must be created only after reading the created node back')
-        const from = String(args.from)
-        const to = String(args.to)
-        const type = String(args.type)
-        const notes = typeof args.notes === 'string' ? args.notes : undefined
-        const id = `${from}__${type}__${to}`
-        state.edges.push({ id, from, to, type, notes })
+      case 'create_edges': {
+        assert.equal(state.sawCreatedNodeRead, true, 'edges must be created only after reading the created node back')
+        const edges = Array.isArray(args.edges) ? args.edges : []
+        const createdEdges = edges.map((edge: Record<string, unknown>) => {
+          const from = String(edge.from)
+          const to = String(edge.to)
+          const type = String(edge.type)
+          const notes = typeof edge.notes === 'string' ? edge.notes : undefined
+          const id = `${from}__${type}__${to}`
+          state.edges.push({ id, from, to, type, notes })
+          return { id, from, to, type, notes }
+        })
         state.pendingJournal.push(name)
-        return ok({ edge: { id, from, to, type, notes } })
+        return ok({ created: createdEdges.length, edges: createdEdges })
       }
       case 'pending_changes':
         return ok({ journal: state.pendingJournal.map((entry, index) => ({ index, op: entry })) })
@@ -173,7 +177,7 @@ describe('MCP write smoke scenarios', () => {
     assert.deepEqual(state.nodes.get('orders.Schema.bill')?.previousIds, ['orders.Schema.invoice'])
     assert.ok(state.edges.some(edge => edge.id === 'orders.Schema.bill__uses-type__orders.Schema.smoke-write'))
     assert.ok(calls.includes('create_node'))
-    assert.ok(calls.includes('create_edge'))
+    assert.ok(calls.includes('create_edges'))
     assert.equal(calls.filter(name => name === 'update_node').length, 2)
     assert.ok(calls.includes('discard_changes'))
   })

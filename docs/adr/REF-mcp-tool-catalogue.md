@@ -218,14 +218,17 @@ Supports:
 - `format`
 - `compact_keys`
 
-**`create_edge`**  
-Creates an explicit edge between two nodes.
+**`create_edges`**  
+Batch-creates one or more explicit edges as a single atomic operation: every edge (including duplicates within the batch) is validated before any edge is created, so an invalid edge aborts the whole call with no partial writes.
 
 **`update_edge`**  
 Patches an explicit edge's `state`, `stability`, `notes`, or `properties`.
 
 **`delete_edge`**  
 Hard-deletes an explicit edge.
+
+**`create_fields`**  
+Batch-creates fields across schemas. Fields sharing a `parent_id`/`schema_name` are merged into one document and applied atomically together; fields under different parents are applied as separate atomic groups.
 
 **`pending_changes`**  
 Returns the open session's journal plus summary diff counts against the session base.
@@ -247,7 +250,7 @@ Key behavior:
 ### Common Output Options
 
 Most tools support:
-- `format`: `yaml` (default), `json`, or `toon`
+- `format`: `toon` (default), `yaml`, or `json`
 - `compact_keys`: shorten common keys before serialization
 
 All node-returning tools support:
@@ -323,6 +326,6 @@ The typical session-start sequence for the currently implemented surface is:
 The typical write sequence is:
 
 1. `start_changes`
-2. mutation tools (`apply_cluster`, `create_node`, `update_node`, `rename_node`, `delete_node`, `create_edge`, `update_edge`, `delete_edge`)
+2. mutation tools (`apply_cluster`, `create_node`, `update_node`, `rename_node`, `delete_node`, `create_edges`, `update_edge`, `delete_edge`, `create_fields`)
 3. `pending_changes`
 4. `commit_changes` or `discard_changes`

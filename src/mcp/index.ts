@@ -28,7 +28,7 @@ import { MutationError, getActiveSession, startSession, type WorkingSession } fr
 import { createGraphRuntimeConfig } from '../source/config.js'
 import type { GraphSource } from '../source/index.js'
 import { createMultiGraphCache, replaceGraph, startGraphFileWatcher, startWebServer, type MultiGraphCache } from '../web/server.js'
-import { USAGE_GUIDE_PROMPT } from './prompts/usage-guide.js'
+import { buildUsageGuidePrompt } from './prompts/usage-guide.js'
 import { collapseClusterSchemas } from '../graph/schema-collapse.js'
 import { compactKeys, getSerializer } from './serializers.js'
 
@@ -206,9 +206,10 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
   update_node: ToolHandler
   rename_node: ToolHandler
   delete_node: ToolHandler
-  create_edge: ToolHandler
+  create_edges: ToolHandler
   update_edge: ToolHandler
   delete_edge: ToolHandler
+  create_fields: ToolHandler
   pending_changes: ToolHandler
   discard_changes: ToolHandler
   commit_changes: ToolHandler
@@ -283,12 +284,11 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
         }
         const wantFull = args.full_nodes === true
         const incProv = includesProvenance(args)
-        const results = searchNodes(targetGraph, queries, options).map(result => ({
-          score: result.score,
-          node: wantFull
+        const results = searchNodes(targetGraph, queries, options).map(result =>
+          wantFull
             ? fullNode(result.node, incProv)
             : summarizeNode(result.node, incProv),
-        }))
+        )
         return formatResult(results, args.format, getCompactKeys(args))
       }
 
@@ -362,7 +362,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
         const includeProvenance = includesProvenance(args)
         const collapseSchemas = args.collapse_schemas !== false
         const includeEdges = args.include_edges === true
-        const includeDescendants = args.include_descendants !== false
+        const includeDescendants = args.include_descendants === true
         const nodeTypes = toStringArray(args.node_types)
         const edgeOptions = getEdgeOutputOptions(args)
 
@@ -692,19 +692,90 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
       }
     },
 
-    async create_edge(args) {
+    async create_fields(args) {
       try {
         const session = requireSession()
-        const result = await session.createEdge({
-          from: requireString(args.from, 'from'),
-          to: requireString(args.to, 'to'),
-          type: requireString(args.type, 'type'),
-          state: args.state as State | undefined,
-          stability: args.stability as Stability | undefined,
-          notes: typeof args.notes === 'string' ? args.notes : undefined,
-          properties: isPlainObject(args.properties) ? args.properties : undefined,
+        if (!Array.isArray(args.fields)) {
+          throw new QueryError('fields is required and must be an array')
+        }
+        // Group by parent so fields sharing a root/schema become one merged
+        // document: one applyCluster call per parent (atomic per parent),
+        // instead of one call per field.
+        const documentsByParent = new Map<string, Record<string, unknown>>()
+        const order: string[] = []
+        const fieldPaths: Array<{ parentId: string; schemaName: string; fieldName: string }> = []
+
+        args.fields.forEach((field, index) => {
+          if (!isPlainObject(field)) {
+            throw new QueryError(`fields[${index}] must be an object`)
+          }
+          const parentId = requireString(pickDefined(field.parent_id, field.parentId), `fields[${index}].parent_id`)
+          const schemaName = requireString(pickDefined(field.schema_name, field.schemaName), `fields[${index}].schema_name`)
+          const fieldName = requireString(field.name, `fields[${index}].name`)
+          const fieldDef: Record<string, unknown> = {
+            type: requireString(field.type, `fields[${index}].type`),
+          }
+          if (field.nullable !== undefined) {
+            if (typeof field.nullable !== 'boolean') {
+              throw new QueryError(`fields[${index}].nullable must be a boolean`)
+            }
+            fieldDef.nullable = field.nullable
+          }
+          if (typeof field.description === 'string') {
+            fieldDef.description = field.description
+          }
+          if (field.state !== undefined) fieldDef.state = field.state
+          if (field.stability !== undefined) fieldDef.stability = field.stability
+
+          let document = documentsByParent.get(parentId)
+          if (!document) {
+            document = { id: parentId, schemas: {} }
+            documentsByParent.set(parentId, document)
+            order.push(parentId)
+          }
+          const schemas = document.schemas as Record<string, unknown>
+          const schema = (schemas[schemaName] ??= { fields: {} }) as Record<string, unknown>
+          const fields = schema.fields as Record<string, unknown>
+          fields[fieldName] = fieldDef
+          fieldPaths.push({ parentId, schemaName, fieldName })
         })
-        return formatResult(result, args.format, getCompactKeys(args))
+
+        const results = []
+        for (const parentId of order) {
+          const result = await session.applyCluster(documentsByParent.get(parentId)!, 'merge')
+          results.push({ parentId, summary: result.summary, createdIds: result.createdIds, warnings: result.warnings })
+        }
+        return formatResult({ created: fieldPaths.length, fields: fieldPaths, applied: results }, args.format, getCompactKeys(args))
+      } catch (err) {
+        return errorResult(err, args.format)
+      }
+    },
+
+    async create_edges(args) {
+      try {
+        const session = requireSession()
+        if (!Array.isArray(args.edges)) {
+          throw new QueryError('edges is required and must be an array')
+        }
+        const inputs = args.edges.map((edge, index) => {
+          if (!isPlainObject(edge)) {
+            throw new QueryError(`edges[${index}] must be an object`)
+          }
+          return {
+            from: requireString(edge.from, `edges[${index}].from`),
+            to: requireString(edge.to, `edges[${index}].to`),
+            type: requireString(edge.type, `edges[${index}].type`),
+            state: edge.state as State | undefined,
+            stability: edge.stability as Stability | undefined,
+            notes: typeof edge.notes === 'string' ? edge.notes : undefined,
+            properties: isPlainObject(edge.properties) ? edge.properties : undefined,
+          }
+        })
+        // Validated and applied as a single atomic batch (session.createEdges):
+        // any invalid edge aborts the whole call before any edge is created.
+        const result = await session.createEdges(inputs)
+        const edges = result.edges.map(edge => ({ edge }))
+        return formatResult({ created: edges.length, edges, summary: result.summary, warnings: result.warnings }, args.format, getCompactKeys(args))
       } catch (err) {
         return errorResult(err, args.format)
       }
@@ -779,6 +850,11 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
   }
 }
 
+/** Prefers `primary` over `secondary`, falling back only when `primary` is absent (not merely falsy/empty). */
+function pickDefined<T>(primary: T | undefined, secondary: T | undefined): T | undefined {
+  return primary !== undefined ? primary : secondary
+}
+
 function requireString(value: unknown, name: string): string {
   if (typeof value !== 'string' || value.length === 0) {
     throw new QueryError(`${name} is required`)
@@ -843,7 +919,7 @@ export async function ensureGraphLoaded(
 
 function formatResult(value: unknown, format: unknown, compact: unknown = false): ToolResult {
   const payload = compact === true ? compactKeys(value) : value
-  return { content: [{ type: 'text', text: getSerializer(format).serialize(payload) }] }
+  return { content: [{ type: 'text', text: getSerializer(format ?? 'toon').serialize(payload) }] }
 }
 
 function getCompactKeys(args: Record<string, unknown>): boolean {
@@ -864,7 +940,7 @@ function errorResult(err: unknown, format?: unknown): ToolResult {
     }
     let text: string
     try {
-      text = getSerializer(format).serialize(payload)
+      text = getSerializer(format ?? 'toon').serialize(payload)
     } catch {
       text = getSerializer(undefined).serialize(payload)
     }
@@ -874,108 +950,90 @@ function errorResult(err: unknown, format?: unknown): ToolResult {
   return { content: [{ type: 'text', text: message }], isError: true }
 }
 
+// Shared parameter schemas — these appear on nearly every tool, so factoring
+// them out keeps the always-loaded tool definitions lean and consistent. Deep
+// guidance (compact_keys mapping, toon rationale, workflows) lives in the
+// on-demand usage-guide prompt, not here.
+const FORMAT_PARAM = { type: 'string', enum: [...OUTPUT_FORMATS], description: 'Default toon (lean, self-describing). yaml for humans, json for conventional parsing.' }
+const COMPACT_KEYS_PARAM = { type: 'boolean', description: 'Abbreviate field-name keys to save tokens (see usage-guide). Default false.' }
+const BRANCH_READ_PARAM = { type: 'string', description: 'Branch ref to read from. Default: open session or source default.' }
+const PROVENANCE_PARAM = { type: 'boolean', description: 'Include node provenance (source/derivation). Default false.' }
+const EDGE_IDS_PARAM = { type: 'boolean', description: 'Include edge ids in edge output. Default false.' }
+const STATE_PARAM = { type: 'string', enum: [...STATE_VALUES], description: 'Lifecycle state.' }
+const STABILITY_PARAM = { type: 'string', enum: [...STABILITY_VALUES], description: 'Stability.' }
+const IO_PARAMS = { format: FORMAT_PARAM, compact_keys: COMPACT_KEYS_PARAM }
+
 export function getMcpToolDefinitions(): ToolDefinition[] {
   return [
     {
       name: 'list_nodes',
-      description: 'List nodes in the graph. Returns id, template, component, state, stability for each matched node.',
+      description: 'Root nodes matching a filter, as slim summaries. Prefer search_nodes for keyword discovery; use this for exhaustive filtered inventories.',
       inputSchema: {
         type: 'object',
         properties: {
           filter: {
             type: 'object',
-            description: 'Filter criteria',
             properties: {
-              templates: {
-                type: 'array',
-                items: { type: 'string' },
-                description: 'Include only these template types (OR semantics)',
-              },
-              exclude_templates: {
-                type: 'array',
-                items: { type: 'string' },
-                description: 'Exclude these template types',
-              },
-              component: { type: 'string', description: 'Filter by component name' },
-              state: {
-                description: 'Filter by lifecycle state as a string or array',
-                oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
-              },
-              stability: {
-                description: 'Filter by stability as a string or array',
-                oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
-              },
+              templates: { type: 'array', items: { type: 'string' }, description: 'Include only these templates (OR).' },
+              exclude_templates: { type: 'array', items: { type: 'string' }, description: 'Exclude these templates.' },
+              component: { type: 'string', description: 'Filter by component.' },
+              state: { oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
+              stability: { oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
             },
           },
-          include_provenance: { type: 'boolean', description: 'Include provenance fields on returned nodes. Default false.' },
-          branch: { type: 'string', description: 'Branch ref to load nodes from' },
-          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          include_provenance: PROVENANCE_PARAM,
+          branch: BRANCH_READ_PARAM,
+          ...IO_PARAMS,
         },
       },
     },
     {
       name: 'list_templates',
-      description: 'List loaded graph templates. Returns name, version, core, abstract, extends, and description for each template.',
+      description: 'List loaded templates with summary metadata (name, version, core, abstract, extends, description).',
       inputSchema: {
         type: 'object',
         properties: {
-          branch: { type: 'string', description: 'Branch ref to load templates from' },
-          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          branch: BRANCH_READ_PARAM,
+          ...IO_PARAMS,
         },
       },
     },
     {
       name: 'get_template',
-      description: 'Get full details for a loaded graph template.',
+      description: 'Full definition of one template: property schema, owned sections, edge-type constraints, role.',
       inputSchema: {
         type: 'object',
         required: ['name'],
         properties: {
-          name: { type: 'string', description: 'Template name' },
-          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          name: { type: 'string', description: 'Template name.' },
+          ...IO_PARAMS,
         },
       },
     },
     {
       name: 'get_cluster',
-      description: 'Use when you need the full structural contents of a single node - its schema, fields, and owned children. Not suited for following relationships across the graph; use get_lineage for that.\n\nBy default returns only the root node with its collapsed schema and enums blocks (descendants and edges excluded). Pass include_descendants: true to include owned operations/commands/events. Pass include_edges: true to include the edge list.',
+      description: 'Structural detail of ONE node. Returns the root with its collapsed schemas/enums (compact JSON-schema form, not child nodes) by default. Owned descendants (operations, commands, events) are opt-in via include_descendants:true and can be large — narrow with node_types. To follow relationships across nodes use get_lineage instead.',
       inputSchema: {
         type: 'object',
         required: ['node_id'],
         properties: {
-          node_id: { type: 'string', description: 'Fully qualified node ID' },
-          edge_types: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Edge types to follow for external node inclusion. Defaults to all semantic types.',
-          },
-          collapse_schemas: { type: 'boolean', description: 'Collapse schema/enum child nodes into compact schemas and enums blocks on the root. Structural edges and schema child nodes are removed from descendants. Default true.' },
-          include_descendants: { type: 'boolean', description: 'Include descendant nodes (operations, commands, events, and cross-component nodes). Default true.' },
-          node_types: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Allowlist of node templates to include in the descendant set. Useful for limiting to specific types (e.g. ["DomainOperation", "DomainEvent"]).',
-          },
-          include_edges: { type: 'boolean', description: 'Include the edge list in the response. Default false.' },
-          include_edge_ids: { type: 'boolean', description: 'Include edge id field in edge output. Default false.' },
-          include_provenance: { type: 'boolean', description: 'Include provenance fields on returned nodes. Default false.' },
-          branch: { type: 'string', description: 'Branch ref to load the cluster from' },
-          overlay_refs: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Branch refs to overlay. Returns ghost field data alongside the cluster.',
-          },
-          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          node_id: { type: 'string', description: 'Fully qualified node ID.' },
+          edge_types: { type: 'array', items: { type: 'string' }, description: 'External-node edge types to follow. Default: all semantic.' },
+          collapse_schemas: { type: 'boolean', description: 'Collapse schema/enum children into compact schemas+enums blocks on the root. Default true.' },
+          include_descendants: { type: 'boolean', description: 'Include owned descendants (operations, commands, events). Opt-in; can be large. Default false.' },
+          node_types: { type: 'array', items: { type: 'string' }, description: 'Restrict descendants to these templates.' },
+          include_edges: { type: 'boolean', description: 'Include the edge list. Default false.' },
+          include_edge_ids: EDGE_IDS_PARAM,
+          include_provenance: PROVENANCE_PARAM,
+          branch: BRANCH_READ_PARAM,
+          overlay_refs: { type: 'array', items: { type: 'string' }, description: 'Branch refs to overlay as ghost field data.' },
+          ...IO_PARAMS,
         },
       },
     },
     {
       name: 'get_graph',
-      description: 'Return semantic nodes (and optionally edges) across the graph. Excludes structural templates and structural edge types by default. Pass include_edges: true to include the semantic edge list.',
+      description: 'Semantic nodes across the whole graph (structural templates/edges excluded); include_edges adds semantic edges. Whole-graph payload is large — prefer search_nodes or get_lineage for targeted work.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -989,303 +1047,314 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
               stability: { oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
             },
           },
-          include_edges: { type: 'boolean', description: 'Include the semantic edge list in the response. Default false.' },
-          include_provenance: { type: 'boolean', description: 'Include provenance fields on returned nodes. Default false.' },
-          branch: { type: 'string', description: 'Branch ref to load the graph from' },
-          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          include_edges: { type: 'boolean', description: 'Include semantic edges. Default false.' },
+          include_provenance: PROVENANCE_PARAM,
+          branch: BRANCH_READ_PARAM,
+          ...IO_PARAMS,
         },
       },
     },
     {
       name: 'get_graph_metadata',
-      description: 'Return discoverable graph metadata: template names, node templates in use, edge types in use. Call this first before making traversal queries. The edge_types_in_use field tells you which edge types are actually modelled in the current graph - there is no value traversing edge types that have no entries. Pass include_static_enums: true to also receive valid_edge_types, states, stabilities, lineage_directions, and output_formats.',
+      description: 'Discover graph contents: template names, node templates in use, edge types in use. Call first; only traverse edge types listed in edge_types_in_use. include_static_enums:true adds valid edge types, states, stabilities, directions, formats.',
       inputSchema: {
         type: 'object',
         properties: {
-          include_static_enums: { type: 'boolean', description: 'Include static enum reference fields (valid_edge_types, states, stabilities, lineage_directions, output_formats). Default false.' },
-          branch: { type: 'string', description: 'Branch ref to load metadata from' },
-          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          include_static_enums: { type: 'boolean', description: 'Also return valid edge types, states, stabilities, directions, formats. Default false.' },
+          branch: BRANCH_READ_PARAM,
+          ...IO_PARAMS,
         },
       },
     },
     {
       name: 'get_lineage',
-      description: 'Traverse the graph from one or more origin nodes via BFS and return annotated lineage results. Pass multiple node_ids to expand all origins in parallel in a single call rather than making separate calls - results are merged and deduplicated automatically.\n\nCommon patterns:\n- Event fan-out - direction: downstream, depth: 2 from an event node to see all triggered commands and the operations they invoke.\n- Find all writers to an aggregate - direction: upstream from a DomainModel node to see every command and operation that writes to it.\n- Full event chain - direction: downstream, depth: 3 or more to trace event -> command -> operation -> produced event chains.',
+      description: 'BFS traversal from origin node(s); returns reachable nodes annotated with depth and the edge/node they arrived via. Batch multiple node_ids in one call — results merge and dedupe. Lean by default; scope with direction, depth, and edge_types.',
       inputSchema: {
         type: 'object',
         required: ['node_ids'],
         properties: {
-          node_ids: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Fully-qualified IDs of origin nodes. All expand in parallel.',
-          },
+          node_ids: { type: 'array', items: { type: 'string' }, description: 'Origin node IDs; all expand in parallel.' },
           depth: { type: 'number', description: 'Max hops. Default 2.' },
-          direction: { type: 'string', enum: ['downstream', 'upstream', 'both'], description: 'Traversal direction. Default downstream.' },
+          direction: { type: 'string', enum: ['downstream', 'upstream', 'both'], description: 'Default downstream.' },
           edge_types: { type: 'array', items: { type: 'string' }, description: 'Edge types to traverse. Default: all non-structural.' },
-          node_types: { type: 'array', items: { type: 'string' }, description: 'Allowlist of node templates.' },
-          exclude_node_types: { type: 'array', items: { type: 'string' }, description: 'Denylist of node templates.' },
-          include_dangling_edges: { type: 'boolean', description: 'Include dangling edges in the response when present. Default false.' },
-          reads_outbound_only: { type: 'boolean', description: 'Do not follow inbound reads/uses-type edges in upstream traversal. Default true.' },
-          lean: { type: 'boolean', description: 'Return minimal lineage node shape. Default true.' },
-          include_edges: { type: 'boolean', description: 'Include the edges list in the response. Default false.' },
-          include_edge_ids: { type: 'boolean', description: 'Include edge id field in edge output. Default false.' },
-          include_provenance: { type: 'boolean', description: 'Include provenance fields on returned nodes. Default false.' },
-          branch: { type: 'string', description: 'Branch ref to load the lineage from' },
-          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          node_types: { type: 'array', items: { type: 'string' }, description: 'Template allowlist.' },
+          exclude_node_types: { type: 'array', items: { type: 'string' }, description: 'Template denylist.' },
+          include_dangling_edges: { type: 'boolean', description: 'Include dangling edges. Default false.' },
+          reads_outbound_only: { type: 'boolean', description: 'Skip inbound reads/uses-type in upstream traversal. Default true.' },
+          lean: { type: 'boolean', description: 'Minimal node shape (ids + traversal annotations only). Default true.' },
+          include_edges: { type: 'boolean', description: 'Include edges. Default false.' },
+          include_edge_ids: EDGE_IDS_PARAM,
+          include_provenance: PROVENANCE_PARAM,
+          branch: BRANCH_READ_PARAM,
+          ...IO_PARAMS,
         },
       },
     },
     {
       name: 'get_linked_fields',
-      description: 'Get all maps-to edges touching fields owned by the given root node.',
+      description: 'All maps-to edges touching fields owned by the given root node.',
       inputSchema: {
         type: 'object',
         required: ['node_id'],
         properties: {
-          node_id: { type: 'string', description: 'Fully qualified root node ID' },
-          include_edge_ids: { type: 'boolean', description: 'Include edge id field in edge output. Default false.' },
-          include_provenance: { type: 'boolean', description: 'Include provenance fields on returned nodes. Default false.' },
-          branch: { type: 'string', description: 'Branch ref to load linked fields from' },
-          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          node_id: { type: 'string', description: 'Fully qualified root node ID.' },
+          include_edge_ids: EDGE_IDS_PARAM,
+          include_provenance: PROVENANCE_PARAM,
+          branch: BRANCH_READ_PARAM,
+          ...IO_PARAMS,
         },
       },
     },
     {
       name: 'get_graph_summary',
-      description: 'Return high-level statistics: node count, component count, orphan breakdown, edge counts by type, diagnostic count.',
+      description: 'High-level stats: node count, component count, orphan breakdown, edge counts by type, diagnostic count.',
       inputSchema: {
         type: 'object',
         properties: {
-          branch: { type: 'string', description: 'Branch ref to load the summary from' },
-          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          branch: BRANCH_READ_PARAM,
+          ...IO_PARAMS,
         },
       },
     },
     {
       name: 'search_nodes',
-      description: 'Fuzzy search for root-level nodes by ID segments. Returns slim node summaries (id, template, component, state, stability) by default. Pass full_nodes: true to include properties. Prefer this over list_nodes when you have a domain term to search for - it returns ranked, targeted results without noise. Use list_nodes only when you need a complete inventory of nodes matching specific filter criteria.',
+      description: 'Ranked fuzzy search for root nodes by ID segment. Returns slim summaries (id, template, component, state, stability). Preferred discovery entry point; use list_nodes only for exhaustive filtered inventories.',
       inputSchema: {
         type: 'object',
         required: ['queries'],
         properties: {
-          queries: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Search terms. OR semantics; any matching term qualifies the node.',
-          },
-          templates: { type: 'array', items: { type: 'string' }, description: 'Include only these template types.' },
-          exclude_templates: { type: 'array', items: { type: 'string' }, description: 'Exclude these template types.' },
-          page_size: { type: 'number', description: 'Max results to return. Default 10.' },
-          offset: { type: 'number', description: 'Result offset for pagination. Default 0.' },
-          search_properties: { type: 'boolean', description: 'Also match name, description, and x-aka properties.' },
-          full_nodes: { type: 'boolean', description: 'Include properties on each result node. Default false.' },
-          include_provenance: { type: 'boolean', description: 'Include provenance fields on returned nodes. Default false.' },
-          branch: { type: 'string', description: 'Branch ref to search within' },
-          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          queries: { type: 'array', items: { type: 'string' }, description: 'Search terms (OR).' },
+          templates: { type: 'array', items: { type: 'string' }, description: 'Template allowlist.' },
+          exclude_templates: { type: 'array', items: { type: 'string' }, description: 'Template denylist.' },
+          page_size: { type: 'number', description: 'Max results. Default 10.' },
+          offset: { type: 'number', description: 'Pagination offset. Default 0.' },
+          search_properties: { type: 'boolean', description: 'Also match name/description/x-aka. Default false.' },
+          full_nodes: { type: 'boolean', description: 'Add every property to each result — far larger output; leave off unless you need the bodies. Default false.' },
+          include_provenance: PROVENANCE_PARAM,
+          branch: BRANCH_READ_PARAM,
+          ...IO_PARAMS,
         },
       },
     },
     {
       name: 'list_branches',
-      description: 'List branches available from the configured graph source and their load status.',
+      description: 'List branches available from the graph source and their load status.',
       inputSchema: {
         type: 'object',
         properties: {
-          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          ...IO_PARAMS,
         },
       },
     },
     {
       name: 'diff_branch',
-      description: 'Diff a branch against the default branch. Rename-aware: branch IDs are resolved through the default branch\'s rename trail before matching, so a branch still holding an old name overlays onto the renamed node instead of appearing as add+remove. The result\'s warnings field flags branches that modify a node under a retired name ("edits a retired name") — rebase the branch or apply the rename.',
+      description: 'Diff a branch against the default branch. Rename-aware: old IDs resolve through the rename trail, so a branch holding an old name overlays the renamed node rather than showing add+remove. warnings flags branches editing a retired name — rebase the branch or apply the rename.',
       inputSchema: {
         type: 'object',
         required: ['branch'],
         properties: {
-          branch: { type: 'string', description: 'Branch ref to diff against the default branch' },
-          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          branch: { type: 'string', description: 'Branch ref to diff against the default branch.' },
+          ...IO_PARAMS,
         },
       },
     },
     {
       name: 'start_changes',
-      description: 'Open a working session for graph mutations. All other write tools require an open session; while a session is open, read tools reflect the working (uncommitted) state. Mutations stay in the session until commit_changes; discard_changes aborts. autosave defaults OFF for both file and git sources — prefer leaving it off unless you explicitly want per-mutation checkpoints. When autosave is ON, file sources write through to disk immediately and git sources land a "corum-wip:" checkpoint commit per mutation; commit_changes squashes the WIP run into a single commit when no external commit interleaved. Git default branches are read-only for writes: pass a writable branch explicitly or use create: true to fork one from the default branch head. Starting while a session with pending changes is open is an error — commit_changes or discard_changes first; with no pending changes the old session is reset cleanly.',
+      description: 'Open a write session — required before any mutation; while open, reads reflect uncommitted state. Mutations persist only at commit_changes; discard_changes aborts. autosave defaults OFF. Git default branches are read-only: pass a writable branch or create:true to fork from default head. Errors if a session with pending changes is already open (commit or discard first).',
       inputSchema: {
         type: 'object',
         properties: {
-          branch: { type: 'string', description: 'Branch to load and commit to. Defaults to the source\'s default branch.' },
-          create: { type: 'boolean', description: 'Fork a new branch from the default branch head (git sources only). Default false.' },
-          autosave: { type: 'boolean', description: 'Override the autosave default (OFF by default. When ON: file sources write through immediately; git sources create WIP checkpoint commits).' },
-          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          branch: { type: 'string', description: 'Branch to load and commit to. Default: source default.' },
+          create: { type: 'boolean', description: 'Fork a new branch from default head (git only). Default false.' },
+          autosave: { type: 'boolean', description: 'Persist each mutation (file: write-through; git: WIP checkpoint commit). Default false.' },
+          ...IO_PARAMS,
         },
       },
     },
     {
       name: 'apply_cluster',
-      description: 'Upsert a cluster-style nested document — the same shape as cluster YAML: root node fields (id, template, properties, state/stability) plus owned sections keyed by child local name, with child properties flattened at the top level of each child. Requires an open session (start_changes).\n\nmode "merge": updates only what the document mentions — absent children and absent owned sections are left untouched (a null property value clears that key).\n\nmode "replace": WARNING — the document becomes AUTHORITATIVE for every owned section of the root\'s template. Children absent from the document are DELETED, and an ABSENT owned section means an EMPTY section: ALL of its children are DELETED (soft delete with state removed when the node exists on the default branch, hard purge otherwise). Only use replace with the complete intended contents of the cluster.\n\nA changed child key is NEVER treated as a rename: it is delete+add, and the response carries a possible-rename warning when a replace deletes and creates children with the same template under the same parent. To rename, use rename_node — it is the only rename path. Sections the template does not declare as owned are never touched.',
+      description: 'Upsert a cluster-style nested document (same shape as cluster YAML: root fields + owned sections of named children). merge: patch only what is present (null property clears a key). replace: WARNING document is AUTHORITATIVE — children and owned sections absent from it are DELETED (an absent section means an empty section). A changed child key is delete+add, never a rename — use rename_node. Needs an open session.',
       inputSchema: {
         type: 'object',
         required: ['document', 'mode'],
         properties: {
-          document: { type: 'object', description: 'Cluster-style document (root node plus owned sections with named children).' },
-          mode: { type: 'string', enum: ['merge', 'replace'], description: 'merge: update what is present, leave the rest. replace: document is authoritative for owned sections — absent children/sections are DELETED.' },
-          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          document: { type: 'object', description: 'Root node plus owned sections with named children.' },
+          mode: { type: 'string', enum: ['merge', 'replace'], description: 'merge: patch present fields. replace: authoritative — absent children/sections DELETED.' },
+          ...IO_PARAMS,
         },
       },
     },
     {
       name: 'create_node',
-      description: 'Create a root cluster (omit parent_id; document requires id and template) or an owned child under an existing parent (pass parent_id, section, and name; document holds the child body with properties flattened at the top level). Nested owned children in the document are created in the same call and structural edges (has-field, has-value) generate automatically. Defaults: state "proposed", stability "unstable". Requires an open session (start_changes).',
+      description: 'Create a root cluster (omit parent_id; document needs id+template) or an owned child (pass parent_id+section+name; document is the child body). Nested owned children and structural edges (has-field, has-value) generate automatically. Defaults: state proposed, stability unstable. Needs an open session.',
       inputSchema: {
         type: 'object',
         required: ['document'],
         properties: {
-          document: { type: 'object', description: 'Cluster-style document. Roots: { id, template, properties?, ...ownedSections }. Owned children: the child body (properties flattened, optional nested owned sections).' },
-          parent_id: { type: 'string', description: 'Owning parent node ID — omit to create a root cluster.' },
-          section: { type: 'string', description: 'Owned section under the parent (e.g. "fields", "schemas"); required with parent_id.' },
-          name: { type: 'string', description: 'Local name for the new owned child; required with parent_id.' },
-          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          document: { type: 'object', description: 'Root: {id, template, properties?, ...ownedSections}. Child: the body (properties flattened, optional nested sections).' },
+          parent_id: { type: 'string', description: 'Owning parent ID — omit for a root cluster.' },
+          section: { type: 'string', description: 'Owned section under parent (e.g. fields, schemas); required with parent_id.' },
+          name: { type: 'string', description: 'Local name of the new child; required with parent_id.' },
+          ...IO_PARAMS,
         },
       },
     },
     {
       name: 'update_node',
-      description: 'Patch a node\'s properties, state, or stability. properties is a patch: only the keys given are changed, and a null value clears that key. Cannot change the node\'s name — that is rename_node (names are identity, never a property edit). Requires an open session (start_changes).',
+      description: 'Patch a node\'s properties/state/stability (properties is a patch; null clears a key). Cannot rename — use rename_node. Needs an open session.',
       inputSchema: {
         type: 'object',
         required: ['id'],
         properties: {
-          id: { type: 'string', description: 'Fully qualified node ID' },
-          properties: { type: 'object', description: 'Property patch — null clears a key.' },
-          state: { type: 'string', enum: [...STATE_VALUES], description: 'New lifecycle state.' },
-          stability: { type: 'string', enum: [...STABILITY_VALUES], description: 'New stability.' },
-          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          id: { type: 'string', description: 'Fully qualified node ID.' },
+          properties: { type: 'object', description: 'Property patch; null clears a key.' },
+          state: STATE_PARAM,
+          stability: STABILITY_PARAM,
+          ...IO_PARAMS,
         },
       },
     },
     {
       name: 'rename_node',
-      description: 'Rename a node (replace the last segment of its ID with new_name). Descendant IDs, parentId fields, and every edge endpoint are rewritten automatically; renaming a cluster root also moves its file at commit. Trail: by default, a rename records corum.identity.previousIds plus a renamed-from edge iff the node exists on the default branch head (i.e. the old name is shared history); record_trail forces (true) or suppresses (false) the trail. This is the ONLY rename path — apply_cluster and imports never infer renames. Requires an open session (start_changes).',
+      description: 'Rename a node (replace the last ID segment). Descendant IDs, parentId, and edge endpoints rewrite automatically; a cluster root\'s file moves at commit. Records a rename trail (previousIds + renamed-from edge) when the old name is shared history on default; record_trail overrides. The ONLY rename path — apply_cluster and imports never infer renames. Needs an open session.',
       inputSchema: {
         type: 'object',
         required: ['id', 'new_name'],
         properties: {
-          id: { type: 'string', description: 'Fully qualified node ID to rename' },
-          new_name: { type: 'string', description: 'New last segment (ID grammar: [A-Za-z0-9_-], no dots).' },
-          record_trail: { type: 'boolean', description: 'Override the trail threshold: true forces recording corum.identity.previousIds + renamed-from; false suppresses it.' },
-          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          id: { type: 'string', description: 'Node ID to rename.' },
+          new_name: { type: 'string', description: 'New last segment (grammar [A-Za-z0-9_-], no dots).' },
+          record_trail: { type: 'boolean', description: 'Force (true) or suppress (false) the rename trail.' },
+          ...IO_PARAMS,
         },
       },
     },
     {
       name: 'delete_node',
-      description: 'Delete a node and its owned subtree. Two tiers: soft delete sets state "removed" on the subtree (nodes stay in YAML and remain queryable); hard delete removes the subtree and every edge touching it. Default tier: soft when the node exists on the default branch head (shared history), hard otherwise (pure design work leaves no tombstones). purge: true always hard-deletes; record_trail overrides the threshold (true forces soft, false forces hard). Requires an open session (start_changes).',
+      description: 'Delete a node and its owned subtree. Soft delete (state removed, stays queryable) when the node is shared history on default; hard delete (removes subtree + touching edges) otherwise. purge:true forces hard; record_trail overrides (true soft, false hard). Needs an open session.',
       inputSchema: {
         type: 'object',
         required: ['id'],
         properties: {
-          id: { type: 'string', description: 'Fully qualified node ID to delete' },
-          purge: { type: 'boolean', description: 'Force hard delete of the subtree and all touching edges. Default false.' },
-          record_trail: { type: 'boolean', description: 'Override the soft/hard threshold: true forces soft delete, false forces hard delete.' },
-          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          id: { type: 'string', description: 'Node ID to delete.' },
+          purge: { type: 'boolean', description: 'Force hard delete. Default false.' },
+          record_trail: { type: 'boolean', description: 'true forces soft delete, false forces hard.' },
+          ...IO_PARAMS,
         },
       },
     },
     {
-      name: 'create_edge',
-      description: 'Create an explicit edge between two nodes. Validated against endpoint existence and the pack edge-type vocabulary; edge-type constraint violations are returned as warnings. Defaults: state "proposed", stability "unstable". Requires an open session (start_changes).',
+      name: 'create_fields',
+      description: 'Batch create multiple fields across schemas in one operation. Each field becomes a proper Field node with structural edges. Fields sharing a parent_id/schema_name are merged and applied together atomically; fields under different parents are applied as separate atomic groups (a failure in one parent\'s group does not roll back another parent\'s group). Defaults: state proposed, stability unstable. Needs an open session.',
       inputSchema: {
         type: 'object',
-        required: ['from', 'to', 'type'],
+        required: ['fields'],
         properties: {
-          from: { type: 'string', description: 'Source node ID' },
-          to: { type: 'string', description: 'Target node ID' },
-          type: { type: 'string', description: 'Edge type (see get_graph_metadata valid_edge_types).' },
-          state: { type: 'string', enum: [...STATE_VALUES], description: 'Lifecycle state. Default "proposed".' },
-          stability: { type: 'string', enum: [...STABILITY_VALUES], description: 'Stability. Default "unstable".' },
-          notes: { type: 'string', description: 'Free-text notes on the edge.' },
-          properties: { type: 'object', description: 'Edge properties (validated against the pack edge-type schema).' },
-          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          fields: {
+            type: 'array',
+            description: 'Array of field definitions',
+            items: {
+              type: 'object',
+              required: ['parent_id', 'schema_name', 'name', 'type'],
+              properties: {
+                parent_id: { type: 'string', description: 'Root node ID (e.g. orders.DomainModel.order).' },
+                schema_name: { type: 'string', description: 'Schema name within the root (e.g. order, order-placed-payload).' },
+                name: { type: 'string', description: 'Field name.' },
+                type: { type: 'string', description: 'Field type (e.g. uuid, decimal, string).' },
+                nullable: { type: 'boolean', description: 'Whether field is nullable. Default false.' },
+                description: { type: 'string', description: 'Optional field description.' },
+                state: STATE_PARAM,
+                stability: STABILITY_PARAM,
+              },
+            },
+          },
+          ...IO_PARAMS,
+        },
+      },
+    },
+    {
+      name: 'create_edges',
+      description: 'Batch create multiple edges as one atomic operation: every edge is validated (including duplicates within the batch) before any edge is created, so an invalid edge aborts the whole call with no partial writes. Same per-edge validation as a single edge create (see delete_edge/update_edge). Needs an open session.',
+      inputSchema: {
+        type: 'object',
+        required: ['edges'],
+        properties: {
+          edges: {
+            type: 'array',
+            description: 'Array of edge definitions',
+            items: {
+              type: 'object',
+              required: ['from', 'to', 'type'],
+              properties: {
+                from: { type: 'string', description: 'Source node ID.' },
+                to: { type: 'string', description: 'Target node ID.' },
+                type: { type: 'string', description: 'Edge type.' },
+                state: STATE_PARAM,
+                stability: STABILITY_PARAM,
+                notes: { type: 'string', description: 'Free-text note.' },
+                properties: { type: 'object', description: 'Edge properties.' },
+              },
+            },
+          },
+          ...IO_PARAMS,
         },
       },
     },
     {
       name: 'update_edge',
-      description: 'Patch an explicit edge\'s state, stability, notes, or properties. Endpoints and type are IMMUTABLE — delete_edge and create_edge instead. notes: null clears the notes; a null property value clears that key. Requires an open session (start_changes).',
+      description: 'Patch an edge\'s state/stability/notes/properties (null clears notes or a property key). Endpoints and type are immutable — delete+create to change them. Needs an open session.',
       inputSchema: {
         type: 'object',
         required: ['id'],
         properties: {
-          id: { type: 'string', description: 'Edge ID ({from}__{type}__{to})' },
-          state: { type: 'string', enum: [...STATE_VALUES], description: 'New lifecycle state.' },
-          stability: { type: 'string', enum: [...STABILITY_VALUES], description: 'New stability.' },
+          id: { type: 'string', description: 'Edge ID ({from}__{type}__{to}).' },
+          state: STATE_PARAM,
+          stability: STABILITY_PARAM,
           notes: { description: 'New notes; null clears them.' },
-          properties: { type: 'object', description: 'Property patch — null clears a key.' },
-          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          properties: { type: 'object', description: 'Property patch; null clears a key.' },
+          ...IO_PARAMS,
         },
       },
     },
     {
       name: 'delete_edge',
-      description: 'Delete an edge. Always a hard removal — edges carry no subtree. To soft-remove a relationship instead, use update_edge with state "removed". Requires an open session (start_changes).',
+      description: 'Hard-delete an edge (edges carry no subtree). To soft-remove, use update_edge with state removed. Needs an open session.',
       inputSchema: {
         type: 'object',
         required: ['id'],
         properties: {
-          id: { type: 'string', description: 'Edge ID ({from}__{type}__{to})' },
-          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          id: { type: 'string', description: 'Edge ID ({from}__{type}__{to}).' },
+          ...IO_PARAMS,
         },
       },
     },
     {
       name: 'pending_changes',
-      description: 'Show the open session\'s change journal and a summary diff (added/modified/removed node and edge counts) of the working graph against the session base. Requires an open session (start_changes).',
+      description: 'Show the session\'s change journal and a summary diff (added/modified/removed counts) vs base. Needs an open session.',
       inputSchema: {
         type: 'object',
         properties: {
-          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          ...IO_PARAMS,
         },
       },
     },
     {
       name: 'discard_changes',
-      description: 'Abort the working session without committing. With the default autosave OFF, this drops the in-memory session changes. Note: if autosave was turned ON for a file source, mutations already written to disk are NOT rolled back. Requires an open session (start_changes).',
+      description: 'Abort the session without committing, dropping in-memory changes. Autosaved file-source writes are NOT rolled back. Needs an open session.',
       inputSchema: {
         type: 'object',
         properties: {
-          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          ...IO_PARAMS,
         },
       },
     },
     {
       name: 'commit_changes',
-      description: 'Lint, serialise, and commit the working graph, then close the session. The full linter runs first: error diagnostics BLOCK the commit (the session stays open to fix and retry); warnings ride along. Default message summarises the journal. Git autosave sessions squash their "corum-wip:" checkpoint run into a single commit when no external commit interleaved (otherwise the final commit lands on top and checkpoints are preserved); file-source autosave sessions have already persisted each mutation, so commit_changes just closes the session. Fails if the branch head moved externally since session start.',
+      description: 'Lint, serialise, and commit the working graph, then close the session. Error diagnostics BLOCK the commit (session stays open to fix); warnings ride along. Git autosave WIP checkpoints squash into one commit unless an external commit interleaved. Fails if the branch head moved externally. Needs an open session.',
       inputSchema: {
         type: 'object',
         properties: {
-          message: { type: 'string', description: 'Commit message. Default: a summary of the session journal.' },
-          format: { type: 'string', enum: ['yaml', 'json', 'toon'], description: 'Output format. Defaults to yaml.' },
-          compact_keys: { type: 'boolean', description: 'Use compact graph keys in the selected output format.' },
+          message: { type: 'string', description: 'Commit message. Default: journal summary.' },
+          ...IO_PARAMS,
         },
       },
     },
@@ -1362,7 +1431,7 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
     return {
       description: 'Corum graph query orientation guide',
       messages: [
-        { role: 'user' as const, content: { type: 'text' as const, text: USAGE_GUIDE_PROMPT } },
+        { role: 'user' as const, content: { type: 'text' as const, text: buildUsageGuidePrompt([...graph.templates.keys()].sort()) } },
       ],
     }
   })
@@ -1421,8 +1490,10 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
         return await handlers.rename_node(args)
       case 'delete_node':
         return await handlers.delete_node(args)
-      case 'create_edge':
-        return await handlers.create_edge(args)
+      case 'create_fields':
+        return await handlers.create_fields(args)
+      case 'create_edges':
+        return await handlers.create_edges(args)
       case 'update_edge':
         return await handlers.update_edge(args)
       case 'delete_edge':
