@@ -1015,10 +1015,12 @@ describe('MCP write tools', () => {
 
       await handlers.start_changes({ branch: 'feat/diag', create: true, format: 'json' })
 
-      const badEdge = await handlers.create_edge({
-        from: 'orders.Schema.invoice',
-        to: 'orders.Schema.customer',
-        type: 'not-a-type',
+      const badEdge = await handlers.create_edges({
+        edges: [{
+          from: 'orders.Schema.invoice',
+          to: 'orders.Schema.customer',
+          type: 'not-a-type',
+        }],
         format: 'json',
       })
       assert.equal(badEdge.isError, true)
@@ -1109,7 +1111,7 @@ describe('MCP write tools', () => {
     const names = tools.map(tool => tool.name)
     for (const expected of [
       'start_changes', 'apply_cluster', 'create_node', 'update_node', 'rename_node', 'delete_node',
-      'create_edge', 'update_edge', 'delete_edge', 'pending_changes', 'discard_changes', 'commit_changes',
+      'create_fields', 'create_edges', 'update_edge', 'delete_edge', 'pending_changes', 'discard_changes', 'commit_changes',
     ]) {
       assert.ok(names.includes(expected), `missing tool definition: ${expected}`)
     }

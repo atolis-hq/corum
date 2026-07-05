@@ -214,11 +214,13 @@ async function runRenameAndVerifyFlow(callTool, branch) {
   assert.equal(renamed.newId, RENAMED_NODE_ID)
   assert.equal(renamed.recordedTrail, true)
 
-  await expectJson(callTool, 'create_edge', {
-    from: RENAMED_NODE_ID,
-    to: SMOKE_NODE_ID,
-    type: 'uses-type',
-    notes: 'smoke edge',
+  await expectJson(callTool, 'create_edges', {
+    edges: [{
+      from: RENAMED_NODE_ID,
+      to: SMOKE_NODE_ID,
+      type: 'uses-type',
+      notes: 'smoke edge',
+    }],
   })
 
   const renamedCluster = await getCluster(callTool, RENAMED_NODE_ID, branch)

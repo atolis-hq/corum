@@ -206,7 +206,6 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
   update_node: ToolHandler
   rename_node: ToolHandler
   delete_node: ToolHandler
-  create_edge: ToolHandler
   create_edges: ToolHandler
   update_edge: ToolHandler
   delete_edge: ToolHandler
@@ -735,24 +734,6 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
       }
     },
 
-    async create_edge(args) {
-      try {
-        const session = requireSession()
-        const result = await session.createEdge({
-          from: requireString(args.from, 'from'),
-          to: requireString(args.to, 'to'),
-          type: requireString(args.type, 'type'),
-          state: args.state as State | undefined,
-          stability: args.stability as Stability | undefined,
-          notes: typeof args.notes === 'string' ? args.notes : undefined,
-          properties: isPlainObject(args.properties) ? args.properties : undefined,
-        })
-        return formatResult(result, args.format, getCompactKeys(args))
-      } catch (err) {
-        return errorResult(err, args.format)
-      }
-    },
-
     async create_edges(args) {
       try {
         const session = requireSession()
@@ -1265,24 +1246,6 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
       },
     },
     {
-      name: 'create_edge',
-      description: 'Create an explicit edge. Validated against endpoint existence and the pack edge-type vocabulary (constraint violations return as warnings). Defaults: state proposed, stability unstable. Needs an open session.',
-      inputSchema: {
-        type: 'object',
-        required: ['from', 'to', 'type'],
-        properties: {
-          from: { type: 'string', description: 'Source node ID.' },
-          to: { type: 'string', description: 'Target node ID.' },
-          type: { type: 'string', description: 'Edge type (see get_graph_metadata).' },
-          state: STATE_PARAM,
-          stability: STABILITY_PARAM,
-          notes: { type: 'string', description: 'Free-text note.' },
-          properties: { type: 'object', description: 'Edge properties (validated vs pack edge-type schema).' },
-          ...IO_PARAMS,
-        },
-      },
-    },
-    {
       name: 'create_edges',
       description: 'Batch create multiple edges in one operation. Same validation as create_edge. Needs an open session.',
       inputSchema: {
@@ -1503,8 +1466,6 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
         return await handlers.delete_node(args)
       case 'create_fields':
         return await handlers.create_fields(args)
-      case 'create_edge':
-        return await handlers.create_edge(args)
       case 'create_edges':
         return await handlers.create_edges(args)
       case 'update_edge':
