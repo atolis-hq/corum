@@ -313,27 +313,76 @@ export class WorkingSession {
    */
   async createEdge(input: CreateEdgeInput): Promise<CreateEdgeResult> {
     this.assertOpen()
+    const { edge, errors } = this.planEdge(input, new Set())
+    if (errors.length > 0) throw new MutationError(errors)
+
+    const warnings = lintEdge(this.graph, edge!).filter(d => d.severity === 'warning')
+    insertEdgeIntoIndexes(this.graph, edge!)
+
+    const summary = `create edge ${edge!.id}`
+    await this.record('create_edge', { from: input.from, to: input.to, type: input.type }, summary)
+    return { edge: edge!, warnings, summary }
+  }
+
+  /**
+   * Batch-create explicit edges as a single atomic operation: every input is
+   * validated (including duplicate-within-batch detection) before any edge is
+   * applied, so a failing item leaves the working graph untouched rather than
+   * partially applying earlier items. One journal entry for the whole batch.
+   */
+  async createEdges(inputs: CreateEdgeInput[]): Promise<{ edges: Edge[]; warnings: Diagnostic[]; summary: string }> {
+    this.assertOpen()
+    const seenIds = new Set<string>()
     const errors: Diagnostic[] = []
+    const candidates: Edge[] = []
+
+    inputs.forEach((input, index) => {
+      const planned = this.planEdge(input, seenIds, index)
+      if (planned.errors.length > 0) errors.push(...planned.errors)
+      else candidates.push(planned.edge!)
+    })
+    if (errors.length > 0) throw new MutationError(errors)
+
+    const warnings: Diagnostic[] = []
+    for (const edge of candidates) {
+      warnings.push(...lintEdge(this.graph, edge).filter(d => d.severity === 'warning'))
+      insertEdgeIntoIndexes(this.graph, edge)
+    }
+
+    const summary = `create ${candidates.length} edge${candidates.length === 1 ? '' : 's'}`
+    await this.record('create_edges', { ids: candidates.map(e => e.id) }, summary)
+    return { edges: candidates, warnings, summary }
+  }
+
+  /** Pure validation + edge construction (no mutation) shared by `createEdge` and `createEdges`. */
+  private planEdge(
+    input: CreateEdgeInput,
+    seenIds: Set<string>,
+    index?: number,
+  ): { edge?: Edge; errors: Diagnostic[] } {
+    const errors: Diagnostic[] = []
+    const prefix = index !== undefined ? `edges[${index}]: ` : ''
     const edgeTypes = this.graph.edgeTypes ?? CORE_EDGE_TYPE_MAP
     const typeDef = edgeTypes.get(input.type)
 
     if (!typeDef) {
-      errors.push(mutationDiagnostic('error', `unknown edge type '${input.type}'`))
+      errors.push(mutationDiagnostic('error', `${prefix}unknown edge type '${input.type}'`))
     }
     if (!this.graph.nodesById.has(input.from)) {
-      errors.push(mutationDiagnostic('error', `cannot create edge: 'from' node not found: ${input.from}`, input.from))
+      errors.push(mutationDiagnostic('error', `${prefix}cannot create edge: 'from' node not found: ${input.from}`, input.from))
     }
     if (!this.graph.nodesById.has(input.to) && typeDef?.hidden !== true) {
-      errors.push(mutationDiagnostic('error', `cannot create edge: 'to' node not found: ${input.to}`, input.to))
+      errors.push(mutationDiagnostic('error', `${prefix}cannot create edge: 'to' node not found: ${input.to}`, input.to))
     }
     validateStateStability(input.state, input.stability, errors)
 
     const id = `${input.from}__${input.type}__${input.to}`
-    if (findEdgeById(this.graph, id)) {
-      errors.push(mutationDiagnostic('error', `edge already exists: ${id}`))
+    if (findEdgeById(this.graph, id) || seenIds.has(id)) {
+      errors.push(mutationDiagnostic('error', `${prefix}edge already exists: ${id}`))
     }
-    if (errors.length > 0) throw new MutationError(errors)
+    if (errors.length > 0) return { errors }
 
+    seenIds.add(id)
     const edge: Edge = {
       id,
       from: input.from,
@@ -344,12 +393,7 @@ export class WorkingSession {
       ...(input.notes !== undefined && { notes: input.notes }),
       ...(input.properties !== undefined && { properties: { ...input.properties } }),
     }
-    const warnings = lintEdge(this.graph, edge).filter(d => d.severity === 'warning')
-    insertEdgeIntoIndexes(this.graph, edge)
-
-    const summary = `create edge ${id}`
-    await this.record('create_edge', { from: input.from, to: input.to, type: input.type }, summary)
-    return { edge, warnings, summary }
+    return { edge, errors }
   }
 
   /** Patch an explicit edge. Endpoints and type are immutable (delete + create instead). */

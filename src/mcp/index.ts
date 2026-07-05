@@ -698,37 +698,54 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
         if (!Array.isArray(args.fields)) {
           throw new QueryError('fields is required and must be an array')
         }
-        const results = []
-        for (const field of args.fields) {
+        // Group by parent so fields sharing a root/schema become one merged
+        // document: one applyCluster call per parent (atomic per parent),
+        // instead of one call per field.
+        const documentsByParent = new Map<string, Record<string, unknown>>()
+        const order: string[] = []
+        const fieldPaths: Array<{ parentId: string; schemaName: string; fieldName: string }> = []
+
+        args.fields.forEach((field, index) => {
           if (!isPlainObject(field)) {
-            throw new QueryError('each field must be an object')
+            throw new QueryError(`fields[${index}] must be an object`)
           }
-          const parentId = requireString(field.parent_id || field.parentId, 'field.parent_id')
-          const schemaName = requireString(field.schema_name || field.schemaName, 'field.schema_name')
-          const fieldName = requireString(field.name, 'field.name')
+          const parentId = requireString(pickDefined(field.parent_id, field.parentId), `fields[${index}].parent_id`)
+          const schemaName = requireString(pickDefined(field.schema_name, field.schemaName), `fields[${index}].schema_name`)
+          const fieldName = requireString(field.name, `fields[${index}].name`)
           const fieldDef: Record<string, unknown> = {
-            type: requireString(field.type, 'field.type'),
+            type: requireString(field.type, `fields[${index}].type`),
           }
           if (field.nullable !== undefined) {
-            fieldDef.nullable = field.nullable === true
+            if (typeof field.nullable !== 'boolean') {
+              throw new QueryError(`fields[${index}].nullable must be a boolean`)
+            }
+            fieldDef.nullable = field.nullable
           }
           if (typeof field.description === 'string') {
             fieldDef.description = field.description
           }
-          const document: Record<string, unknown> = {
-            id: parentId,
-            schemas: {
-              [schemaName]: {
-                fields: {
-                  [fieldName]: fieldDef,
-                },
-              },
-            },
+          if (field.state !== undefined) fieldDef.state = field.state
+          if (field.stability !== undefined) fieldDef.stability = field.stability
+
+          let document = documentsByParent.get(parentId)
+          if (!document) {
+            document = { id: parentId, schemas: {} }
+            documentsByParent.set(parentId, document)
+            order.push(parentId)
           }
-          const result = await session.applyCluster(document, 'merge')
-          results.push({ parentId, schemaName, fieldName, summary: result.summary, createdIds: result.createdIds, warnings: result.warnings })
+          const schemas = document.schemas as Record<string, unknown>
+          const schema = (schemas[schemaName] ??= { fields: {} }) as Record<string, unknown>
+          const fields = schema.fields as Record<string, unknown>
+          fields[fieldName] = fieldDef
+          fieldPaths.push({ parentId, schemaName, fieldName })
+        })
+
+        const results = []
+        for (const parentId of order) {
+          const result = await session.applyCluster(documentsByParent.get(parentId)!, 'merge')
+          results.push({ parentId, summary: result.summary, createdIds: result.createdIds, warnings: result.warnings })
         }
-        return formatResult({ created: results.length, fields: results }, args.format, getCompactKeys(args))
+        return formatResult({ created: fieldPaths.length, fields: fieldPaths, applied: results }, args.format, getCompactKeys(args))
       } catch (err) {
         return errorResult(err, args.format)
       }
@@ -740,23 +757,25 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
         if (!Array.isArray(args.edges)) {
           throw new QueryError('edges is required and must be an array')
         }
-        const results = []
-        for (const edge of args.edges) {
+        const inputs = args.edges.map((edge, index) => {
           if (!isPlainObject(edge)) {
-            throw new QueryError('each edge must be an object')
+            throw new QueryError(`edges[${index}] must be an object`)
           }
-          const result = await session.createEdge({
-            from: requireString(edge.from, 'edge.from'),
-            to: requireString(edge.to, 'edge.to'),
-            type: requireString(edge.type, 'edge.type'),
+          return {
+            from: requireString(edge.from, `edges[${index}].from`),
+            to: requireString(edge.to, `edges[${index}].to`),
+            type: requireString(edge.type, `edges[${index}].type`),
             state: edge.state as State | undefined,
             stability: edge.stability as Stability | undefined,
             notes: typeof edge.notes === 'string' ? edge.notes : undefined,
             properties: isPlainObject(edge.properties) ? edge.properties : undefined,
-          })
-          results.push({ edge: result.edge, summary: result.summary, warnings: result.warnings })
-        }
-        return formatResult({ created: results.length, edges: results }, args.format, getCompactKeys(args))
+          }
+        })
+        // Validated and applied as a single atomic batch (session.createEdges):
+        // any invalid edge aborts the whole call before any edge is created.
+        const result = await session.createEdges(inputs)
+        const edges = result.edges.map(edge => ({ edge }))
+        return formatResult({ created: edges.length, edges, summary: result.summary, warnings: result.warnings }, args.format, getCompactKeys(args))
       } catch (err) {
         return errorResult(err, args.format)
       }
@@ -829,6 +848,11 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
       }
     },
   }
+}
+
+/** Prefers `primary` over `secondary`, falling back only when `primary` is absent (not merely falsy/empty). */
+function pickDefined<T>(primary: T | undefined, secondary: T | undefined): T | undefined {
+  return primary !== undefined ? primary : secondary
 }
 
 function requireString(value: unknown, name: string): string {
@@ -1220,7 +1244,7 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
     },
     {
       name: 'create_fields',
-      description: 'Batch create multiple fields across different schemas in one operation. Each field becomes a proper Field node with structural edges. Needs an open session.',
+      description: 'Batch create multiple fields across schemas in one operation. Each field becomes a proper Field node with structural edges. Fields sharing a parent_id/schema_name are merged and applied together atomically; fields under different parents are applied as separate atomic groups (a failure in one parent\'s group does not roll back another parent\'s group). Defaults: state proposed, stability unstable. Needs an open session.',
       inputSchema: {
         type: 'object',
         required: ['fields'],
@@ -1238,6 +1262,8 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
                 type: { type: 'string', description: 'Field type (e.g. uuid, decimal, string).' },
                 nullable: { type: 'boolean', description: 'Whether field is nullable. Default false.' },
                 description: { type: 'string', description: 'Optional field description.' },
+                state: STATE_PARAM,
+                stability: STABILITY_PARAM,
               },
             },
           },
@@ -1247,7 +1273,7 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
     },
     {
       name: 'create_edges',
-      description: 'Batch create multiple edges in one operation. Same validation as create_edge. Needs an open session.',
+      description: 'Batch create multiple edges as one atomic operation: every edge is validated (including duplicates within the batch) before any edge is created, so an invalid edge aborts the whole call with no partial writes. Same per-edge validation as a single edge create (see delete_edge/update_edge). Needs an open session.',
       inputSchema: {
         type: 'object',
         required: ['edges'],

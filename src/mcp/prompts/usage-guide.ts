@@ -86,7 +86,7 @@ When compact_keys is true these keys are shortened:
 Mutations require an open session; no write tool works without one.
 
 1. start_changes first. Prefer autosave: false unless you want per-mutation checkpoints (on file sources autosave writes through immediately, producing granular/noisy history).
-2. Mutate: apply_cluster (cluster-style upserts); create_node / update_node / rename_node / delete_node; create_edge / update_edge / delete_edge.
+2. Mutate: apply_cluster (cluster-style upserts); create_node / update_node / rename_node / delete_node; create_edges / update_edge / delete_edge; create_fields (batch field creation).
 3. pending_changes to inspect the journal and summary diff before committing.
 4. commit_changes (error diagnostics block it; session stays open to fix) or discard_changes.
 

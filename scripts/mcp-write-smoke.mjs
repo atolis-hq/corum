@@ -240,6 +240,7 @@ async function getCluster(callTool, nodeId, branch) {
     ...(branch ? { branch } : {}),
     node_id: nodeId,
     collapse_schemas: false,
+    include_descendants: true,
     include_edges: true,
     include_edge_ids: true,
     edge_types: ['uses-type'],

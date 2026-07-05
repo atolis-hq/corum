@@ -338,6 +338,41 @@ describe('working session (file source)', () => {
     assert.ok(warned.warnings.some(w => /not declared/.test(w.message)))
   })
 
+  it('createEdges validates the whole batch before applying any edge (atomic per call)', async () => {
+    const { source } = makeFileFixture()
+    const session = await startSession(source, { autosave: false })
+
+    // A batch with one invalid edge among valid ones must create nothing.
+    await assert.rejects(
+      () => session.createEdges([
+        { from: INVOICE, to: CUSTOMER, type: 'uses-type' },
+        { from: INVOICE, to: CUSTOMER, type: 'not-a-type' },
+      ]),
+      (err: unknown) => err instanceof MutationError && /edges\[1\]: unknown edge type/.test(err.message),
+    )
+    assert.equal(session.journal.length, 0, 'no partial application on batch failure')
+    assert.equal((session.graph.edgesByFrom.get(INVOICE) ?? []).length, 0)
+
+    // A duplicate within the same batch is also rejected, atomically.
+    await assert.rejects(
+      () => session.createEdges([
+        { from: INVOICE, to: CUSTOMER, type: 'uses-type' },
+        { from: INVOICE, to: CUSTOMER, type: 'uses-type' },
+      ]),
+      (err: unknown) => err instanceof MutationError && /edges\[1\]: edge already exists/.test(err.message),
+    )
+    assert.equal(session.journal.length, 0)
+
+    // A fully valid batch applies all edges as one journal entry.
+    const result = await session.createEdges([
+      { from: INVOICE, to: CUSTOMER, type: 'uses-type' },
+      { from: INVOICE, to: EMAIL, type: 'maps-to' },
+    ])
+    assert.equal(result.edges.length, 2)
+    assert.equal(session.journal.length, 1, 'batch records as a single journal entry')
+    assert.ok(result.warnings.some(w => /not declared/.test(w.message)), 'per-edge lint warnings still surface')
+  })
+
   it('updateNode patches properties (null clears) and state; updateEdge patches without touching endpoints', async () => {
     const { source } = makeFileFixture()
     const session = await startSession(source, { autosave: false })

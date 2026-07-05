@@ -1042,6 +1042,117 @@ describe('MCP write tools', () => {
     }
   })
 
+  it('create_edges is atomic: one invalid edge in a batch creates none of them', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-mcp-write-'))
+    try {
+      const source = await createWriteRepo(tmpDir)
+      const mainGraph = await loadGraph({ source, strict: false })
+      const handlers = createMcpHandlers(mainGraph, source)
+
+      await handlers.start_changes({ branch: 'feat/batch-edges', create: true, format: 'json' })
+
+      const result = await handlers.create_edges({
+        edges: [
+          { from: 'orders.Schema.invoice', to: 'orders.Schema.customer', type: 'uses-type' },
+          { from: 'orders.Schema.invoice', to: 'orders.Schema.customer', type: 'not-a-type' },
+        ],
+        format: 'json',
+      })
+      assert.equal(result.isError, true)
+      const payload = JSON.parse(result.content[0].text)
+      assert.match(payload.diagnostics[0].message, /edges\[1\]: unknown edge type/)
+
+      const pending = await handlers.pending_changes({ format: 'json' })
+      assert.equal(JSON.parse(pending.content[0].text).journal.length, 0, 'the valid first edge was not applied either')
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('create_fields groups fields by parent/schema into one merged, atomic apply_cluster call', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-mcp-write-'))
+    try {
+      const source = await createWriteRepo(tmpDir)
+      const mainGraph = await loadGraph({ source, strict: false })
+      const handlers = createMcpHandlers(mainGraph, source)
+
+      await handlers.start_changes({ branch: 'feat/batch-fields', create: true, format: 'json' })
+
+      const created = await handlers.create_fields({
+        fields: [
+          { parent_id: 'orders.Root.order', schema_name: 'order', name: 'id', type: 'uuid' },
+          { parent_id: 'orders.Root.order', schema_name: 'order', name: 'total', type: 'decimal', nullable: true },
+        ],
+        format: 'json',
+      })
+      assert.equal(created.isError, undefined, created.content[0].text)
+      const payload = JSON.parse(created.content[0].text)
+      assert.equal(payload.created, 2)
+      assert.equal(payload.applied.length, 1, 'both fields share a parent/schema so they merge into one apply_cluster call')
+
+      const cluster = await handlers.get_cluster({
+        branch: 'feat/batch-fields',
+        node_id: 'orders.Root.order',
+        collapse_schemas: false,
+        include_descendants: true,
+        format: 'json',
+      })
+      const clusterPayload = JSON.parse(cluster.content[0].text)
+      const fieldIds = clusterPayload.descendants.map((n: Record<string, unknown>) => n.id)
+      assert.ok(fieldIds.includes('orders.Root.order.schemas.order.fields.id'))
+      assert.ok(fieldIds.includes('orders.Root.order.schemas.order.fields.total'))
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('create_fields rejects a non-boolean nullable instead of silently coercing it', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-mcp-write-'))
+    try {
+      const source = await createWriteRepo(tmpDir)
+      const mainGraph = await loadGraph({ source, strict: false })
+      const handlers = createMcpHandlers(mainGraph, source)
+
+      await handlers.start_changes({ branch: 'feat/bad-nullable', create: true, format: 'json' })
+
+      const result = await handlers.create_fields({
+        fields: [
+          { parent_id: 'orders.Root.order', schema_name: 'order', name: 'id', type: 'uuid', nullable: 'true' },
+        ],
+        format: 'json',
+      })
+      assert.equal(result.isError, true)
+      assert.match(result.content[0].text, /fields\[0\]\.nullable must be a boolean/)
+
+      const pending = await handlers.pending_changes({ format: 'json' })
+      assert.equal(JSON.parse(pending.content[0].text).journal.length, 0)
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('create_fields with an empty parent_id does not silently fall back to parentId', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-mcp-write-'))
+    try {
+      const source = await createWriteRepo(tmpDir)
+      const mainGraph = await loadGraph({ source, strict: false })
+      const handlers = createMcpHandlers(mainGraph, source)
+
+      await handlers.start_changes({ branch: 'feat/empty-parent', create: true, format: 'json' })
+
+      const result = await handlers.create_fields({
+        fields: [
+          { parent_id: '', parentId: 'orders.Root.order', schema_name: 'order', name: 'id', type: 'uuid' },
+        ],
+        format: 'json',
+      })
+      assert.equal(result.isError, true)
+      assert.match(result.content[0].text, /fields\[0\]\.parent_id is required/)
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
   it('discard_changes aborts the session and reads revert to the committed state', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-mcp-write-'))
     try {
@@ -1307,6 +1418,29 @@ metadata:
   lastModifiedAt: '2026-07-01'
 properties:
   description: 'Invoice'
+`,
+    [`${base}/packs/testpack/templates/Root.yaml`]: `name: Root
+info:
+  version: '1.0.0'
+properties:
+  type: object
+  additionalProperties: false
+  properties:
+    description:
+      type: string
+schemas:
+  item-template: Schema
+`,
+    [`${base}/graph/components/orders/Roots/order.yaml`]: `id: orders.Root.order
+template: Root
+schemaVersion: '1.0'
+metadata:
+  component: orders
+  state: proposed
+  stability: unstable
+  lastModifiedAt: '2026-07-01'
+properties:
+  description: 'Order aggregate'
 `,
   }
 }
