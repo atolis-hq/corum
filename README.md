@@ -372,7 +372,7 @@ Or if installed globally:
 | `discard_changes` | Abort the working session |
 | `commit_changes` | Lint, serialize, and persist the session's changes |
 
-All tools accept an optional `format` argument: `yaml` (default), `json`, or `toon`. All tools also accept `compact_keys: true` to shorten common keys before serialization, reducing token usage.
+All tools accept an optional `format` argument: `toon` (default; leanest for the LLM), `yaml`, or `json`. All tools also accept `compact_keys: true` to shorten common keys before serialization, reducing token usage further.
 
 All node-returning MCP tools accept `include_provenance: true` to include `extractedFrom`, `lastModifiedAt`, `derivation`, and `derivedBy`. These fields are omitted by default. `schemaVersion` is never returned by MCP.
 

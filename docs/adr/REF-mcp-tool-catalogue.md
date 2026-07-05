@@ -247,7 +247,7 @@ Key behavior:
 ### Common Output Options
 
 Most tools support:
-- `format`: `yaml` (default), `json`, or `toon`
+- `format`: `toon` (default), `yaml`, or `json`
 - `compact_keys`: shorten common keys before serialization
 
 All node-returning tools support:
