@@ -207,8 +207,10 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
   rename_node: ToolHandler
   delete_node: ToolHandler
   create_edge: ToolHandler
+  create_edges: ToolHandler
   update_edge: ToolHandler
   delete_edge: ToolHandler
+  create_fields: ToolHandler
   pending_changes: ToolHandler
   discard_changes: ToolHandler
   commit_changes: ToolHandler
@@ -691,6 +693,48 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
       }
     },
 
+    async create_fields(args) {
+      try {
+        const session = requireSession()
+        if (!Array.isArray(args.fields)) {
+          throw new QueryError('fields is required and must be an array')
+        }
+        const results = []
+        for (const field of args.fields) {
+          if (!isPlainObject(field)) {
+            throw new QueryError('each field must be an object')
+          }
+          const parentId = requireString(field.parent_id || field.parentId, 'field.parent_id')
+          const schemaName = requireString(field.schema_name || field.schemaName, 'field.schema_name')
+          const fieldName = requireString(field.name, 'field.name')
+          const fieldDef: Record<string, unknown> = {
+            type: requireString(field.type, 'field.type'),
+          }
+          if (field.nullable !== undefined) {
+            fieldDef.nullable = field.nullable === true
+          }
+          if (typeof field.description === 'string') {
+            fieldDef.description = field.description
+          }
+          const document: Record<string, unknown> = {
+            id: parentId,
+            schemas: {
+              [schemaName]: {
+                fields: {
+                  [fieldName]: fieldDef,
+                },
+              },
+            },
+          }
+          const result = await session.applyCluster(document, 'merge')
+          results.push({ parentId, schemaName, fieldName, summary: result.summary, createdIds: result.createdIds, warnings: result.warnings })
+        }
+        return formatResult({ created: results.length, fields: results }, args.format, getCompactKeys(args))
+      } catch (err) {
+        return errorResult(err, args.format)
+      }
+    },
+
     async create_edge(args) {
       try {
         const session = requireSession()
@@ -704,6 +748,34 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
           properties: isPlainObject(args.properties) ? args.properties : undefined,
         })
         return formatResult(result, args.format, getCompactKeys(args))
+      } catch (err) {
+        return errorResult(err, args.format)
+      }
+    },
+
+    async create_edges(args) {
+      try {
+        const session = requireSession()
+        if (!Array.isArray(args.edges)) {
+          throw new QueryError('edges is required and must be an array')
+        }
+        const results = []
+        for (const edge of args.edges) {
+          if (!isPlainObject(edge)) {
+            throw new QueryError('each edge must be an object')
+          }
+          const result = await session.createEdge({
+            from: requireString(edge.from, 'edge.from'),
+            to: requireString(edge.to, 'edge.to'),
+            type: requireString(edge.type, 'edge.type'),
+            state: edge.state as State | undefined,
+            stability: edge.stability as Stability | undefined,
+            notes: typeof edge.notes === 'string' ? edge.notes : undefined,
+            properties: isPlainObject(edge.properties) ? edge.properties : undefined,
+          })
+          results.push({ edge: result.edge, summary: result.summary, warnings: result.warnings })
+        }
+        return formatResult({ created: results.length, edges: results }, args.format, getCompactKeys(args))
       } catch (err) {
         return errorResult(err, args.format)
       }
@@ -1166,6 +1238,33 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
       },
     },
     {
+      name: 'create_fields',
+      description: 'Batch create multiple fields across different schemas in one operation. Each field becomes a proper Field node with structural edges. Needs an open session.',
+      inputSchema: {
+        type: 'object',
+        required: ['fields'],
+        properties: {
+          fields: {
+            type: 'array',
+            description: 'Array of field definitions',
+            items: {
+              type: 'object',
+              required: ['parent_id', 'schema_name', 'name', 'type'],
+              properties: {
+                parent_id: { type: 'string', description: 'Root node ID (e.g. orders.DomainModel.order).' },
+                schema_name: { type: 'string', description: 'Schema name within the root (e.g. order, order-placed-payload).' },
+                name: { type: 'string', description: 'Field name.' },
+                type: { type: 'string', description: 'Field type (e.g. uuid, decimal, string).' },
+                nullable: { type: 'boolean', description: 'Whether field is nullable. Default false.' },
+                description: { type: 'string', description: 'Optional field description.' },
+              },
+            },
+          },
+          ...IO_PARAMS,
+        },
+      },
+    },
+    {
       name: 'create_edge',
       description: 'Create an explicit edge. Validated against endpoint existence and the pack edge-type vocabulary (constraint violations return as warnings). Defaults: state proposed, stability unstable. Needs an open session.',
       inputSchema: {
@@ -1179,6 +1278,34 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
           stability: STABILITY_PARAM,
           notes: { type: 'string', description: 'Free-text note.' },
           properties: { type: 'object', description: 'Edge properties (validated vs pack edge-type schema).' },
+          ...IO_PARAMS,
+        },
+      },
+    },
+    {
+      name: 'create_edges',
+      description: 'Batch create multiple edges in one operation. Same validation as create_edge. Needs an open session.',
+      inputSchema: {
+        type: 'object',
+        required: ['edges'],
+        properties: {
+          edges: {
+            type: 'array',
+            description: 'Array of edge definitions',
+            items: {
+              type: 'object',
+              required: ['from', 'to', 'type'],
+              properties: {
+                from: { type: 'string', description: 'Source node ID.' },
+                to: { type: 'string', description: 'Target node ID.' },
+                type: { type: 'string', description: 'Edge type.' },
+                state: STATE_PARAM,
+                stability: STABILITY_PARAM,
+                notes: { type: 'string', description: 'Free-text note.' },
+                properties: { type: 'object', description: 'Edge properties.' },
+              },
+            },
+          },
           ...IO_PARAMS,
         },
       },
@@ -1374,8 +1501,12 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
         return await handlers.rename_node(args)
       case 'delete_node':
         return await handlers.delete_node(args)
+      case 'create_fields':
+        return await handlers.create_fields(args)
       case 'create_edge':
         return await handlers.create_edge(args)
+      case 'create_edges':
+        return await handlers.create_edges(args)
       case 'update_edge':
         return await handlers.update_edge(args)
       case 'delete_edge':
