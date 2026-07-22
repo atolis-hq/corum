@@ -1,6 +1,47 @@
-# Corum
+<div align="center">
 
-Corum is a Git-native design graph for service architecture. It models components (APIs, domain models, schemas, fields) as nodes with typed edges, and exposes the graph through MCP tools so AI assistants can reason about your architecture.
+
+  <img src="https://raw.githubusercontent.com/atolis-hq/corum/refs/heads/main/assets/corum-logo.svg" alt="logo" width="200" height="auto" />
+  <h1>Corum</h1>
+  
+  <p>
+    Unified system design surface, built for agents and humans.
+  </p>
+  
+  
+<!-- Badges -->
+<p>
+  <a href="https://github.com/atolis-hq/corum/commits/main">
+    <img src="https://img.shields.io/github/last-commit/atolis-hq/corum" alt="last update" />
+  </a>
+  <a href="https://github.com/atolis-hq/corum/actions/workflows/ci-cd.yml">
+    <img src="https://github.com/atolis-hq/corum/actions/workflows/ci-cd.yml/badge.svg" alt="CI/CD status" />
+  </a>
+  <!-- <a href="https://github.com/atolis-hq/corum/network/members">
+    <img src="https://img.shields.io/github/forks/atolis-hq/corum" alt="forks" />
+  </a>
+  <a href="https://github.com/atolis-hq/corum/stargazers">
+    <img src="https://img.shields.io/github/stars/atolis-hq/corum" alt="stars" />
+  </a> -->
+  <a href="https://github.com/atolis-hq/corum/issues/">
+    <img src="https://img.shields.io/github/issues/atolis-hq/corum" alt="open issues" />
+  </a>
+  <a href="https://github.com/atolis-hq/corum/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/atolis-hq/corum.svg" alt="license" />
+  </a>
+  <a href="https://github.com/atolis-hq/corum/tags">
+    <img src="https://img.shields.io/github/v/tag/atolis-hq/corum" alt="latest tag" />
+  </a>
+  <a href="https://www.npmjs.com/package/@atolis-hq/corum">
+    <img src="https://img.shields.io/npm/v/%40atolis-hq%2Fcorum" alt="npm version" />
+  </a>
+</p>
+</div>
+
+<br />
+
+
+Corum is a Git-native, extensible design graph for software architecture. It models components as nodes with typed edges, and exposes the graph through MCP tools so AI assistants can reason about and evolve your architecture. Corum provides several out of the box schemas (such as APIs, domain models, events, schemas, fields) but can be customised to model any data structure.  The graph enables modelling data lineage at object and field level, and the branching model enables multiple simultaneous designs with cross branch impact analysis.
 
 ## Install
 
