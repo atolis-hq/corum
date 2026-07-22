@@ -481,3 +481,13 @@ The server also exposes a discoverable MCP prompt:
 ## Contributing
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for build, test, and local development instructions.
+
+
+## Issues & Feature Requests
+
+Found a bug or have an idea for Corum? [Open an issue](https://github.com/atolis-hq/corum/issues/new) —
+bug reports and feature requests are both welcome.
+
+## License
+
+Corum is licensed under the [Apache License 2.0](LICENSE).
