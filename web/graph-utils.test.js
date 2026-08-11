@@ -1,6 +1,6 @@
 // run with: node web/graph-utils.test.js
 const graphUtils = require('./graph-utils.js');
-const { buildComponentMap, applyEdgeTypeFilter, getDisplayName } = graphUtils;
+const { buildComponentMap, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName } = graphUtils;
 
 (async () => {
   let passed = 0, failed = 0;
@@ -42,6 +42,12 @@ const { buildComponentMap, applyEdgeTypeFilter, getDisplayName } = graphUtils;
   assert(filtered.every(e => e.type === 'reads'), 'applyEdgeTypeFilter: all results have correct type');
   const none = applyEdgeTypeFilter(edges, new Set([]));
   assert(none.length === 0, 'applyEdgeTypeFilter: empty set returns nothing');
+
+  const focusOnlyEdges = [{ id: 'e4', from: 'orders.DomainModel.order', to: 'payments.DomainModel.payment', type: 'precedes' }];
+  assert(
+    JSON.stringify(collectEdgeTypes(edges, focusOnlyEdges)) === JSON.stringify(['calls', 'precedes', 'reads']),
+    'collectEdgeTypes: includes types that exist only in focus data',
+  );
 
   const { computeConnectedComponents, filterThreadScope, filterOwnerScope } = graphUtils;
 

@@ -952,6 +952,19 @@ describe('web server', () => {
   })
 
   describe('GET /api/lineage', () => {
+    it('returns pack-declared visible edges for a focused node', async () => {
+      const res = await fetch(
+        `http://localhost:${handle.port}/api/lineage?node_ids=${encodeURIComponent('orders.Order')}&direction=both&reads_outbound_only=false`,
+      )
+      assert.equal(res.status, 200)
+      const body = await res.json() as { edges: Array<{ from: string; to: string; type: string }> }
+      assert.ok(body.edges.some(edge =>
+        edge.type === 'precedes'
+        && edge.from === 'orders.Order'
+        && edge.to === 'orders.CancelOrder',
+      ))
+    })
+
     it('returns annotated lineage nodes and edges', async () => {
       const res = await fetch(
         `http://localhost:${handle.port}/api/lineage?node_ids=${encodeURIComponent('orders.Order.operations.cancel')}&direction=upstream`,
@@ -1267,7 +1280,7 @@ describe('web server', () => {
     })
 
     it('graph: edge controls are derived from graph response types and new types default visible', () => {
-      assert.match(graph, /const availableEdgeTypes = useMemo\(\(\) => \[\.\.\.new Set\(\(graphData\?\.edges \?\? \[\]\)\.map\(edge => edge\.type\)\)\]\.sort\(\), \[graphData\]\);/)
+      assert.match(graph, /const availableEdgeTypes = useMemo\(\(\) => collectEdgeTypes\(graphData\?\.edges \?\? \[\], focusData\?\.edges \?\? \[\]\), \[graphData, focusData\]\);/)
       assert.match(graph, /function loadHiddenEdgeTypes\(\) \{[\s\S]*hiddenTypes/)
       assert.match(graph, /new Set\(availableEdgeTypes\.filter\(type => !hiddenEdgeTypes\.has\(type\)\)\)/)
       assert.match(graph, /<GraphToolbar[\s\S]*edgeTypes=\{availableEdgeTypes\}/)
