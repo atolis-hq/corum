@@ -3,7 +3,7 @@
 const { useState, useEffect, useMemo, useCallback, useRef } = React;
 const { navigate, Icon, TemplateBadge, StateTag, StabilityTag } = window.CorumPrimitives;
 const { buildRoute, parseRoute } = window.CorumRouter;
-const { buildComponentMap, applyEdgeTypeFilter, getDisplayName, computeConnectedComponents, filterThreadScope, filterOwnerScope } = window.CorumGraphUtils;
+const { buildComponentMap, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName, computeConnectedComponents, filterThreadScope, filterOwnerScope } = window.CorumGraphUtils;
 
 const RF = window.ReactFlow;
 const ReactFlowCanvas = RF.ReactFlow || RF.default;
@@ -717,7 +717,7 @@ function GraphView({ route, viewingRef, templates }) {
   }, [focalNodeId, depth, viewingRef]);
 
   const templateMap = useMemo(() => new Map((templates ?? []).map(t => [t.name, t])), [templates]);
-  const availableEdgeTypes = useMemo(() => [...new Set((graphData?.edges ?? []).map(edge => edge.type))].sort(), [graphData]);
+  const availableEdgeTypes = useMemo(() => collectEdgeTypes(graphData?.edges ?? [], focusData?.edges ?? []), [graphData, focusData]);
   const visibleEdgeTypes = useMemo(
     () => new Set(availableEdgeTypes.filter(type => !hiddenEdgeTypes.has(type))),
     [availableEdgeTypes, hiddenEdgeTypes],
