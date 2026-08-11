@@ -31,7 +31,7 @@ const EDGE_PILL_STYLES = {
   'derived-from': { background: '#f3f4f6', color: '#6b7280' },
 };
 
-const ALL_EDGE_TYPES = ['triggers', 'produces', 'reads', 'uses-type', 'calls', 'implements', 'maps-to', 'derived-from'];
+const LEGACY_EDGE_TYPES = ['triggers', 'produces', 'reads', 'uses-type', 'calls', 'implements', 'maps-to', 'derived-from'];
 const DEPTH_STEPS = [1, 2, 3, 4, 5, Infinity];
 
 const NODE_W = 210;
@@ -39,16 +39,21 @@ const NODE_H = 100;
 const COMP_W = 180;
 const COMP_H = 72;
 
-function loadVisibleEdgeTypes() {
+function loadHiddenEdgeTypes() {
   try {
     const stored = localStorage.getItem('corum:graphEdgeTypes');
-    if (stored) return new Set(JSON.parse(stored));
+    if (!stored) return new Set();
+    const parsed = JSON.parse(stored);
+    if (Array.isArray(parsed)) {
+      return new Set(LEGACY_EDGE_TYPES.filter(type => !parsed.includes(type)));
+    }
+    if (Array.isArray(parsed?.hiddenTypes)) return new Set(parsed.hiddenTypes);
   } catch {}
-  return new Set(ALL_EDGE_TYPES);
+  return new Set();
 }
 
-function saveVisibleEdgeTypes(types) {
-  try { localStorage.setItem('corum:graphEdgeTypes', JSON.stringify([...types])); } catch {}
+function saveHiddenEdgeTypes(types) {
+  try { localStorage.setItem('corum:graphEdgeTypes', JSON.stringify({ version: 2, hiddenTypes: [...types].sort() })); } catch {}
 }
 
 function loadLayoutMode() {
@@ -505,7 +510,7 @@ function describeScope(scope, scopeOptions) {
   return parts.join(' · ');
 }
 
-function GraphToolbar({ visibleEdgeTypes, onToggleEdgeType, showMinimap, onToggleMinimap, onResetLayout, level, depth, onDepth, allNodes, focalNodeId, onFocalNode, layoutMode, onLayoutMode, scope, onScope, scopeOptions, scopeInfo }) {
+function GraphToolbar({ edgeTypes, visibleEdgeTypes, onToggleEdgeType, showMinimap, onToggleMinimap, onResetLayout, level, depth, onDepth, allNodes, focalNodeId, onFocalNode, layoutMode, onLayoutMode, scope, onScope, scopeOptions, scopeInfo }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [scopeOpen, setScopeOpen] = useState(false);
@@ -540,9 +545,9 @@ function GraphToolbar({ visibleEdgeTypes, onToggleEdgeType, showMinimap, onToggl
 
   return (
     <div className="graph-toolbar">
-      {ALL_EDGE_TYPES.map(type => {
+      {edgeTypes.map(type => {
         const active = visibleEdgeTypes.has(type);
-        const pill = EDGE_PILL_STYLES[type] || {};
+        const pill = EDGE_PILL_STYLES[type] || { background: '#f3f4f6', color: '#6b7280' };
         return (
           <span
             key={type}
@@ -645,7 +650,7 @@ function GraphToolbar({ visibleEdgeTypes, onToggleEdgeType, showMinimap, onToggl
 function GraphView({ route, viewingRef, templates }) {
   const [graphData, setGraphData] = useState(null);
   const [error, setError] = useState(null);
-  const [visibleEdgeTypes, setVisibleEdgeTypes] = useState(loadVisibleEdgeTypes);
+  const [hiddenEdgeTypes, setHiddenEdgeTypes] = useState(loadHiddenEdgeTypes);
   const [showMinimap, setShowMinimap] = useState(false);
   const [depth, setDepth] = useState(2);
   const [layoutKey, setLayoutKey] = useState(0);
@@ -712,6 +717,11 @@ function GraphView({ route, viewingRef, templates }) {
   }, [focalNodeId, depth, viewingRef]);
 
   const templateMap = useMemo(() => new Map((templates ?? []).map(t => [t.name, t])), [templates]);
+  const availableEdgeTypes = useMemo(() => [...new Set((graphData?.edges ?? []).map(edge => edge.type))].sort(), [graphData]);
+  const visibleEdgeTypes = useMemo(
+    () => new Set(availableEdgeTypes.filter(type => !hiddenEdgeTypes.has(type))),
+    [availableEdgeTypes, hiddenEdgeTypes],
+  );
 
   const templateColour = useCallback(templateName => {
     return templateMap.get(templateName)?.ui?.colour ?? 'var(--ink-4)';
@@ -776,7 +786,7 @@ function GraphView({ route, viewingRef, templates }) {
       parentCounts.set(n.parentId, (parentCounts.get(n.parentId) ?? 0) + 1);
     }
     const scopeOptions = {
-      edgeTypes: ALL_EDGE_TYPES.filter(t => visibleEdgeTypes.has(t) && typedEdges.some(e => e.type === t)),
+      edgeTypes: availableEdgeTypes.filter(t => visibleEdgeTypes.has(t) && typedEdges.some(e => e.type === t)),
       templates: [...new Set(allVisibleNodes.map(n => n.template))].sort()
         .map(name => ({ name, label: templateMap.get(name)?.ui?.displayName ?? name })),
       owners: [...parentCounts.entries()].filter(([, c]) => c >= 2).map(([pid]) => pid).sort()
@@ -812,7 +822,7 @@ function GraphView({ route, viewingRef, templates }) {
       return isCross ? { ...e, style: { ...e.style, opacity: 0.45 }, labelStyle: { ...e.labelStyle, opacity: 0.45 } } : e;
     });
     return { rfN, rfE, scopeOptions, scopeInfo };
-  }, [graphData, selectedComponent, visibleEdgeTypes, templateMap, layoutKey, navToFocus, scope]);
+  }, [graphData, selectedComponent, availableEdgeTypes, visibleEdgeTypes, templateMap, layoutKey, navToFocus, scope]);
 
   useEffect(() => {
     if (level !== 'interior' || !level2) return;
@@ -903,10 +913,10 @@ function GraphView({ route, viewingRef, templates }) {
   }, [setRfNodes]);
 
   function handleToggleEdgeType(type) {
-    setVisibleEdgeTypes(prev => {
+    setHiddenEdgeTypes(prev => {
       const next = new Set(prev);
       next.has(type) ? next.delete(type) : next.add(type);
-      saveVisibleEdgeTypes(next);
+      saveHiddenEdgeTypes(next);
       return next;
     });
   }
@@ -924,6 +934,7 @@ function GraphView({ route, viewingRef, templates }) {
         onNavigateToComponent={navToComponent}
       />
       <GraphToolbar
+        edgeTypes={availableEdgeTypes}
         visibleEdgeTypes={visibleEdgeTypes}
         onToggleEdgeType={handleToggleEdgeType}
         showMinimap={showMinimap}
