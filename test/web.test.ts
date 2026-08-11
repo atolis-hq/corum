@@ -148,14 +148,28 @@ function makeTestGraph(): Graph {
     state: 'agreed' as const,
     stability: 'stable' as const,
   }
+  const precedesEdge = {
+    id: 'orders.Order__precedes__orders.CancelOrder',
+    from: 'orders.Order',
+    to: 'orders.CancelOrder',
+    type: 'precedes' as const,
+    state: 'agreed' as const,
+    stability: 'stable' as const,
+  }
   const edgesByFrom = new Map([
     [mapsToEdge.from, [mapsToEdge]],
+    [precedesEdge.from, [precedesEdge]],
   ])
   const edgesByTo = new Map([
     [mapsToEdge.to, [mapsToEdge]],
+    [precedesEdge.to, [precedesEdge]],
+  ])
+  const edgeTypes = new Map([
+    ['maps-to', { name: 'maps-to', category: 'lineage' as const }],
+    ['precedes', { name: 'precedes', category: 'semantic' as const }],
   ])
 
-  return { nodesById, edgesByFrom, edgesByTo, templates, diagnostics: [] }
+  return { nodesById, edgesByFrom, edgesByTo, templates, edgeTypes, diagnostics: [] }
 }
 
 function writeWatcherFixture(root: string): { graphPath: string; nodePath: string; templatePath: string } {
@@ -832,12 +846,22 @@ describe('web server', () => {
     it('only includes semantic edge types — structural types are absent', async () => {
       const res = await fetch(`http://localhost:${handle.port}/api/graph`)
       const body = await res.json() as { edges: Array<{ type: string }> }
-      const semanticTypes = new Set(['triggers', 'produces', 'reads', 'uses-type', 'calls', 'implements', 'maps-to', 'derived-from'])
+      const semanticTypes = new Set(['triggers', 'produces', 'reads', 'uses-type', 'calls', 'implements', 'maps-to', 'derived-from', 'precedes'])
       const structuralTypes = new Set(['has-field', 'has-value', 'renamed-from'])
       assert.ok(
         body.edges.every(e => semanticTypes.has(e.type) && !structuralTypes.has(e.type)),
         'all edges use semantic types only',
       )
+    })
+
+    it('includes pack-declared visible edge types', async () => {
+      const res = await fetch(`http://localhost:${handle.port}/api/graph`)
+      const body = await res.json() as { edges: Array<{ from: string; to: string; type: string }> }
+      assert.ok(body.edges.some(edge =>
+        edge.type === 'precedes'
+        && edge.from === 'orders.Order'
+        && edge.to === 'orders.CancelOrder',
+      ))
     })
 
     it('edges have no dangling endpoints — both from and to must be in returned nodes', async () => {
@@ -876,7 +900,7 @@ describe('web server', () => {
       }
       assert.equal(body.nodeCount, 7)
       assert.equal(body.componentCount, 2)
-      assert.equal(body.orphanNodeCount, 3)
+      assert.equal(body.orphanNodeCount, 1)
       assert.deepEqual(body.nodesByComponent, {
         billing: 2,
         orders: 5,
@@ -897,6 +921,7 @@ describe('web server', () => {
         unstable: 1,
       })
       assert.equal(body.edgesByType['maps-to'], 1)
+      assert.equal(body.edgesByType['precedes'], 1)
       assert.equal(body.edgesByType['triggers'], undefined)
       assert.equal(body.diagnosticCount, 0)
     })
@@ -904,7 +929,7 @@ describe('web server', () => {
     it('returns only semantic edge types present in the graph', async () => {
       const res = await fetch(`http://localhost:${handle.port}/api/stats`)
       const body = await res.json() as { edgesByType: Record<string, number> }
-      assert.deepEqual(body.edgesByType, { 'maps-to': 1 })
+      assert.deepEqual(body.edgesByType, { 'maps-to': 1, precedes: 1 })
     })
 
     it('falls back to default graph for unknown ?ref=', async () => {
@@ -1239,6 +1264,14 @@ describe('web server', () => {
       assert.match(graph, /const \[focusData, setFocusData\] = useState\(null\);/)
       assert.match(graph, /const debounceTimerRef = useRef\(null\);/)
       assert.match(graph, /fetch\(`\/api\/lineage\?\$\{params\}`\)/)
+    })
+
+    it('graph: edge controls are derived from graph response types and new types default visible', () => {
+      assert.match(graph, /const availableEdgeTypes = useMemo\(\(\) => \[\.\.\.new Set\(\(graphData\?\.edges \?\? \[\]\)\.map\(edge => edge\.type\)\)\]\.sort\(\), \[graphData\]\);/)
+      assert.match(graph, /function loadHiddenEdgeTypes\(\) \{[\s\S]*hiddenTypes/)
+      assert.match(graph, /new Set\(availableEdgeTypes\.filter\(type => !hiddenEdgeTypes\.has\(type\)\)\)/)
+      assert.match(graph, /<GraphToolbar[\s\S]*edgeTypes=\{availableEdgeTypes\}/)
+      assert.doesNotMatch(graph, /ALL_EDGE_TYPES/)
     })
 
     it('graph: graph view keeps a single React Flow canvas instance and refits after node updates', () => {
