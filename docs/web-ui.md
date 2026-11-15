@@ -1,8 +1,12 @@
 # Web UI
 
-The web UI is a read-only browser view of the graph, for people who want to
-look at what an agent has built. Changes are made through the agent and [MCP
-tools](mcp-tools.md), not in the browser.
+The web UI is currently a read-only browser view of the graph, for people who
+want to look at what an agent has built. Changes are made through the agent and
+[MCP tools](mcp-tools.md), not in the browser.
+
+> **Status:** an edit mode, where you can create and change nodes from the UI
+> using the same validated change path as the agent, is planned but not yet
+> available. Until then, ask your agent to make changes.
 
 ## Starting it
 

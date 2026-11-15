@@ -81,7 +81,7 @@ web UI. For private repositories set `CORUM_GIT_TOKEN` (and optionally
 
 ## Hosting the web UI
 
-The web UI is a read-only browser view of the graph. Because all state is in
+The web UI is currently a read-only browser view of the graph. Because all state is in
 Git, hosting it needs only a Node process pointed at the repository:
 
 ```bash
