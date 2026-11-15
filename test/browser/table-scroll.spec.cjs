@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-for (const width of [393, 1440]) {
+for (const width of [393, 1280, 1440]) {
   test(`detail tables contain horizontal overflow at ${width}px`, async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.setViewportSize({ width, height: 900 });

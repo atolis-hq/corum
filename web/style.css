@@ -341,7 +341,8 @@ button {
 }
 
 /* Minimum grid tracks plus gaps and padding; retain desktop column sizing. */
-.field-table { min-width: 912px; }
+/* 724px of tracks + six 10px gaps + two 14px paddings. */
+.field-table { min-width: 812px; }
 .enum-table { min-width: 532px; }
 
 .prop-table {
