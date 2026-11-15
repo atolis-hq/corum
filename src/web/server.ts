@@ -1,6 +1,7 @@
 import { printBanner } from '../banner.js'
 import express from 'express'
 import path from 'node:path'
+import { createRequire } from 'node:module'
 import { existsSync, readFileSync, readdirSync, watch, type FSWatcher } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -33,6 +34,8 @@ import type { GraphSource } from '../source/index.js'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const WEB_DIR = path.join(__dirname, '..', '..', '..', 'web')
+const require = createRequire(import.meta.url)
+const { version } = require('../../../package.json') as { version: string }
 
 export type WebServerOptions = {
   port?: number
@@ -681,6 +684,15 @@ export function createApp(
         res.status(500).json({ error: err instanceof Error ? err.message : 'Internal server error' })
       }
     }
+  })
+
+  const indexHtml = readFileSync(path.join(WEB_DIR, 'index.html'), 'utf8')
+    .replace('href="style.css"', `href="style.css?v=${encodeURIComponent(version)}"`)
+    .replace('src="app.jsx"', `src="app.jsx?v=${encodeURIComponent(version)}"`)
+
+  app.get(['/', '/index.html'], (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache')
+    res.type('html').send(indexHtml)
   })
 
   app.use(express.static(WEB_DIR, {
