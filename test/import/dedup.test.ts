@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
+import { mapDocument } from '../../src/adapters/corum/mapper.js'
 import { deduplicateResults } from '../../src/import/dedup.js'
 import type { EntryResult } from '../../src/import/dedup.js'
 import type { Node, Edge } from '../../src/schema/index.js'
@@ -317,4 +318,31 @@ it('does not redirect an owned child to an independent primary root with the can
   const { results: out } = deduplicateResults(results, [{ primary: 'openapi', secondary: 'corum' }])
   assert.deepEqual(out[0].edges, [])
   assert.equal(out[1].nodes[1], independent)
+})
+
+describe('deduplicateResults — interchange explicit ownership', () => {
+  it('drops owned aliases but preserves child-shaped explicit roots and their ownership', () => {
+    const primary = makeNode('orders.Schema.canonical', 'openapi')
+    const mapped = mapDocument({
+      corum: '1.0',
+      nodes: {
+        'orders.Schema.alias': { type: 'Schema', 'x-aka': ['canonical'] },
+        'orders.Schema.alias.fields.owned': { type: 'Field', parentId: 'orders.Schema.alias' },
+        'orders.Schema.alias.fields.independent': { type: 'Schema', parentId: null },
+        'orders.Schema.alias.fields.independent.fields.id': {
+          type: 'Field', parentId: 'orders.Schema.alias.fields.independent',
+        },
+      },
+    }, '/fake/spec.yaml')
+    const { results } = deduplicateResults([
+      makeResult('openapi', [primary]),
+      makeResult('corum', mapped.nodes),
+    ], [{ primary: 'openapi', secondary: 'corum' }])
+    assert.deepEqual(results[1].nodes.map(n => n.id), [
+      'orders.Schema.alias.fields.independent',
+      'orders.Schema.alias.fields.independent.fields.id',
+    ])
+    assert.equal(results[1].nodes[0].parentId, undefined)
+    assert.equal(results[1].nodes[1].parentId, results[1].nodes[0].id)
+  })
 })

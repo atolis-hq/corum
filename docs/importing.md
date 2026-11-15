@@ -27,6 +27,24 @@ match them to nodes from other adapters (for example a controller class and an
 OpenAPI operation), and provenance saying where each came from. The envelope is
 defined by `.corum/packs/extract/interchange.schema.yaml`.
 
+Each node entry may set `parentId` to another node ID in the same document,
+or to `null` to declare an independent root. Explicit ownership takes precedence
+over ID shape; an unknown explicit parent is an error. Node and parent IDs use
+the same component normalization (for example, `_` becomes `_unresolved`).
+
+When `parentId` is omitted, compatibility inference drops the last two ID
+segments and uses that parent only if it exists and has at least three segments.
+Short namespace nodes therefore do not capture three-segment roots. Inference
+through a section outside `schemas`, `enums`, `fields`, `values`, `mappings`,
+and `operations` emits a heuristic warning but retains the relationship; custom
+packs can own other sections, so explicit metadata avoids this warning.
+
+For example, beside `orders.Schema.foo`, an independent node named
+`orders.Schema.foo.fields.bar` must set `parentId: null`. An owned entry may
+set `parentId: orders.Schema.foo` explicitly. Existing producers can omit
+the field for conventional ownership. This optional addition keeps version
+`1.0` and imposes no length restriction on root IDs.
+
 How to produce one:
 
 - **Ask an agent.** Point your coding agent at the repository, give it the

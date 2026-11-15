@@ -36,8 +36,10 @@ export function mapDocument(
   const allSchemas = (document.components?.schemas ?? {}) as Record<string, unknown>
   // Maps #/components/schemas/X and #/components/schemas/X/properties/Y to materialized node IDs
   const refToNodeId = new Map<string, string>()
-  const documentNodeIds = new Set(Object.keys(document.nodes).map(normalizeNodeId))
-  const rootNodeIds = getRootNodeIds(document.nodes)
+  const parents = resolveDocumentParents(document.nodes, specPath, diagnostics)
+  const rootNodeIds = [...parents.keys()]
+    .filter(nodeId => parents.get(nodeId) === undefined)
+    .sort((a, b) => b.length - a.length)
   // Pre-pass: determine canonical component for each schema (shared if referenced by 2+ components)
   const schemaComponents = computeSchemaComponents(document, allSchemas)
   const schemaUsage = computeSchemaUsage(document, allSchemas, rootNodeIds)
@@ -73,7 +75,7 @@ export function mapDocument(
       properties['x-aka'] = entry['x-aka']
     }
 
-    const node = makeNode(entry.type, component, specPath, normalizedNodeId, entry.provenance, properties, getDocumentParentId(normalizedNodeId, documentNodeIds))
+    const node = makeNode(entry.type, component, specPath, normalizedNodeId, entry.provenance, properties, parents.get(normalizedNodeId))
     nodes.push(node)
 
     if (schemaName) {
@@ -169,18 +171,48 @@ function computeSchemaComponents(
   return result
 }
 
-// Interchange documents encode explicit owned entries as {parent}.{section}.{name}.
-// Materialize that relationship at the adapter boundary, before graph queries or writes.
-function getDocumentParentId(nodeId: string, nodeIds: Set<string>): string | undefined {
-  const parentId = nodeId.split('.').slice(0, -2).join('.')
-  return nodeIds.has(parentId) ? parentId : undefined
-}
+// A compatibility heuristic only: packs may declare additional owned sections.
+const CONVENTIONAL_SECTIONS = new Set(['schemas', 'enums', 'fields', 'values', 'mappings', 'operations'])
 
-function getRootNodeIds(nodes: Record<string, CorumInterchangeDocument['nodes'][string]>): string[] {
+function resolveDocumentParents(
+  nodes: CorumInterchangeDocument['nodes'],
+  specPath: string,
+  diagnostics: Diagnostic[],
+): Map<string, string | undefined> {
   const nodeIds = new Set(Object.keys(nodes).map(normalizeNodeId))
-  return [...nodeIds]
-    .filter(nodeId => getDocumentParentId(nodeId, nodeIds) === undefined)
-    .sort((a, b) => b.length - a.length)
+  const parents = new Map<string, string | undefined>()
+  for (const [rawId, entry] of Object.entries(nodes)) {
+    const nodeId = normalizeNodeId(rawId)
+    if (entry.parentId !== undefined) {
+      const parentId = entry.parentId === null ? undefined : normalizeNodeId(entry.parentId)
+      if (parentId !== undefined && !nodeIds.has(parentId)) {
+        diagnostics.push({
+          severity: 'error', file: specPath,
+          message: `Node '${nodeId}' references unknown explicit parent '${parentId}'`,
+        })
+      }
+      // Keep an unresolved reference visible; never reinterpret it as a root.
+      parents.set(nodeId, parentId)
+      continue
+    }
+
+    const parts = nodeId.split('.')
+    const parentId = parts.slice(0, -2).join('.')
+    // Short namespace IDs must not capture ordinary component.Template.name roots.
+    if (parts.length >= 5 && nodeIds.has(parentId)) {
+      parents.set(nodeId, parentId)
+      const section = parts[parts.length - 2]
+      if (!CONVENTIONAL_SECTIONS.has(section)) {
+        diagnostics.push({
+          severity: 'warning', file: specPath,
+          message: `Node '${nodeId}' inferred parent '${parentId}' through implausible section '${section}'; set parentId explicitly to disambiguate ownership`,
+        })
+      }
+    } else {
+      parents.set(nodeId, undefined)
+    }
+  }
+  return parents
 }
 
 function computeSchemaUsage(
