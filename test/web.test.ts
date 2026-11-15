@@ -1112,6 +1112,29 @@ describe('web server', () => {
   })
 
   describe('web assets', () => {
+    for (const entryPath of ['/', '/index.html']) {
+      it(`${entryPath} revalidates HTML and versions local entry assets`, async () => {
+        const { version } = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'))
+        const response = await fetch(`http://localhost:${handle.port}${entryPath}`)
+        assert.equal(response.status, 200)
+        assert.equal(response.headers.get('cache-control'), 'no-cache')
+        assert.match(response.headers.get('content-type') ?? '', /text\/html/)
+        const html = await response.text()
+        const original = fs.readFileSync(path.join(repoRoot, 'web/index.html'), 'utf8')
+        assert.equal(html, original
+          .replace('href="style.css"', `href="style.css?v=${encodeURIComponent(version)}"`)
+          .replace('src="app.jsx"', `src="app.jsx?v=${encodeURIComponent(version)}"`))
+
+        for (const asset of ['style.css', 'app.jsx']) {
+          const assetUrl = `${asset}?v=${encodeURIComponent(version)}`
+          assert.ok(html.includes(`"${assetUrl}"`))
+          const assetResponse = await fetch(`http://localhost:${handle.port}/${assetUrl}`)
+          assert.equal(assetResponse.status, 200)
+          assert.equal(await assetResponse.text(), fs.readFileSync(path.join(repoRoot, 'web', asset), 'utf8'))
+        }
+      })
+    }
+
     let primitives = ''
     let app = ''
     let graph = ''
