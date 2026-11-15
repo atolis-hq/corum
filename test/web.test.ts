@@ -1308,7 +1308,8 @@ describe('web server', () => {
 
     it('app: initial route state is derived from window.location.hash', () => {
       assert.match(app, /const \[route, setRoute\] = useState\(\(\) => parseRoute\(window\.location\.hash\)\);/)
-      assert.match(app, /const handler = \(\) => setRoute\(parseRoute\(window\.location\.hash\)\);/)
+      assert.match(app, /const next = parseRoute\(location\.hash\);/)
+      assert.match(app, /setRoute\(next\);/)
       assert.doesNotMatch(app, /const \[route, setRoute\] = useState\(parseRoute\);/)
       assert.doesNotMatch(app, /setRoute\(parseRoute\(\)\);/)
     })

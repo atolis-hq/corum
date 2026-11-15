@@ -215,12 +215,17 @@ function NavTree({ navTree, templates, activeNodeId, onNode, overlayIndicatorIds
   }
 
   return (
-    <div className="nav-tree">
+    <div className="nav-tree" onKeyDown={event => {
+      if ((event.key === 'Enter' || event.key === ' ') && event.target.getAttribute('role') === 'button') {
+        event.preventDefault();
+        event.target.click();
+      }
+    }}>
       {sortedComponents.map(component => {
         const entries = navTree.get(component);
         return (
           <div key={component}>
-            <div className="nav-section-head" onClick={() => toggleComponent(component)}>
+            <div className="nav-section-head" role="button" tabIndex={0} aria-expanded={openComponent === component} onClick={() => toggleComponent(component)}>
               <span>{component}</span>
               <Icon name={openComponent === component ? 'chevron-down' : 'chevron-right'} size={12} />
             </div>
@@ -230,7 +235,7 @@ function NavTree({ navTree, templates, activeNodeId, onNode, overlayIndicatorIds
                 const gOpen = openEntryKeys.has(gKey);
                 return (
                   <div key={entry.groupTemplateName}>
-                    <div className="nav-template-head" onClick={() => toggleEntry(gKey)} style={{ cursor: 'pointer' }}>
+                    <div className="nav-template-head" role="button" tabIndex={0} aria-expanded={gOpen} onClick={() => toggleEntry(gKey)} style={{ cursor: 'pointer' }}>
                       {entry.icon && (
                         <i
                           className={`fa-solid fa-${entry.icon}`}
@@ -257,6 +262,7 @@ function NavTree({ navTree, templates, activeNodeId, onNode, overlayIndicatorIds
                             <div
                               key={node.id}
                               className={`nav-node-item${isActive ? ' active' : ''}`}
+                          role="button" tabIndex={0} aria-current={isActive ? 'true' : undefined}
                               onClick={() => onNode(node.id)}
                               title={node.id}
                               style={isActive ? { '--nav-node-active-bg': child.colour } : undefined}
@@ -282,7 +288,7 @@ function NavTree({ navTree, templates, activeNodeId, onNode, overlayIndicatorIds
               const tOpen = openEntryKeys.has(tKey);
               return (
                 <div key={entry.templateName}>
-                  <div className="nav-template-head" onClick={() => toggleEntry(tKey)} style={{ cursor: 'pointer' }}>
+                  <div className="nav-template-head" role="button" tabIndex={0} aria-expanded={tOpen} onClick={() => toggleEntry(tKey)} style={{ cursor: 'pointer' }}>
                     <i
                       className={`fa-solid fa-${template?.ui?.icon ?? 'circle'}`}
                       style={{ fontSize: 12, width: 14, textAlign: 'center', flexShrink: 0 }}
@@ -296,6 +302,7 @@ function NavTree({ navTree, templates, activeNodeId, onNode, overlayIndicatorIds
                       <div key={node.id}>
                         <div
                           className={`nav-node-item${isActive ? ' active' : ''}`}
+                              role="button" tabIndex={0} aria-current={isActive ? 'true' : undefined}
                           onClick={() => onNode(node.id)}
                           title={node.id}
                           style={isActive ? { '--nav-node-active-bg': colour } : undefined}
@@ -309,6 +316,7 @@ function NavTree({ navTree, templates, activeNodeId, onNode, overlayIndicatorIds
                             <div className="nav-child-group" key={group.label}>
                               <div
                                 className="nav-child-head"
+                                role="button" tabIndex={0} aria-expanded={groupOpen}
                                 style={{ cursor: 'pointer' }}
                                 onClick={() => setOpenGroupKeys(prev => {
                                   const next = new Set(prev);
@@ -327,6 +335,7 @@ function NavTree({ navTree, templates, activeNodeId, onNode, overlayIndicatorIds
                                   <div
                                     key={child.id}
                                     className={`nav-node-item nav-node-child${childIsActive ? ' active' : ''}`}
+                                    role="button" tabIndex={0} aria-current={childIsActive ? 'true' : undefined}
                                     onClick={() => onNode(child.id)}
                                     title={child.id}
                                     style={childIsActive ? { '--nav-node-active-bg': childColour } : undefined}
@@ -979,6 +988,10 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [route, setRoute] = useState(() => parseRoute(window.location.hash));
+  const [mobile, setMobile] = useState(() => matchMedia('(max-width: 780px)').matches);
+  const retainedNode = React.useRef(null);
+  const listPane = React.useRef(null);
+  const detailPane = React.useRef(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const [gitMode, setGitMode] = useState(false);
   const [branches, setBranches] = useState([]);
@@ -1066,9 +1079,37 @@ function App() {
   }, [viewingRef, gitMode, refreshGraphData]);
 
   useEffect(() => {
-    const handler = () => setRoute(parseRoute(window.location.hash));
+    let previous = parseRoute(window.location.hash);
+    function syncHistory(next) {
+      if (matchMedia('(max-width: 780px)').matches && next.pathname === '/node' && !history.state?.corumDetail) {
+        // Seed a list entry behind direct links and nodes opened from other sections.
+        const hash = location.hash;
+        history.replaceState(null, '', buildRoute({ pathname: '/components', branch: next.branch }));
+        history.pushState({ corumDetail: true }, '', hash);
+      }
+    }
+    syncHistory(previous);
+    const handler = () => {
+      const next = parseRoute(location.hash);
+      if (next.pathname === '/node' && previous.pathname === '/components') {
+        history.replaceState({ corumDetail: true }, '');
+      } else {
+        syncHistory(next);
+      }
+      previous = next;
+      setRoute(next);
+    };
+    const query = matchMedia('(max-width: 780px)');
+    const resize = () => {
+      setMobile(query.matches);
+      syncHistory(parseRoute(location.hash));
+    };
+    query.addEventListener('change', resize);
     window.addEventListener('hashchange', handler);
-    return () => window.removeEventListener('hashchange', handler);
+    return () => {
+      window.removeEventListener('hashchange', handler);
+      query.removeEventListener('change', resize);
+    };
   }, []);
 
   useEffect(() => {
@@ -1083,9 +1124,38 @@ function App() {
   }, []);
 
   const activeNodeId = route.pathname === '/node' ? route.params.get('id') : null;
+  if (activeNodeId) retainedNode.current = activeNodeId;
+  const detailOpen = route.pathname === '/node';
   const activeSection = activeNodeId ? 'components' : (route.pathname.slice(1) || 'dashboard');
   const navTree = useMemo(() => buildNavTree(nodes, templates), [nodes, templates]);
   const showTree = (activeSection === 'components' || activeNodeId) && activeSection !== 'graph';
+  useEffect(() => {
+    if (!mobile || !showTree) return;
+    const pane = detailOpen ? detailPane.current : listPane.current;
+    let frame;
+    const observer = new MutationObserver(focusTarget);
+    function focusTarget() {
+      const target = pane?.querySelector(detailOpen ? 'h1' : '.nav-node-item.active');
+      if (!target) return;
+      target.tabIndex = detailOpen ? -1 : 0;
+      target.focus({ preventScroll: true });
+      if (document.activeElement === target) {
+        observer.disconnect();
+      } else {
+        // Visibility may still be changing as the pane starts its transition.
+        cancelAnimationFrame(frame);
+        frame = requestAnimationFrame(focusTarget);
+      }
+    }
+    // Node headings arrive asynchronously after the cluster request.
+    if (pane) observer.observe(pane, { childList: true, subtree: true });
+    focusTarget();
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [mobile, detailOpen, activeNodeId, showTree]);
+
   const activeOverlayRefs = useMemo(() =>
     overlayMode === 'single' ? [] :
     overlayMode === 'consolidated' ? branches.filter(branch => branch.ref !== viewingRef).map(branch => branch.ref) :
@@ -1138,6 +1208,7 @@ function App() {
   } else if (route.pathname === '/node') {
     page = (
       <NodePage
+        key={activeNodeId}
         nodeId={activeNodeId}
         templates={templates}
         onNavigate={handleNode}
@@ -1190,18 +1261,36 @@ function App() {
                       }}
                     />
                   )}
-      <div className="main">
-        <NavRail activeSection={activeSection} onSection={handleSection} debugMode={debugMode} onDebugMode={handleDebugMode} />
-        {showTree && !loading && !error && (
-          <NavTree
-            navTree={navTree}
-            templates={templates}
-            activeNodeId={activeNodeId}
-            onNode={handleNode}
-            overlayIndicatorIds={overlayIndicatorIds}
-          />
-        )}
-        {page}
+      <div className={`main${showTree ? ' master-detail' : ''}${detailOpen ? ' detail-open' : ''}`}>
+        <div
+          className="list-pane" ref={listPane}
+          inert={mobile && showTree && detailOpen ? '' : undefined}
+          aria-hidden={mobile && showTree && detailOpen ? true : undefined}
+        >
+          <NavRail activeSection={activeSection} onSection={handleSection} debugMode={debugMode} onDebugMode={handleDebugMode} />
+          {mobile && showTree && !detailOpen && (loading || error) && page}
+          {showTree && !loading && !error && (
+            <NavTree
+              navTree={navTree}
+              templates={templates}
+              activeNodeId={activeNodeId || retainedNode.current}
+              onNode={handleNode}
+              overlayIndicatorIds={overlayIndicatorIds}
+            />
+          )}
+        </div>
+        <div
+          className="detail-pane" ref={detailPane}
+          inert={mobile && showTree && !detailOpen ? '' : undefined}
+          aria-hidden={mobile && showTree && !detailOpen ? true : undefined}
+        >
+          {showTree && (
+            <button type="button" className="mobile-back" onClick={() => history.back()}>
+              <span aria-hidden="true">←</span> Back to components
+            </button>
+          )}
+          {page}
+        </div>
       </div>
     </>
   );
