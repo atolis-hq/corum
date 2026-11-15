@@ -15,7 +15,7 @@ import { getTemplateSchema } from '../loader/template-props.js'
  * in memory (mutations): the loader drops such edges before they ever reach
  * a loaded Graph, so `strict` loads are unaffected in practice.
  *
- * Rules implemented (see docs/adr/REF-006-rules.md for the full catalogue):
+ * Rules implemented (see project/adrs/REF-006-rules.md for the full catalogue):
  *  - T-003/T-004/T-005: node properties validated (shallow) against the
  *    owning template's JSON-schema-like `properties` block.
  *  - E-005/E-006: explicit (non-generated) edges validated against the

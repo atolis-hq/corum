@@ -51,7 +51,8 @@ node dist/src/bin/corum.js import --config <yaml> [-b <branch>]  # import specs;
 | `src/linter/index.ts` | Lint rules (property/edge-type validation) |
 | `src/mcp/index.ts` | MCP server + tool handlers |
 | `.corum/packs/` | Template pack definitions |
-| `docs/adr/` | Architecture decisions; read before changing core abstractions |
+| `project/adrs/` | Architecture decisions; read before changing core abstractions |
+| `project/` | Decisions (ADRs/PDRs), plans, specs, reports. `docs/` is for public-facing guides only; new superpowers specs/plans go in `project/superpowers/{specs,plans}` |
 
 ## State & Stability Defaults
 

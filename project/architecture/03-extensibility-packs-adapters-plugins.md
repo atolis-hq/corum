@@ -2,7 +2,7 @@
 
 **Status:** Draft v0.1
 **Last updated:** 2026-04-16
-**Relates to:** [ADR-004](../adr/ADR-004-template-pack-format.md), [ADR-004b](../adr/ADR-004b-edge-type-vocabulary-and-constraints.md), [REF-specification-format-support](../adr/REF-specification-format-support.md), [PDR-003](../pdr/PDR-003-template-packs-and-plugin-architecture.md)
+**Relates to:** [ADR-004](../adrs/ADR-004-template-pack-format.md), [ADR-004b](../adrs/ADR-004b-edge-type-vocabulary-and-constraints.md), [REF-specification-format-support](../adrs/REF-specification-format-support.md), [PDR-003](../pdrs/PDR-003-template-packs-and-plugin-architecture.md)
 
 ---
 
@@ -25,7 +25,7 @@ The engine depends on none of these concretely. It depends on their interfaces o
 
 ### 2.1 What a pack contains
 
-Defined in [ADR-004](../adr/ADR-004-template-pack-format.md). A pack is a directory with:
+Defined in [ADR-004](../adrs/ADR-004-template-pack-format.md). A pack is a directory with:
 
 ```
 pack-name/
@@ -59,7 +59,7 @@ The linter enforces that a child does not remove parent required properties or r
 
 ### 2.5 Edge participation — declared, not free-form
 
-Each template declares which core edge types it may send and receive ([ADR-004b](../adr/ADR-004b-edge-type-vocabulary-and-constraints.md)):
+Each template declares which core edge types it may send and receive ([ADR-004b](../adrs/ADR-004b-edge-type-vocabulary-and-constraints.md)):
 
 ```yaml
 edges:
@@ -68,7 +68,7 @@ edges:
   supports: [reads]                # bidirectional
 ```
 
-These names come from the **fixed core edge vocabulary** — the engine rejects unknown edge types. Custom edge types are deferred ([PDR-003](../pdr/PDR-003-template-packs-and-plugin-architecture.md)).
+These names come from the **fixed core edge vocabulary** — the engine rejects unknown edge types. Custom edge types are deferred ([PDR-003](../pdrs/PDR-003-template-packs-and-plugin-architecture.md)).
 
 ---
 
@@ -220,7 +220,7 @@ adapter:
 
 ### 3.5 The TypeSpec opportunity
 
-[REF-typespec-integration-opportunities](../adr/REF-typespec-integration-opportunities.md) notes TypeSpec as a higher-fidelity alternative to OpenAPI for extraction. The adapter interface supports this directly - `@corum/adapter-typespec` is another package implementing `SpecAdapter`, paired with its own pack or with the built-in `.corum/packs/rest` templates. No engine change needed.
+[REF-typespec-integration-opportunities](../adrs/REF-typespec-integration-opportunities.md) notes TypeSpec as a higher-fidelity alternative to OpenAPI for extraction. The adapter interface supports this directly - `@corum/adapter-typespec` is another package implementing `SpecAdapter`, paired with its own pack or with the built-in `.corum/packs/rest` templates. No engine change needed.
 
 ---
 
@@ -249,7 +249,7 @@ Example candidates:
 
 ## 5. View plugins (web — future)
 
-Deferred until the React UI is built. [PDR-006](../pdr/PDR-006-human-review-and-editing-experience.md) describes a perspective-per-node-type model: each node type has a custom view/editor that knows how to display it meaningfully. Until the web ADR lands, the `ui:` hints in each template drive a generic renderer.
+Deferred until the React UI is built. [PDR-006](../pdrs/PDR-006-human-review-and-editing-experience.md) describes a perspective-per-node-type model: each node type has a custom view/editor that knows how to display it meaningfully. Until the web ADR lands, the `ui:` hints in each template drive a generic renderer.
 
 The expected shape:
 
@@ -270,10 +270,10 @@ Registration via pack `components/` directory + a `view-plugins.ts` manifest. De
 ## 6. What is not pluggable (by design)
 
 - **The logical data model and core semantic roles.** `Node`, `Edge`, `Field`, the universal node properties, the state and stability enums are structural invariants of the engine. Packs extend the model, but reserved `coreRole` contracts such as `field` are fixed because graph rules depend on them.
-- **The core edge vocabulary.** `maps-to`, `triggers`, `produces`, `reads`, `calls`, `implements`, `derived-from`, `renamed-from` are fixed in v1 ([ADR-004b](../adr/ADR-004b-edge-type-vocabulary-and-constraints.md)).
-- **The file format.** Cluster files, edge files, `graph.yaml` are defined by [ADR-002](../adr/ADR-002-graph-file-format-and-cluster-boundaries.md). The format version is bumped through migration, not overridden by plugins.
+- **The core edge vocabulary.** `maps-to`, `triggers`, `produces`, `reads`, `calls`, `implements`, `derived-from`, `renamed-from` are fixed in v1 ([ADR-004b](../adrs/ADR-004b-edge-type-vocabulary-and-constraints.md)).
+- **The file format.** Cluster files, edge files, `graph.yaml` are defined by [ADR-002](../adrs/ADR-002-graph-file-format-and-cluster-boundaries.md). The format version is bumped through migration, not overridden by plugins.
 - **The storage model.** Git-as-canonical-store + SQLite-as-cache is fixed for v1. Alternative stores are a hosted-tier concern.
-- **The MCP tool surface shape.** Tool signatures and response shapes come from [ADR-005](../adr/ADR-005-mcp-interface-design.md) and the [catalogue](../adr/REF-mcp-tool-catalogue.md). Adapters do not extend the MCP surface directly — their capabilities are exposed through the generic `import_spec` / `export_spec` tools.
+- **The MCP tool surface shape.** Tool signatures and response shapes come from [ADR-005](../adrs/ADR-005-mcp-interface-design.md) and the [catalogue](../adrs/REF-mcp-tool-catalogue.md). Adapters do not extend the MCP surface directly — their capabilities are exposed through the generic `import_spec` / `export_spec` tools.
 
 This constraint is intentional. It keeps the core engine small, auditable, and free of feature drift driven by any single integration.
 
@@ -308,5 +308,5 @@ No recompile of the engine is required. This is the adoption path that keeps the
 - [01 — Architecture Overview](01-architecture-overview.md)
 - [02 — Packages and Folder Structure](02-packages-and-folder-structure.md)
 - [04 — Libraries, Tooling and Testing](04-libraries-tooling-and-testing.md)
-- [ADR-004 Template Pack Format](../adr/ADR-004-template-pack-format.md)
-- [REF Specification Format Support](../adr/REF-specification-format-support.md)
+- [ADR-004 Template Pack Format](../adrs/ADR-004-template-pack-format.md)
+- [REF Specification Format Support](../adrs/REF-specification-format-support.md)

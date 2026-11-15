@@ -3,7 +3,7 @@
 **Status:** Draft v0.1
 **Last updated:** 2026-04-16
 
-This directory collects the high-level architecture for the Corum implementation. It is derived from the vision (`docs/vision/`), the product decisions (`docs/pdr/`), and the accepted architecture decisions (`docs/adr/`). Where this directory and an ADR disagree, **the ADR wins** — update this doc.
+This directory collects the high-level architecture for the Corum implementation. It is derived from the vision (`project/vision-inputs/`), the product decisions (`project/pdrs/`), and the accepted architecture decisions (`project/adrs/`). Where this directory and an ADR disagree, **the ADR wins** — update this doc.
 
 ## Documents
 

@@ -25,8 +25,8 @@ Each selection below names a library, the layer it belongs to, and the **only** 
 
 | Concern | Library | License | Why |
 |---|---|---|---|
-| YAML 1.2 parser/emitter | `yaml` (eemeli/yaml) | ISC | YAML 1.2 conformance (no Norway problem), comment preservation, round-trip stable emission. Required by [ADR-002](../adr/ADR-002-graph-file-format-and-cluster-boundaries.md#yaml-safety-constraints) |
-| JSON Schema validator | `ajv` + `ajv-formats` + `ajv-draft-04` | MIT | Fastest mainstream validator; supports Draft 7 / 2019-09 / 2020-12 per [ADR-004](../adr/ADR-004-template-pack-format.md) |
+| YAML 1.2 parser/emitter | `yaml` (eemeli/yaml) | ISC | YAML 1.2 conformance (no Norway problem), comment preservation, round-trip stable emission. Required by [ADR-002](../adrs/ADR-002-graph-file-format-and-cluster-boundaries.md#yaml-safety-constraints) |
+| JSON Schema validator | `ajv` + `ajv-formats` + `ajv-draft-04` | MIT | Fastest mainstream validator; supports Draft 7 / 2019-09 / 2020-12 per [ADR-004](../adrs/ADR-004-template-pack-format.md) |
 | JSON Schema from TS types (dev helper) | `ts-json-schema-generator` | MIT | Generate fixture JSON Schemas from TypeScript interfaces — dev-time only |
 | Property-based testing | `fast-check` | MIT | Identity parsing, template merge invariants, round-trip stability |
 
@@ -34,7 +34,7 @@ Each selection below names a library, the layer it belongs to, and the **only** 
 
 | Concern | Library | License | Why |
 |---|---|---|---|
-| Git | `isomorphic-git` | MIT | Pure JS reimplementation of Git — closest equivalent to C#'s LibGit2Sharp in spirit. No native bindings, no shell-out, no system `git` required. Works identically on Windows/macOS/Linux/CI containers. Fits the zero-infra mandate of [ADR-001](../adr/ADR-001-storage-and-interaction-architecture.md) |
+| Git | `isomorphic-git` | MIT | Pure JS reimplementation of Git — closest equivalent to C#'s LibGit2Sharp in spirit. No native bindings, no shell-out, no system `git` required. Works identically on Windows/macOS/Linux/CI containers. Fits the zero-infra mandate of [ADR-001](../adrs/ADR-001-storage-and-interaction-architecture.md) |
 | Diff between refs | `isomorphic-git` `walk()` + own diff | MIT | We only need name-only diff per ADR-001 §Cache Model |
 | Atomic file writes | `write-file-atomic` | ISC | Temp-sibling + atomic rename for mutation write path; handles cross-platform edge cases and replaces the bespoke recovery-journal contract |
 | Glob | `fast-glob` | MIT | For linter `ignore` patterns in `graph.yaml` |
@@ -94,10 +94,10 @@ Deferred — these are placeholder commitments, revisable when the UI ADR lands.
 
 - **ORMs (`drizzle`, `prisma`, `typeorm`)** — SQLite CTEs for recursive graph queries work better when written directly. ORMs get in the way of the projection queries. (`umzug` is migration-only and not an ORM.)
 - **`better-sqlite3`** — requires native bindings (node-gyp, platform compiler), violating the zero-native-toolchain constraint. `node:sqlite` (Node 22.5+, stable) covers the same synchronous SQLite API without native compilation.
-- **`js-yaml`** — YAML 1.1; suffers the Norway problem (`NO` parsed as `false`). Prohibited by [ADR-002](../adr/ADR-002-graph-file-format-and-cluster-boundaries.md#yaml-safety-constraints).
+- **`js-yaml`** — YAML 1.1; suffers the Norway problem (`NO` parsed as `false`). Prohibited by [ADR-002](../adrs/ADR-002-graph-file-format-and-cluster-boundaries.md#yaml-safety-constraints).
 - **`chalk`** — big dependency tree for what `picocolors` does in 100 lines.
 - **`lodash`** — modern TypeScript has what we need in the stdlib and in small focused packages.
-- **A graph database (Neo4j, Memgraph, TinkerGraph, Oxigraph)** — evaluated and rejected in [ADR-003](../adr/ADR-003-graph-loading-and-runtime-representation.md). Revisit for the hosted commercial tier.
+- **A graph database (Neo4j, Memgraph, TinkerGraph, Oxigraph)** — evaluated and rejected in [ADR-003](../adrs/ADR-003-graph-loading-and-runtime-representation.md). Revisit for the hosted commercial tier.
 - **A full CQRS framework** — commands and queries in `@corum/graph` are just typed functions.
 
 ---
