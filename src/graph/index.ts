@@ -160,7 +160,7 @@ export function listNodes(graph: Graph, filter: ListNodesFilter = {}): Node[] {
 }
 
 /** Whether a node belongs to an owner's transitive materialized parent chain. */
-export function isOwnedDescendant(graph: Graph, nodeId: string, ownerId: string): boolean {
+export function isOwnedDescendant(graph: Pick<Graph, 'nodesById'>, nodeId: string, ownerId: string): boolean {
   const seen = new Set<string>([nodeId])
   let parentId = graph.nodesById.get(nodeId)?.parentId
   while (parentId !== undefined && !seen.has(parentId)) {
@@ -345,7 +345,7 @@ function findParent(graph: Graph, nodeId: string): string | undefined {
   const node = graph.nodesById.get(nodeId)
   if (node) return node.parentId !== undefined && graph.nodesById.has(node.parentId) ? node.parentId : undefined
 
-  // For absent IDs (e.g. retired field IDs), walk the ID hierarchy in
+  // Fallback only for absent IDs (e.g. retired field IDs): walk the hierarchy in
   // 2-segment strides. Existing nodes use only materialized ownership.
   const parts = nodeId.split('.')
   let endIdx = parts.length - 2

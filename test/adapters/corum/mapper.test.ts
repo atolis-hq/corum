@@ -726,3 +726,19 @@ describe('mapDocument — gaps', () => {
     assert.ok(warnings[1].message.includes('duplicate-domain-type'))
   })
 })
+
+describe('prefix-related interchange roots', () => {
+  it('assigns an implicit edge endpoint to the longest declared root', () => {
+    const shortId = 'orders.DomainModel.foo'
+    const longId = shortId + '.bar'
+    const { nodes } = mapDocument(makeDoc({
+      nodes: { [shortId]: { type: 'DomainModel' }, [longId]: { type: 'DomainModel' } },
+      components: { schemas: { Payload: { type: 'object', properties: { value: { type: 'string' } } } } },
+      edges: [{ type: 'reads', from: longId + '.operations.read', to: '#/components/schemas/Payload' }],
+    }), SPEC_PATH)
+    assert.equal(nodes.find(node => node.id === shortId)?.parentId, undefined)
+    assert.equal(nodes.find(node => node.id === longId)?.parentId, undefined)
+    assert.ok(nodes.some(node => node.id === longId + '.schemas.Payload' && node.parentId === longId))
+    assert.ok(!nodes.some(node => node.id === shortId + '.schemas.Payload'))
+  })
+})

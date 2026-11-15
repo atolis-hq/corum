@@ -446,3 +446,79 @@ describe('deleteEdge', () => {
     assert.equal(snapshot(graph), before)
   })
 })
+
+describe('mutations preserve independent prefix-related roots', () => {
+  const rootId = 'orders.Schema.foo'
+  const independentId = rootId + '.bar'
+  const childId = rootId + '.fields.value'
+  const independentChildId = independentId + '.fields.value'
+
+  function fixture(): Graph {
+    return makeGraph([
+      makeNode(rootId),
+      makeNode(childId, { parentId: rootId, template: 'Field' }),
+      makeNode(independentId),
+      makeNode(independentChildId, { parentId: independentId, template: 'Field' }),
+      makeNode(CONSUMER),
+    ], [
+      makeEdge(rootId, 'has-field', childId),
+      makeEdge(independentId, 'has-field', independentChildId),
+      makeEdge(CONSUMER, 'maps-to', independentChildId),
+      makeEdge(childId, 'maps-to', independentChildId),
+    ])
+  }
+
+  for (const purge of [true, false]) {
+    it(`${purge ? 'hard' : 'soft'} delete affects only the owned subtree`, () => {
+      const graph = fixture()
+      const independentNodes = structuredClone([graph.nodesById.get(independentId), graph.nodesById.get(independentChildId)])
+      const independentEdges = structuredClone(graph.edgesByFrom.get(independentId))
+      const consumerEdges = structuredClone(graph.edgesByFrom.get(CONSUMER))
+      const result = deleteNode(graph, rootId, { purge, recordTrail: true })
+      assert.deepEqual(result.affectedIds, [rootId, childId])
+      assert.deepEqual([graph.nodesById.get(independentId), graph.nodesById.get(independentChildId)], independentNodes)
+      assert.deepEqual(graph.edgesByFrom.get(independentId), independentEdges)
+      assert.deepEqual(graph.edgesByFrom.get(CONSUMER), consumerEdges)
+      if (purge) {
+        assert.equal(graph.nodesById.has(rootId), false)
+        assert.equal(graph.nodesById.has(childId), false)
+        assert.equal(graph.edgesByTo.get(independentChildId)?.length, 2)
+      } else {
+        assert.equal(graph.nodesById.get(rootId)?.state, 'removed')
+        assert.equal(graph.nodesById.get(childId)?.state, 'removed')
+      }
+    })
+  }
+
+  it('rename moves only owned IDs and preserves the independent root and its edges', () => {
+    const graph = fixture()
+    const independentNodes = structuredClone([graph.nodesById.get(independentId), graph.nodesById.get(independentChildId)])
+    const independentEdges = structuredClone(graph.edgesByFrom.get(independentId))
+    const consumerEdges = structuredClone(graph.edgesByFrom.get(CONSUMER))
+    const { newId } = renameNode(graph, rootId, 'baz', true)
+    assert.equal(newId, 'orders.Schema.baz')
+    assert.deepEqual([graph.nodesById.get(independentId), graph.nodesById.get(independentChildId)], independentNodes)
+    assert.deepEqual(graph.edgesByFrom.get(independentId), independentEdges)
+    assert.deepEqual(graph.edgesByFrom.get(CONSUMER), consumerEdges)
+    assert.equal(graph.nodesById.get(newId + '.fields.value')?.parentId, newId)
+    assert.equal(graph.nodesById.has(rootId), false)
+    assert.equal(graph.nodesById.has(childId), false)
+    assert.ok(graph.edgesByFrom.get(newId + '.fields.value')?.some(edge => edge.to === independentChildId))
+    assert.deepEqual(graph.nodesById.get(newId)?.corum?.identity?.previousIds, [rootId])
+  })
+
+  it('allows an independent root under the destination prefix, but rejects exact descendant collisions atomically', () => {
+    const graph = fixture()
+    const destinationNeighbour = makeNode('orders.Schema.baz.other')
+    graph.nodesById.set(destinationNeighbour.id, destinationNeighbour)
+    renameNode(graph, rootId, 'baz', false)
+    assert.deepEqual(graph.nodesById.get(destinationNeighbour.id), destinationNeighbour)
+
+    const collisionGraph = fixture()
+    const collision = makeNode('orders.Schema.baz.fields.value')
+    collisionGraph.nodesById.set(collision.id, collision)
+    const before = structuredClone(collisionGraph)
+    assert.throws(() => renameNode(collisionGraph, rootId, 'baz', true), MutationError)
+    assert.deepEqual(collisionGraph, before)
+  })
+})

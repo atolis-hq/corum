@@ -310,7 +310,8 @@ function addSchemaLink(schemaLinks: Map<string, Set<string>>, from: string, to: 
 
 function resolveOwningRootNodeId(nodeId: string, rootNodeIds: string[]): string | undefined {
   if (nodeId.startsWith('#/')) return undefined
-  return rootNodeIds.find(rootNodeId => nodeId === rootNodeId || nodeId.startsWith(`${rootNodeId}.`))
+  // Interchange edge endpoints may be implicit; the longest declared root wins.
+  return [...rootNodeIds].sort((a, b) => b.length - a.length).find(rootNodeId => nodeId === rootNodeId || nodeId.startsWith(`${rootNodeId}.`))
 }
 
 function schemaRefName(ref: string): string | undefined {

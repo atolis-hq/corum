@@ -4,6 +4,7 @@ import { buildAliasMap } from './alias.js'
 import { MutationError } from './errors.js'
 import {
   collectEdgesTouching,
+  collectSubtreeIds,
   insertEdgeIntoIndexes,
   mutationDiagnostic,
   mutationTimestamp,
@@ -38,7 +39,7 @@ export function replaceLastSegment(id: string, newName: string): string {
 
 /**
  * First-class rename (design §3, §14a). Rewrites the node ID, every
- * descendant ID (exact-segment prefix), parentId fields, and every edge
+ * owned descendant ID, parentId fields, and every edge
  * endpoint referencing an affected ID; optionally records the trail
  * (`corum.identity.previousIds` + `renamed-from` edge). Validates everything before the
  * first write — a thrown MutationError leaves the graph untouched.
@@ -70,10 +71,11 @@ export function renameNode(
     throw new MutationError([mutationDiagnostic('error', `cannot rename ${oldId}: new name equals current name`, oldId)])
   }
 
-  const newPrefix = `${newId}.`
-  for (const id of graph.nodesById.keys()) {
-    if (id === newId || id.startsWith(newPrefix)) {
-      errors.push(mutationDiagnostic('error', `cannot rename ${oldId} to ${newId}: node ${id} already exists`, oldId))
+  // Ownership selects which nodes move; prefix replacement only derives their new IDs.
+  const idMap = new Map(collectSubtreeIds(graph, oldId).map(id => [id, newId + id.slice(oldId.length)]))
+  for (const targetId of idMap.values()) {
+    if (graph.nodesById.has(targetId)) {
+      errors.push(mutationDiagnostic('error', `cannot rename ${oldId} to ${newId}: node ${targetId} already exists`, oldId))
     }
   }
   if (errors.length > 0) throw new MutationError(errors)
@@ -85,14 +87,6 @@ export function renameNode(
       `new id ${newId} is a retired id (previously renamed to ${aliasMap.get(newId)}); the live node wins for resolution`,
       newId,
     ))
-  }
-
-  // -- Step 2: build the id map (node + exact-segment descendants) ---------
-  const oldPrefix = `${oldId}.`
-  const idMap = new Map<string, string>()
-  idMap.set(oldId, newId)
-  for (const id of graph.nodesById.keys()) {
-    if (id.startsWith(oldPrefix)) idMap.set(id, newId + id.slice(oldId.length))
   }
 
   // -- Step 3: collect affected edges (exact endpoint match) ---------------
