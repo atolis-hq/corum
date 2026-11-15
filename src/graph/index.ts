@@ -159,12 +159,23 @@ export function listNodes(graph: Graph, filter: ListNodesFilter = {}): Node[] {
   })
 }
 
+/** Whether a node belongs to an owner's transitive materialized parent chain. */
+export function isOwnedDescendant(graph: Graph, nodeId: string, ownerId: string): boolean {
+  const seen = new Set<string>([nodeId])
+  let parentId = graph.nodesById.get(nodeId)?.parentId
+  while (parentId !== undefined && !seen.has(parentId)) {
+    if (parentId === ownerId) return true
+    seen.add(parentId)
+    parentId = graph.nodesById.get(parentId)?.parentId
+  }
+  return false
+}
+
 export function getCluster(graph: Graph, nodeId: string): ClusterResult {
   const root = graph.nodesById.get(nodeId)
   if (!root) throw new QueryError(`Node not found: ${nodeId}`)
 
-  const prefix = `${nodeId}.`
-  const children = [...graph.nodesById.values()].filter(node => node.id.startsWith(prefix))
+  const children = [...graph.nodesById.values()].filter(node => isOwnedDescendant(graph, node.id, nodeId))
   const clusterIds = new Set([nodeId, ...children.map(node => node.id)])
   const edges: Edge[] = []
   const seen = new Set<string>()
@@ -268,9 +279,8 @@ export function expandExternalNodes(graph: Graph, externalIds: Iterable<string>)
 
   for (const id of dataQueue) {
     // Include structural children (fields, values, mappings)
-    const prefix = `${id}.`
     for (const childId of graph.nodesById.keys()) {
-      if (childId.startsWith(prefix)) result.add(childId)
+      if (isOwnedDescendant(graph, childId, id)) result.add(childId)
     }
     // Follow outbound uses-type one hop to collect referenced enum/schema types
     for (const edge of graph.edgesByFrom.get(id) ?? []) {
@@ -279,9 +289,8 @@ export function expandExternalNodes(graph: Graph, externalIds: Iterable<string>)
       if (!target) continue
       result.add(edge.to)
       if (isDataNodeTemplate(graph, target.template)) {
-        const targetPrefix = `${edge.to}.`
         for (const childId of graph.nodesById.keys()) {
-          if (childId.startsWith(targetPrefix)) result.add(childId)
+          if (isOwnedDescendant(graph, childId, edge.to)) result.add(childId)
         }
       }
     }
@@ -298,10 +307,9 @@ export function getLinkedFields(graph: Graph, nodeId: string): LinkedFieldsResul
   const root = graph.nodesById.get(rootId)
   if (!root) throw new QueryError(`Node not found: ${nodeId}`)
 
-  const prefix = `${rootId}.`
   const ownedFieldIds = new Set(
     [...graph.nodesById.entries()]
-      .filter(([id, node]) => id.startsWith(prefix) && templateHasRole(graph.templates, node.template, 'field'))
+      .filter(([id, node]) => isOwnedDescendant(graph, id, rootId) && templateHasRole(graph.templates, node.template, 'field'))
       .map(([id]) => id),
   )
 
@@ -335,12 +343,10 @@ export function getLinkedFields(graph: Graph, nodeId: string): LinkedFieldsResul
 
 function findParent(graph: Graph, nodeId: string): string | undefined {
   const node = graph.nodesById.get(nodeId)
-  if (node?.parentId !== undefined && graph.nodesById.has(node.parentId)) {
-    return node.parentId
-  }
+  if (node) return node.parentId !== undefined && graph.nodesById.has(node.parentId) ? node.parentId : undefined
 
-  // Fallback for nodes without a materialised parentId (e.g. adapter output
-  // before a load round-trip): walk the ID hierarchy in 2-segment strides.
+  // For absent IDs (e.g. retired field IDs), walk the ID hierarchy in
+  // 2-segment strides. Existing nodes use only materialized ownership.
   const parts = nodeId.split('.')
   let endIdx = parts.length - 2
   while (endIdx >= 1) {
@@ -361,16 +367,21 @@ export function computeClusterOverlay(
   clusterRootId: string,
 ): ClusterOverlay | null {
   const overlay = multi.overlay(viewingRef)
-  const prefix = `${clusterRootId}.`
+  const graphsByRef = new Map([multi.default, ...multi.branches].map(branch => [branch.ref, branch.graph]))
 
   const fields: ClusterOverlayField[] = [...overlay.nodes.values()]
     .filter(node => {
       if (OVERLAY_EXCLUDED.has(node.ghostState)) return false
-      if (!node.id.startsWith(prefix)) return false
-      return overlayRefs.some(ref => node.presence.has(ref))
+      return overlayRefs.some(ref => {
+        const graph = graphsByRef.get(ref)
+        return node.presence.has(ref) && graph !== undefined && isOwnedDescendant(graph, node.id, clusterRootId)
+      })
     })
     .map(node => {
-      const sourceRef = overlayRefs.find(ref => node.presence.has(ref)) ?? viewingRef
+      const sourceRef = overlayRefs.find(ref => {
+        const graph = graphsByRef.get(ref)
+        return node.presence.has(ref) && graph !== undefined && isOwnedDescendant(graph, node.id, clusterRootId)
+      }) ?? viewingRef
       const sourceNode = node.presence.get(sourceRef) ?? [...node.presence.values()][0]
       return { id: node.id, ghostState: node.ghostState, sourceRef, node: sourceNode }
     })

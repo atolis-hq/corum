@@ -36,6 +36,7 @@ export function mapDocument(
   const allSchemas = (document.components?.schemas ?? {}) as Record<string, unknown>
   // Maps #/components/schemas/X and #/components/schemas/X/properties/Y to materialized node IDs
   const refToNodeId = new Map<string, string>()
+  const documentNodeIds = new Set(Object.keys(document.nodes).map(normalizeNodeId))
   const rootNodeIds = getRootNodeIds(document.nodes)
   // Pre-pass: determine canonical component for each schema (shared if referenced by 2+ components)
   const schemaComponents = computeSchemaComponents(document, allSchemas)
@@ -72,7 +73,7 @@ export function mapDocument(
       properties['x-aka'] = entry['x-aka']
     }
 
-    const node = makeNode(entry.type, component, specPath, normalizedNodeId, entry.provenance, properties)
+    const node = makeNode(entry.type, component, specPath, normalizedNodeId, entry.provenance, properties, getDocumentParentId(normalizedNodeId, documentNodeIds))
     nodes.push(node)
 
     if (schemaName) {
@@ -168,10 +169,17 @@ function computeSchemaComponents(
   return result
 }
 
+// Interchange documents encode explicit owned entries as {parent}.{section}.{name}.
+// Materialize that relationship at the adapter boundary, before graph queries or writes.
+function getDocumentParentId(nodeId: string, nodeIds: Set<string>): string | undefined {
+  const parentId = nodeId.split('.').slice(0, -2).join('.')
+  return nodeIds.has(parentId) ? parentId : undefined
+}
+
 function getRootNodeIds(nodes: Record<string, CorumInterchangeDocument['nodes'][string]>): string[] {
-  const nodeIds = Object.keys(nodes).map(normalizeNodeId)
-  return nodeIds
-    .filter(nodeId => !nodeIds.some(other => other !== nodeId && nodeId.startsWith(`${other}.`)))
+  const nodeIds = new Set(Object.keys(nodes).map(normalizeNodeId))
+  return [...nodeIds]
+    .filter(nodeId => getDocumentParentId(nodeId, nodeIds) === undefined)
     .sort((a, b) => b.length - a.length)
 }
 
@@ -388,7 +396,7 @@ function materializeStandaloneSchema(
       if (typeof value !== 'string') continue
       const valueId = `${schemaId}.values.${value}`
       refToNodeId.set(`${schemaRef}/properties/${value}`, valueId)
-      nodes.push(makeNode('EnumValue', component, specPath, valueId, undefined, { name: value }))
+      nodes.push(makeNode('EnumValue', component, specPath, valueId, undefined, { name: value }, schemaId))
       edges.push(makeHasValueEdge(schemaId, valueId))
     }
     return schemaId
@@ -401,7 +409,7 @@ function materializeStandaloneSchema(
     const fieldRef = `${schemaRef}/properties/${fieldName}`
     if (!refToNodeId.has(fieldRef)) refToNodeId.set(fieldRef, fieldId)
 
-    const fieldNode = makeNode('Field', component, specPath, fieldId, undefined, {})
+    const fieldNode = makeNode('Field', component, specPath, fieldId, undefined, {}, schemaId)
     const required = Array.isArray(schemaDef?.required) && schemaDef.required.includes(fieldName)
     fieldNode.properties = resolveFieldProperties(
       fieldName, rawProp as Record<string, unknown>, required,
@@ -461,7 +469,7 @@ function expandSchema(
         if (typeof value !== 'string') continue
         const valueId = `${enumId}.values.${value}`
         refToNodeId.set(`${schemaRef}/properties/${value}`, valueId)
-        nodes.push(makeNode('EnumValue', enumComponent, specPath, valueId, undefined, { name: value }))
+        nodes.push(makeNode('EnumValue', enumComponent, specPath, valueId, undefined, { name: value }, enumId))
         edges.push(makeHasValueEdge(enumId, valueId))
       }
     }
@@ -489,7 +497,7 @@ function expandSchema(
 
   if (!refToNodeId.has(schemaRef)) refToNodeId.set(schemaRef, schemaId)
 
-  nodes.push(makeNode('Schema', component, specPath, schemaId, undefined, {}))
+  nodes.push(makeNode('Schema', component, specPath, schemaId, undefined, {}, rootNodeId))
   edges.push(makeHasFieldEdge(rootNodeId, schemaId))
 
   const localMappings = new Map<string, string>()
@@ -499,7 +507,7 @@ function expandSchema(
     const fieldRef = `${schemaRef}/properties/${fieldName}`
     if (!refToNodeId.has(fieldRef)) refToNodeId.set(fieldRef, fieldId)
 
-    const fieldNode = makeNode('Field', component, specPath, fieldId, undefined, {})
+    const fieldNode = makeNode('Field', component, specPath, fieldId, undefined, {}, schemaId)
     const required = Array.isArray(schemaDef?.required) && schemaDef.required.includes(fieldName)
 
     fieldNode.properties = resolveFieldProperties(
@@ -593,7 +601,7 @@ function createMapping(
   const mappingId = `${schemaId}.mappings.${mappingName}`
   localMappings.set(mappingName, mappingId)
 
-  const mappingNode = makeNode('Mapping', component, specPath, mappingId, undefined, {})
+  const mappingNode = makeNode('Mapping', component, specPath, mappingId, undefined, {}, schemaId)
   const props: Record<string, unknown> = {}
 
   if (!addlDef || typeof addlDef === 'boolean') {
@@ -653,9 +661,11 @@ function makeNode(
   id: string,
   provenance: CorumInterchangeProvenance | undefined,
   properties: Record<string, unknown>,
+  parentId?: string,
 ): Node {
   return {
     id,
+    ...(parentId !== undefined && { parentId }),
     template,
     component,
     state: 'implemented',

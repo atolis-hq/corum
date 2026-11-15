@@ -2,10 +2,10 @@ import { describe, it, before } from 'node:test'
 import assert from 'node:assert/strict'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { listNodes, getCluster, getLinkedFields, getGraphSummary, searchNodes, getLineage } from '../src/graph/index.js'
+import { computeClusterOverlay, listNodes, getCluster, getLinkedFields, getGraphSummary, searchNodes, getLineage } from '../src/graph/index.js'
 import { loadGraph } from '../src/loader/index.js'
 import { QueryError } from '../src/schema/index.js'
-import type { Edge, Graph, Node, Template } from '../src/schema/index.js'
+import type { Edge, Graph, MultiGraph, Node, Template } from '../src/schema/index.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..', '..')
@@ -212,6 +212,40 @@ describe('graph queries', () => {
   })
 
   describe('getCluster', () => {
+    it('uses transitive ownership for prefix-related roots and internal edges', () => {
+      const root = createNode('orders.Schema.foo')
+      const other = createNode(root.id + '.bar')
+      const schema = { ...createNode(root.id + '.schemas.data'), parentId: root.id }
+      const field = { ...createNode(schema.id + '.fields.value'), parentId: schema.id }
+      const otherField = { ...createNode(other.id + '.fields.value'), parentId: other.id }
+      const internal = createEdge('internal', schema.id, field.id)
+      const external = createEdge('external', field.id, otherField.id)
+      const ownedGraph: Graph = {
+        ...graph,
+        nodesById: new Map([root, other, schema, field, otherField].map(node => [node.id, node])),
+        edgesByFrom: new Map([[schema.id, [internal]], [field.id, [external]]]),
+        edgesByTo: new Map([[field.id, [internal]], [otherField.id, [external]]]),
+      }
+      assert.deepEqual(getCluster(ownedGraph, root.id).children, [schema, field])
+      assert.deepEqual(getCluster(ownedGraph, root.id).edges, [internal])
+      assert.deepEqual(getCluster(ownedGraph, other.id).children, [otherField])
+      assert.deepEqual(getCluster(ownedGraph, schema.id).children, [field])
+      const branch = { ref: 'feature', isDefault: false, graph: ownedGraph }
+      const multi: MultiGraph = {
+        default: { ref: 'main', isDefault: true, graph: { ...ownedGraph, nodesById: new Map() } },
+        branches: [branch], branchResults: [],
+        overlay: viewingRef => ({
+          viewingRef, edges: new Map(),
+          nodes: new Map([...ownedGraph.nodesById.values()].map(node => [node.id, {
+            id: node.id, ghostState: 'ghost-single', presence: new Map([['feature', node]]),
+          }])),
+        }),
+        diff: () => { throw new Error('unused') },
+      }
+      assert.deepEqual(computeClusterOverlay(multi, 'main', ['feature'], root.id)?.fields.map(node => node.id), [schema.id, field.id])
+      assert.deepEqual(computeClusterOverlay(multi, 'main', ['feature'], other.id)?.fields.map(node => node.id), [otherField.id])
+    })
+
     it('returns root + 22 children for DomainModel cluster', () => {
       const cluster = getCluster(graph, 'orders.DomainModel.order')
       assert.equal(cluster.root.id, 'orders.DomainModel.order')

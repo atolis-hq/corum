@@ -71,7 +71,7 @@ function makeTestGraph(): Graph {
     properties: { description: 'An order', schema: '#/schemas/order' },
   }
   const schemaNode = {
-    id: 'orders.Order.schemas.order',
+    id: 'orders.Order.schemas.order', parentId: 'orders.Order',
     template: 'Schema',
     component: 'orders',
     state: 'agreed' as const,
@@ -81,7 +81,7 @@ function makeTestGraph(): Graph {
     properties: { description: 'Order schema' },
   }
   const fieldNode = {
-    id: 'orders.Order.schemas.order.fields.id',
+    id: 'orders.Order.schemas.order.fields.id', parentId: 'orders.Order.schemas.order',
     template: 'Field',
     component: 'orders',
     state: 'agreed' as const,
@@ -101,7 +101,7 @@ function makeTestGraph(): Graph {
     properties: { description: 'Billing order schema' },
   }
   const externalFieldNode = {
-    id: 'billing.Invoice.schemas.order.fields.id',
+    id: 'billing.Invoice.schemas.order.fields.id', parentId: 'billing.Invoice.schemas.order',
     template: 'Field',
     component: 'billing',
     state: 'agreed' as const,
@@ -111,7 +111,7 @@ function makeTestGraph(): Graph {
     properties: { type: 'uuid' },
   }
   const operationNode = {
-    id: 'orders.Order.operations.cancel',
+    id: 'orders.Order.operations.cancel', parentId: 'orders.Order',
     template: 'DomainOperation',
     component: 'orders',
     state: 'proposed' as const,
@@ -739,19 +739,19 @@ describe('web server', () => {
             properties: {},
           }],
           ['orders.Order.schemas.prices', {
-            id: 'orders.Order.schemas.prices', template: 'Schema', component: 'orders',
+            id: 'orders.Order.schemas.prices', parentId: 'orders.Order', template: 'Schema', component: 'orders',
             state: 'agreed' as const, stability: 'stable' as const,
             schemaVersion: '1', lastModifiedAt: '2026-04-18',
             properties: {},
           }],
           ['orders.Order.schemas.prices.fields.pricesByZone', {
-            id: 'orders.Order.schemas.prices.fields.pricesByZone', template: 'Field', component: 'orders',
+            id: 'orders.Order.schemas.prices.fields.pricesByZone', parentId: 'orders.Order.schemas.prices', template: 'Field', component: 'orders',
             state: 'agreed' as const, stability: 'stable' as const,
             schemaVersion: '1', lastModifiedAt: '2026-04-18',
             properties: { $ref: '#/mappings/pricesByZone', nullable: false },
           }],
           ['orders.Order.schemas.prices.mappings.pricesByZone', {
-            id: 'orders.Order.schemas.prices.mappings.pricesByZone', template: 'Mapping', component: 'orders',
+            id: 'orders.Order.schemas.prices.mappings.pricesByZone', parentId: 'orders.Order.schemas.prices', template: 'Mapping', component: 'orders',
             state: 'agreed' as const, stability: 'stable' as const,
             schemaVersion: '1', lastModifiedAt: '2026-04-18',
             properties: { type: 'decimal' },

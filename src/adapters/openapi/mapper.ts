@@ -126,7 +126,7 @@ export function mapDocument(
         nodes.push(enumNode)
         s.enum.forEach((value) => {
           const valueId = deriveNodeId('enumValue', undefined, String(value), enumId, 'values')
-          const valueNode = makeNode(packConfig.constructs.enumValue?.template ?? 'EnumValue', component, entry.spec, valueId)
+          const valueNode = makeNode(packConfig.constructs.enumValue?.template ?? 'EnumValue', component, entry.spec, valueId, enumId)
           valueNode.properties = { name: String(value) }
           nodes.push(valueNode)
           edges.push({ id: `${enumId}__has-value__${valueId}`, from: enumId, to: valueId, type: 'has-value', state: 'implemented', stability: 'unstable' })
@@ -351,9 +351,10 @@ function extractParameters(
   return Object.keys(parameters).length > 0 ? parameters : undefined
 }
 
-function makeNode(template: string, component: string, specPath: string, id: string): Node {
+function makeNode(template: string, component: string, specPath: string, id: string, parentId?: string): Node {
   return {
     id,
+    ...(parentId !== undefined && { parentId }),
     template,
     component,
     state: 'implemented',
@@ -426,7 +427,7 @@ function createInlineSchema(
 ): string {
   const schemaId = deriveNodeId('schema', undefined, name, parentId, section)
   const [component] = parentId.split('.')
-  const node = makeNode(packConfig.constructs.requestSchema?.template ?? 'Schema', component, specPath, schemaId)
+  const node = makeNode(packConfig.constructs.requestSchema?.template ?? 'Schema', component, specPath, schemaId, parentId)
   nodes.push(node)
   edges.push({ id: `${parentId}__has-field__${schemaId}`, from: parentId, to: schemaId, type: 'has-field', state: 'implemented', stability: 'unstable' })
   const localRef = `#/${section}/${name}`
@@ -489,7 +490,7 @@ function createMapping(
 
   const [component] = parentId.split('.')
   const mappingId = `${parentId}.mappings.${mappingName}`
-  const mappingNode = makeNode('Mapping', component, specPath, mappingId)
+  const mappingNode = makeNode('Mapping', component, specPath, mappingId, parentId)
   const props: Record<string, unknown> = {}
 
   if (typeof addlRaw === 'boolean' || addlRaw === undefined) {
@@ -575,7 +576,7 @@ function emitFields(
     const fieldSchema = resolveAllOfRef(rawFieldSchema as OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject)
     const fieldId = deriveNodeId('field', undefined, fieldName, parentId, section)
     const [component] = parentId.split('.')
-    const fieldNode = makeNode(packConfig.constructs.schemaProperty?.template ?? 'Field', component, specPath, fieldId)
+    const fieldNode = makeNode(packConfig.constructs.schemaProperty?.template ?? 'Field', component, specPath, fieldId, parentId)
     const required = Array.isArray(schema.required) && schema.required.includes(fieldName)
 
     if (isRefSchema(fieldSchema)) {

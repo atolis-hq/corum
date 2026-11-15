@@ -292,13 +292,26 @@ describe('collapseClusterSchemas', () => {
       assert.deepEqual(result.schemas['s']['name'].edges, { 'derived-from': [externalFieldId] })
     })
 
+    it('retains field edges to an independent root whose ID extends the cluster ID', () => {
+      const root = node(ROOT, 'DomainModel')
+      const schema = node(root.id + '.schemas.s', 'Schema')
+      const field = node(schema.id + '.fields.id', 'Field', { type: 'uuid' })
+      const otherRoot = { ...node(root.id + '.other', 'Schema'), parentId: undefined }
+      const otherField = node(otherRoot.id + '.fields.id', 'Field', { type: 'uuid' })
+      const crossEdge = edge(field.id, otherField.id, 'maps-to')
+      const g = graph([root, schema, field, otherRoot, otherField], [crossEdge])
+      const result = collapseClusterSchemas(g, cluster(root, [schema, field]))
+      assert.deepEqual(result.schemas.s.id.edges, { 'maps-to': [otherField.id] })
+    })
+
     it('omits field edges where target is within the same cluster', () => {
       const root = node(ROOT, 'DomainModel')
       const schema = node(`${ROOT}.schemas.s`, 'Schema')
       const f1 = node(`${ROOT}.schemas.s.fields.id`, 'Field', { type: 'uuid', nullable: false })
       const f2 = node(`${ROOT}.schemas.t.fields.refId`, 'Field', { type: 'uuid', nullable: false })
       const intraEdge = edge(f1.id, f2.id, 'maps-to')
-      const g = graph([root, schema, f1, f2], [intraEdge])
+      const targetSchema = node(`${ROOT}.schemas.t`, 'Schema')
+      const g = graph([root, schema, targetSchema, f1, f2], [intraEdge])
       const c = cluster(root, [schema, f1, f2])
 
       const result = collapseClusterSchemas(g, c)

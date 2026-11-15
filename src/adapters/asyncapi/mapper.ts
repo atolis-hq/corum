@@ -319,7 +319,7 @@ export function mapDocument(
       nodes.push(makeNode(packConfig.constructs['enumDefinition']?.template ?? 'EnumDefinition', component, entry.spec, registeredId))
       for (const value of s.enum) {
         const valueId = deriveNodeId('enumValue', component, String(value), { parentId: registeredId, section: 'values' })
-        const valueNode = makeNode(packConfig.constructs['enumValue']?.template ?? 'EnumValue', component, entry.spec, valueId)
+        const valueNode = makeNode(packConfig.constructs['enumValue']?.template ?? 'EnumValue', component, entry.spec, valueId, registeredId)
         valueNode.properties = { name: String(value) }
         nodes.push(valueNode)
         edges.push({ id: `${registeredId}__has-value__${valueId}`, from: registeredId, to: valueId, type: 'has-value', state: 'implemented', stability: 'unstable' })
@@ -405,7 +405,7 @@ export function mapDocument(
             if (sourceSchema) {
               const schemaKey = payloadSchemaName
               const schemaId = deriveNodeId('schema', component, schemaKey, { parentId: eventId, section: 'schemas' })
-              nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, entry.spec, schemaId))
+              nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, entry.spec, schemaId, eventId))
               edges.push({ id: `${eventId}__has-field__${schemaId}`, from: eventId, to: schemaId, type: 'has-field', state: 'implemented', stability: 'unstable' })
               emitFields(sourceSchema, schemaId, 'fields', eventId, packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, new Map(), new Map())
               properties.payload = `#/schemas/${schemaKey}`
@@ -413,7 +413,7 @@ export function mapDocument(
           }
         } else if (rawPayload.type === 'object' && rawPayload.properties) {
           const schemaId = deriveNodeId('schema', component, messageName, { parentId: eventId, section: 'schemas' })
-          nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, entry.spec, schemaId))
+          nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, entry.spec, schemaId, eventId))
           edges.push({ id: `${eventId}__has-field__${schemaId}`, from: eventId, to: schemaId, type: 'has-field', state: 'implemented', stability: 'unstable' })
           emitFields(rawPayload as { properties?: Record<string, unknown>; required?: string[] }, schemaId, 'fields', eventId, packConfig, entry.spec, nodes, edges, diagnostics, sharedSchemas, sourceSchemas, new Map(), new Map())
           properties.payload = `#/schemas/${messageName}`
@@ -442,9 +442,10 @@ export function mapDocument(
   return { nodes, edges, diagnostics }
 }
 
-function makeNode(template: string, component: string, specPath: string, id: string): Node {
+function makeNode(template: string, component: string, specPath: string, id: string, parentId?: string): Node {
   return {
     id,
+    ...(parentId !== undefined && { parentId }),
     template,
     component,
     state: 'implemented',
@@ -504,7 +505,7 @@ function resolveSchemaRef(
     if (src) {
       const inlineId = deriveNodeId('schema', component, schemaName, { parentId: rootId, section: 'schemas' })
       if (!nodes.some(n => n.id === inlineId)) {
-        nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, specPath, inlineId))
+        nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, specPath, inlineId, rootId))
         edges.push({ id: `${rootId}__has-field__${inlineId}`, from: rootId, to: inlineId, type: 'has-field', state: 'implemented', stability: 'unstable' })
         const localRef = `#/schemas/${schemaName}`
         localSchemas.set(schemaName, localRef)
@@ -537,7 +538,7 @@ function createMapping(
   if (existingId) return existingId
 
   const mappingId = `${parentId}.mappings.${mappingName}`
-  const mappingNode = makeNode('Mapping', component, specPath, mappingId)
+  const mappingNode = makeNode('Mapping', component, specPath, mappingId, parentId)
   const props: Record<string, unknown> = {}
 
   if (!addlRaw || typeof addlRaw === 'boolean') {
@@ -597,7 +598,7 @@ function emitFields(
     const resolvedSchemaId = componentSchemaIdOf(rawFieldSchema)
     const fieldSchema = resolveAllOfRef(rawFieldSchema)
     const fieldId = deriveNodeId('field', component, fieldName, { parentId, section })
-    const fieldNode = makeNode(packConfig.constructs['payloadField']?.template ?? 'Field', component, specPath, fieldId)
+    const fieldNode = makeNode(packConfig.constructs['payloadField']?.template ?? 'Field', component, specPath, fieldId, parentId)
     const required = Array.isArray(schema.required) && schema.required.includes(fieldName)
 
     // Resolve reference: prefer x-parser-schema-id (resolved by @asyncapi/parser), fall back to literal $ref
@@ -638,7 +639,7 @@ function emitFields(
         const schemaParent = rootId ?? parentId
         const inlineId = deriveNodeId('schema', component, fieldName, { parentId: schemaParent, section: 'schemas' })
         if (!nodes.some(n => n.id === inlineId)) {
-          nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, specPath, inlineId))
+          nodes.push(makeNode(packConfig.constructs['payloadSchema']?.template ?? 'Schema', component, specPath, inlineId, schemaParent))
           edges.push({ id: `${schemaParent}__has-field__${inlineId}`, from: schemaParent, to: inlineId, type: 'has-field', state: 'implemented', stability: 'unstable' })
           const localRef = `#/schemas/${fieldName}`
           localSchemas.set(fieldName, localRef)
