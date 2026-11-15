@@ -78,7 +78,9 @@ properties:
           description: |
             Explicit ownership: a node ID names the parent (which must exist in
             this document); null declares an independent root. Takes precedence
-            over ID shape. Omit for legacy inference: drop the last two segments
+            over ID shape. An explicit parent must be the direct owner in ID
+            terms: {parentId}.{section}.{name}. Omit for legacy inference: drop
+            the last two segments
             if the candidate exists and has at least three segments. Unconventional
             section names emit a heuristic warning, but still infer ownership.
         title:

@@ -190,8 +190,17 @@ function resolveDocumentParents(
           severity: 'error', file: specPath,
           message: `Node '${nodeId}' references unknown explicit parent '${parentId}'`,
         })
+      } else if (parentId !== undefined) {
+        const prefix = `${parentId}.`
+        const childSegments = nodeId.startsWith(prefix) ? nodeId.slice(prefix.length).split('.') : []
+        if (childSegments.length !== 2 || childSegments.some(segment => segment.length === 0)) {
+          diagnostics.push({
+            severity: 'error', file: specPath,
+            message: `Node '${nodeId}' explicit parent '${parentId}' must be its direct owner: expected {parentId}.{section}.{name}`,
+          })
+        }
       }
-      // Keep an unresolved reference visible; never reinterpret it as a root.
+      // Keep invalid references visible; error diagnostics prevent importing this entry.
       parents.set(nodeId, parentId)
       continue
     }

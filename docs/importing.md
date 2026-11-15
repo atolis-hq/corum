@@ -31,6 +31,7 @@ Each node entry may set `parentId` to another node ID in the same document,
 or to `null` to declare an independent root. Explicit ownership takes precedence
 over ID shape; an unknown explicit parent is an error. Node and parent IDs use
 the same component normalization (for example, `_` becomes `_unresolved`).
+An explicit parent must be the direct owner in ID terms: `{parentId}.{section}.{name}`.
 
 When `parentId` is omitted, compatibility inference drops the last two ID
 segments and uses that parent only if it exists and has at least three segments.

@@ -778,17 +778,37 @@ describe('mapDocument — explicit ownership', () => {
     assert.deepEqual(diagnostics, [])
   })
 
-  it('normalizes explicit parent IDs and gives them precedence over ID shape', () => {
+  it('normalizes explicit parent IDs for valid direct ownership', () => {
     const { nodes, diagnostics } = mapDocument(makeDoc({
       nodes: {
         '_.Schema.foo': { type: 'Schema' },
-        '_.Schema.other': { type: 'Schema' },
-        '_.Schema.foo.fields.bar': { type: 'Field', parentId: '_.Schema.other' },
+        '_.Schema.foo.fields.bar': { type: 'Field', parentId: '_.Schema.foo' },
       },
     }), SPEC_PATH)
-    assert.equal(nodes[2].parentId, '_unresolved.Schema.other')
+    assert.equal(nodes[1].parentId, '_unresolved.Schema.foo')
     assert.deepEqual(diagnostics, [])
   })
+
+  for (const [description, nodeId, parentId] of [
+    ['unrelated parent', 'orders.Schema.foo.fields.bar', 'orders.Schema.other'],
+    ['ancestor more than one level up', 'orders.Schema.foo.fields.bar.fields.id', 'orders.Schema.foo'],
+    ['self parent', 'orders.Schema.foo', 'orders.Schema.foo'],
+    ['empty section', 'orders.Schema.foo..bar', 'orders.Schema.foo'],
+    ['empty name', 'orders.Schema.foo.fields.', 'orders.Schema.foo'],
+  ]) {
+    it('reports invalid direct ownership: ' + description, () => {
+      const { nodes, diagnostics } = mapDocument(makeDoc({
+        nodes: {
+          [parentId]: { type: 'Schema' },
+          [nodeId]: { type: 'Field', parentId },
+        },
+      }), SPEC_PATH)
+      assert.equal(nodes.find(n => n.id === nodeId)?.parentId, parentId)
+      assert.equal(diagnostics.length, 1)
+      assert.equal(diagnostics[0].severity, 'error')
+      assert.match(diagnostics[0].message, /must be its direct owner/)
+    })
+  }
 
   it('reports an unknown explicit parent without silently making a root', () => {
     const { nodes, diagnostics } = mapDocument(makeDoc({
