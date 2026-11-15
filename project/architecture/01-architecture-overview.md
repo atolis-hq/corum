@@ -3,7 +3,7 @@
 **Status:** Draft v0.1
 **Last updated:** 2026-04-16
 **Supersedes:** n/a
-**Relates to:** [ADR-001](../adr/ADR-001-storage-and-interaction-architecture.md), [ADR-002](../adr/ADR-002-graph-file-format-and-cluster-boundaries.md), [ADR-003](../adr/ADR-003-graph-loading-and-runtime-representation.md), [ADR-003b](../adr/ADR-003b-core-logical-data-model.md), [ADR-004](../adr/ADR-004-template-pack-format.md), [ADR-005](../adr/ADR-005-mcp-interface-design.md), [ADR-006](../adr/ADR-006-linter-and-validator.md)
+**Relates to:** [ADR-001](../adrs/ADR-001-storage-and-interaction-architecture.md), [ADR-002](../adrs/ADR-002-graph-file-format-and-cluster-boundaries.md), [ADR-003](../adrs/ADR-003-graph-loading-and-runtime-representation.md), [ADR-003b](../adrs/ADR-003b-core-logical-data-model.md), [ADR-004](../adrs/ADR-004-template-pack-format.md), [ADR-005](../adrs/ADR-005-mcp-interface-design.md), [ADR-006](../adrs/ADR-006-linter-and-validator.md)
 
 ---
 
@@ -21,13 +21,13 @@ The logical data model, file format, and every major decision below are settled 
 
 These are the non-negotiable properties of the implementation. They constrain every decision below.
 
-1. **The graph model is uniform.** Everything is a node or an edge. Fields, enum values, invariants, and operations are first-class nodes at runtime, even though they are grouped into cluster files for readability ([ADR-002](../adr/ADR-002-graph-file-format-and-cluster-boundaries.md), [ADR-003b](../adr/ADR-003b-core-logical-data-model.md)).
+1. **The graph model is uniform.** Everything is a node or an edge. Fields, enum values, invariants, and operations are first-class nodes at runtime, even though they are grouped into cluster files for readability ([ADR-002](../adrs/ADR-002-graph-file-format-and-cluster-boundaries.md), [ADR-003b](../adrs/ADR-003b-core-logical-data-model.md)).
 2. **The engine knows core semantic roles, not hardcoded node type names.** Every node type, including `Field`, is still declared by template YAML. A small set of core templates declare reserved semantic roles such as `field`, `enum-definition`, and `enum-value`; graph and lint rules may depend on those roles, never on the literal template name. A team can rename or extend the template while preserving the role contract.
 3. **Template packs are data, not code.** A pack is a directory of YAML files — a `pack.yaml` manifest plus one template YAML per node type. No TypeScript, no build step, no published npm package required. The engine discovers packs by path (built-ins, workspace, local directory, or fetched archive) and loads them dynamically at startup. Adapters (spec readers/writers) are code; packs are not. See [03 — Extensibility § Template packs](03-extensibility-packs-adapters-plugins.md#2-template-packs).
-4. **Git is the canonical store.** YAML cluster files in a Git repo are the source of truth. The runtime cache (SQLite) is a projection; if it is lost, it rebuilds from Git. There is no hosted database in v1 ([ADR-001](../adr/ADR-001-storage-and-interaction-architecture.md)).
+4. **Git is the canonical store.** YAML cluster files in a Git repo are the source of truth. The runtime cache (SQLite) is a projection; if it is lost, it rebuilds from Git. There is no hosted database in v1 ([ADR-001](../adrs/ADR-001-storage-and-interaction-architecture.md)).
 5. **One write path for every mutation.** Whether a change originates from an MCP tool, a CLI command, or a spec-adapter import, it flows through the same `file-format` emitter guided by the same template. Adapters never touch YAML, paths, or files directly. See [§5.6 Persistence model](#56-persistence-model).
 6. **Two interaction paths are first-class.** Agents may read and write YAML files directly, or call MCP tools. Neither is preferred — both must produce valid graphs. The MCP server is an enhancement, not a requirement.
-7. **Responses from MCP are semantically richer than files.** A cluster response includes owned children inline, edges with field mappings, an overlay summary (drift flag, thread count, in-flight branch list), and optionally multi-branch projections. Agents that drop to direct file access must see the same shape ([ADR-005](../adr/ADR-005-mcp-interface-design.md)).
+7. **Responses from MCP are semantically richer than files.** A cluster response includes owned children inline, edges with field mappings, an overlay summary (drift flag, thread count, in-flight branch list), and optionally multi-branch projections. Agents that drop to direct file access must see the same shape ([ADR-005](../adrs/ADR-005-mcp-interface-design.md)).
 8. **Adapters are format-agnostic from the outside.** A single adapter interface handles read and write for every spec format. OpenAPI, AsyncAPI, GraphQL SDL, and TypeSpec are interchangeable plugins; they declare the pack they bind to rather than shipping templates themselves.
 9. **The linter is the integrity layer, not a quality tool.** Without a database enforcing referential integrity, the file-first model holds together only because the linter enforces every ADR's structural rules. The linter runs in two stages — file-local (stage 1) and graph-wide (stage 2, requires the loaded graph) — across two deployment contexts (CI and local CLI). MCP startup loads the graph without running lint; mutation tools are gated on a subsequent clean lint pass. See [05 — Linting](05-linting.md).
 10. **Clean architecture — dependencies point inward.** Pure schema has no dependencies; the graph engine depends on schema; adapters, MCP, CLI, and UI depend on the engine; nothing in the core depends on infrastructure or presentation layers.
@@ -101,19 +101,19 @@ Nothing here reads files, opens a database, or makes network calls. The domain l
 Use cases that orchestrate the domain against infrastructure.
 
 - **`@corum/graph`** - Builds and queries the runtime graph through ports. Exposes commands (`createNode`, `upsertEdge`, `softRemove`, `rename`) and queries (`getCluster`, `listClusters`, `getLineage`, `getFieldLineage`, `getBranchVersions`, `searchText`). Materialises owned children from cluster files as first-class nodes in the projection, but does not own the SQLite implementation.
-- **`@corum/linter`** — Rule engine with the catalogue from [REF-006-rules](../adr/REF-006-rules.md). Two-stage pipeline: stage 1 runs per-file (format, IDs, template resolution, edge vocabulary); stage 2 runs against the loaded graph cache (cross-file reference resolution, `maps-to` structural check, removed/renamed directionality, cycle detection). Both stages run for CLI and CI. Called as a separate post-load pass — not embedded in the graph loader. Full treatment in [05 — Linting](05-linting.md).
+- **`@corum/linter`** — Rule engine with the catalogue from [REF-006-rules](../adrs/REF-006-rules.md). Two-stage pipeline: stage 1 runs per-file (format, IDs, template resolution, edge vocabulary); stage 2 runs against the loaded graph cache (cross-file reference resolution, `maps-to` structural check, removed/renamed directionality, cycle detection). Both stages run for CLI and CI. Called as a separate post-load pass — not embedded in the graph loader. Full treatment in [05 — Linting](05-linting.md).
 - **`@corum/adapter-openapi`, `@corum/adapter-asyncapi`, …** — Format-specific implementations of `SpecAdapter` (declared in `@corum/schema/src/ports/adapters.ts`). Each ships with its spec-aligned pack. Adapters depend only on `@corum/schema`; no application-layer imports.
 
 ### 4.3 Interface (`@corum/mcp-server`, `@corum/cli`)
 
 Adapters that translate external protocols to application commands and queries.
 
-- **`@corum/mcp-server`** — MCP tool surface per [ADR-005](../adr/ADR-005-mcp-interface-design.md) and the [tool catalogue](../adr/REF-mcp-tool-catalogue.md). Layered cluster responses with overlay summary; filter-object queries; multi-branch scope; pre-computed analysis flags with on-demand detail. Startup-subset linter run to confirm the graph is loadable before serving.
+- **`@corum/mcp-server`** — MCP tool surface per [ADR-005](../adrs/ADR-005-mcp-interface-design.md) and the [tool catalogue](../adrs/REF-mcp-tool-catalogue.md). Layered cluster responses with overlay summary; filter-object queries; multi-branch scope; pre-computed analysis flags with on-demand detail. Startup-subset linter run to confirm the graph is loadable before serving.
 - **`@corum/cli`** — Commands: `corum lint`, `corum import <format> <path>`, `corum export <format> <namespace>`, `corum sync`, `corum validate`, `corum migrate`, `corum serve` (starts the MCP server).
 
 ### 4.4 Infrastructure (`@corum/file-format`, `@corum/repo`, `@corum/cache`)
 
-- **`@corum/file-format`** — YAML 1.2 parser and emitter restricted to the safe subset ([ADR-002 § YAML Safety Constraints](../adr/ADR-002-graph-file-format-and-cluster-boundaries.md)). Cluster file schema, edge file schema, `graph.yaml` schema. Round-trip-stable emitter that preserves comments and key order on write-through. Given a node and its template, produces the canonical YAML layout (property key order, owned-child nesting) — the template is what tells the emitter *how* a node of a given type becomes YAML, so there is no per-type code in the emitter itself. Atomic writes use `write-file-atomic` (temp sibling → rename). This is the single write path used by MCP mutations, CLI edits, and spec-adapter imports alike.
+- **`@corum/file-format`** — YAML 1.2 parser and emitter restricted to the safe subset ([ADR-002 § YAML Safety Constraints](../adrs/ADR-002-graph-file-format-and-cluster-boundaries.md)). Cluster file schema, edge file schema, `graph.yaml` schema. Round-trip-stable emitter that preserves comments and key order on write-through. Given a node and its template, produces the canonical YAML layout (property key order, owned-child nesting) — the template is what tells the emitter *how* a node of a given type becomes YAML, so there is no per-type code in the emitter itself. Atomic writes use `write-file-atomic` (temp sibling → rename). This is the single write path used by MCP mutations, CLI edits, and spec-adapter imports alike.
 - **`@corum/repo`** — Git integration via `isomorphic-git` (see [04](04-libraries-tooling-and-testing.md)). Resolves refs, fetches incrementally, computes `git diff --name-only` between commit SHAs, commits mutation tool calls, pushes to the remote. Knows nothing about YAML — it deals in file paths and blob contents.
 - **`@corum/cache`** — SQLite schema and migrations (`node:sqlite` + `umzug`). A rebuildable projection of YAML files, not a second source of truth. Incremental-apply functions consume parsed documents from `@corum/file-format`; if the cache is missing or suspect, it is discarded and rebuilt from the working tree or Git ref.
 
@@ -220,7 +220,7 @@ The full adapter interface is defined in [03 — Extensibility § Adapters](03-e
 
 ### 6.4 Invariants the implementation must hold
 
-Drawn from [ADR-003b § Invariants](../adr/ADR-003b-core-logical-data-model.md#invariants-the-model-enforces) and elsewhere:
+Drawn from [ADR-003b § Invariants](../adrs/ADR-003b-core-logical-data-model.md#invariants-the-model-enforces) and elsewhere:
 
 - Node IDs are globally unique across the repo; owned-node IDs are prefixed with their owner.
 - Nodes are never hard-deleted — removal is a state transition to `removed`. Edges *are* hard-deleted.
@@ -235,7 +235,7 @@ These are implemented once in `@corum/graph` and `@corum/linter`; they are not d
 
 ## 7. What lives outside the core engine
 
-- **React web UI.** Deferred. When built, it is a consumer of the same interface surface as agents — `@corum/mcp-server` (over HTTP-transport MCP or a small REST wrapper) plus `@corum/schema` types shared with the frontend. The perspective-per-node-type model from [PDR-006](../pdr/PDR-006-human-review-and-editing-experience.md) is the framing we design for.
+- **React web UI.** Deferred. When built, it is a consumer of the same interface surface as agents — `@corum/mcp-server` (over HTTP-transport MCP or a small REST wrapper) plus `@corum/schema` types shared with the frontend. The perspective-per-node-type model from [PDR-006](../pdrs/PDR-006-human-review-and-editing-experience.md) is the framing we design for.
 - **Pack registry.** Deferred. V1 resolves packs from built-ins, local paths, and npm. A community registry is a future ADR.
 - **Hosted commercial tier.** Separate deployable (`@corum/hosted-*`) that reuses the domain and application layers, replaces `@corum/cache` with a Postgres implementation of the same `GraphCache` port, and introduces multi-tenant concerns. Out of scope for v1.
 - **Extraction CI pipeline (agent-side).** Thin wrappers in service repos that invoke language-specific extractors (e.g. `typescript-openapi-extractor`) and push to the graph repo. The graph repo side is just an adapter call — no special-casing.
@@ -254,10 +254,10 @@ These are implemented once in `@corum/graph` and `@corum/linter`; they are not d
 ## 9. Non-goals for v1
 
 - Multi-tenant hosted deployment.
-- A custom query language beyond the filter object from [ADR-005](../adr/ADR-005-mcp-interface-design.md).
-- Pack-defined linter rules ([ADR-006](../adr/ADR-006-linter-and-validator.md) — deferred).
-- Purpose-built UI components ([ADR-004 § Deferred](../adr/ADR-004-template-pack-format.md#deferred-ui-component-bundling) — generic renderer from `ui:` hints only).
-- A GraphQL SDL adapter ([REF-specification-format-support](../adr/REF-specification-format-support.md) — planned).
+- A custom query language beyond the filter object from [ADR-005](../adrs/ADR-005-mcp-interface-design.md).
+- Pack-defined linter rules ([ADR-006](../adrs/ADR-006-linter-and-validator.md) — deferred).
+- Purpose-built UI components ([ADR-004 § Deferred](../adrs/ADR-004-template-pack-format.md#deferred-ui-component-bundling) — generic renderer from `ui:` hints only).
+- A GraphQL SDL adapter ([REF-specification-format-support](../adrs/REF-specification-format-support.md) — planned).
 
 ---
 
@@ -272,7 +272,7 @@ Recommended order. Each step is independently valuable — you can stop at any p
 5. **`@corum/repo`** — Git integration via `isomorphic-git`. Fetch, diff, commit, push. Test with a fixture repo.
 6. **`@corum/cache`** — SQLite schema, incremental apply, branch-overlay projection queries. Test with generated graphs of varying size.
 7. **`@corum/graph`** — command/query surface, branch projection, materialisation of owned nodes. The first point at which all five lower layers compose.
-8. **`@corum/linter`** — rule catalogue from [REF-006-rules](../adr/REF-006-rules.md) split into stage 1 (per-file, post-parse) and stage 2 (graph-wide, post-materialisation). Two deployment profiles: CLI and CI. Called by the composition root after `loadGraph`, not embedded in the loader. Without this, every downstream component is free to produce an invalid graph — build it alongside step 7, not after. See [05 — Linting](05-linting.md).
+8. **`@corum/linter`** — rule catalogue from [REF-006-rules](../adrs/REF-006-rules.md) split into stage 1 (per-file, post-parse) and stage 2 (graph-wide, post-materialisation). Two deployment profiles: CLI and CI. Called by the composition root after `loadGraph`, not embedded in the loader. Without this, every downstream component is free to produce an invalid graph — build it alongside step 7, not after. See [05 — Linting](05-linting.md).
 9. **`@corum/adapter-openapi`** — first end-to-end adapter; implements `SpecAdapter` from `@corum/schema/ports`; proves the interface without a separate adapters-api package.
 10. **`@corum/cli`** — `lint`, `import openapi`, `export openapi`, `serve`.
 11. **`@corum/mcp-server`** — tool surface per ADR-005 and the tool catalogue.
@@ -287,5 +287,5 @@ Steps 1–3 and 7 are the critical path for anything else to be testable.
 - [02 — Packages and Folder Structure](02-packages-and-folder-structure.md)
 - [03 — Extensibility: Packs, Adapters, Plugins](03-extensibility-packs-adapters-plugins.md)
 - [04 — Libraries, Tooling and Testing](04-libraries-tooling-and-testing.md)
-- [Vision](../vision/VISION.md)
-- [ADR-001](../adr/ADR-001-storage-and-interaction-architecture.md)
+- [Vision](../vision-inputs/VISION.md)
+- [ADR-001](../adrs/ADR-001-storage-and-interaction-architecture.md)

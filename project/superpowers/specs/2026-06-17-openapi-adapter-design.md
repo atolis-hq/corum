@@ -27,7 +27,7 @@ write(namespace, graph) -> OpenAPI document   # export, lower priority
 
 ## 3. Inputs
 
-- OpenAPI 3.0 / 3.1 / 3.2 documents (reference schemas already vendored under `docs/spec-references/openapi/`).
+- OpenAPI 3.0 / 3.1 / 3.2 documents (reference schemas already vendored under `project/reference/spec-references/openapi/`).
 - Resolved or unresolved `$ref`s (the parser resolves component references).
 
 ## 4. Mapping: OpenAPI → Corum nodes

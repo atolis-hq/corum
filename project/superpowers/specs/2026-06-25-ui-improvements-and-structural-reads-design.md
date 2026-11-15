@@ -210,5 +210,5 @@ Extend the web test to assert schema expansion works for this cross-cluster fiel
 | `src/writer/graph-writer.ts` | Filter `generated === true` edges from edge file output |
 | `src/adapters/openapi/mapper.ts` | Remove `emitReadsEdge` calls |
 | `src/adapters/asyncapi/mapper.ts` | Remove reads edge emission if present |
-| `docs/adr/ADR-004b-edge-type-vocabulary-and-constraints.md` | Amendment: structural reads category |
+| `project/adrs/ADR-004b-edge-type-vocabulary-and-constraints.md` | Amendment: structural reads category |
 | `test/web.test.ts` | New test cases for all three items |
