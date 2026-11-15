@@ -1,4 +1,5 @@
-import type { Diagnostic, Edge, Graph } from '../schema/index.js'
+import { isOwnedDescendant } from '../graph/index.js'
+import type { Diagnostic, Edge, Graph, Node } from '../schema/index.js'
 
 /**
  * ADR-009b rule 4: a mechanical prefix rewrite from a previously-inlined
@@ -10,21 +11,21 @@ export interface SchemaPromotion {
 }
 
 /**
- * ADR-009b rule 1 support: index of existing standalone schemas (`{component}.Schema.{name}`)
+ * ADR-009b rule 1 support: index of existing standalone Schema roots
  * and their field names, used by adapters to reuse-before-inline and to detect shape drift.
  * Schemas marked `removed` are excluded — they are no longer available for reuse.
  */
 export function buildExistingSchemaIndex(graph: Graph): Map<string, Set<string>> {
   const index = new Map<string, Set<string>>()
   for (const node of graph.nodesById.values()) {
-    const parts = node.id.split('.')
-    if (parts.length !== 3 || parts[1] !== 'Schema') continue
+    if (node.parentId !== undefined || node.template !== 'Schema') continue
     if (node.state === 'removed') continue
 
     const fields = new Set<string>()
     const prefix = `${node.id}.fields.`
     for (const other of graph.nodesById.values()) {
-      if (!other.id.startsWith(prefix)) continue
+      // The prefix parses a section name; parentId establishes ownership.
+      if (other.parentId !== node.id || !other.id.startsWith(prefix)) continue
       if (other.id.slice(prefix.length).includes('.')) continue
       fields.add(other.id.slice(prefix.length))
     }
@@ -40,14 +41,16 @@ export function buildExistingSchemaIndex(graph: Graph): Map<string, Set<string>>
  * the same component.
  */
 export function detectSchemaPromotions(
-  priorNodeIds: Set<string>,
+  priorNodes: ReadonlyMap<string, Node>,
   newlyCreatedSchemaIds: Set<string>,
 ): SchemaPromotion[] {
   const promotions: SchemaPromotion[] = []
   for (const newId of newlyCreatedSchemaIds) {
-    if (priorNodeIds.has(newId)) continue
-    const [component, , name] = newId.split('.')
-    for (const oldId of priorNodeIds) {
+    if (priorNodes.has(newId)) continue
+    const [component, , ...nameParts] = newId.split('.')
+    const name = nameParts.join('.')
+    for (const [oldId, oldNode] of priorNodes) {
+      if (oldNode.parentId === undefined) continue
       if (oldId.split('.')[0] !== component) continue
       if (oldId.endsWith(`.schemas.${name}`)) {
         promotions.push({ oldPrefix: oldId, newPrefix: newId })
@@ -77,9 +80,11 @@ export function rewritePromotedSchemaEdges(
 
   function rewriteEndpoint(id: string): { id: string; changed: boolean; unresolved: boolean } {
     for (const { oldPrefix, newPrefix } of promotions) {
-      if (id !== oldPrefix && !id.startsWith(`${oldPrefix}.`)) continue
+      if (id !== oldPrefix && !isOwnedDescendant(graph, id, oldPrefix)) continue
       const rewritten = newPrefix + id.slice(oldPrefix.length)
-      if (!graph.nodesById.has(rewritten)) return { id, changed: false, unresolved: true }
+      if (!graph.nodesById.has(rewritten) || (id !== oldPrefix && !isOwnedDescendant(graph, rewritten, newPrefix))) {
+        return { id, changed: false, unresolved: true }
+      }
       return { id: rewritten, changed: true, unresolved: false }
     }
     return { id, changed: false, unresolved: false }

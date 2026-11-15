@@ -155,10 +155,10 @@ function getDirectOwnedChildren(
   const prefix = `${parentId}.${sectionName}.`
   const children = [...graph.nodesById.values()]
     .filter(node => {
-      if (!node.id.startsWith(prefix)) return false
+      if (node.parentId !== parentId || !node.id.startsWith(prefix)) return false
       const remaining = node.id.slice(prefix.length)
       return !remaining.includes('.')
-      })
+    })
 
   if (!sourceSection) {
     return children.sort((a, b) => a.id.localeCompare(b.id))
@@ -284,6 +284,6 @@ function getAllEdges(graph: Graph): Edge[] {
 function getRootNodes(graph: Graph): Node[] {
   const nodes = [...graph.nodesById.values()]
   return nodes
-    .filter(node => !nodes.some(other => other.id !== node.id && node.id.startsWith(`${other.id}.`)))
+    .filter(node => node.parentId === undefined)
     .sort((a, b) => a.id.localeCompare(b.id))
 }

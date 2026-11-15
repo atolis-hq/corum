@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse as parseYaml } from 'yaml'
+import { getCluster, expandExternalNodes, getLinkedFields } from '../src/graph/index.js'
 import { loadGraph } from '../src/loader/index.js'
 import { saveGraph, serializeGraph } from '../src/writer/graph-writer.js'
 import type { Edge } from '../src/schema/index.js'
@@ -37,6 +38,55 @@ describe('serializeGraph', () => {
       assert.equal(reloaded.nodesById.size, 151)
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('preserves independent prefix-related roots and their owned children', async () => {
+    const sourceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-prefix-source-'))
+    const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-prefix-output-'))
+    try {
+      const fixture = await loadGraph({ graphPath: fixtureGraphDir })
+      await saveGraph(fixture, { sourceGraphPath: fixtureGraphDir, outputGraphPath: sourceDir })
+      const rootIds = ['orders.Schema.foo', 'orders.Schema.foo.bar', 'orders.Schema.foo.fields.independent']
+      for (const id of rootIds) {
+        const file = path.join(sourceDir, 'components/orders/Schemas', ...id.split('.').slice(2)) + '.yaml'
+        fs.mkdirSync(path.dirname(file), { recursive: true })
+        fs.writeFileSync(file, JSON.stringify({
+          id, template: 'Schema', schemaVersion: '1',
+          metadata: { component: 'orders', state: 'agreed', stability: 'stable', lastModifiedAt: '2026-07-01' },
+          fields: { value: { type: 'string' } },
+        }))
+      }
+      const graph = await loadGraph({ graphPath: sourceDir })
+      const checkClusters = (loaded: typeof graph) => {
+        for (const id of rootIds) {
+          assert.equal(loaded.nodesById.get(id)?.parentId, undefined)
+          assert.equal(loaded.nodesById.get(id + '.fields.value')?.parentId, id)
+          assert.deepEqual(getCluster(loaded, id).children.map(node => node.id), [id + '.fields.value'])
+          assert.deepEqual(expandExternalNodes(loaded, [id]).map(node => node.id).sort(), [id, id + '.fields.value'].sort())
+        }
+      }
+      checkClusters(graph)
+      const map = serializeGraph(graph, { sourceGraphPath: sourceDir, outputGraphPath: outputDir })
+      for (const id of rootIds) {
+        const key = 'components/orders/Schemas/' + id.split('.').slice(2).join('/') + '.yaml'
+        assert.ok(map.has(key), key)
+        assert.deepEqual(Object.keys(parseYaml(map.get(key)!).fields), ['value'])
+      }
+      await saveGraph(graph, { sourceGraphPath: sourceDir, outputGraphPath: outputDir })
+      const reloaded = await loadGraph({ graphPath: outputDir })
+      checkClusters(reloaded)
+      assert.deepEqual([...reloaded.nodesById.keys()].sort(), [...graph.nodesById.keys()].sort())
+
+      const from = rootIds[1] + '.fields.value'
+      const to = 'orders.DomainModel.order.schemas.order.fields.id'
+      const edge: Edge = { id: 'prefix-mapping', from, to, type: 'maps-to', state: 'agreed', stability: 'stable' }
+      graph.edgesByFrom.set(from, [edge])
+      assert.deepEqual(getLinkedFields(graph, rootIds[0]).edges, [])
+      assert.deepEqual(getLinkedFields(graph, rootIds[1]).edges, [edge])
+    } finally {
+      fs.rmSync(sourceDir, { recursive: true, force: true })
+      fs.rmSync(outputDir, { recursive: true, force: true })
     }
   })
 

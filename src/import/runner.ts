@@ -60,7 +60,7 @@ export async function runImport(
 
   // ADR-009b: snapshot of node identities before this run, and the shared
   // reuse-before-inline index (target graph + same-run entries as they land).
-  const priorNodeIds = new Set(graph.nodesById.keys())
+  const priorNodes = new Map(graph.nodesById)
   const existingSchemas = buildExistingSchemaIndex(graph)
 
   const entryResults: EntryResult[] = []
@@ -112,8 +112,7 @@ export async function runImport(
   const newlyCreatedSchemaIds = new Set<string>()
   for (const er of entryResults) {
     for (const node of er.nodes) {
-      const parts = node.id.split('.')
-      if (parts.length === 3 && parts[1] === 'Schema') newlyCreatedSchemaIds.add(node.id)
+      if (node.parentId === undefined && node.template === 'Schema') newlyCreatedSchemaIds.add(node.id)
     }
   }
 
@@ -147,7 +146,7 @@ export async function runImport(
 
   // ADR-009b rule 4: mechanically rewrite edges when a schema was promoted
   // inline → standalone by this run.
-  const promotions = detectSchemaPromotions(priorNodeIds, newlyCreatedSchemaIds)
+  const promotions = detectSchemaPromotions(priorNodes, newlyCreatedSchemaIds)
   rewritePromotedSchemaEdges(graph, promotions, allDiagnostics)
 
   const graphPath = runtimeConfig.kind === 'filesystem' ? runtimeConfig.graphPath : undefined

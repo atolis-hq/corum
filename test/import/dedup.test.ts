@@ -8,6 +8,7 @@ function makeNode(id: string, adapterId: string, extra: Record<string, unknown> 
   const parts = id.split('.')
   return {
     id,
+    ...(parts.length > 3 && { parentId: parts.slice(0, -2).join('.') }),
     template: parts[1] ?? 'Unknown',
     component: parts[0],
     state: 'implemented',
@@ -150,6 +151,7 @@ describe('deduplicateResults — child node dropping', () => {
 
   it('drops edge referencing dropped child node when rewritten target does not exist in primary', () => {
     const root = makeNode('billing.APIEndpoint.GetInvoiceController', 'corum', { 'x-aka': ['GetInvoice'] })
+    const schema = makeNode('billing.APIEndpoint.GetInvoiceController.schemas.Response', 'corum')
     const field = makeNode('billing.APIEndpoint.GetInvoiceController.schemas.Response.fields.Id', 'corum')
     const primary = makeNode('billing.APIEndpoint.GetInvoice', 'openapi')
     const edge = makeEdge(
@@ -159,7 +161,7 @@ describe('deduplicateResults — child node dropping', () => {
     )
 
     const results = [
-      makeResult('corum', [root, field], [edge]),
+      makeResult('corum', [root, schema, field], [edge]),
       makeResult('openapi', [primary]),
     ]
 
@@ -170,8 +172,10 @@ describe('deduplicateResults — child node dropping', () => {
 
   it('rewrites child edge when rewritten target exists in primary', () => {
     const root = makeNode('billing.APIEndpoint.GetInvoiceController', 'corum', { 'x-aka': ['GetInvoice'] })
+    const schema = makeNode('billing.APIEndpoint.GetInvoiceController.schemas.Response', 'corum')
     const field = makeNode('billing.APIEndpoint.GetInvoiceController.schemas.Response.fields.Id', 'corum')
     const primary = makeNode('billing.APIEndpoint.GetInvoice', 'openapi')
+    const primarySchema = makeNode('billing.APIEndpoint.GetInvoice.schemas.Response', 'openapi')
     const primaryField = makeNode('billing.APIEndpoint.GetInvoice.schemas.Response.fields.Id', 'openapi')
     const edge = makeEdge(
       'billing.APIEndpoint.GetInvoiceController.schemas.Response.fields.Id',
@@ -180,8 +184,8 @@ describe('deduplicateResults — child node dropping', () => {
     )
 
     const results = [
-      makeResult('corum', [root, field], [edge]),
-      makeResult('openapi', [primary, primaryField]),
+      makeResult('corum', [root, schema, field], [edge]),
+      makeResult('openapi', [primary, primarySchema, primaryField]),
     ]
 
     const { results: out } = deduplicateResults(results, [{ primary: 'openapi', secondary: 'corum' }])
@@ -266,4 +270,51 @@ describe('deduplicateResults — no-op cases', () => {
     assert.equal(corumResult.nodes.length, 0, 'both corum nodes dropped')
     assert.equal(diagnostics.length, 1, 'one warning for same-ID collision')
   })
+})
+
+describe('deduplication with independent prefix-related roots', () => {
+  for (const sameId of [false, true]) {
+    it(`preserves a prefix-related root when ${sameId ? 'colliding with' : 'redirecting to'} the primary`, () => {
+      const rootId = 'orders.Schema.foo'
+      const primaryId = sameId ? rootId : 'orders.Schema.canonical'
+      const root = makeNode(rootId, 'corum', sameId ? {} : { 'x-aka': ['canonical'] })
+      const child = makeNode(rootId + '.fields.value', 'corum')
+      const independent = { ...makeNode(rootId + '.bar', 'corum'), parentId: undefined }
+      const independentChild = { ...makeNode(independent.id + '.fields.value', 'corum'), parentId: independent.id }
+      const keptEdge = makeEdge(independent.id, independentChild.id, 'has-field')
+      const ownedEdge = makeEdge(child.id, independentChild.id, 'maps-to')
+      const results = [
+        makeResult('corum', [root, child, independent, independentChild], [keptEdge, ownedEdge]),
+        makeResult('openapi', [makeNode(primaryId, 'openapi'), makeNode(primaryId + '.fields.value', 'openapi')]),
+      ]
+      const { results: out } = deduplicateResults(results, [{ primary: 'openapi', secondary: 'corum' }])
+      assert.deepEqual(out[0].nodes.map(node => node.id), [independent.id, independentChild.id])
+      assert.deepEqual(out[0].edges[0], keptEdge)
+      assert.equal(out[0].edges[1].from, primaryId + '.fields.value')
+      assert.equal(out[0].edges[1].to, independentChild.id)
+    })
+  }
+
+  it('reports separate same-ID collisions for independent roots', () => {
+    const ids = ['orders.Schema.foo', 'orders.Schema.foo.bar']
+    const results = ['corum', 'openapi'].map(adapter => makeResult(adapter, ids.map(id => ({ ...makeNode(id, adapter), parentId: undefined }))))
+    const { results: out, diagnostics } = deduplicateResults(results, [{ primary: 'openapi', secondary: 'corum' }])
+    assert.deepEqual(out[0].nodes, [])
+    assert.equal(out[1].nodes.length, 2)
+    assert.equal(diagnostics.length, 2)
+  })
+})
+
+it('does not redirect an owned child to an independent primary root with the candidate ID', () => {
+  const root = makeNode('orders.Schema.foo', 'corum', { 'x-aka': ['canonical'] })
+  const field = makeNode(root.id + '.fields.value', 'corum')
+  const primary = makeNode('orders.Schema.canonical', 'openapi')
+  const independent = { ...makeNode(primary.id + '.fields.value', 'openapi'), parentId: undefined }
+  const results = [
+    makeResult('corum', [root, field], [makeEdge(field.id, 'orders.Command.consume')]),
+    makeResult('openapi', [primary, independent]),
+  ]
+  const { results: out } = deduplicateResults(results, [{ primary: 'openapi', secondary: 'corum' }])
+  assert.deepEqual(out[0].edges, [])
+  assert.equal(out[1].nodes[1], independent)
 })

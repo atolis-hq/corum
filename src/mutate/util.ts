@@ -1,3 +1,4 @@
+import { isOwnedDescendant } from '../graph/index.js'
 import type { Diagnostic, Edge, Graph } from '../schema/index.js'
 
 /** Timestamp convention for mutated nodes (matches adapter mappers: date-only ISO). */
@@ -14,14 +15,12 @@ export function mutationDiagnostic(
 }
 
 /**
- * IDs of a node's owned subtree (the node itself plus every exact-segment
- * descendant — `orders.x` never matches `orders.xy`).
+ * IDs of a node's owned subtree, following materialized parent relationships.
  */
 export function collectSubtreeIds(graph: Graph, rootId: string): string[] {
-  const prefix = `${rootId}.`
   const ids: string[] = []
   for (const id of graph.nodesById.keys()) {
-    if (id === rootId || id.startsWith(prefix)) ids.push(id)
+    if (id === rootId || isOwnedDescendant(graph, id, rootId)) ids.push(id)
   }
   return ids
 }

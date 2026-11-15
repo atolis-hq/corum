@@ -1,5 +1,5 @@
 import type { Edge, Graph, Node } from '../schema/index.js'
-import { getStructuralNodeTemplates, isVisibleEdgeType } from './index.js'
+import { getStructuralNodeTemplates, isVisibleEdgeType, isOwnedDescendant } from './index.js'
 import { getTemplateRole } from './roles.js'
 import type { ClusterViewResult } from './index.js'
 
@@ -28,7 +28,6 @@ const FIELD_EDGE_TYPES = new Set(['maps-to', 'derived-from'])
 
 export function collapseClusterSchemas(graph: Graph, cluster: ClusterViewResult): CollapsedClusterResult {
   const rootId = cluster.root.id
-  const rootPrefix = `${rootId}.`
 
   // Indexes keyed by local name or parent ID
   const schemaChildIds = new Set<string>()
@@ -51,7 +50,7 @@ export function collapseClusterSchemas(graph: Graph, cluster: ClusterViewResult)
   }
 
   for (const n of cluster.descendants) {
-    if (!n.id.startsWith(rootPrefix)) {
+    if (!isOwnedDescendant(graph, n.id, rootId)) {
       semanticDescendants.push(n)
       continue
     }
@@ -184,11 +183,10 @@ function buildField(
   if (isNullable) field.nullable = true
 
   // Gather outbound field edges that cross the cluster boundary
-  const clusterPrefix = `${rootId}.`
   const fieldEdges: Record<string, string[]> = {}
   for (const e of graph.edgesByFrom.get(fieldNode.id) ?? []) {
     if (!FIELD_EDGE_TYPES.has(e.type)) continue
-    if (e.to.startsWith(clusterPrefix)) continue
+    if (isOwnedDescendant(graph, e.to, rootId)) continue
     const targets = fieldEdges[e.type] ?? []
     targets.push(e.to)
     fieldEdges[e.type] = targets
