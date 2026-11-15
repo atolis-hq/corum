@@ -328,6 +328,23 @@ button {
   color: #fff;
 }
 
+.table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.table-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* Minimum grid tracks plus gaps and padding; retain desktop column sizing. */
+/* 724px of tracks + six 10px gaps + two 14px paddings. */
+.field-table { min-width: 812px; }
+.enum-table { min-width: 532px; }
+
 .prop-table {
   width: 100%;
   border-collapse: collapse;
@@ -1718,6 +1735,12 @@ button {
 }
 
 @media (max-width: 780px) {
+  .branch-bar {
+    height: auto;
+    min-height: 38px;
+    flex-wrap: wrap;
+    padding-block: 6px;
+  }
   #root {
     height: 100dvh;
   }

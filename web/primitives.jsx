@@ -160,6 +160,10 @@ function buildPropertyRows(entries, onNavigate, depth = 0, parentPath = '', prop
   });
 }
 
+function TableScroll({ children, className = '' }) {
+  return <div className="table-scroll"><div className={className}>{children}</div></div>;
+}
+
 function PropertiesTable({ properties, onNavigate, propertyHints = {} }) {
   const entries = Object.entries(properties ?? {});
   const rows = buildPropertyRows(entries, onNavigate, 0, '', propertyHints);
@@ -168,20 +172,22 @@ function PropertiesTable({ properties, onNavigate, propertyHints = {} }) {
   }
 
   return (
-    <table className="prop-table">
-      <tbody>
-        {rows.map(row => (
-          <tr key={row.key} className={`prop-row${row.depth > 0 ? ' nested' : ''}`}>
-            <td className="mono prop-key-cell">
-              <span className="prop-key-label" style={{ '--prop-depth': row.depth }}>
-                {row.label}
-              </span>
-            </td>
-            <td>{row.value}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <TableScroll>
+      <table className="prop-table">
+        <tbody>
+          {rows.map(row => (
+            <tr key={row.key} className={`prop-row${row.depth > 0 ? ' nested' : ''}`}>
+              <td className="mono prop-key-cell">
+                <span className="prop-key-label" style={{ '--prop-depth': row.depth }}>
+                  {row.label}
+                </span>
+              </td>
+              <td>{row.value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </TableScroll>
   );
 }
 
@@ -667,24 +673,26 @@ function SchemaCard({ title, nodes, allNodes, edges, anchorIdForNode, overlayFie
                   </div>
                   <div className="label-sm mono">{enumNode.id}</div>
                 </div>
-                <div className="enum-row enum-row-head">
-                  <div className="label-xs">Name</div>
-                  <div className="label-xs">Description</div>
-                  <div className="label-xs">Status</div>
-                </div>
-                {values.length === 0 ? (
-                  <div className="enum-row">
-                    <div className="label-sm">No values.</div>
-                    <div />
-                    <div />
+                <TableScroll className="enum-table">
+                  <div className="enum-row enum-row-head">
+                    <div className="label-xs">Name</div>
+                    <div className="label-xs">Description</div>
+                    <div className="label-xs">Status</div>
                   </div>
-                ) : values.map(value => (
-                  <div key={value.id} className="enum-row">
-                    <div className="name">{enumValueDisplayName(value)}</div>
-                    <div className="description">{enumValueDescription(value)}</div>
-                    <div className="state"><StateTag state={value.state} /></div>
-                  </div>
-                ))}
+                  {values.length === 0 ? (
+                    <div className="enum-row">
+                      <div className="label-sm">No values.</div>
+                      <div />
+                      <div />
+                    </div>
+                  ) : values.map(value => (
+                    <div key={value.id} className="enum-row">
+                      <div className="name">{enumValueDisplayName(value)}</div>
+                      <div className="description">{enumValueDescription(value)}</div>
+                      <div className="state"><StateTag state={value.state} /></div>
+                    </div>
+                  ))}
+                </TableScroll>
               </div>
             );
           })}
@@ -713,27 +721,29 @@ function SchemaCard({ title, nodes, allNodes, edges, anchorIdForNode, overlayFie
                   <div className="label-sm mono">{schema.id}</div>
                 </div>
                 {ghostFields.length > 0 && <OverlayLegend overlayRefs={overlayRefs} />}
-                <div className="field-row field-row-head">
-                  <div />
-                  <div className="label-xs">Name</div>
-                  <div className="label-xs">Type</div>
-                  <div className="label-xs">Collection</div>
-                  <div className="label-xs">Req</div>
-                  <div className="label-xs">State</div>
-                  <div className="label-xs">Links</div>
-                </div>
-                <SchemaFieldRows
-                  schemaNodeId={schema.id}
-                  model={model}
-                  visited={new Set()}
-                  edges={edges ?? []}
-                  overlayFields={overlayFields}
-                  overlayRefs={overlayRefs}
-                  compact={compact}
-                />
-                {ghostFields.length > 0 && (
-                  <GhostFieldRows fields={ghostFields} overlayRefs={overlayRefs} compact={compact} />
-                )}
+                <TableScroll className="field-table">
+                  <div className="field-row field-row-head">
+                    <div />
+                    <div className="label-xs">Name</div>
+                    <div className="label-xs">Type</div>
+                    <div className="label-xs">Collection</div>
+                    <div className="label-xs">Req</div>
+                    <div className="label-xs">State</div>
+                    <div className="label-xs">Links</div>
+                  </div>
+                  <SchemaFieldRows
+                    schemaNodeId={schema.id}
+                    model={model}
+                    visited={new Set()}
+                    edges={edges ?? []}
+                    overlayFields={overlayFields}
+                    overlayRefs={overlayRefs}
+                    compact={compact}
+                  />
+                  {ghostFields.length > 0 && (
+                    <GhostFieldRows fields={ghostFields} overlayRefs={overlayRefs} compact={compact} />
+                  )}
+                </TableScroll>
               </div>
             );
           })}
