@@ -111,3 +111,15 @@ The repo includes a project-level `.mcp.json` pointing at the compiled output:
 ```
 
 Build the project before using this from an MCP client.
+
+## Testing a branch
+
+Test from your own worktree or checkout, never against a hosted instance:
+
+```bash
+npm ci && npm test
+CORUM_GRAPH_PATH=fixtures/sample-graph CORUM_WEB_PORT=0 npm run web   # UI check on a free port
+```
+
+Use a Docker sandbox only when a change needs isolation, such as importing untrusted specs or
+write-session tests against a throwaway git repo.

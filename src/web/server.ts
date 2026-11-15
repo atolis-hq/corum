@@ -36,6 +36,8 @@ const WEB_DIR = path.join(__dirname, '..', '..', '..', 'web')
 
 export type WebServerOptions = {
   port?: number
+  /** Interface to bind. Defaults to CORUM_WEB_HOST, then all interfaces. */
+  host?: string
   graphPath?: string
   source?: GraphSource
   fileWatcher?: boolean
@@ -704,6 +706,7 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
       ? 'CORUM_GRAPH_PATH'
       : 'default'
   const port = options.port ?? parseInt(process.env.CORUM_WEB_PORT ?? '3000', 10)
+  const host = options.host ?? process.env.CORUM_WEB_HOST
   const graphPath = options.graphPath ?? process.env.CORUM_GRAPH_PATH ?? path.join(process.cwd(), '.corum/graph')
   const logger = options.logger ?? console.error
   const reloadEvents = createReloadEvents()
@@ -745,13 +748,14 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
     : undefined
   const stopPoller = startGitSourcePoller(options.source, options.gitPollSeconds, logger, () => reloadState('git poll'))
   return new Promise((resolve, reject) => {
-    const server = app.listen(port, () => {
+    const onListening = () => {
       const addr = server.address() as AddressInfo
       if (options.port !== 0) {
         printBanner({
           config: [
             { key: 'graphPath', value: graphPath },
             { key: 'webDir', value: WEB_DIR },
+            { key: 'host', value: host ?? 'all interfaces' },
             { key: 'port', value: String(addr.port) },
           ],
           services: [{ name: 'web', url: `http://localhost:${addr.port}` }],
@@ -765,7 +769,8 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
           server.close(err => (err ? rej(err) : res()))
         }),
       })
-    })
+    }
+    const server = host ? app.listen(port, host, onListening) : app.listen(port, onListening)
     server.on('error', reject)
   })
 }
