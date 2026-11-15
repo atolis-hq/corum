@@ -42,6 +42,10 @@ function applyEdgeTypeFilter(edges, visibleTypes) {
   return edges.filter(e => visibleTypes.has(e.type));
 }
 
+function collectEdgeTypes(...edgeLists) {
+  return [...new Set(edgeLists.flatMap(edges => edges.map(edge => edge.type)))].sort();
+}
+
 // Weakly connected components. Edges use {from, to}; extraLinks are additional
 // affinity pairs (e.g. group co-membership) that merge components without
 // being real edges. Returns arrays of node ids.
@@ -108,8 +112,8 @@ function filterOwnerScope(nodes, edges, parentId) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { buildComponentMap, applyEdgeTypeFilter, getDisplayName, computeConnectedComponents, filterThreadScope, filterOwnerScope };
+  module.exports = { buildComponentMap, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName, computeConnectedComponents, filterThreadScope, filterOwnerScope };
 }
 if (typeof window !== 'undefined') {
-  window.CorumGraphUtils = { buildComponentMap, applyEdgeTypeFilter, getDisplayName, computeConnectedComponents, filterThreadScope, filterOwnerScope };
+  window.CorumGraphUtils = { buildComponentMap, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName, computeConnectedComponents, filterThreadScope, filterOwnerScope };
 }

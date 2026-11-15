@@ -2,13 +2,13 @@
 
 **Status:** Draft v0.1
 **Last updated:** 2026-04-17
-**Relates to:** [ADR-006](../adr/ADR-006-linter-and-validator.md), [REF-006-rules](../adr/REF-006-rules.md), [01 — Architecture Overview](01-architecture-overview.md), [02 — Packages and Folder Structure](02-packages-and-folder-structure.md)
+**Relates to:** [ADR-006](../adrs/ADR-006-linter-and-validator.md), [REF-006-rules](../adrs/REF-006-rules.md), [01 — Architecture Overview](01-architecture-overview.md), [02 — Packages and Folder Structure](02-packages-and-folder-structure.md)
 
 ---
 
 ## 1. Why linting is foundational
 
-Corum has no database enforcing referential integrity at write time. The graph's invariants — unique IDs, resolvable edge endpoints, valid template conformance, `maps-to` restricted to `Field` nodes — exist only because the linter enforces them. Every ADR that introduces a structural rule (ADR-002 file format, ADR-003b data model, ADR-004 templates, ADR-004b edges) contributes rules catalogued in [REF-006-rules](../adr/REF-006-rules.md).
+Corum has no database enforcing referential integrity at write time. The graph's invariants — unique IDs, resolvable edge endpoints, valid template conformance, `maps-to` restricted to `Field` nodes — exist only because the linter enforces them. Every ADR that introduces a structural rule (ADR-002 file format, ADR-003b data model, ADR-004 templates, ADR-004b edges) contributes rules catalogued in [REF-006-rules](../adrs/REF-006-rules.md).
 
 The linter is therefore not an optional quality tool — it is the **integrity layer** of the system. If the linter is weak or slow, the graph drifts; if it is strong and fast, the file-first storage model holds together.
 
@@ -31,7 +31,7 @@ The linter is described along two independent axes. Understanding both is essent
 
 ### 2.2 Axis 2: Deployment context — where does the rule run?
 
-Same rule catalogue, three contexts ([ADR-006](../adr/ADR-006-linter-and-validator.md)):
+Same rule catalogue, three contexts ([ADR-006](../adrs/ADR-006-linter-and-validator.md)):
 
 | Context | Runs | Purpose |
 |---|---|---|
@@ -326,7 +326,7 @@ Three properties worth calling out:
 
 ## 7. Configuration
 
-From [ADR-006](../adr/ADR-006-linter-and-validator.md) and [REF-006-rules](../adr/REF-006-rules.md), the `linter` block of `graph.yaml`:
+From [ADR-006](../adrs/ADR-006-linter-and-validator.md) and [REF-006-rules](../adrs/REF-006-rules.md), the `linter` block of `graph.yaml`:
 
 ```yaml
 linter:
@@ -356,7 +356,7 @@ Covered in [04 — Testing](04-libraries-tooling-and-testing.md#3-testing-strate
 
 ## 9. Future extensions
 
-- **Pack-defined custom rules** ([ADR-006 Option C](../adr/ADR-006-linter-and-validator.md#option-c-custom-rules-via-pack-defined-validators-future)) — deferred. When introduced, custom rules ship inside packs and slot into the stage 1 or stage 2 pipeline based on their declared input needs (file vs. graph). The existing two-stage boundary is what makes custom rules safe to host — a custom rule declares its stage and the runner enforces it.
+- **Pack-defined custom rules** ([ADR-006 Option C](../adrs/ADR-006-linter-and-validator.md#option-c-custom-rules-via-pack-defined-validators-future)) — deferred. When introduced, custom rules ship inside packs and slot into the stage 1 or stage 2 pipeline based on their declared input needs (file vs. graph). The existing two-stage boundary is what makes custom rules safe to host — a custom rule declares its stage and the runner enforces it.
 - **Lint-on-write in the MCP server** beyond the mutation gate — considered and deferred for v1 (ADR-006 decision 1). The current model (full lint before first mutation, then per-mutation stage 1 + post-write stage 2) is the balance point; revisit if profiling shows the post-write stage 2 pass is too slow for interactive use.
 - **Auto-fix hints.** Stage 1 rules often know the exact text to fix (e.g. F-003 edge file naming). An optional `fix` field on `Diagnostic` can surface a suggested replacement — deferred until the CLI has an interactive mode.
 
@@ -368,5 +368,5 @@ Covered in [04 — Testing](04-libraries-tooling-and-testing.md#3-testing-strate
 - [02 — Packages and Folder Structure](02-packages-and-folder-structure.md)
 - [03 — Extensibility: Packs, Adapters, Plugins](03-extensibility-packs-adapters-plugins.md)
 - [04 — Libraries, Tooling and Testing](04-libraries-tooling-and-testing.md)
-- [ADR-006 Linter and Validator](../adr/ADR-006-linter-and-validator.md)
-- [REF-006-rules Rule Catalogue](../adr/REF-006-rules.md)
+- [ADR-006 Linter and Validator](../adrs/ADR-006-linter-and-validator.md)
+- [REF-006-rules Rule Catalogue](../adrs/REF-006-rules.md)

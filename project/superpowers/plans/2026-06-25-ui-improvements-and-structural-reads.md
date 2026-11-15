@@ -960,11 +960,11 @@ git commit -m "feat: remove emitReadsEdge from adapters — structural reads now
 ### Task 7: Amend ADR-004b
 
 **Files:**
-- Modify: `docs/adr/ADR-004b-edge-type-vocabulary-and-constraints.md`
+- Modify: `project/adrs/ADR-004b-edge-type-vocabulary-and-constraints.md`
 
 - [ ] **Step 1: Add the amendment**
 
-Open `docs/adr/ADR-004b-edge-type-vocabulary-and-constraints.md` and append the following section at the bottom of the file:
+Open `project/adrs/ADR-004b-edge-type-vocabulary-and-constraints.md` and append the following section at the bottom of the file:
 
 ```markdown
 ---
@@ -995,7 +995,7 @@ Open `docs/adr/ADR-004b-edge-type-vocabulary-and-constraints.md` and append the 
 - [ ] **Step 2: Commit**
 
 ```bash
-git add "docs/adr/ADR-004b-edge-type-vocabulary-and-constraints.md"
+git add "project/adrs/ADR-004b-edge-type-vocabulary-and-constraints.md"
 git commit -m "docs: amend ADR-004b with structural reads edge category"
 ```
 

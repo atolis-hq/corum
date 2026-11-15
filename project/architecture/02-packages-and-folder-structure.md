@@ -77,7 +77,7 @@ Enforced via `dependency-cruiser` rules (see [04 § Tooling](04-libraries-toolin
 
 #### `@corum/schema`
 
-**Purpose:** The logical data model ([ADR-003b](../adr/ADR-003b-core-logical-data-model.md)) as pure TypeScript. Zero runtime dependencies.
+**Purpose:** The logical data model ([ADR-003b](../adrs/ADR-003b-core-logical-data-model.md)) as pure TypeScript. Zero runtime dependencies.
 
 **Exports:**
 
@@ -106,7 +106,7 @@ Port interfaces live in `src/ports/` rather than a separate package because they
 
 #### `@corum/template-core`
 
-**Purpose:** Template pack model and operations ([ADR-004](../adr/ADR-004-template-pack-format.md)).
+**Purpose:** Template pack model and operations ([ADR-004](../adrs/ADR-004-template-pack-format.md)).
 
 **Exports:**
 
@@ -143,7 +143,7 @@ Port interfaces live in `src/ports/` rather than a separate package because they
 
 #### `@corum/linter`
 
-**Purpose:** Rule engine + rule catalogue ([ADR-006](../adr/ADR-006-linter-and-validator.md), [REF-006-rules](../adr/REF-006-rules.md)).
+**Purpose:** Rule engine + rule catalogue ([ADR-006](../adrs/ADR-006-linter-and-validator.md), [REF-006-rules](../adrs/REF-006-rules.md)).
 
 **Exports:**
 
@@ -174,7 +174,7 @@ Rules receive a read-only view of the loaded graph + pack set and emit `Diagnost
 
 #### `@corum/file-format`
 
-**Purpose:** Canonical YAML cluster and edge file I/O ([ADR-002](../adr/ADR-002-graph-file-format-and-cluster-boundaries.md)).
+**Purpose:** Canonical YAML cluster and edge file I/O ([ADR-002](../adrs/ADR-002-graph-file-format-and-cluster-boundaries.md)).
 
 **Exports:**
 
@@ -215,7 +215,7 @@ Tests: spin up a fixture repo under `fixtures/graph-repos/` with a known commit 
 
 #### `@corum/cache`
 
-**Purpose:** SQLite schema, migrations, and incremental apply ([ADR-003](../adr/ADR-003-graph-loading-and-runtime-representation.md)).
+**Purpose:** SQLite schema, migrations, and incremental apply ([ADR-003](../adrs/ADR-003-graph-loading-and-runtime-representation.md)).
 
 **Exports:**
 
@@ -263,7 +263,7 @@ See [03 - Extensibility](03-extensibility-packs-adapters-plugins.md) for the ful
 
 #### `@corum/mcp-server`
 
-**Purpose:** MCP tool surface per [ADR-005](../adr/ADR-005-mcp-interface-design.md) and the [tool catalogue](../adr/REF-mcp-tool-catalogue.md).
+**Purpose:** MCP tool surface per [ADR-005](../adrs/ADR-005-mcp-interface-design.md) and the [tool catalogue](../adrs/REF-mcp-tool-catalogue.md).
 
 **Exports:**
 
@@ -379,7 +379,7 @@ The `composition.ts` file in `@corum/cli` is excluded — it is the only entry p
 
 - **Independent versioning** per package. Changesets (`@changesets/cli`) tracks which packages changed and computes semver bumps.
 - **Template packs follow ADR-004 versioning** - patch/minor/major map to template schema compatibility, not code. Built-in pack versions live in `.corum/packs/*/pack.yaml`; third-party pack package versions should track their `pack.yaml` version.
-- **Schema file format version** (`schema-version` in cluster files, [ADR-002 § Schema Versioning](../adr/ADR-002-graph-file-format-and-cluster-boundaries.md#schema-versioning)) lives in `@corum/schema` and is published as `SCHEMA_VERSION`. Breaking changes require a migration command in `@corum/cli`.
+- **Schema file format version** (`schema-version` in cluster files, [ADR-002 § Schema Versioning](../adrs/ADR-002-graph-file-format-and-cluster-boundaries.md#schema-versioning)) lives in `@corum/schema` and is published as `SCHEMA_VERSION`. Breaking changes require a migration command in `@corum/cli`.
 
 ---
 
