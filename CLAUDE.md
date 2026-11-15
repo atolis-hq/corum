@@ -54,6 +54,19 @@ node dist/src/bin/corum.js import --config <yaml> [-b <branch>]  # import specs;
 | `project/adrs/` | Architecture decisions; read before changing core abstractions |
 | `project/` | Decisions (ADRs/PDRs), plans, specs, reports. `docs/` is for public-facing guides only; new superpowers specs/plans go in `project/superpowers/{specs,plans}` |
 
+## Raising Issues
+
+Before creating a GitHub issue, ask the user (via a single-select menu) how it should be dispatched. Do not default to any of these:
+
+- No assignment: file for manual triage.
+- Assign to `atolis-hq-agent`: Wake starts working it on its next tick.
+- Assign to `atolis-hq-agent` and label `dark-factory`: Wake works it end-to-end, unattended, via the dark-factory workflow.
+- Label `dark-factory` with no assignment: routes into the dark-factory workflow once someone assigns it later.
+
+Assigning is dispatch: guessing wrong starts real work. Also apply the normal type label (`bug`, `enhancement` or `documentation`).
+
+When the chosen dispatch is unattended (assigned and/or labelled `dark-factory`), use `.github/ISSUE_TEMPLATE/dark-factory-task.md`. State the intended outcome explicitly and separately from any suggested approach. A prescriptive fix sketch with no stated outcome leaves the working agent unable to tell whether to extend scope when the sketch turns out incomplete, so it will correctly report back blocked instead of guessing. If one issue depends on another, say so in the body and link it.
+
 ## State & Stability Defaults
 
 Every node and edge has `state` (`draft|proposed|agreed|future|removed|implemented`, default `proposed`) and `stability` (`unstable|stable|deprecated`, default `unstable`). Always include these fields when creating nodes or edges.
