@@ -3,12 +3,38 @@
 ## The graph
 
 A Corum graph is a set of **nodes** connected by typed **edges**. Nodes
-describe the things in your architecture: APIs, domain models, events,
-schemas and their fields. Edges describe how they relate: an endpoint
-`calls` a domain operation, a response field `maps-to` a domain field.
+describe the things in your design; edges describe how they relate. Out of the
+box Corum ships with software architecture in mind: APIs, domain models, events,
+schemas and their fields, with edges such as an endpoint `calls` a domain
+operation or a response field `maps-to` a domain field.
 
-The graph lives as YAML files in a Git repository. Git is the database, so
-history, branching, review and access control come from Git.
+> **Not limited to architecture.** Node types and edge types come from
+> [packs](templates-and-packs.md), not from the engine. The architecture packs
+> are just the ones that ship first. A pack can model anything that has
+> structure and relationships: data platforms, infrastructure, org
+> structures, processes, and so on.
+
+### Everything has an identity
+
+Every node has a stable ID, **all the way down to individual fields**. Because a
+field is a node like any other, relationships can be drawn between fields, not
+just between whole services or schemas. That's what makes field-level lineage
+possible, and it applies to whatever your templates define, not only fields.
+
+### Relationships are optional
+
+Nothing forces you to connect anything. A graph can start as a bare inventory
+of nodes and gain edges as understanding grows, so it is useful at every level
+of completeness. Imports and agents add relationships where they are known;
+lack of an edge means "not modelled", not "unrelated".
+
+### All state lives in Git
+
+The graph, its history, its branches, its packs and its config are all files
+in a Git repository. There is no database, server or service to run beyond
+Corum itself, and the MCP server and web UI just read and write that repository
+(a remote repository is cached as a local clone). Backup, access control, review and audit are whatever you
+already use for Git.
 
 > You don't author these files by hand. Agents write them through MCP tools,
 > which validate every change. This page shows the formats so you can read and
@@ -76,8 +102,7 @@ schemas:
         collection: array
 ```
 
-This one block produces an endpoint node, schema nodes, and a node per field,
-all linked by structure automatically. References such as
+This one block produces an endpoint node, schema nodes, and a node per field. References such as
 `#/schemas/order-line-item` resolve to the owned schema; a bare node ID points
 at a node elsewhere in the graph.
 
@@ -89,9 +114,15 @@ On disk, clusters live under
 Edges connect two node IDs with a type. Edge IDs take the form
 `{from}__{type}__{to}`.
 
-- **Structural** edges (`has-field`, `has-value`) are generated from ownership.
-- **Explicit** edges are stored in `.corum/graph/edges/` and cross node
-  boundaries.
+- **Derived** edges are generated automatically at load time and never written
+  by hand. Ownership produces structural edges (`has-field`, `has-value`)
+  from each parent to the children in its cluster. Properties that reference
+  another node by its global ID (for example an endpoint's response schema
+  living in another component) produce a `uses-type` edge. References to
+  things inside the same cluster (`#/schemas/...`) need no edge.
+- **Explicit** edges are everything else: relationships that cross node
+  boundaries, such as `calls` or `maps-to`. They are stored in
+  `.corum/graph/edges/`.
 
 ```yaml
 edges:
@@ -126,8 +157,11 @@ no relationship, so agents treat similarity as a hypothesis to verify.
 ## Branches
 
 Because the graph is in Git, a branch is a design alternative. You can
-develop a proposed design on a branch, diff it against the default branch, and
-analyse impact across branches before merging. Renames leave an alias trail, so
+develop a proposed design on a branch and diff it against the default branch.
+You can also compare across several branches at once, to see where proposals
+conflict (two branches changing the same node) or complement each other
+(changes that touch different parts of the graph and could be combined), and
+analyse impact before anything merges. Renames leave an alias trail, so
 references to old IDs from other branches or imports still resolve.
 
 ## Where to go next

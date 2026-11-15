@@ -10,6 +10,46 @@ produces the same nodes.
 | `asyncapi` | AsyncAPI specs (2.6 and 3.0 examples in [spec-examples](spec-examples/asyncapi)) | `messaging` |
 | `corum` | `*.corum.yaml` interchange files from `corum-extract` tooling | `extract` |
 
+## The Corum interchange format
+
+OpenAPI and AsyncAPI cover contracts, but much of a real system isn't described
+by a spec: domain models, commands, internal events, and the calls between
+them. **Corum does not try to solve extraction.** Every codebase, language and
+framework differs, so Corum instead defines one small, documented interchange
+format (`*.corum.yaml`) and a single importer for it. Anything that can write
+that file can feed the graph.
+
+An interchange file has an envelope (`corum` version, optional `info`), a map
+of `nodes` keyed by full Corum node ID, shared JSON-schema `components`, and
+optional explicit `edges`. Schemas are expanded into `Schema` and `Field` nodes
+at import time. Nodes can carry `x-aka` alternative names so the importer can
+match them to nodes from other adapters (for example a controller class and an
+OpenAPI operation), and provenance saying where each came from. The envelope is
+defined by `.corum/packs/extract/interchange.schema.yaml`.
+
+How to produce one:
+
+- **Ask an agent.** Point your coding agent at the repository, give it the
+  interchange schema and the templates you use, and ask it to emit a
+  `*.corum.yaml` file.
+- **Have an agent build a script.** For something repeatable, ask the agent to
+  write an extractor for your stack (a Roslyn, tree-sitter or reflection based
+  script, say) that outputs the file, and run it in CI. Deterministic scripts are
+  preferable to re-running an agent when the source is regular.
+- **Use existing extractors**, where available (`corum-extract` tooling).
+
+Then import it:
+
+```bash
+corum pack install extract
+corum import corum build/output.corum.yaml
+```
+
+Any gaps the extractor reports (unresolved types, name collisions) come back as
+warnings. Extractor output can be combined with spec imports in one config
+file, with `deduplication` rules deciding which adapter's nodes win when both
+describe the same thing.
+
 ## Component mapping
 
 Corum groups nodes by **component** (the first segment of every node ID), but a

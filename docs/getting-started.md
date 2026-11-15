@@ -44,6 +44,19 @@ This creates:
 Commit `.corum/` to Git. The repository is the database; there is nothing else
 to host.
 
+### Optional: install more packs
+
+`init` gives you the four default packs. Add others as you need them:
+
+```bash
+corum pack list                  # what's installed
+corum pack install extract       # needed to import corum interchange files
+corum pack install domain@v0.1.5 # a specific version
+```
+
+Packs define the kinds of node you can model; see
+[Templates and packs](templates-and-packs.md).
+
 ## Connect an agent
 
 Add Corum to your MCP client. For Claude Code or Claude Desktop:

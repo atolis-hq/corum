@@ -40,7 +40,7 @@ corum web [--port <n>] [--graph <path>]
 Starts the browser UI (default port 3000, or `CORUM_WEB_PORT`) to explore
 nodes, edges and lineage. Filesystem graphs can be watched with
 `CORUM_FILE_WATCHER=true`; Git-backed graphs reload when `git_poll_seconds` is
-set.
+set. To run it as a shared service, see [Hosting the web UI](configuration.md#hosting-the-web-ui).
 
 ## `corum lint`
 
