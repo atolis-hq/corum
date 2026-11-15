@@ -6,3 +6,5 @@ tmp/
 .claude/settings.local.json
 output/
 .superpowers
+test-results/
+playwright-report/

@@ -51,7 +51,11 @@ try {
   console.log(`\nlist_nodes({ template: "APIEndpoint" }) returned ${apiNodes.length} node(s)`)
   console.log(JSON.stringify(apiNodes, null, 2))
 
-  const cluster = await callJson('get_cluster', { node_id: 'orders.DomainModel.order' })
+  const cluster = await callJson('get_cluster', {
+    node_id: 'orders.DomainModel.order',
+    include_edges: true,
+    include_descendants: true,
+  })
   const edgeTypeCounts = cluster.edges.reduce((counts, edge) => {
     counts[edge.type] = (counts[edge.type] ?? 0) + 1
     return counts
@@ -59,10 +63,10 @@ try {
   console.log('\nget_cluster({ node_id: "orders.DomainModel.order" })')
   console.log(JSON.stringify({
     root: cluster.root.id,
-    childCount: cluster.children.length,
+    descendantCount: cluster.descendants.length,
     edgeCount: cluster.edges.length,
     edgeTypeCounts,
-    firstFiveChildren: cluster.children.slice(0, 5).map((node) => node.id),
+    firstFiveDescendants: cluster.descendants.slice(0, 5).map((node) => node.id),
   }, null, 2))
 
   const linked = await callJson('get_linked_fields', { node_id: 'orders.DomainModel.order' })

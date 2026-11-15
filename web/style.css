@@ -103,6 +103,21 @@ button {
   min-height: 0;
 }
 
+.list-pane {
+  display: flex;
+  min-height: 0;
+}
+.detail-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.mobile-back {
+  display: none;
+}
+
 .nav-rail {
   display: flex;
   flex-direction: column;
@@ -557,7 +572,9 @@ button {
 
   .nav-tree {
     width: 100%;
-    max-height: 260px;
+    min-width: 0;
+    min-height: 0;
+    flex: 1;
     border-right: none;
     border-bottom: 1px solid var(--rule);
   }
@@ -1698,4 +1715,55 @@ button {
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+}
+
+@media (max-width: 780px) {
+  #root {
+    height: 100dvh;
+  }
+  .list-pane {
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+  .master-detail {
+    position: relative;
+    overflow: hidden;
+  }
+  .master-detail > .list-pane, .master-detail > .detail-pane {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    background: var(--paper);
+    transition: transform 220ms ease, visibility 220ms;
+  }
+  .master-detail > .detail-pane {
+    transform: translateX(100%);
+    visibility: hidden;
+  }
+  .master-detail.detail-open > .list-pane {
+    transform: translateX(-100%);
+    visibility: hidden;
+  }
+  .master-detail.detail-open > .detail-pane {
+    transform: translateX(0);
+    visibility: visible;
+  }
+  .mobile-back {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 8px 16px;
+    border: 0;
+    border-bottom: 1px solid var(--rule);
+    background: var(--paper-2);
+    color: var(--ink);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .master-detail > .list-pane, .master-detail > .detail-pane {
+    transition: none;
+  }
 }
