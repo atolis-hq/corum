@@ -29,7 +29,8 @@ corum mcp [--no-web] [--watch] [--graph <path>]
 
 Starts the stdio MCP server, plus the web UI unless `--no-web` is given.
 `--watch` reloads file-backed graphs on local changes; Git-backed graphs reload
-by polling. Tools are listed in [MCP tools](mcp-tools.md).
+by polling. Tools are listed in [MCP tools](mcp-tools.md). How the embedded web
+UI behaves alongside it is covered in [Web UI](web-ui.md#running-with-the-mcp-server).
 
 ## `corum web`
 
@@ -37,8 +38,7 @@ by polling. Tools are listed in [MCP tools](mcp-tools.md).
 corum web [--port <n>] [--graph <path>]
 ```
 
-Starts the browser UI (default port 3000, or `CORUM_WEB_PORT`) to explore
-nodes, edges and lineage. Filesystem graphs can be watched with
+Starts the browser UI (default port 3000, or `CORUM_WEB_PORT`); see [Web UI](web-ui.md). Filesystem graphs can be watched with
 `CORUM_FILE_WATCHER=true`; Git-backed graphs reload when `git_poll_seconds` is
 set. To run it as a shared service, see [Hosting the web UI](configuration.md#hosting-the-web-ui).
 

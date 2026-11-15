@@ -76,7 +76,7 @@ Add Corum to your MCP client. For Claude Code or Claude Desktop:
 If you haven't installed globally, use `"command": "npx"` and
 `"args": ["@atolis-hq/corum", "mcp", "--no-web"]`.
 
-Drop `--no-web` if you also want the [web UI](cli.md#corum-web) alongside the
+Drop `--no-web` if you also want the [web UI](web-ui.md) alongside the
 MCP server.
 
 ## Your first conversation

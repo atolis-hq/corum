@@ -68,7 +68,7 @@ See [Configuration](configuration.md) for source modes.
 - Read the `pending_changes` diff before approving a commit.
 - Run `corum lint` to catch property and edge-type violations.
 - Open a pull request on the branch and review the YAML like code.
-- Use the [web UI](cli.md#corum-web) to see the graph visually.
+- Use the [web UI](web-ui.md) to see the graph visually.
 
 > **Status:** the session model, Git checkpointing and branch workflows are
 > still changing.

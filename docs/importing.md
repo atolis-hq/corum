@@ -125,6 +125,28 @@ corum import --config .corum/imports.yaml --branch feat/import-orders
 
 Review the result like any other change.
 
+## Re-importing
+
+Running an import again reconciles the new input with what is already in the
+graph rather than starting over:
+
+- **New** nodes are added.
+- **Existing** nodes are updated from the source. For `determined` (contract- or
+  code-derived) imports, anything a human or agent set is kept: `state`,
+  `stability` and `notes` survive re-imports, as does rename history.
+- **Missing** nodes are marked `removed` (a soft delete), but only those that
+  were originally imported from the *same source file*. Nodes from other
+  sources and hand-modelled nodes are left alone.
+
+Because of the last rule, feed each source file in full. Importing a partial
+file makes everything it omits look removed. Review the result on a branch, and
+use deduplication rules when several adapters describe the same thing.
+
+> **Status:** imports currently write straight to the graph rather than through
+> a working session (so they bypass the lint gate), and a dry-run mode and an
+> explicit partial-import mode are planned. Treat imports of derived or
+> inferred data as branch-only until reviewed.
+
 ## Imports and renames
 
 Imports never guess renames. If a spec renames something, the importer treats

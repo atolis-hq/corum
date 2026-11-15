@@ -18,6 +18,7 @@ for you, and every change lands in Git.
 ## Reference
 
 - [MCP tools](mcp-tools.md) - every tool, client configuration, output options.
+- [Web UI](web-ui.md) - views, branch comparison, refreshing, running alongside MCP.
 - [CLI](cli.md) - every command, including `lint` and the web UI.
 - [Configuration](configuration.md) - `.corum/config.yaml`, environment variables, file vs Git source.
 

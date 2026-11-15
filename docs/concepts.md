@@ -72,6 +72,27 @@ Segments use letters, digits, `_` and `-`. `__` is reserved for edge IDs.
 State tracks where a design is in its lifecycle; stability tracks how safe it
 is to depend on.
 
+## Design and derived data
+
+Nodes in a graph come from two places, and Corum keeps track of which:
+
+- **Design**: what you intend to build, created by people and agents on
+  branches, usually with `state` of `draft`, `proposed`, `agreed` or `future`.
+- **Derived**: what exists today, brought in from specs or code extraction by
+  [imports](importing.md), usually with `state: implemented`.
+
+Imported nodes carry provenance: where they came from (`extractedFrom`), how
+sure the source is (`derivation`: `determined` for contract-derived,
+`inferred` for heuristic or LLM-derived, `manual` for hand-entered) and which
+tool produced them (`derivedBy`). Tools hide provenance by default; ask for it
+when you need to trace a node to its source (`include_provenance`).
+
+Re-importing refreshes derived facts without erasing the design decisions
+layered on top; see [Re-importing](importing.md#re-importing). Moving a
+design forward is a Git merge: a branch that proposes a change merges, and once the code ships,
+extraction brings in the matching derived nodes (by convention marked
+`implemented`).
+
 ## Clusters
 
 A **cluster** is one YAML file defining a root node and everything it owns. A
