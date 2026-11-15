@@ -73,6 +73,16 @@ properties:
           description: |
             Corum template name (e.g. Command, DomainModel, APIEndpoint,
             DomainOperation, DomainEvent, IntegrationEvent).
+        parentId:
+          type: [string, 'null']
+          description: |
+            Explicit ownership: a node ID names the parent (which must exist in
+            this document); null declares an independent root. Takes precedence
+            over ID shape. An explicit parent must be the direct owner in ID
+            terms: {parentId}.{section}.{name}. Omit for legacy inference: drop
+            the last two segments
+            if the candidate exists and has at least three segments. Unconventional
+            section names emit a heuristic warning, but still infer ownership.
         title:
           type: string
           description: Human-readable name or display title for this node.

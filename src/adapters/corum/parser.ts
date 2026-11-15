@@ -12,6 +12,7 @@ export interface CorumInterchangeProvenance {
 
 export interface CorumInterchangeNodeEntry {
   type: string
+  parentId?: string | null
   title?: string
   schema?: { $ref: string }
   'x-aka'?: string[]
@@ -71,6 +72,18 @@ export function parseSpec(specPath: string): ParseResult {
   }
 
   const doc = raw as CorumInterchangeDocument
+
+  for (const [nodeId, entry] of Object.entries(doc.nodes)) {
+    if (entry && typeof entry === 'object' && 'parentId' in entry
+      && entry.parentId !== null && typeof entry.parentId !== 'string') {
+      diagnostics.push({
+        severity: 'error',
+        file: specPath,
+        message: `Node '${nodeId}' parentId must be a string or null`,
+      })
+    }
+  }
+  if (diagnostics.some(d => d.severity === 'error')) return { document: null, diagnostics }
 
   if (doc.corum !== SUPPORTED_VERSION) {
     diagnostics.push({

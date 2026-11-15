@@ -742,3 +742,94 @@ describe('prefix-related interchange roots', () => {
     assert.ok(!nodes.some(node => node.id === shortId + '.schemas.Payload'))
   })
 })
+
+describe('mapDocument — explicit ownership', () => {
+  it('keeps a child-shaped explicit root independent in schema ownership analysis', () => {
+    const root = 'orders.Schema.foo'
+    const independent = root + '.fields.bar'
+    const { nodes, diagnostics } = mapDocument(makeDoc({
+      nodes: {
+        [root]: { type: 'Schema' },
+        [independent]: { type: 'Schema', parentId: null },
+      },
+      components: { schemas: { Payload: { type: 'object', properties: { id: { type: 'string' } } } } },
+      edges: [{ type: 'uses-type', from: independent, to: '#/components/schemas/Payload' }],
+    }), SPEC_PATH)
+    assert.equal(nodes.find(n => n.id === independent)?.parentId, undefined)
+    assert.equal(nodes.find(n => n.id === independent + '.schemas.Payload')?.parentId, independent)
+    assert.deepEqual(diagnostics, [])
+  })
+
+  it('does not infer namespace ownership or lose roots in schema analysis', () => {
+    const { nodes, diagnostics } = mapDocument(makeDoc({
+      nodes: {
+        orders: { type: 'Namespace' },
+        'orders.Command.place': { type: 'Command' },
+        'orders.Command.cancel': { type: 'Command' },
+      },
+      components: { schemas: { Payload: { type: 'object' } } },
+      edges: [
+        { type: 'uses-type', from: 'orders.Command.place', to: '#/components/schemas/Payload' },
+        { type: 'uses-type', from: 'orders.Command.cancel', to: '#/components/schemas/Payload' },
+      ],
+    }), SPEC_PATH)
+    assert.ok(nodes.filter(n => n.template === 'Command').every(n => n.parentId === undefined))
+    assert.ok(nodes.some(n => n.id === 'orders.Schema.Payload'))
+    assert.deepEqual(diagnostics, [])
+  })
+
+  it('normalizes explicit parent IDs for valid direct ownership', () => {
+    const { nodes, diagnostics } = mapDocument(makeDoc({
+      nodes: {
+        '_.Schema.foo': { type: 'Schema' },
+        '_.Schema.foo.fields.bar': { type: 'Field', parentId: '_.Schema.foo' },
+      },
+    }), SPEC_PATH)
+    assert.equal(nodes[1].parentId, '_unresolved.Schema.foo')
+    assert.deepEqual(diagnostics, [])
+  })
+
+  for (const [description, nodeId, parentId] of [
+    ['unrelated parent', 'orders.Schema.foo.fields.bar', 'orders.Schema.other'],
+    ['ancestor more than one level up', 'orders.Schema.foo.fields.bar.fields.id', 'orders.Schema.foo'],
+    ['self parent', 'orders.Schema.foo', 'orders.Schema.foo'],
+    ['empty section', 'orders.Schema.foo..bar', 'orders.Schema.foo'],
+    ['empty name', 'orders.Schema.foo.fields.', 'orders.Schema.foo'],
+  ]) {
+    it('reports invalid direct ownership: ' + description, () => {
+      const { nodes, diagnostics } = mapDocument(makeDoc({
+        nodes: {
+          [parentId]: { type: 'Schema' },
+          [nodeId]: { type: 'Field', parentId },
+        },
+      }), SPEC_PATH)
+      assert.equal(nodes.find(n => n.id === nodeId)?.parentId, parentId)
+      assert.equal(diagnostics.length, 1)
+      assert.equal(diagnostics[0].severity, 'error')
+      assert.match(diagnostics[0].message, /must be its direct owner/)
+    })
+  }
+
+  it('reports an unknown explicit parent without silently making a root', () => {
+    const { nodes, diagnostics } = mapDocument(makeDoc({
+      nodes: { 'orders.Field.id': { type: 'Field', parentId: 'orders.Schema.missing' } },
+    }), SPEC_PATH)
+    assert.equal(nodes[0].parentId, 'orders.Schema.missing')
+    assert.ok(diagnostics.some(d => d.severity === 'error' && /unknown explicit parent/.test(d.message)))
+  })
+
+  it('retains legacy inference and warns only for unconventional inferred sections', () => {
+    const { nodes, diagnostics } = mapDocument(makeDoc({
+      nodes: {
+        'orders.Schema.foo': { type: 'Schema' },
+        'orders.Schema.foo.fields.id': { type: 'Field' },
+        'orders.Schema.foo.custom.id': { type: 'Field' },
+        'orders.Schema.foo.explicit.id': { type: 'Field', parentId: 'orders.Schema.foo' },
+      },
+    }), SPEC_PATH)
+    assert.ok(nodes.slice(1).every(n => n.parentId === 'orders.Schema.foo'))
+    assert.equal(diagnostics.length, 1)
+    assert.match(diagnostics[0].message, /implausible section 'custom'/)
+    assert.equal(diagnostics[0].severity, 'warning')
+  })
+})

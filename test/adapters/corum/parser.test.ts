@@ -127,3 +127,44 @@ nodes:
     cleanup()
   })
 })
+
+describe('parseSpec — parentId', () => {
+  it('preserves explicit parents, null roots, and omitted ownership', () => {
+    const { filePath, cleanup } = writeTmp(`
+corum: "1.0"
+nodes:
+  orders.Schema.foo:
+    type: Schema
+    parentId: null
+  orders.Schema.foo.fields.id:
+    type: Field
+    parentId: orders.Schema.foo
+  orders.Command.place:
+    type: Command
+`)
+    try {
+      const { document, diagnostics } = parseSpec(filePath)
+      assert.equal(document?.nodes['orders.Schema.foo'].parentId, null)
+      assert.equal(document?.nodes['orders.Schema.foo.fields.id'].parentId, 'orders.Schema.foo')
+      assert.equal(document?.nodes['orders.Command.place'].parentId, undefined)
+      assert.deepEqual(diagnostics, [])
+    } finally { cleanup() }
+  })
+
+  for (const value of ['42', 'false', '[]', '{}']) {
+    it('rejects invalid parentId ' + value, () => {
+      const { filePath, cleanup } = writeTmp(`
+corum: "1.0"
+nodes:
+  orders.Schema.foo:
+    type: Schema
+    parentId: ${value}
+`)
+      try {
+        const { document, diagnostics } = parseSpec(filePath)
+        assert.equal(document, null)
+        assert.ok(diagnostics.some(d => d.severity === 'error' && /parentId/.test(d.message)))
+      } finally { cleanup() }
+    })
+  }
+})
