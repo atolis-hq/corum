@@ -37,7 +37,7 @@ This creates:
 | --- | --- |
 | `.corum/config.yaml` | Project configuration ([details](configuration.md)) |
 | `.corum/graph/graph.yaml` | Graph definition, including which packs it uses |
-| `.corum/graph/components/`, `.corum/graph/edges/` | Where nodes and edges are stored |
+| `.corum/graph/nodes/`, `.corum/graph/edges/` | Where nodes and edges are stored |
 | `.corum/packs/` | Downloaded template packs: `core`, `domain`, `rest`, `messaging` |
 | `.corum/packs.yaml` | Manifest of installed packs |
 

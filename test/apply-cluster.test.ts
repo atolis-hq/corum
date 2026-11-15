@@ -90,8 +90,8 @@ function makeFileFixture(): FileGraphSource {
     'packs/testpack/templates/Schema.yaml': SCHEMA_TEMPLATE,
     'packs/testpack/templates/Field.yaml': FIELD_TEMPLATE,
     'graph/graph.yaml': `schemaVersion: '1'\ntemplatePacks:\n  - name: testpack\n    path: ../packs/testpack\n`,
-    'graph/components/orders/Schemas/customer.yaml': CUSTOMER_CLUSTER,
-    'graph/components/orders/Schemas/invoice.yaml': INVOICE_CLUSTER,
+    'graph/nodes/orders/Schemas/customer.yaml': CUSTOMER_CLUSTER,
+    'graph/nodes/orders/Schemas/invoice.yaml': INVOICE_CLUSTER,
   }
   for (const [rel, content] of Object.entries(files)) {
     const filePath = path.join(tmpDir, ...rel.split('/'))

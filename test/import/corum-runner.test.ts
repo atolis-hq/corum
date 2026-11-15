@@ -78,8 +78,8 @@ describe('corum import — basic fixture', () => {
 
       assert.ok(!result.diagnostics.some(d => d.severity === 'error'), `unexpected errors: ${JSON.stringify(result.diagnostics.filter(d => d.severity === 'error'))}`)
       assert.ok(result.diagnostics.some(d => d.severity === 'warning' && d.message.includes('unresolved-field-type')))
-      assert.ok(fs.existsSync(path.join(graphDir, 'components/orders/DomainEvents/OrderPlacedDomainEvent.yaml')))
-      assert.ok(fs.existsSync(path.join(graphDir, 'components/orders/DomainModels/OrderAggregate.yaml')))
+      assert.ok(fs.existsSync(path.join(graphDir, 'nodes/orders/DomainEvents/OrderPlacedDomainEvent.yaml')))
+      assert.ok(fs.existsSync(path.join(graphDir, 'nodes/orders/DomainModels/OrderAggregate.yaml')))
 
       assertMatchesExpected(graphDir, 'basic')
     } finally {
@@ -124,13 +124,13 @@ edges:
       const result = await runImport(config, runtimeConfig)
 
       assert.ok(!result.diagnostics.some(d => d.severity === 'error'), `unexpected errors: ${JSON.stringify(result.diagnostics.filter(d => d.severity === 'error'))}`)
-      assert.ok(fs.existsSync(path.join(graphDir, 'components', '_unresolved', 'DomainEvents', 'OrderPlaced.yaml')))
-      assert.ok(fs.existsSync(path.join(graphDir, 'components', '_unresolved', 'DomainEvents', 'OrderPlaced.yaml')))
+      assert.ok(fs.existsSync(path.join(graphDir, 'nodes', '_unresolved', 'DomainEvents', 'OrderPlaced.yaml')))
+      assert.ok(fs.existsSync(path.join(graphDir, 'nodes', '_unresolved', 'DomainEvents', 'OrderPlaced.yaml')))
 
-      const rootYaml = fs.readFileSync(path.join(graphDir, 'components', '_unresolved', 'DomainEvents', 'OrderPlaced.yaml'), 'utf-8')
+      const rootYaml = fs.readFileSync(path.join(graphDir, 'nodes', '_unresolved', 'DomainEvents', 'OrderPlaced.yaml'), 'utf-8')
       assert.match(rootYaml, /schemas:\n\s+ReactToPersonCreatedCommand:/)
-      assert.ok(!fs.existsSync(path.join(graphDir, 'components', 'workers', 'Schemas', 'ReactToPersonCreatedCommand.yaml')))
-      assert.ok(!fs.existsSync(path.join(graphDir, 'components', '_unresolved', 'Schemas', 'NeverUsed.yaml')))
+      assert.ok(!fs.existsSync(path.join(graphDir, 'nodes', 'workers', 'Schemas', 'ReactToPersonCreatedCommand.yaml')))
+      assert.ok(!fs.existsSync(path.join(graphDir, 'nodes', '_unresolved', 'Schemas', 'NeverUsed.yaml')))
       assert.ok(result.diagnostics.some(d => d.severity === 'warning' && d.message.includes('Skipping unused schema') && d.message.includes('NeverUsed')))
     } finally {
       cleanup()

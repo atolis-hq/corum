@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { NODE_ROOT_DIR } from '../source/graph-layout.js'
 import { Command } from 'commander'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { readFile as fsReadFile } from 'node:fs/promises'
@@ -150,7 +151,7 @@ program
     } else {
       mkdirSync(path.dirname(graphPath), { recursive: true })
       writeFileSync(graphPath, GRAPH_TEMPLATE)
-      mkdirSync(path.join(corumDir, 'graph', 'components'), { recursive: true })
+      mkdirSync(path.join(corumDir, 'graph', NODE_ROOT_DIR), { recursive: true })
       mkdirSync(path.join(corumDir, 'graph', 'edges'), { recursive: true })
       process.stdout.write('Created .corum/graph/graph.yaml\n')
     }

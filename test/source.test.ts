@@ -34,16 +34,16 @@ describe('SourceError', () => {
 
 describe('content-utils', () => {
   const map: ContentMap = new Map([
-    ['components/orders/order.yaml', 'id: order'],
-    ['components/orders/payment.yaml', 'id: payment'],
+    ['nodes/orders/order.yaml', 'id: order'],
+    ['nodes/orders/payment.yaml', 'id: payment'],
     ['edges/corum.edges.yaml', 'edges: []'],
     ['graph.yaml', 'templatePacks: []'],
   ])
 
   it('listYamlKeys returns keys under a prefix', () => {
-    assert.deepEqual(listYamlKeys(map, 'components/orders').sort(), [
-      'components/orders/order.yaml',
-      'components/orders/payment.yaml',
+    assert.deepEqual(listYamlKeys(map, 'nodes/orders').sort(), [
+      'nodes/orders/order.yaml',
+      'nodes/orders/payment.yaml',
     ])
   })
 
@@ -83,7 +83,7 @@ describe('FileGraphSource', () => {
     const source = new FileGraphSource({ graphDir: fixtureGraphDir })
     const content = await source.loadGraphContent(await source.defaultBranch())
     const keys = [...content.keys()]
-    assert.ok(keys.some(k => k.startsWith('components/') && k.endsWith('.yaml')))
+    assert.ok(keys.some(k => k.startsWith('nodes/') && k.endsWith('.yaml')))
     assert.ok(keys.some(k => k === 'graph.yaml'))
   })
 
@@ -108,9 +108,9 @@ describe('FileGraphSource', () => {
       const source = new FileGraphSource({ graphDir: tmpDir, defaultBranch: 'local' })
       await source.commit('local', new Map([
         ['graph.yaml', 'templatePacks: []\n'],
-        ['components/orders/order.yaml', 'id: order\n'],
+        ['nodes/orders/order.yaml', 'id: order\n'],
       ]), 'write snapshot', { replaceGraphContent: true })
-      assert.equal(fs.readFileSync(path.join(tmpDir, 'components/orders/order.yaml'), 'utf-8'), 'id: order\n')
+      assert.equal(fs.readFileSync(path.join(tmpDir, 'nodes/orders/order.yaml'), 'utf-8'), 'id: order\n')
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true })
     }
@@ -138,19 +138,19 @@ describe('FileGraphSource', () => {
       const source = new FileGraphSource({ graphDir: tmpDir, defaultBranch: 'local' })
       await source.commit('local', new Map([
         ['graph.yaml', 'templatePacks: []\n'],
-        ['components/orders/order.yaml', 'id: order\n'],
+        ['nodes/orders/order.yaml', 'id: order\n'],
       ]), 'first', { replaceGraphContent: true })
 
       fs.writeFileSync(path.join(tmpDir, 'notes.txt'), 'kept by user')
 
       await source.commit('local', new Map([
         ['graph.yaml', 'templatePacks: []\n'],
-        ['components/orders/order.yaml', 'id: order-renamed\n'],
+        ['nodes/orders/order.yaml', 'id: order-renamed\n'],
       ]), 'second', { replaceGraphContent: true })
 
       assert.equal(fs.readFileSync(path.join(tmpDir, 'notes.txt'), 'utf-8'), 'kept by user')
       assert.equal(
-        fs.readFileSync(path.join(tmpDir, 'components/orders/order.yaml'), 'utf-8'),
+        fs.readFileSync(path.join(tmpDir, 'nodes/orders/order.yaml'), 'utf-8'),
         'id: order-renamed\n',
       )
     } finally {
@@ -164,17 +164,17 @@ describe('FileGraphSource', () => {
       const source = new FileGraphSource({ graphDir: tmpDir, defaultBranch: 'local' })
       await source.commit('local', new Map([
         ['graph.yaml', 'templatePacks: []\n'],
-        ['components/orders/order.yaml', 'id: order\n'],
-        ['components/orders/payment.yaml', 'id: payment\n'],
+        ['nodes/orders/order.yaml', 'id: order\n'],
+        ['nodes/orders/payment.yaml', 'id: payment\n'],
       ]), 'first', { replaceGraphContent: true })
 
       await source.commit('local', new Map([
         ['graph.yaml', 'templatePacks: []\n'],
-        ['components/orders/order.yaml', 'id: order\n'],
+        ['nodes/orders/order.yaml', 'id: order\n'],
       ]), 'second', { replaceGraphContent: true })
 
-      assert.equal(fs.existsSync(path.join(tmpDir, 'components/orders/payment.yaml')), false)
-      assert.equal(fs.existsSync(path.join(tmpDir, 'components/orders/order.yaml')), true)
+      assert.equal(fs.existsSync(path.join(tmpDir, 'nodes/orders/payment.yaml')), false)
+      assert.equal(fs.existsSync(path.join(tmpDir, 'nodes/orders/order.yaml')), true)
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true })
     }
@@ -191,7 +191,7 @@ describe('FileGraphSource', () => {
       const source = new FileGraphSource({ graphDir: tmpDir, defaultBranch: 'local' })
       await source.commit('local', new Map([
         ['graph.yaml', 'templatePacks: []\n'],
-        ['components/orders/order.yaml', 'id: order\n'],
+        ['nodes/orders/order.yaml', 'id: order\n'],
       ]), 'first', { replaceGraphContent: true })
 
       const originalRmSync = fs.rmSync
@@ -207,7 +207,7 @@ describe('FileGraphSource', () => {
       try {
         await source.commit('local', new Map([
           ['graph.yaml', 'templatePacks: []\n'],
-          ['components/orders/order.yaml', 'id: order-v2\n'],
+          ['nodes/orders/order.yaml', 'id: order-v2\n'],
         ]), 'second', { replaceGraphContent: true })
       } finally {
         fs.rmSync = originalRmSync
@@ -215,7 +215,7 @@ describe('FileGraphSource', () => {
 
       assert.equal(sawGraphDirFullyRemoved, false, 'graphDir itself must never be fully removed during replaceGraphContent commit')
       assert.equal(
-        fs.readFileSync(path.join(tmpDir, 'components/orders/order.yaml'), 'utf-8'),
+        fs.readFileSync(path.join(tmpDir, 'nodes/orders/order.yaml'), 'utf-8'),
         'id: order-v2\n',
       )
     } finally {
@@ -230,7 +230,7 @@ describe('FileGraphSource', () => {
       const source = new FileGraphSource({ graphDir: tmpDir, defaultBranch: 'local' })
       await source.commit('local', new Map([
         ['graph.yaml', 'templatePacks: []\n'],
-        ['components/orders/order.yaml', 'id: order\n'],
+        ['nodes/orders/order.yaml', 'id: order\n'],
       ]), 'first', { replaceGraphContent: true })
 
       fs.writeFileSync(path.join(tmpDir, 'notes.txt'), 'kept by user')
@@ -241,7 +241,7 @@ describe('FileGraphSource', () => {
 
       assert.equal(fs.existsSync(path.join(tmpDir, '.git')), true, '.git must survive replaceGraphContent')
       assert.equal(fs.readFileSync(path.join(tmpDir, 'notes.txt'), 'utf-8'), 'kept by user')
-      assert.equal(fs.existsSync(path.join(tmpDir, 'components/orders/order.yaml')), false, 'stale yaml removed')
+      assert.equal(fs.existsSync(path.join(tmpDir, 'nodes/orders/order.yaml')), false, 'stale yaml removed')
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true })
     }
@@ -254,7 +254,7 @@ describe('FileGraphSource', () => {
       const source = new FileGraphSource({ graphDir: tmpDir, defaultBranch: 'local' })
       await source.commit('local', new Map([
         ['graph.yaml', 'templatePacks: []\n'],
-        ['components/orders/order.yaml', 'id: order\n'],
+        ['nodes/orders/order.yaml', 'id: order\n'],
       ]), 'first', { replaceGraphContent: true })
 
       const workflowDir = path.join(tmpDir, '.github', 'workflows')
@@ -284,7 +284,7 @@ describe('FileGraphSource', () => {
       const branch = await source.defaultBranch()
       await source.commit(branch, new Map([
         ['graph.yaml', 'templatePacks: []\n'],
-        ['components/orders/order.yaml', 'id: order\n'],
+        ['nodes/orders/order.yaml', 'id: order\n'],
       ]), 'corum: write snapshot')
 
       const [head] = await git.log({ fs, dir: tmpDir, depth: 1 })
@@ -352,7 +352,7 @@ describe('FileGraphSource', () => {
 
       await source.commit('local', new Map([
         ['graph.yaml', 'templatePacks: []\n'],
-        ['components/orders/order.yaml', 'id: order\n'],
+        ['nodes/orders/order.yaml', 'id: order\n'],
       ]), 'second', { replaceGraphContent: true })
       assert.notEqual(await source.head('local'), head1, 'head must move when content changes')
     } finally {
@@ -370,7 +370,7 @@ describe('FileGraphSource', () => {
 
       await source.commit('local', new Map([
         ['graph.yaml', 'templatePacks: []\n'],
-        ['components/orders/order.yaml', 'id: order\n'],
+        ['nodes/orders/order.yaml', 'id: order\n'],
       ]), 'second', { replaceGraphContent: true })
       assert.deepEqual(await source.log('local', base), [await source.head('local')])
     } finally {
@@ -442,7 +442,7 @@ describe('createGraphRuntimeConfig', () => {
       assert.equal(config.gitPollSeconds, undefined)
 
       const content = await config.source.loadGraphContent(await config.source.defaultBranch())
-      assert.ok(content.has('components/orders/payment.yaml'))
+      assert.ok(content.has('nodes/orders/payment.yaml'))
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true })
     }
@@ -520,7 +520,7 @@ async function createFixtureRepo(tmpDir: string): Promise<void> {
   await git.init({ fs, dir: tmpDir, defaultBranch: 'main' })
 
   const graphDir = path.join(tmpDir, '.corum', 'graph')
-  const componentsDir = path.join(graphDir, 'components', 'orders')
+  const componentsDir = path.join(graphDir, 'nodes', 'orders')
   fs.mkdirSync(componentsDir, { recursive: true })
   fs.mkdirSync(path.join(graphDir, 'edges'), { recursive: true })
   fs.writeFileSync(path.join(graphDir, 'graph.yaml'), 'templatePacks: []\n')
@@ -530,7 +530,7 @@ async function createFixtureRepo(tmpDir: string): Promise<void> {
   )
 
   await git.add({ fs, dir: tmpDir, filepath: '.corum/graph/graph.yaml' })
-  await git.add({ fs, dir: tmpDir, filepath: '.corum/graph/components/orders/order.yaml' })
+  await git.add({ fs, dir: tmpDir, filepath: '.corum/graph/nodes/orders/order.yaml' })
   await git.commit({
     fs,
     dir: tmpDir,
@@ -543,7 +543,7 @@ async function createFixtureRepo(tmpDir: string): Promise<void> {
     path.join(componentsDir, 'payment.yaml'),
     'id: orders.DomainModel.payment\ntemplate: DomainModel\nschemaVersion: "1.0"\nmetadata:\n  component: orders\n  state: proposed\n  stability: unstable\n  lastModifiedAt: "2026-01-02"\n',
   )
-  await git.add({ fs, dir: tmpDir, filepath: '.corum/graph/components/orders/payment.yaml' })
+  await git.add({ fs, dir: tmpDir, filepath: '.corum/graph/nodes/orders/payment.yaml' })
   await git.commit({
     fs,
     dir: tmpDir,
@@ -587,7 +587,7 @@ describe('GitGraphSource (local)', () => {
   it('loadGraphContent accepts Windows-style graphDir separators', async () => {
     const source = new GitGraphSource({ localPath: tmpDir, graphDir: path.win32.join('.corum', 'graph') })
     const content = await source.loadGraphContent('main')
-    assert.ok(content.has('components/orders/order.yaml'))
+    assert.ok(content.has('nodes/orders/order.yaml'))
   })
 
   it('rejects Windows-style parent traversal in graphDir', () => {
@@ -621,12 +621,12 @@ describe('GitGraphSource write path', () => {
     const source = new GitGraphSource({ localPath: tmpDir })
     await git.branch({ fs, dir: tmpDir, ref: 'feat/write-test', checkout: false })
     await source.commit('feat/write-test', new Map([
-      ['components/orders/new-node.yaml',
+      ['nodes/orders/new-node.yaml',
         'id: orders.DomainModel.new-node\ntemplate: DomainModel\nschemaVersion: "1.0"\nmetadata:\n  component: orders\n  state: proposed\n  stability: unstable\n  lastModifiedAt: "2026-01-03"\n'],
     ]), 'add new-node', { replaceGraphContent: true })
 
     const content = await source.loadGraphContent('feat/write-test')
-    assert.ok(content.has('components/orders/new-node.yaml'))
+    assert.ok(content.has('nodes/orders/new-node.yaml'))
   })
 
   it('commit throws SourceError on default branch', async () => {
@@ -651,7 +651,7 @@ describe('GitGraphSource write path', () => {
     await git.branch({ fs, dir: tmpDir, ref: 'feat/checked-out', checkout: true })
     try {
       await assert.rejects(
-        () => source.commit('feat/checked-out', new Map([['components/orders/x.yaml', 'id: x\n']]), 'msg'),
+        () => source.commit('feat/checked-out', new Map([['nodes/orders/x.yaml', 'id: x\n']]), 'msg'),
         /checked out/,
       )
     } finally {
@@ -671,11 +671,11 @@ describe('GitGraphSource write path', () => {
     const source = new GitGraphSource({ localPath: tmpDir })
     const mainHead = await git.resolveRef({ fs, dir: tmpDir, ref: 'main' })
     await source.commit('feat/created-by-commit', new Map([
-      ['components/orders/created.yaml', 'id: orders.DomainModel.created\n'],
+      ['nodes/orders/created.yaml', 'id: orders.DomainModel.created\n'],
     ]), 'create branch on commit', { createBranchIfMissing: true })
 
     const content = await source.loadGraphContent('feat/created-by-commit')
-    assert.ok(content.has('components/orders/created.yaml'))
+    assert.ok(content.has('nodes/orders/created.yaml'))
 
     const branchHead = await git.resolveRef({ fs, dir: tmpDir, ref: 'feat/created-by-commit' })
     const { commit } = await git.readCommit({ fs, dir: tmpDir, oid: branchHead })
@@ -686,13 +686,13 @@ describe('GitGraphSource write path', () => {
     const source = new GitGraphSource({ localPath: tmpDir })
     await git.branch({ fs, dir: tmpDir, ref: 'feat/concurrent', checkout: false })
     await Promise.all([
-      source.commit('feat/concurrent', new Map([['components/orders/a.yaml', 'id: orders.DomainModel.a\n']]), 'add a'),
-      source.commit('feat/concurrent', new Map([['components/orders/b.yaml', 'id: orders.DomainModel.b\n']]), 'add b'),
+      source.commit('feat/concurrent', new Map([['nodes/orders/a.yaml', 'id: orders.DomainModel.a\n']]), 'add a'),
+      source.commit('feat/concurrent', new Map([['nodes/orders/b.yaml', 'id: orders.DomainModel.b\n']]), 'add b'),
     ])
 
     const content = await source.loadGraphContent('feat/concurrent')
-    assert.ok(content.has('components/orders/a.yaml'), 'first concurrent commit was lost')
-    assert.ok(content.has('components/orders/b.yaml'), 'second concurrent commit was lost')
+    assert.ok(content.has('nodes/orders/a.yaml'), 'first concurrent commit was lost')
+    assert.ok(content.has('nodes/orders/b.yaml'), 'second concurrent commit was lost')
   })
 
   it('head returns the current commit SHA of a branch', async () => {
@@ -706,9 +706,9 @@ describe('GitGraphSource write path', () => {
     const base = await source.head('feat/log-walk')
     assert.deepEqual(await source.log('feat/log-walk', base), [])
 
-    await source.commit('feat/log-walk', new Map([['components/orders/c.yaml', 'id: orders.DomainModel.c\n']]), 'add c')
+    await source.commit('feat/log-walk', new Map([['nodes/orders/c.yaml', 'id: orders.DomainModel.c\n']]), 'add c')
     const first = await source.head('feat/log-walk')
-    await source.commit('feat/log-walk', new Map([['components/orders/d.yaml', 'id: orders.DomainModel.d\n']]), 'add d')
+    await source.commit('feat/log-walk', new Map([['nodes/orders/d.yaml', 'id: orders.DomainModel.d\n']]), 'add d')
     const second = await source.head('feat/log-walk')
 
     assert.deepEqual(await source.log('feat/log-walk', base), [second, first])
@@ -730,7 +730,7 @@ describe('GitGraphSource write path', () => {
     patchedSource.push = async () => {}
 
     await source.commit(remoteBranch, new Map([
-      ['components/orders/remote.yaml', 'id: orders.DomainModel.remote\n'],
+      ['nodes/orders/remote.yaml', 'id: orders.DomainModel.remote\n'],
     ]), 'remote change')
 
     const localHead = await git.resolveRef({ fs, dir: tmpDir, ref: `refs/heads/${remoteBranch}` })
@@ -743,11 +743,11 @@ describe('GitGraphSource write path', () => {
     await git.branch({ fs, dir: tmpDir, ref: 'feat/squash', checkout: false })
     const base = await source.head('feat/squash')
 
-    await source.commit('feat/squash', new Map([['components/orders/wip1.yaml', 'id: orders.DomainModel.wip1\n']]), 'corum-wip: one')
-    await source.commit('feat/squash', new Map([['components/orders/wip2.yaml', 'id: orders.DomainModel.wip2\n']]), 'corum-wip: two')
+    await source.commit('feat/squash', new Map([['nodes/orders/wip1.yaml', 'id: orders.DomainModel.wip1\n']]), 'corum-wip: one')
+    await source.commit('feat/squash', new Map([['nodes/orders/wip2.yaml', 'id: orders.DomainModel.wip2\n']]), 'corum-wip: two')
 
     await source.commit('feat/squash', new Map([
-      ['components/orders/final.yaml', 'id: orders.DomainModel.final\n'],
+      ['nodes/orders/final.yaml', 'id: orders.DomainModel.final\n'],
     ]), 'squashed', { parentSha: base, force: true })
 
     const head = await source.head('feat/squash')
@@ -757,6 +757,28 @@ describe('GitGraphSource write path', () => {
     assert.deepEqual(await source.log('feat/squash', base), [head], 'WIP run must be replaced by the single squash commit')
 
     const content = await source.loadGraphContent('feat/squash')
-    assert.ok(content.has('components/orders/final.yaml'))
+    assert.ok(content.has('nodes/orders/final.yaml'))
+  })
+})
+
+describe('graph source node paths', () => {
+  it('file and git sources ignore legacy components paths', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-node-paths-'))
+    try {
+      await git.init({ fs, dir, defaultBranch: 'main' })
+      for (const key of ['nodes/orders/Schema.yaml', 'components/orders/Schema.yaml', 'edges/test.yaml', 'graph.yaml']) {
+        const file = path.join(dir, '.corum/graph', key)
+        fs.mkdirSync(path.dirname(file), { recursive: true })
+        fs.writeFileSync(file, 'test: true\n')
+        await git.add({ fs, dir, filepath: `.corum/graph/${key}` })
+      }
+      await git.commit({ fs, dir, message: 'fixture', author: { name: 'Test', email: 'test@test.com' } })
+      for (const source of [new FileGraphSource({ graphDir: path.join(dir, '.corum/graph') }), new GitGraphSource({ localPath: dir })]) {
+        const content = await source.loadGraphContent('main')
+        assert.deepEqual([...content.keys()].sort(), ['edges/test.yaml', 'graph.yaml', 'nodes/orders/Schema.yaml'])
+      }
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

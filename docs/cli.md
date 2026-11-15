@@ -17,7 +17,7 @@ Run `corum --help` or `corum <command> --help` for the live option list. Use
 ## `corum init`
 
 Creates `.corum/config.yaml`, `.corum/graph/` (with `graph.yaml`,
-`components/`, `edges/`), `.corum/packs/` and `.corum/packs.yaml`, and installs
+`nodes/`, `edges/`), `.corum/packs/` and `.corum/packs.yaml`, and installs
 `core`, `domain`, `rest` and `messaging`. Steps whose target already exists are
 skipped.
 

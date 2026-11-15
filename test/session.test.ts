@@ -101,8 +101,8 @@ function packFiles(base: string): Record<string, string> {
 function graphFiles(base: string, packPath: string): Record<string, string> {
   return {
     [`${base}/graph.yaml`]: graphYaml(packPath),
-    [`${base}/components/orders/Schemas/customer.yaml`]: CUSTOMER_CLUSTER,
-    [`${base}/components/orders/Schemas/invoice.yaml`]: INVOICE_CLUSTER,
+    [`${base}/nodes/orders/Schemas/customer.yaml`]: CUSTOMER_CLUSTER,
+    [`${base}/nodes/orders/Schemas/invoice.yaml`]: INVOICE_CLUSTER,
   }
 }
 
@@ -170,8 +170,8 @@ describe('working session (file source)', () => {
     assert.equal(result.newId, 'orders.Schema.client')
     assert.equal(result.recordedTrail, true, 'committed file graph is the default branch — threshold met')
 
-    assert.ok(!fs.existsSync(path.join(graphDir, 'components/orders/Schemas/client.yaml')))
-    assert.ok(fs.existsSync(path.join(graphDir, 'components/orders/Schemas/customer.yaml')))
+    assert.ok(!fs.existsSync(path.join(graphDir, 'nodes/orders/Schemas/client.yaml')))
+    assert.ok(fs.existsSync(path.join(graphDir, 'nodes/orders/Schemas/customer.yaml')))
 
     const commit = await session.commitChanges('rename customer to client')
     assert.equal(commit.committed, true)
@@ -194,8 +194,8 @@ describe('working session (file source)', () => {
     assert.equal(result.newId, 'orders.Schema.client')
     assert.equal(result.recordedTrail, true, 'committed file graph is the default branch — threshold met')
 
-    assert.ok(fs.existsSync(path.join(graphDir, 'components/orders/Schemas/client.yaml')))
-    assert.ok(!fs.existsSync(path.join(graphDir, 'components/orders/Schemas/customer.yaml')))
+    assert.ok(fs.existsSync(path.join(graphDir, 'nodes/orders/Schemas/client.yaml')))
+    assert.ok(!fs.existsSync(path.join(graphDir, 'nodes/orders/Schemas/customer.yaml')))
 
     const commit = await session.commitChanges()
     assert.equal(commit.committed, true)
@@ -222,7 +222,7 @@ describe('working session (file source)', () => {
     await session.updateNode(INVOICE, { properties: { description: 'Invoices' } })
 
     // External edit lands while the session is open.
-    fs.appendFileSync(path.join(graphDir, 'components/orders/Schemas/customer.yaml'), '# external edit\n')
+    fs.appendFileSync(path.join(graphDir, 'nodes/orders/Schemas/customer.yaml'), '# external edit\n')
 
     await assert.rejects(
       () => session.commitChanges(),
@@ -573,7 +573,7 @@ describe('working session (local git source)', () => {
     // External writer commits directly to the branch between WIPs.
     const external = new GitGraphSource({ localPath: repoDir })
     await external.commit('feat/interleave', new Map([
-      ['components/orders/Schemas/external.yaml', INVOICE_CLUSTER.replace(/invoice/g, 'external')],
+      ['nodes/orders/Schemas/external.yaml', INVOICE_CLUSTER.replace(/invoice/g, 'external')],
     ]), 'external edit')
     const externalSha = await external.head('feat/interleave')
 
@@ -595,7 +595,7 @@ describe('working session (local git source)', () => {
 
     const external = new GitGraphSource({ localPath: repoDir })
     await external.commit('feat/conflict', new Map([
-      ['components/orders/Schemas/external.yaml', INVOICE_CLUSTER.replace(/invoice/g, 'external')],
+      ['nodes/orders/Schemas/external.yaml', INVOICE_CLUSTER.replace(/invoice/g, 'external')],
     ]), 'external edit')
 
     await assert.rejects(

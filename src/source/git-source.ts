@@ -1,3 +1,4 @@
+import { isManagedGraphYamlKey } from './graph-layout.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import * as git from 'isomorphic-git'
@@ -181,7 +182,7 @@ export class GitGraphSource implements GraphSource {
     const prefix = this.graphDir.endsWith('/') ? this.graphDir : `${this.graphDir}/`
     const allFiles = await git.listFiles({ fs, dir, ref: commitSha })
 
-    for (const filePath of allFiles.filter(file => file.startsWith(prefix) && file.endsWith('.yaml'))) {
+    for (const filePath of allFiles.filter(file => file.startsWith(prefix) && file.endsWith('.yaml') && isManagedGraphYamlKey(file.slice(prefix.length)))) {
       try {
         const { blob } = await git.readBlob({ fs, dir, oid: commitSha, filepath: filePath })
         map.set(filePath.slice(prefix.length), Buffer.from(blob).toString('utf-8'))

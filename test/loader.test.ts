@@ -298,7 +298,7 @@ describe('cluster loader', () => {
     const diagnostics: Diagnostic[] = []
     const templates = loadPacks(await buildPackContentMap(), diagnostics)
     const content: ContentMap = new Map([
-      ['components/orders/Schemas/bill.yaml', [
+      ['nodes/orders/Schemas/bill.yaml', [
         'id: orders.Schema.bill',
         'template: Schema',
         'schemaVersion: "1"',
@@ -325,7 +325,7 @@ describe('cluster loader', () => {
     const diagnostics: Diagnostic[] = []
     const templates = loadPacks(await buildPackContentMap(), diagnostics)
     const content: ContentMap = new Map([
-      ['components/orders/Schemas/bill.yaml', [
+      ['nodes/orders/Schemas/bill.yaml', [
         'id: orders.Schema.bill',
         'template: Schema',
         'schemaVersion: "1"',
@@ -350,7 +350,7 @@ describe('cluster loader', () => {
     const diagnostics: Diagnostic[] = []
     const templates = loadPacks(await buildPackContentMap(), diagnostics)
     const content: ContentMap = new Map([
-      ['components/orders/DomainModels/bad-state.yaml', [
+      ['nodes/orders/DomainModels/bad-state.yaml', [
         'id: orders.DomainModel.bad-state',
         'template: DomainModel',
         'schemaVersion: "1"',
@@ -372,7 +372,7 @@ describe('cluster loader', () => {
     const diagnostics: Diagnostic[] = []
     const templates = loadPacks(await buildPackContentMap(), diagnostics)
     const content: ContentMap = new Map([
-      ['components/orders/DomainModels/bad-child-stability.yaml', [
+      ['nodes/orders/DomainModels/bad-child-stability.yaml', [
         'id: orders.DomainModel.bad-child-stability',
         'template: DomainModel',
         'schemaVersion: "1"',
@@ -554,7 +554,7 @@ describe('loadGraph', () => {
   it('loads packsPath when graph.yaml is absent', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-no-graph-yaml-'))
     try {
-      const componentsDir = path.join(tmp, 'components', 'shared')
+      const componentsDir = path.join(tmp, 'nodes', 'shared')
       fs.mkdirSync(componentsDir, { recursive: true })
       fs.writeFileSync(
         path.join(componentsDir, 'problem-detail.yaml'),
@@ -645,7 +645,7 @@ describe('cluster loader — Mapping nodes', () => {
     ].join('\n')
 
     const content: ContentMap = new Map([
-      ['components/orders/DomainModels/order.yaml', clusterYaml],
+      ['nodes/orders/DomainModels/order.yaml', clusterYaml],
     ])
 
     const diagnostics: Diagnostic[] = []
@@ -696,7 +696,7 @@ describe('cluster loader — Mapping nodes', () => {
     ].join('\n')
 
     const content: ContentMap = new Map([
-      ['components/payments/DomainModels/payment.yaml', clusterYaml],
+      ['nodes/payments/DomainModels/payment.yaml', clusterYaml],
     ])
 
     const diagnostics: Diagnostic[] = []
@@ -725,7 +725,7 @@ describe('cluster loader — structural uses-type edges', () => {
     assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0, 'pack load errors')
 
     const content: ContentMap = new Map([
-      ['components/orders/DomainModels/cross-ref-test.yaml', [
+      ['nodes/orders/DomainModels/cross-ref-test.yaml', [
         'id: orders.DomainModel.cross-ref-test',
         'template: DomainModel',
         'schemaVersion: "1"',
@@ -741,7 +741,7 @@ describe('cluster loader — structural uses-type edges', () => {
         '        $ref: payments.DomainModel.payment',
         '        nullable: false',
       ].join('\n')],
-      ['components/payments/DomainModels/payment.yaml', [
+      ['nodes/payments/DomainModels/payment.yaml', [
         'id: payments.DomainModel.payment',
         'template: DomainModel',
         'schemaVersion: "1"',
@@ -778,7 +778,7 @@ describe('cluster loader — structural uses-type edges', () => {
     const templates = loadPacks(await buildPackContentMap(), diagnostics)
 
     const content: ContentMap = new Map([
-      ['components/orders/DomainModels/multi-ref-test.yaml', [
+      ['nodes/orders/DomainModels/multi-ref-test.yaml', [
         'id: orders.DomainModel.multi-ref-test',
         'template: DomainModel',
         'schemaVersion: "1"',
@@ -808,5 +808,16 @@ describe('cluster loader — structural uses-type edges', () => {
       e => e.type === 'uses-type' && e.to === 'payments.DomainModel.payment' && e.generated === true,
     )
     assert.equal(usesTypeToPayment.length, 1, 'duplicate uses-type edges must be de-duplicated')
+  })
+})
+
+describe('node root directory', () => {
+  it('ignores legacy components paths even when supplied directly', async () => {
+    const templates = loadPacks(await buildPackContentMap(), [])
+    const content = await buildGraphContentMap()
+    const legacy = new Map([...content].map(([key, value]) => [key.replace(/^nodes\//, 'components/'), value]))
+    const result = loadClusters(legacy, templates, [])
+    assert.equal(result.nodes.size, 0)
+    assert.ok(loadClusters(content, templates, []).nodes.size > 0)
   })
 })

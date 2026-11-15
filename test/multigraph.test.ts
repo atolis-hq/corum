@@ -291,7 +291,7 @@ describe('loadMultiGraph', () => {
         diagnostics: [
           {
             severity: 'error',
-            file: 'components/orders/broken.yaml',
+            file: 'nodes/orders/broken.yaml',
             message: 'unknown template: MissingTemplate',
           },
         ],
@@ -365,18 +365,18 @@ function branch(ref: string, isDefault: boolean, nodes: Node[], edges: Edge[] = 
 async function createMultiBranchRepo(tmpDir: string): Promise<void> {
   await git.init({ fs, dir: tmpDir, defaultBranch: 'main' })
   const graphDir = path.join(tmpDir, '.corum', 'graph')
-  const componentsDir = path.join(graphDir, 'components', 'orders')
+  const componentsDir = path.join(graphDir, 'nodes', 'orders')
   fs.mkdirSync(componentsDir, { recursive: true })
   fs.writeFileSync(path.join(graphDir, 'graph.yaml'), 'templatePacks: []\n')
   fs.writeFileSync(path.join(componentsDir, 'order.yaml'), clusterYaml('orders.DomainModel.order', 'agreed', 'stable'))
 
   await git.add({ fs, dir: tmpDir, filepath: '.corum/graph/graph.yaml' })
-  await git.add({ fs, dir: tmpDir, filepath: '.corum/graph/components/orders/order.yaml' })
+  await git.add({ fs, dir: tmpDir, filepath: '.corum/graph/nodes/orders/order.yaml' })
   await git.commit({ fs, dir: tmpDir, message: 'initial', author: { name: 'Test', email: 'test@test.com' } })
 
   await git.branch({ fs, dir: tmpDir, ref: 'feat/add-payment', checkout: true })
   fs.writeFileSync(path.join(componentsDir, 'payment.yaml'), clusterYaml('orders.DomainModel.payment', 'proposed', 'unstable'))
-  await git.add({ fs, dir: tmpDir, filepath: '.corum/graph/components/orders/payment.yaml' })
+  await git.add({ fs, dir: tmpDir, filepath: '.corum/graph/nodes/orders/payment.yaml' })
   await git.commit({ fs, dir: tmpDir, message: 'add payment', author: { name: 'Test', email: 'test@test.com' } })
   await git.checkout({ fs, dir: tmpDir, ref: 'main' })
 }
@@ -417,14 +417,14 @@ info:
       throw new LoadError([
         {
           severity: 'error',
-          file: 'components/orders/broken.yaml',
+          file: 'nodes/orders/broken.yaml',
           message: 'unknown template: MissingTemplate',
         },
       ])
     }
     return new Map([
       ['graph.yaml', 'templatePacks: []\n'],
-      ['components/orders/order.yaml', clusterYaml(`orders.DomainModel.${ref.replaceAll('/', '-')}`, 'agreed', 'stable')],
+      ['nodes/orders/order.yaml', clusterYaml(`orders.DomainModel.${ref.replaceAll('/', '-')}`, 'agreed', 'stable')],
     ])
   }
 
