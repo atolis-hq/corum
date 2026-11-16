@@ -1,3 +1,4 @@
+import { isManagedGraphYamlKey } from './graph-paths.js'
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
@@ -282,10 +283,6 @@ function walkManagedGraphYamlIntoMap(
   for (const [key, content] of allYaml) {
     if (isManagedGraphYamlKey(key)) map.set(key, content)
   }
-}
-
-function isManagedGraphYamlKey(key: string): boolean {
-  return key === 'graph.yaml' || key.startsWith('components/') || key.startsWith('edges/')
 }
 
 function normalizeContentKey(key: string): string {

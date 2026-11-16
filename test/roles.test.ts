@@ -60,7 +60,7 @@ async function loadCustomPackGraph(): Promise<{ graph: Graph; diagnostics: Diagn
 
   const source = new FileGraphSource({ graphDir: fixtureGraphDir })
   const graphContent = await source.loadGraphContent(await source.defaultBranch())
-  graphContent.set('components/data/pipeline.yaml', PIPELINE_CLUSTER)
+  graphContent.set('nodes/data/pipeline.yaml', PIPELINE_CLUSTER)
 
   const clusterResult = loadClusters(graphContent, templates, diagnostics)
   const graph: Graph = {
@@ -151,7 +151,7 @@ describe('role-driven engine behaviour for pack templates', () => {
 
     const source = new FileGraphSource({ graphDir: fixtureGraphDir })
     const graphContent = await source.loadGraphContent(await source.defaultBranch())
-    graphContent.set('components/data/pipeline.yaml', PIPELINE_CLUSTER)
+    graphContent.set('nodes/data/pipeline.yaml', PIPELINE_CLUSTER)
     const clusterResult = loadClusters(graphContent, templates, diagnostics)
 
     const fieldId = 'data.Pipeline.orders-feed.payloads.order-record.fields.id'

@@ -19,7 +19,7 @@ describe('serializeGraph', () => {
     const graph = await loadGraph({ graphPath: fixtureGraphDir })
     const map = serializeGraph(graph)
     const keys = [...map.keys()]
-    assert.ok(keys.some(k => k.startsWith('components/') && k.endsWith('.yaml')))
+    assert.ok(keys.some(k => k.startsWith('nodes/') && k.endsWith('.yaml')))
     assert.ok(keys.some(k => k.startsWith('edges/')))
     assert.ok(keys.some(k => k === 'graph.yaml'))
   })
@@ -49,7 +49,7 @@ describe('serializeGraph', () => {
       await saveGraph(fixture, { sourceGraphPath: fixtureGraphDir, outputGraphPath: sourceDir })
       const rootIds = ['orders.Schema.foo', 'orders.Schema.foo.bar', 'orders.Schema.foo.fields.independent']
       for (const id of rootIds) {
-        const file = path.join(sourceDir, 'components/orders/Schemas', ...id.split('.').slice(2)) + '.yaml'
+        const file = path.join(sourceDir, 'nodes/orders/Schemas', ...id.split('.').slice(2)) + '.yaml'
         fs.mkdirSync(path.dirname(file), { recursive: true })
         fs.writeFileSync(file, JSON.stringify({
           id, template: 'Schema', schemaVersion: '1',
@@ -69,7 +69,7 @@ describe('serializeGraph', () => {
       checkClusters(graph)
       const map = serializeGraph(graph, { sourceGraphPath: sourceDir, outputGraphPath: outputDir })
       for (const id of rootIds) {
-        const key = 'components/orders/Schemas/' + id.split('.').slice(2).join('/') + '.yaml'
+        const key = 'nodes/orders/Schemas/' + id.split('.').slice(2).join('/') + '.yaml'
         assert.ok(map.has(key), key)
         assert.deepEqual(Object.keys(parseYaml(map.get(key)!).fields), ['value'])
       }
@@ -273,7 +273,7 @@ describe('graph writer', () => {
       await saveGraph(graph, { sourceGraphPath: fixtureGraphDir, outputGraphPath: outputGraphDir })
 
       const orderYaml = fs.readFileSync(
-        path.join(outputGraphDir, 'components', 'orders', 'DomainModels', 'order.yaml'),
+        path.join(outputGraphDir, 'nodes', 'orders', 'DomainModels', 'order.yaml'),
         'utf-8',
       )
       assert.match(orderYaml, /\$ref: '#\/enums\/order-status'/, 'field $ref is quoted')
@@ -307,7 +307,7 @@ describe('graph writer', () => {
     endpoint.properties = permuted
 
     const map = serializeGraph(graph)
-    const clusterYaml = map.get('components/orders/APIEndpoints/create-order.yaml')
+    const clusterYaml = map.get('nodes/orders/APIEndpoints/create-order.yaml')
     assert.ok(clusterYaml)
     const doc = parseYaml(clusterYaml) as { properties: Record<string, unknown> }
     assert.deepEqual(
@@ -327,7 +327,7 @@ describe('graph writer', () => {
     field.properties = permuted
 
     const map = serializeGraph(graph)
-    const clusterYaml = map.get('components/orders/DomainModels/order.yaml')
+    const clusterYaml = map.get('nodes/orders/DomainModels/order.yaml')
     assert.ok(clusterYaml)
     const doc = parseYaml(clusterYaml) as {
       schemas: { 'order-line-item': { fields: { unitPrice: Record<string, unknown> } } }
@@ -340,7 +340,7 @@ describe('graph writer', () => {
   it('preserves source field order when rewriting a cluster and appends new fields at the end', async () => {
     const graph = await loadGraph({ graphPath: fixtureGraphDir })
     const paymentFieldParent = 'payments.DomainModel.payment.schemas.payment'
-    const paymentFieldPath = path.join(fixtureGraphDir, 'components', 'payments', 'DomainModels', 'payment.yaml')
+    const paymentFieldPath = path.join(fixtureGraphDir, 'nodes', 'payments', 'DomainModels', 'payment.yaml')
     const originalDoc = parseYaml(fs.readFileSync(paymentFieldPath, 'utf-8')) as {
       schemas: { payment: { fields: Record<string, unknown> } }
     }
@@ -363,7 +363,7 @@ describe('graph writer', () => {
     })
 
     const map = serializeGraph(graph)
-    const clusterYaml = map.get('components/payments/DomainModels/payment.yaml')
+    const clusterYaml = map.get('nodes/payments/DomainModels/payment.yaml')
     assert.ok(clusterYaml)
     const doc = parseYaml(clusterYaml) as {
       schemas: { payment: { fields: Record<string, unknown> } }

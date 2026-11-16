@@ -1,3 +1,4 @@
+import { NODE_ROOT_DIR } from '../source/graph-paths.js'
 import { parse as parseYaml } from 'yaml'
 import type { ContentMap } from '../source/index.js'
 import type { Diagnostic, Edge, EdgeType, Node, Stability, State, Template } from '../schema/index.js'
@@ -36,7 +37,7 @@ export function loadClusters(
 ): ClusterResult {
   const result: ClusterResult = { nodes: new Map(), edgesByFrom: new Map(), edgesByTo: new Map() }
 
-  for (const key of listYamlKeys(content, 'components')) {
+  for (const key of listYamlKeys(content, NODE_ROOT_DIR)) {
     let raw: unknown
     try {
       raw = parseYaml(readYaml(content, key))

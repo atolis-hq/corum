@@ -61,7 +61,7 @@ Pop-Location
 Write-Host ""
 Write-Host "[4/4] Generated APIEndpoint files:" -ForegroundColor Cyan
 
-$endpoints = Get-ChildItem "$TestDir\.corum\graph\components" -Recurse -Filter "*.yaml" |
+$endpoints = Get-ChildItem "$TestDir\.corum\graph\nodes" -Recurse -Filter "*.yaml" |
     Where-Object { $_.DirectoryName -like "*APIEndpoints*" } |
     Sort-Object FullName
 

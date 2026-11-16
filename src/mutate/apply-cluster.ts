@@ -1,3 +1,4 @@
+import { NODE_ROOT_DIR } from '../source/graph-paths.js'
 import { stringify as stringifyYaml } from 'yaml'
 import type { Diagnostic, Graph, Node, Stability, State, Template } from '../schema/index.js'
 import { loadClusters, materialiseChildren } from '../loader/cluster-loader.js'
@@ -306,7 +307,7 @@ export function materialiseRootDocument(
       id,
     )])
   }
-  const filePath = `components/${parts[0]}/${parts[1]}s/${parts.slice(2).join('/')}.yaml`
+  const filePath = `${NODE_ROOT_DIR}/${parts[0]}/${parts[1]}s/${parts.slice(2).join('/')}.yaml`
 
   const diagnostics: Diagnostic[] = []
   const result = loadClusters(new Map([[filePath, stringifyYaml(doc)]]), templates, diagnostics)

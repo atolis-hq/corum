@@ -421,7 +421,7 @@ describe('import runner — target branch', () => {
       await runImport(importConfig(), runtimeConfig, { branch: 'feat/import' })
       assert.equal(source.commits.length, 1)
       assert.ok(
-        source.commits[0].changes.has('components/orders/APIEndpoints/createOrder.yaml'),
+        source.commits[0].changes.has('nodes/orders/APIEndpoints/createOrder.yaml'),
         'expected the inline schema to be nested under the endpoint cluster file',
       )
 
@@ -452,7 +452,7 @@ describe('import runner — target branch', () => {
       assert.ok(!result.diagnostics.some(d => d.severity === 'error'), `expected no errors: ${JSON.stringify(result.diagnostics)}`)
 
       const finalChanges = source.commits[source.commits.length - 1].changes
-      assert.ok(finalChanges.has('components/orders/Schemas/Money.yaml'), 'Money should be promoted to a standalone cluster file')
+      assert.ok(finalChanges.has('nodes/orders/Schemas/Money.yaml'), 'Money should be promoted to a standalone cluster file')
 
       // serializeGraph consolidates all explicit edges into a single canonical file, regardless
       // of which source file they were originally read from.

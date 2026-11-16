@@ -176,7 +176,7 @@ function writeWatcherFixture(root: string): { graphPath: string; nodePath: strin
   const graphPath = path.join(root, 'graph')
   const packPath = path.join(root, 'pack')
   const templatesPath = path.join(packPath, 'templates')
-  const componentPath = path.join(graphPath, 'components', 'orders')
+  const componentPath = path.join(graphPath, 'nodes', 'orders')
   fs.mkdirSync(templatesPath, { recursive: true })
   fs.mkdirSync(componentPath, { recursive: true })
   fs.mkdirSync(path.join(graphPath, 'edges'), { recursive: true })
@@ -374,7 +374,7 @@ describe('web server', () => {
         assert.deepEqual(failed?.diagnostics, [
           {
             severity: 'error',
-            file: 'components/orders/broken.yaml',
+            file: 'nodes/orders/broken.yaml',
             message: 'unknown template: MissingTemplate',
           },
         ])
@@ -1463,7 +1463,7 @@ class FailingBranchSource implements GraphSource {
       throw new LoadError([
         {
           severity: 'error',
-          file: 'components/orders/broken.yaml',
+          file: 'nodes/orders/broken.yaml',
           message: 'unknown template: MissingTemplate',
         },
       ])
@@ -1522,7 +1522,7 @@ class MutableBranchSource implements GraphSource {
         '    path: ../pack',
         '',
       ].join('\n')],
-      [`components/orders/${ref.replace(/[^\w-]/g, '_')}.yaml`, [
+      [`nodes/orders/${ref.replace(/[^\w-]/g, '_')}.yaml`, [
         `id: orders.Thing.${ref.replace(/[^\w-]/g, '_')}`,
         'template: Thing',
         'schemaVersion: "1"',
