@@ -73,6 +73,9 @@ describe('corum import — basic fixture', () => {
           spec: path.join(specsDir, 'basic.corum.yaml'),
         }],
       }
+      const declaration = '# retained on import\nkind: journey\ndescription: Order journey\n'
+      const declarationPath = path.join(graphDir, 'nodes/orders/namespace.yaml')
+      fs.writeFileSync(declarationPath, declaration)
       const runtimeConfig = makeRuntimeConfig(graphDir)
       const result = await runImport(config, runtimeConfig)
 
@@ -81,6 +84,8 @@ describe('corum import — basic fixture', () => {
       assert.ok(fs.existsSync(path.join(graphDir, 'nodes/orders/DomainEvents/OrderPlacedDomainEvent.yaml')))
       assert.ok(fs.existsSync(path.join(graphDir, 'nodes/orders/DomainModels/OrderAggregate.yaml')))
 
+      assert.equal(fs.readFileSync(declarationPath, 'utf8'), declaration)
+      assert.equal((await loadGraph({ graphPath: graphDir })).namespaces?.get('orders')?.kind, 'journey')
       assertMatchesExpected(graphDir, 'basic')
     } finally {
       cleanup()

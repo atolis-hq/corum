@@ -1,3 +1,4 @@
+import { isNamespaceDeclaration } from '../loader/namespace-loader.js'
 import { NODE_ROOT_DIR } from '../source/graph-paths.js'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -26,6 +27,10 @@ const YAML_STRINGIFY_OPTIONS = { singleQuote: true }
 export function serializeGraph(graph: Graph, options: SerializeGraphOptions = {}): ContentMap {
   const map: ContentMap = new Map()
   map.set('graph.yaml', buildGraphYaml(graph, options))
+  // Preserve declarations verbatim; never synthesize undeclared namespaces.
+  for (const [key, content] of graph.sourceContent ?? []) {
+    if (isNamespaceDeclaration(key)) map.set(key, content)
+  }
 
   for (const root of getRootNodes(graph)) {
     map.set(clusterPath(root), stringifyGraphYaml(toClusterDocument(graph, root)))

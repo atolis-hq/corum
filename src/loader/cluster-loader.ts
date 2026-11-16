@@ -1,3 +1,4 @@
+import { isNamespaceDeclaration } from './namespace-loader.js'
 import { NODE_ROOT_DIR } from '../source/graph-paths.js'
 import { parse as parseYaml } from 'yaml'
 import type { ContentMap } from '../source/index.js'
@@ -38,6 +39,7 @@ export function loadClusters(
   const result: ClusterResult = { nodes: new Map(), edgesByFrom: new Map(), edgesByTo: new Map() }
 
   for (const key of listYamlKeys(content, NODE_ROOT_DIR)) {
+    if (isNamespaceDeclaration(key)) continue
     let raw: unknown
     try {
       raw = parseYaml(readYaml(content, key))

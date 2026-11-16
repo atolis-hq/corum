@@ -103,7 +103,14 @@ export interface Diagnostic {
   message: string
 }
 
+export interface Namespace {
+  kind: string
+  description?: string
+}
+
 export interface Graph {
+  /** Namespace metadata; loaded graphs always populate this map. */
+  namespaces?: Map<string, Namespace>
   nodesById: Map<string, Node>
   edgesByFrom: Map<string, Edge[]>
   edgesByTo: Map<string, Edge[]>
