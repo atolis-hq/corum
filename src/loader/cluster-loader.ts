@@ -1,4 +1,4 @@
-import { NODE_ROOT_DIR } from '../source/graph-layout.js'
+import { NODE_ROOT_DIR, isNamespaceDeclarationKey } from '../source/graph-layout.js'
 import { parse as parseYaml } from 'yaml'
 import type { ContentMap } from '../source/index.js'
 import type { Diagnostic, Edge, EdgeType, Node, Stability, State, Template } from '../schema/index.js'
@@ -38,6 +38,7 @@ export function loadClusters(
   const result: ClusterResult = { nodes: new Map(), edgesByFrom: new Map(), edgesByTo: new Map() }
 
   for (const key of listYamlKeys(content, NODE_ROOT_DIR)) {
+    if (isNamespaceDeclarationKey(key)) continue
     let raw: unknown
     try {
       raw = parseYaml(readYaml(content, key))

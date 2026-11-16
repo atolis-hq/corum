@@ -1,4 +1,4 @@
-import { NODE_ROOT_DIR } from '../source/graph-layout.js'
+import { NODE_ROOT_DIR, isNamespaceDeclarationKey } from '../source/graph-layout.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
@@ -26,6 +26,10 @@ const YAML_STRINGIFY_OPTIONS = { singleQuote: true }
 export function serializeGraph(graph: Graph, options: SerializeGraphOptions = {}): ContentMap {
   const map: ContentMap = new Map()
   map.set('graph.yaml', buildGraphYaml(graph, options))
+  // Preserve source metadata verbatim, including declarations with no remaining nodes.
+  for (const [key, text] of graph.sourceContent ?? []) {
+    if (isNamespaceDeclarationKey(key)) map.set(key, text)
+  }
 
   for (const root of getRootNodes(graph)) {
     map.set(clusterPath(root), stringifyGraphYaml(toClusterDocument(graph, root)))

@@ -14,6 +14,7 @@ import type {
 } from '../schema/index.js'
 import { LoadError, QueryError } from '../schema/index.js'
 import { computeDiff, computeOverlay } from '../graph/overlay.js'
+import { loadNamespaces } from './namespace-loader.js'
 import { loadClusters } from './cluster-loader.js'
 import { loadEdges } from './edge-loader.js'
 import { loadEdgeTypes } from './edge-type-loader.js'
@@ -46,6 +47,7 @@ export async function loadGraph(options: LoadOptions): Promise<Graph> {
 
   const graph: Graph = {
     nodesById: clusterResult.nodes,
+    namespaces: loadNamespaces(graphContent, clusterResult.nodes, diagnostics),
     edgesByFrom,
     edgesByTo,
     templates,

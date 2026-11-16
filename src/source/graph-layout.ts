@@ -5,3 +5,8 @@ export const NODE_ROOT_DIR = 'nodes'
 export function isManagedGraphYamlKey(key: string): boolean {
   return key === 'graph.yaml' || key.startsWith(`${NODE_ROOT_DIR}/`) || key.startsWith('edges/')
 }
+
+/** Namespace metadata lives directly below its namespace folder. */
+export function isNamespaceDeclarationKey(key: string): boolean {
+  return /^nodes\/[^/]+\/namespace\.yaml$/.test(key)
+}

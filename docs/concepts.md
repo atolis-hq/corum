@@ -130,6 +130,23 @@ at a node elsewhere in the graph.
 On disk, clusters live under
 `.corum/graph/nodes/<component>/<Template>s/<name>.yaml`.
 
+## Namespaces
+
+The first segment of a node ID identifies its namespace. Each namespace has one
+kind, defaulting to `component`. To declare a kind and optional description,
+add `.corum/graph/nodes/<namespace>/namespace.yaml`:
+
+```yaml
+kind: journey
+description: Order placement journey
+```
+
+This file is metadata: it creates no node or edges. Kinds carry no engine
+behaviour. Currently only `component` is recognised; other kinds load with
+a warning and use generic display. Empty declared namespaces also produce a
+warning. Saves and graph writes preserve declaration text, including comments
+and formatting, even when the namespace's last node is deleted.
+
 ## Edges
 
 Edges connect two node IDs with a type. Edge IDs take the form
