@@ -242,6 +242,7 @@ export function replaceGraph(target: Graph, source: Graph): void {
   target.diagnostics = source.diagnostics
   target.edgeTypes = source.edgeTypes
   target.namespaceDeclarations = source.namespaceDeclarations
+  target.kinds = source.kinds
   target.sourceContent = source.sourceContent
 }
 

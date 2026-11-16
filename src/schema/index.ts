@@ -108,7 +108,17 @@ export interface Namespace {
   description?: string
 }
 
+export interface KindDef {
+  id: string
+  /** Display label. */
+  label: string
+  /** Optional advisory list of templates namespaces of this kind are expected to own. */
+  templates?: string[]
+}
+
 export interface Graph {
+  /** Merged kind registry (built-in default + pack kinds.yaml). */
+  kinds?: Map<string, KindDef>
   /** Parsed declarations only; use getNamespaces() to derive current namespace membership. */
   namespaceDeclarations?: Map<string, Namespace>
   nodesById: Map<string, Node>

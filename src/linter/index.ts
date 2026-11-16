@@ -1,5 +1,6 @@
 import { NODE_ROOT_DIR } from '../source/graph-paths.js'
 import type { Diagnostic, Edge, EdgeTypeDef, Graph, Node } from '../schema/index.js'
+import { getNamespaces } from '../graph/index.js'
 import { getEdgeTypeConstraints } from '../graph/roles.js'
 import { CORE_EDGE_TYPE_MAP } from '../loader/constants.js'
 import { validateNodeId } from '../loader/id-grammar.js'
@@ -43,6 +44,7 @@ export function lintGraph(graph: Graph): Diagnostic[] {
   lintEdgeProperties(graph, diagnostics)
   lintHiddenEdgeLiveEnds(graph, diagnostics)
   lintInlineStandaloneSchemaCollisions(graph, diagnostics)
+  lintKindExpectedTemplates(graph, diagnostics)
   return diagnostics
 }
 
@@ -381,4 +383,27 @@ function describeType(value: unknown): string {
   if (Array.isArray(value)) return 'array'
   if (value === null) return 'null'
   return typeof value
+}
+
+/** Advisory only: namespaces of a kind that lists templates should own just those. */
+function lintKindExpectedTemplates(graph: Graph, diagnostics: Diagnostic[]): void {
+  if (!graph.kinds) return
+  const namespaces = getNamespaces(graph)
+  const reported = new Set<string>()
+  for (const node of graph.nodesById.values()) {
+    if (node.parentId) continue
+    const ns = node.id.split('.')[0]
+    const kind = namespaces.get(ns)?.kind
+    const expected = kind ? graph.kinds.get(kind)?.templates : undefined
+    if (!expected || expected.includes(node.template)) continue
+    const key = ns + ':' + node.template
+    if (reported.has(key)) continue
+    reported.add(key)
+    diagnostics.push({
+      severity: 'warning',
+      file: NODE_ROOT_DIR + '/' + ns,
+      nodeId: node.id,
+      message: `namespace '${ns}' of kind '${kind}' owns template '${node.template}', expected one of: ${expected.join(', ')}`,
+    })
+  }
 }
