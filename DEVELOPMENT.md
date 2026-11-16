@@ -128,6 +128,8 @@ write-session tests against a throwaway git repo.
 
 Install Chromium and its OS dependencies once with `npx playwright install --with-deps chromium`, then run `npm run test:web`. This builds the project, starts a local server against the sample graph, and checks mobile master-detail navigation, history, focus, reduced motion, resizing, and the dashboard/graph layouts in Chromium. Like the web UI, these tests require access to the external scripts in `web/index.html`.
 
+## Namespace metadata
+
 Namespace metadata may be declared in `nodes/<namespace>/namespace.yaml`:
 
 ```yaml
@@ -135,8 +137,9 @@ kind: journey
 description: Customer ordering journey
 ```
 
-The loader exposes declarations in `graph.namespaces`; namespaces derived from node ID
-prefixes default to kind `component`. Declarations are metadata, not nodes. Kind IDs
+The loader keeps parsed declarations in `graph.namespaceDeclarations`.
+`getNamespaces(graph)` derives current namespaces from declarations and node ID
+prefixes, defaulting to kind `component`. Declarations are metadata, not nodes. Kind IDs
 are exact strings; unknown kinds are retained with a warning and use generic display.
 Currently only `component` is registered. Saves, imports, and working-session writes
 preserve declaration files verbatim and do not create files for undeclared namespaces.

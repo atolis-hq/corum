@@ -1,4 +1,4 @@
-import { loadNamespaces } from './namespace-loader.js'
+import { loadNamespaceDeclarations } from './namespace-loader.js'
 import { FileGraphSource } from '../source/file-source.js'
 import { SourceError } from '../source/index.js'
 import type { GraphSource } from '../source/index.js'
@@ -46,7 +46,7 @@ export async function loadGraph(options: LoadOptions): Promise<Graph> {
   mergeEdgeMaps(edgesByTo, edgeResult.edgesByTo)
 
   const graph: Graph = {
-    namespaces: loadNamespaces(graphContent, clusterResult.nodes, diagnostics),
+    namespaceDeclarations: loadNamespaceDeclarations(graphContent, clusterResult.nodes, diagnostics),
     nodesById: clusterResult.nodes,
     edgesByFrom,
     edgesByTo,

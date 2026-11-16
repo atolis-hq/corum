@@ -7,6 +7,7 @@ import type {
   GhostState,
   Graph,
   MultiGraph,
+  Namespace,
   Node,
   Stability,
   State,
@@ -694,4 +695,16 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
   const result: LineageResult = { nodes, edges }
   if (danglingEdges !== undefined) result.dangling_edges = danglingEdges
   return result
+}
+
+/** Derive membership from current nodes, retaining declarations for empty namespaces. */
+export function getNamespaces(graph: Graph): Map<string, Namespace> {
+  const namespaces = new Map<string, Namespace>()
+  for (const id of graph.nodesById.keys()) {
+    namespaces.set(id.split('.')[0], { kind: 'component' })
+  }
+  for (const [name, declaration] of graph.namespaceDeclarations ?? []) {
+    namespaces.set(name, { ...declaration })
+  }
+  return namespaces
 }

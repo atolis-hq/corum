@@ -1,3 +1,4 @@
+import { getNamespaces } from '../src/graph/index.js'
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -11,8 +12,8 @@ const fixture = path.resolve('fixtures/sample-graph')
 
 it('defaults all namespaces from ID prefixes without declarations or new diagnostics', async () => {
   const graph = await loadGraph({ graphPath: fixture })
-  assert.deepEqual([...graph.namespaces!.keys()].sort(), [...new Set([...graph.nodesById.keys()].map(id => id.split('.')[0]))].sort())
-  assert.ok([...graph.namespaces!.values()].every(ns => ns.kind === 'component'))
+  assert.deepEqual([...getNamespaces(graph).keys()].sort(), [...new Set([...graph.nodesById.keys()].map(id => id.split('.')[0]))].sort())
+  assert.ok([...getNamespaces(graph).values()].every(ns => ns.kind === 'component'))
   assert.ok(![...serializeGraph(graph).keys()].some(key => key.endsWith('/namespace.yaml')))
 })
 
@@ -34,7 +35,7 @@ it('loads declarations as metadata, isolates malformed declarations, and saves b
       loadGraphContent: async () => content, loadPackContent: ref => source.loadPackContent(ref), commit: async () => {},
     }, strict: false })
     assert.equal(graph.nodesById.size, original.nodesById.size)
-    assert.deepEqual(graph.namespaces!.get('orders'), { kind: 'journey', description: 'A journey' })
+    assert.deepEqual(getNamespaces(graph).get('orders'), { kind: 'journey', description: 'A journey' })
     assert.equal(graph.diagnostics.filter(d => d.message.startsWith('invalid namespace declaration')).length, 4)
     assert.ok(graph.diagnostics.some(d => d.file === 'nodes/empty/namespace.yaml' && d.severity === 'warning'))
     assert.ok(graph.diagnostics.some(d => d.message.includes('unrecognised kind')))
@@ -43,6 +44,6 @@ it('loads declarations as metadata, isolates malformed declarations, and saves b
     await saveGraph(graph, { sourceGraphPath: fixture, outputGraphPath: tmp })
     assert.equal(fs.readFileSync(path.join(tmp, 'nodes/orders/namespace.yaml'), 'utf8'), declaration)
     const reloaded = await loadGraph({ graphPath: tmp })
-    assert.deepEqual(reloaded.namespaces, graph.namespaces)
+    assert.deepEqual(getNamespaces(reloaded), getNamespaces(graph))
   } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
 })

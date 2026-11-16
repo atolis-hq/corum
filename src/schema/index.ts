@@ -109,8 +109,8 @@ export interface Namespace {
 }
 
 export interface Graph {
-  /** Namespace metadata; loaded graphs always populate this map. */
-  namespaces?: Map<string, Namespace>
+  /** Parsed declarations only; use getNamespaces() to derive current namespace membership. */
+  namespaceDeclarations?: Map<string, Namespace>
   nodesById: Map<string, Node>
   edgesByFrom: Map<string, Edge[]>
   edgesByTo: Map<string, Edge[]>

@@ -1,3 +1,4 @@
+import { getNamespaces } from '../../src/graph/index.js'
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -85,7 +86,7 @@ describe('corum import — basic fixture', () => {
       assert.ok(fs.existsSync(path.join(graphDir, 'nodes/orders/DomainModels/OrderAggregate.yaml')))
 
       assert.equal(fs.readFileSync(declarationPath, 'utf8'), declaration)
-      assert.equal((await loadGraph({ graphPath: graphDir })).namespaces?.get('orders')?.kind, 'journey')
+      assert.equal(getNamespaces(await loadGraph({ graphPath: graphDir })).get('orders')?.kind, 'journey')
       assertMatchesExpected(graphDir, 'basic')
     } finally {
       cleanup()
