@@ -121,3 +121,34 @@ check the result. You can also ask your agent to draft a template, using
 
 > **Status:** pack authoring, the registry and versioning are still being
 > developed. Expect details of `pack.yaml` and the registry to change.
+
+## Namespace kinds
+
+A pack may add `kinds.yaml` beside `pack.yaml` and `edge-types.yaml`:
+
+```yaml
+kinds:
+  journey:
+    label: Journey
+    templates: [Journey, Step]
+  event-model:
+    label: Event model
+```
+
+Kind IDs are free strings matched exactly, independent of node ID grammar and
+of template names. `label` is a required nonempty display string; `templates`
+is an optional list of expected template names. A namespace opts in through
+`nodes/<namespace>/namespace.yaml` (for example `kind: journey`). Unexpected
+node templates produce advisory lint warnings only; loading and writes remain
+allowed. Ownership still comes from `parentId`, and engine behavior from template
+roles. Kinds supply classification and display metadata only.
+
+Core declares `component` with label `Component`. It remains the unrestricted
+default even when no pack declares kinds. The loaded graph exposes the merged
+registry as `graph.kinds`. Identical redeclarations are accepted; conflicting
+labels or template expectations produce error diagnostics and retain the first
+definition. Malformed files produce error diagnostics without stopping collection
+of other graph data (strict loading rejects error diagnostics as usual).
+Unknown namespace kinds remain intact, produce a lint warning, and use their
+exact kind ID as the generic display label. Declaration descriptions and unknown
+kinds survive saves without synthesizing declarations for other namespaces.

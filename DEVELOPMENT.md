@@ -138,5 +138,5 @@ description: Customer ordering journey
 The loader exposes declarations in `graph.namespaces`; namespaces derived from node ID
 prefixes default to kind `component`. Declarations are metadata, not nodes. Kind IDs
 are exact strings; unknown kinds are retained with a warning and use generic display.
-Currently only `component` is registered. Saves, imports, and working-session writes
+Packs register additional kinds through `kinds.yaml` (see `docs/templates-and-packs.md`). Saves, imports, and working-session writes
 preserve declaration files verbatim and do not create files for undeclared namespaces.

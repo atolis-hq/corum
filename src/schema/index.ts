@@ -103,6 +103,11 @@ export interface Diagnostic {
   message: string
 }
 
+export interface KindDef {
+  label: string
+  templates?: string[]
+}
+
 export interface Namespace {
   kind: string
   description?: string
@@ -111,6 +116,8 @@ export interface Namespace {
 export interface Graph {
   /** Namespace metadata; loaded graphs always populate this map. */
   namespaces?: Map<string, Namespace>
+  /** Core + pack-defined classification and display metadata. */
+  kinds?: Map<string, KindDef>
   nodesById: Map<string, Node>
   edgesByFrom: Map<string, Edge[]>
   edgesByTo: Map<string, Edge[]>

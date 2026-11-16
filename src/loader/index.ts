@@ -1,3 +1,4 @@
+import { loadKinds } from './kind-loader.js'
 import { loadNamespaces } from './namespace-loader.js'
 import { FileGraphSource } from '../source/file-source.js'
 import { SourceError } from '../source/index.js'
@@ -35,6 +36,7 @@ export async function loadGraph(options: LoadOptions): Promise<Graph> {
   const packContent = await source.loadPackContent(defaultRef)
   const templates = loadPacks(packContent, diagnostics)
   const edgeTypes = loadEdgeTypes(packContent, diagnostics)
+  const kinds = loadKinds(packContent, diagnostics)
 
   const graphContent = await source.loadGraphContent(ref)
   const clusterResult = loadClusters(graphContent, templates, diagnostics)
@@ -46,6 +48,7 @@ export async function loadGraph(options: LoadOptions): Promise<Graph> {
   mergeEdgeMaps(edgesByTo, edgeResult.edgesByTo)
 
   const graph: Graph = {
+    kinds,
     namespaces: loadNamespaces(graphContent, clusterResult.nodes, diagnostics),
     nodesById: clusterResult.nodes,
     edgesByFrom,

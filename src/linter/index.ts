@@ -37,6 +37,7 @@ import { getTemplateSchema } from '../loader/template-props.js'
  */
 export function lintGraph(graph: Graph): Diagnostic[] {
   const diagnostics: Diagnostic[] = []
+  lintNamespaceKinds(graph, diagnostics)
   lintNodeProperties(graph, diagnostics)
   lintPreviousIds(graph, diagnostics)
   lintEdgeTypeConstraints(graph, diagnostics)
@@ -381,4 +382,22 @@ function describeType(value: unknown): string {
   if (Array.isArray(value)) return 'array'
   if (value === null) return 'null'
   return typeof value
+}
+
+/** Classification expectations are advisory and never gate mutations. */
+function lintNamespaceKinds(graph: Graph, diagnostics: Diagnostic[]): void {
+  for (const [name, namespace] of graph.namespaces ?? []) {
+    const def = graph.kinds?.get(namespace.kind)
+    const file = `${NODE_ROOT_DIR}/${name}/namespace.yaml`
+    if (!def && namespace.kind !== 'component') {
+      diagnostics.push({ severity: 'warning', file, message: `unrecognised kind '${namespace.kind}', falling back to generic display` })
+      continue
+    }
+    if (namespace.kind === 'component' || !def?.templates) continue
+    for (const node of graph.nodesById.values()) {
+      if (node.id.split('.')[0] !== name || def.templates.includes(node.template)) continue
+      diagnostics.push({ severity: 'warning', file: approxFilePath(graph, node), nodeId: node.id,
+        message: `namespace '${name}' of kind '${namespace.kind}' owns unexpected template '${node.template}' (expected: ${def.templates.join(', ')})` })
+    }
+  }
 }
