@@ -1,3 +1,4 @@
+import { NODE_ROOT_DIR } from '../source/graph-paths.js'
 import type { Diagnostic, Edge, EdgeTypeDef, Graph, Node } from '../schema/index.js'
 import { getEdgeTypeConstraints } from '../graph/roles.js'
 import { CORE_EDGE_TYPE_MAP } from '../loader/constants.js'
@@ -361,7 +362,7 @@ function approxFilePath(graph: Graph, node: Node): string {
   const parts = current.id.split('.')
   if (parts.length < 2) return current.id
   const [component, template, ...rest] = parts
-  return `components/${component}/${template}s/${rest.join('/') || template}.yaml`
+  return `${NODE_ROOT_DIR}/${component}/${template}s/${rest.join('/') || template}.yaml`
 }
 
 function valueMatchesType(value: unknown, type: string): boolean {

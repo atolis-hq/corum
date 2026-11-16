@@ -128,7 +128,7 @@ This one block produces an endpoint node, schema nodes, and a node per field. Re
 at a node elsewhere in the graph.
 
 On disk, clusters live under
-`.corum/graph/components/<component>/<Template>s/<name>.yaml`.
+`.corum/graph/nodes/<component>/<Template>s/<name>.yaml`.
 
 ## Edges
 

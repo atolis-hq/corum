@@ -338,9 +338,9 @@ describe('runImport — componentNameReplacements', () => {
       }
       const runtimeConfig = makeRuntimeConfig(graphDir)
       await runImport(config, runtimeConfig)
-      const eventPath = path.join(graphDir, 'components', 'order-logistics', 'IntegrationEvents', 'ShipmentDispatched.yaml')
+      const eventPath = path.join(graphDir, 'nodes', 'order-logistics', 'IntegrationEvents', 'ShipmentDispatched.yaml')
       assert.ok(fs.existsSync(eventPath), `expected node file at ${eventPath}`)
-      const rawPath = path.join(graphDir, 'components', 'logistics', 'IntegrationEvents', 'ShipmentDispatched.yaml')
+      const rawPath = path.join(graphDir, 'nodes', 'logistics', 'IntegrationEvents', 'ShipmentDispatched.yaml')
       assert.ok(!fs.existsSync(rawPath), 'expected raw component name to be absent')
     } finally {
       cleanup()

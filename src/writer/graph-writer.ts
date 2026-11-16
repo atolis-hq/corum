@@ -1,3 +1,4 @@
+import { NODE_ROOT_DIR } from '../source/graph-paths.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
@@ -45,7 +46,7 @@ function clusterPath(node: Node): string {
   const parts = node.id.split('.')
   if (parts.length < 3) throw new Error(`clusterPath: expected at least 3-segment root node ID, got: ${node.id}`)
   const [component, template, ...rest] = parts
-  return `components/${component}/${template}s/${rest.join('/')}.yaml`
+  return `${NODE_ROOT_DIR}/${component}/${template}s/${rest.join('/')}.yaml`
 }
 
 export async function saveGraph(graph: Graph, options: SaveGraphOptions): Promise<void> {

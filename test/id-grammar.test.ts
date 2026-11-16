@@ -80,7 +80,7 @@ describe('id grammar — loader enforcement', () => {
   async function loadSingleCluster(yaml: string): Promise<{ diagnostics: Diagnostic[]; nodeIds: string[] }> {
     const diagnostics: Diagnostic[] = []
     const templates = loadPacks(await buildPackContentMap(), diagnostics)
-    const content: ContentMap = new Map([['components/orders/test.yaml', yaml]])
+    const content: ContentMap = new Map([['nodes/orders/test.yaml', yaml]])
     const result = loadClusters(content, templates, diagnostics)
     return { diagnostics, nodeIds: [...result.nodes.keys()] }
   }

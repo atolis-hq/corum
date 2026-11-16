@@ -320,7 +320,7 @@ edge-types:
     - maps-to
 `,
     [joinRepo(base, 'graph/graph.yaml')]: `schemaVersion: '1'\ntemplatePacks:\n  - name: testpack\n    path: ../packs/testpack\n`,
-    [joinRepo(base, 'graph/components/orders/Schemas/customer.yaml')]: `id: orders.Schema.customer
+    [joinRepo(base, 'graph/nodes/orders/Schemas/customer.yaml')]: `id: orders.Schema.customer
 template: Schema
 schemaVersion: '1.0'
 metadata:
@@ -335,7 +335,7 @@ fields:
     type: string
     nullable: false
 `,
-    [joinRepo(base, 'graph/components/orders/Schemas/invoice.yaml')]: `id: orders.Schema.invoice
+    [joinRepo(base, 'graph/nodes/orders/Schemas/invoice.yaml')]: `id: orders.Schema.invoice
 template: Schema
 schemaVersion: '1.0'
 metadata:

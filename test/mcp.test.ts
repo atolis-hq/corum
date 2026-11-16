@@ -1300,7 +1300,7 @@ describe('standalone MCP entrypoint', () => {
 async function createMultiBranchRepo(tmpDir: string): Promise<void> {
   await git.init({ fs, dir: tmpDir, defaultBranch: 'main' })
   const graphDir = path.join(tmpDir, '.corum', 'graph')
-  const componentsDir = path.join(graphDir, 'components', 'orders')
+  const componentsDir = path.join(graphDir, 'nodes', 'orders')
   const templatesDir = path.join(graphDir, 'packs', 'test', 'templates')
   fs.mkdirSync(componentsDir, { recursive: true })
   fs.mkdirSync(templatesDir, { recursive: true })
@@ -1313,12 +1313,12 @@ info:
 
   await git.add({ fs, dir: tmpDir, filepath: '.corum/graph/graph.yaml' })
   await git.add({ fs, dir: tmpDir, filepath: '.corum/graph/packs/test/templates/domain-model.yaml' })
-  await git.add({ fs, dir: tmpDir, filepath: '.corum/graph/components/orders/order.yaml' })
+  await git.add({ fs, dir: tmpDir, filepath: '.corum/graph/nodes/orders/order.yaml' })
   await git.commit({ fs, dir: tmpDir, message: 'initial', author: { name: 'Test', email: 'test@test.com' } })
 
   await git.branch({ fs, dir: tmpDir, ref: 'feat/add-payment', checkout: true })
   fs.writeFileSync(path.join(componentsDir, 'payment.yaml'), clusterYaml('orders.DomainModel.payment', 'proposed', 'unstable'))
-  await git.add({ fs, dir: tmpDir, filepath: '.corum/graph/components/orders/payment.yaml' })
+  await git.add({ fs, dir: tmpDir, filepath: '.corum/graph/nodes/orders/payment.yaml' })
   await git.commit({ fs, dir: tmpDir, message: 'add payment', author: { name: 'Test', email: 'test@test.com' } })
   await git.checkout({ fs, dir: tmpDir, ref: 'main' })
 }
@@ -1393,7 +1393,7 @@ edge-types:
     - maps-to
 `,
     [`${base}/graph/graph.yaml`]: `schemaVersion: '1'\ntemplatePacks:\n  - name: testpack\n    path: ../packs/testpack\n`,
-    [`${base}/graph/components/orders/Schemas/customer.yaml`]: `id: orders.Schema.customer
+    [`${base}/graph/nodes/orders/Schemas/customer.yaml`]: `id: orders.Schema.customer
 template: Schema
 schemaVersion: '1.0'
 metadata:
@@ -1408,7 +1408,7 @@ fields:
     type: string
     nullable: false
 `,
-    [`${base}/graph/components/orders/Schemas/invoice.yaml`]: `id: orders.Schema.invoice
+    [`${base}/graph/nodes/orders/Schemas/invoice.yaml`]: `id: orders.Schema.invoice
 template: Schema
 schemaVersion: '1.0'
 metadata:
@@ -1431,7 +1431,7 @@ properties:
 schemas:
   item-template: Schema
 `,
-    [`${base}/graph/components/orders/Roots/order.yaml`]: `id: orders.Root.order
+    [`${base}/graph/nodes/orders/Roots/order.yaml`]: `id: orders.Root.order
 template: Root
 schemaVersion: '1.0'
 metadata:
