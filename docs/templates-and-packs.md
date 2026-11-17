@@ -124,7 +124,7 @@ kinds:
     templates: [Journey, Step]   # optional, advisory
 ```
 
-- The kind id is matched exactly and must use only `A-Za-z0-9_-`.
+- Kind ids are free strings matched exactly, including case and punctuation.
 - The `core` pack declares `component` (label `Component`). It is the built-in
   default, so it exists even when no pack declares kinds.
 - Redeclaring a kind with an identical definition in another pack is fine;

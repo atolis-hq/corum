@@ -394,7 +394,7 @@ function lintKindExpectedTemplates(graph: Graph, diagnostics: Diagnostic[]): voi
     if (node.parentId) continue
     const ns = node.id.split('.')[0]
     const kind = namespaces.get(ns)?.kind
-    const expected = kind ? graph.kinds.get(kind)?.templates : undefined
+    const expected = kind !== undefined && kind !== 'component' ? graph.kinds.get(kind)?.templates : undefined
     if (!expected || expected.includes(node.template)) continue
     const key = ns + ':' + node.template
     if (reported.has(key)) continue

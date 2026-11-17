@@ -5,9 +5,6 @@ import { listYamlKeys, readYaml } from '../source/content-utils.js'
 
 export const DEFAULT_KIND = 'component'
 
-/** Kind ids are matched exactly and must be valid as an ID segment. */
-const KIND_ID_RE = /^[A-Za-z0-9_-]+$/
-
 /** The built-in registry: only the default kind, regardless of packs. */
 export function builtinKinds(): Map<string, KindDef> {
   return new Map([[DEFAULT_KIND, { id: DEFAULT_KIND, label: 'Component' }]])
@@ -39,10 +36,6 @@ export function loadKinds(packContent: ContentMap, diagnostics: Diagnostic[]): M
       continue
     }
     for (const [id, defRaw] of Object.entries(declared as Record<string, unknown>)) {
-      if (!KIND_ID_RE.test(id)) {
-        diagnostics.push({ severity: 'error', file: key, message: `invalid kind id '${id}': must match ${KIND_ID_RE}` })
-        continue
-      }
       if (typeof defRaw !== 'object' || defRaw === null || Array.isArray(defRaw)) {
         diagnostics.push({ severity: 'error', file: key, message: `kind '${id}' must be an object` })
         continue

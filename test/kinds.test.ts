@@ -36,6 +36,17 @@ describe('kind loader', () => {
     assert.deepEqual(kinds.get('journey')?.templates, ['Journey'])
   })
 
+  it('matches free-string ids exactly', () => {
+    const diagnostics: Diagnostic[] = []
+    const kinds = loadKinds(new Map([['custom/kinds.yaml',
+      'kinds:\n  "Customer Journey.v2":\n    label: Customer Journey\n  journey:\n    label: Journey\n  Journey:\n    label: Capital Journey\n']]), diagnostics)
+    assert.deepEqual(diagnostics, [])
+    assert.equal(kinds.get('Customer Journey.v2')?.label, 'Customer Journey')
+    assert.equal(kinds.get('journey')?.label, 'Journey')
+    assert.equal(kinds.get('Journey')?.label, 'Capital Journey')
+    assert.equal(kinds.has('customer journey.v2'), false)
+  })
+
   it('accepts identical redeclarations and errors on conflicting ones', () => {
     const diagnostics: Diagnostic[] = []
     loadKinds(new Map([
@@ -62,9 +73,10 @@ describe('kind loader', () => {
       ['c/kinds.yaml', 'kinds:\n  bad.id:\n    label: X\n  nolabel: {}\n  ok:\n    label: Ok\n'],
     ])
     const kinds = loadKinds(content, diagnostics)
-    assert.equal(diagnostics.length, 4)
+    assert.equal(diagnostics.length, 3)
     assert.ok(diagnostics.every(d => d.severity === 'error'))
     assert.equal(kinds.get('ok')?.label, 'Ok')
+    assert.equal(kinds.get('bad.id')?.label, 'X')
   })
 })
 
@@ -108,6 +120,18 @@ describe('kinds in a loaded graph', () => {
     assert.ok(warnings.length > 0)
     assert.ok(warnings.every(d => d.severity === 'warning'))
     assert.ok(graph.nodesById.size > 0)
+  })
+
+  it('retains malformed pack diagnostics while loading the graph', async () => {
+    const graph = await loadWith(undefined, 'kinds: [')
+    assert.ok(graph.nodesById.size > 0)
+    assert.ok(graph.diagnostics.some(d => d.severity === 'error' && d.file === 'journeys/kinds.yaml'))
+  })
+
+  it('keeps component unrestricted even with advisory registry metadata', async () => {
+    const graph = await loadGraph({ graphPath: fixture })
+    graph.kinds!.set('component', { id: 'component', label: 'Component', templates: [] })
+    assert.equal(lintGraph(graph).filter(d => d.message.includes('expected one of')).length, 0)
   })
 
   it('does not restrict component namespaces', async () => {
