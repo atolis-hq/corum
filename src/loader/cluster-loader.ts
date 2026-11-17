@@ -71,7 +71,7 @@ export function loadClusters(
     const root: Node = {
       id: record.id,
       template: record.template,
-      namespace: meta.component,
+      namespace: record.id.split('.')[0],
       state: asState(meta.state, 'proposed', diagnostics, key, record.id),
       stability: asStability(meta.stability, 'unstable', diagnostics, key, record.id),
       schemaVersion: record.schemaVersion,
