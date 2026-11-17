@@ -1,6 +1,6 @@
 // run with: node web/graph-utils.test.js
 const graphUtils = require('./graph-utils.js');
-const { buildComponentMap, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName } = graphUtils;
+const { buildNamespaceMap, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName } = graphUtils;
 
 (async () => {
   let passed = 0, failed = 0;
@@ -26,16 +26,16 @@ const { buildComponentMap, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName
   assert(getDisplayName('orders.DomainModel.order') === 'order', 'getDisplayName returns last segment');
   assert(getDisplayName('payments.RestAPI.paymentsApi') === 'paymentsApi', 'getDisplayName handles nested id');
 
-  const cm = buildComponentMap(nodes, edges);
-  assert(cm.nodes.length === 2, 'buildComponentMap: one node per component');
-  assert(cm.nodes.every(n => typeof n.count === 'number' && n.count > 0), 'buildComponentMap: nodes have count');
+  const cm = buildNamespaceMap(nodes, edges);
+  assert(cm.nodes.length === 2, 'buildNamespaceMap: one node per component');
+  assert(cm.nodes.every(n => typeof n.count === 'number' && n.count > 0), 'buildNamespaceMap: nodes have count');
   const cmOrders = cm.nodes.find(n => n.id === 'orders');
-  assert(cmOrders?.count === 2, 'buildComponentMap: orders has 2 nodes');
-  assert(cm.edges.length === 1, 'buildComponentMap: one cross-component edge');
-  assert(cm.edges[0].from === 'orders' && cm.edges[0].to === 'payments', 'buildComponentMap: edge direction correct');
-  assert(cm.edges[0].types.includes('calls'), 'buildComponentMap: edge types collected');
-  const sameCmEdges = buildComponentMap(nodes, [{ id: 'x', from: 'orders.DomainModel.order', to: 'orders.RestAPI.ordersApi', type: 'reads' }]);
-  assert(sameCmEdges.edges.length === 0, 'buildComponentMap: intra-component edges excluded');
+  assert(cmOrders?.count === 2, 'buildNamespaceMap: orders has 2 nodes');
+  assert(cm.edges.length === 1, 'buildNamespaceMap: one cross-component edge');
+  assert(cm.edges[0].from === 'orders' && cm.edges[0].to === 'payments', 'buildNamespaceMap: edge direction correct');
+  assert(cm.edges[0].types.includes('calls'), 'buildNamespaceMap: edge types collected');
+  const sameCmEdges = buildNamespaceMap(nodes, [{ id: 'x', from: 'orders.DomainModel.order', to: 'orders.RestAPI.ordersApi', type: 'reads' }]);
+  assert(sameCmEdges.edges.length === 0, 'buildNamespaceMap: intra-component edges excluded');
 
   const filtered = applyEdgeTypeFilter(edges, new Set(['reads']));
   assert(filtered.length === 2, 'applyEdgeTypeFilter: keeps only matching type');
@@ -86,6 +86,28 @@ const { buildComponentMap, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName
   assert(aggScope.has('a.T.other'), 'filterOwnerScope: keeps direct neighbours');
   assert(aggScope.has('a.T.reader'), 'filterOwnerScope: keeps neighbours of the owner node');
   assert(!aggScope.has('a.T.unrelated'), 'filterOwnerScope: drops unrelated nodes');
+
+  // Kind filtering and colouring
+  const { filterByKind, collectKinds, kindColour } = graphUtils;
+  const kNodes = [
+    { id: 'orders.A.a', namespace: 'orders', kind: 'component' },
+    { id: 'orders.A.b', namespace: 'orders' },
+    { id: 'signup.J.j', namespace: 'signup', kind: 'journey' },
+  ];
+  const kEdges = [
+    { id: 'k1', from: 'orders.A.a', to: 'orders.A.b', type: 'reads' },
+    { id: 'k2', from: 'signup.J.j', to: 'orders.A.a', type: 'calls' },
+  ];
+  assert(JSON.stringify(collectKinds(kNodes)) === JSON.stringify(['component', 'journey']), 'collectKinds: distinct sorted kinds, default component');
+  const fc = filterByKind(kNodes, kEdges, 'component');
+  assert(fc.nodes.length === 2 && fc.edges.length === 1, 'filterByKind: component keeps only component nodes and internal edges');
+  const fj = filterByKind(kNodes, kEdges, 'journey');
+  assert(fj.nodes.length === 1 && fj.edges.length === 0, 'filterByKind: journey keeps journey namespace only');
+  assert(filterByKind(kNodes, kEdges, 'all').nodes.length === 3, 'filterByKind: all keeps everything');
+  assert(filterByKind(kNodes, kEdges, 'mystery').nodes.length === 0, 'filterByKind: unrecognised kind matches exactly');
+  assert(kindColour('journey') === kindColour('journey') && kindColour('journey') !== kindColour('component'), 'kindColour: stable and distinct from component');
+  const km = buildNamespaceMap(kNodes, kEdges);
+  assert(km.nodes.find(n => n.id === 'signup')?.kind === 'journey', 'buildNamespaceMap: carries kind');
 
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);

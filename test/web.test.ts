@@ -1261,7 +1261,7 @@ describe('web server', () => {
       assert.match(app, /const sortedComponents = \[\.\.\.navTree\.keys\(\)\]\.sort\(\(a, b\) => a\.localeCompare\(b\)\);/)
       assert.match(app, /const \[openComponent, setOpenComponent\] = useState\(\);/)
       assert.match(app, /if \(openComponent === undefined\) \{ openComponentWithEntries\(autoOpen\); return; \}/)
-      assert.match(app, /function toggleComponent\(component\) \{[\s\S]*openComponentWithEntries/)
+      assert.match(app, /function toggleComponent\(component, kind\) \{[\s\S]*openComponentWithEntries/)
       assert.doesNotMatch(app, /for \(const component of navTree\.keys\(\)\) initial\[component\] = true;/)
     })
 
@@ -1282,11 +1282,41 @@ describe('web server', () => {
       assert.match(styles, /\.overlay-conflict\s*\{[^}]*background:\s*color-mix\(in oklch,\s*#c44\s*5%,\s*var\(--paper\)\);/)
     })
 
-    it('app: components section navigation still routes through /components', () => {
+    it('app: namespaces section navigation routes through /namespaces, with no /components route', () => {
       assert.match(app, /function handleSection\(section\) \{/)
       assert.match(app, /navigate\(buildRoute\(\{ pathname: `\/\$\{section\}`, params: \{\}, branch: viewingRef \}\)\);/)
-      assert.match(app, /const showTree = \(activeSection === 'components' \|\| activeNodeId\) && activeSection !== 'graph';/)
-      assert.match(app, /} else if \(route\.pathname === '\/components'\) \{\s*page = <ComponentsPage \/>;/)
+      assert.match(app, /const showTree = \(activeSection === 'namespaces' \|\| activeNodeId\) && activeSection !== 'graph';/)
+      assert.match(app, /} else if \(route\.pathname === '\/namespaces'\) \{\s*page = <NamespacesPage \/>;/)
+      assert.doesNotMatch(app, /\/components/)
+      assert.doesNotMatch(app, /ComponentsPage/)
+    })
+
+    it('app: navigation is grouped into one section per kind and non-default kinds open the generic page', () => {
+      assert.match(app, /groupNamespacesByKind\(nodes, kinds\)/)
+      assert.match(app, /kindSections\.map\(section =>/)
+      assert.match(app, /<div className="nav-kind-head">\{section\.label\}<\/div>/)
+      assert.match(app, /if \(kind !== 'component'\) onNamespace\(component\);/)
+      assert.match(app, /fetch\(`\/api\/kinds\$\{refParam\}`\)/)
+    })
+
+    it('app: generic namespace page lists owned nodes plus inbound and outbound edges with links', () => {
+      assert.match(app, /route\.pathname === '\/namespace'/)
+      assert.match(app, /function NamespacePage\(/)
+      assert.match(app, /<EdgeList title="Inbound" edges=\{inbound\} endpoint="from" \/>/)
+      assert.match(app, /<EdgeList title="Outbound" edges=\{outbound\} endpoint="to" \/>/)
+      assert.match(app, /<div className="card-head">Owned nodes<\/div>/)
+      assert.match(app, /onClick=\{\(\) => onNavigate\(id\)\}/)
+      // Core UI has no kind-specific code: only the default kind is named.
+      assert.doesNotMatch(app, /journey/i)
+      assert.doesNotMatch(graph, /journey/i)
+    })
+
+    it('graph: kind filter defaults to component and colours nodes by kind', () => {
+      assert.match(graph, /const kindFilter = route\.params\.get\('kind'\) \?\? 'component';/)
+      assert.match(graph, /filterByKind\(graphData\.nodes, graphData\.edges, kindFilter\)/)
+      assert.match(graph, /aria-label="Kind filter"/)
+      assert.match(graph, /\{ id: 'all', label: 'All' \}/)
+      assert.match(graph, /kindColour: kindColour\(/)
     })
 
     it('graph: node cards render status beside stability in the footer, not in the header', () => {
@@ -1295,7 +1325,7 @@ describe('web server', () => {
     })
 
     it('graph: node card titles use a dedicated wrapped block instead of single-line truncation', () => {
-      assert.match(graph, /<div className="graph-node-card-body">\s*<div className="graph-node-card-text">\s*<div className="graph-node-card-name" title=\{data\.nodeId\}>\{data\.label\}<\/div>\s*<div className="graph-node-card-component">\{data\.component\}<\/div>\s*<\/div>\s*<div className="graph-node-card-type">\s*<TemplateBadge name=\{data\.templateLabel\} colour=\{colour\} \/>\s*<\/div>\s*<\/div>/)
+      assert.match(graph, /<div className="graph-node-card-body">\s*<div className="graph-node-card-text">\s*<div className="graph-node-card-name" title=\{data\.nodeId\}>\{data\.label\}<\/div>\s*<div className="graph-node-card-component" style=\{\{ color: data\.kindColour \}\}>\{data\.component\}<\/div>\s*<\/div>\s*<div className="graph-node-card-type">\s*<TemplateBadge name=\{data\.templateLabel\} colour=\{colour\} \/>\s*<\/div>\s*<\/div>/)
       assert.match(styles, /\.graph-node-card-text\s*\{[^}]*min-height:\s*calc\(\(1\.25em \* 2\) \+ 12px\);/s)
       assert.match(styles, /\.graph-node-card-name\s*\{[^}]*white-space:\s*normal;[^}]*overflow:\s*visible;[^}]*text-overflow:\s*clip;[^}]*line-height:\s*1\.25;/s)
       assert.match(styles, /\.graph-node-card-type\s*\{[^}]*margin-top:\s*6px;/)
@@ -1355,7 +1385,7 @@ describe('web server', () => {
     })
 
     it('app: overlay nav dots are derived from diff-aware indicator ids', () => {
-      assert.match(app, /const \{ buildNavTree, buildOverlayIndicatorIds \} = window\.CorumNav;/)
+      assert.match(app, /const \{ buildNavTree, buildOverlayIndicatorIds, groupNamespacesByKind \} = window\.CorumNav;/)
       assert.match(app, /setOverlayIndicatorIds\(buildOverlayIndicatorIds\(nodes, templates, data\.nodes \|\| \[\], activeOverlayRefs\)\);/)
       assert.doesNotMatch(app, /\.filter\(node => activeOverlayRefs\.some\(ref => node\.branches\.includes\(ref\)\)\)\s*\.map\(node => node\.id\)/)
     })
@@ -1439,7 +1469,7 @@ describe('web server', () => {
       assert.doesNotMatch(app, /const nodesByTemplate = \[\.\.\.nodes\.reduce\(/)
       assert.doesNotMatch(app, /const nodesByState = \[\.\.\.nodes\.reduce\(/)
       assert.doesNotMatch(app, /const nodesByStability = \[\.\.\.nodes\.reduce\(/)
-      assert.match(app, /<HeroCard value=\{stats \? stats\.namespaceCount : '\u2026'\} label="Components" \/>/)
+      assert.match(app, /<HeroCard value=\{stats \? stats\.namespaceCount : '\u2026'\} label="Namespaces" \/>/)
       assert.match(app, /<HeroCard value=\{stats \? stats\.nodeCount : '\u2026'\} label="Nodes" \/>/)
       assert.match(app, /Object\.entries\(stats\.nodesByNamespace\)/)
       assert.match(app, /Object\.entries\(stats\.nodesByTemplate\)/)
@@ -1447,8 +1477,10 @@ describe('web server', () => {
       assert.match(app, /Object\.entries\(stats\.nodesByStability\)/)
     })
 
-    it('app: DashboardPage includes a Nodes by Component panel', () => {
-      assert.match(app, /<div className="card-head">Nodes by Component<\/div>/)
+    it('app: DashboardPage includes Namespaces by Kind and Nodes by Namespace panels', () => {
+      assert.match(app, /<div className="card-head">Namespaces by Kind<\/div>/)
+      assert.match(app, /Object\.entries\(stats\.namespacesByKind \?\? \{\}\)/)
+      assert.match(app, /<div className="card-head">Nodes by Namespace<\/div>/)
     })
 
     it('style: dashboard hero and grid layout classes defined', () => {

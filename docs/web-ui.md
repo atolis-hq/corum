@@ -23,15 +23,22 @@ it for a team, see [Hosting the web UI](configuration.md#hosting-the-web-ui).
 
 The left rail switches between three views:
 
-- **Dashboard** - high-level statistics for the graph: nodes, namespaces,
-  edges and diagnostics.
-- **Models** - browse nodes by namespace and template. A node's page shows its
-  properties, its schemas and fields (with their types and field-level
-  links), and its enums. Template colours and icons come from each template's
-  `ui` settings.
-- **Graph** - an interactive diagram of nodes and edges. Pick a focus node and
-  adjust the depth to explore what surrounds it; edges are labelled with their
-  type, including custom types from packs.
+- **Dashboard** - graph-wide statistics: nodes, namespaces, edges and
+  diagnostics, plus a count of namespaces by kind.
+- **Namespaces** - browse nodes by namespace and template. The sidebar has one
+  section per kind, labelled from the kind registry (for example `Component`
+  and any pack-defined kind); a kind with no registry entry appears under its
+  kind id. A node's page shows its properties, its schemas and fields (with
+  their types and field-level links), and its enums. Template colours and
+  icons come from each template's `ui` settings. Selecting a namespace of any
+  kind other than `component` opens a generic page listing its owned nodes and
+  its inbound and outbound edges, with links to the nodes.
+- **Graph** - an interactive diagram of nodes and edges. The top level shows
+  `component` namespaces by default; when the graph has several kinds a kind
+  filter (including **All**) switches this, and namespaces and nodes are
+  coloured by kind. Pick a focus node and adjust the depth to explore what
+  surrounds it; edges are labelled with their type, including custom types from
+  packs.
 
 A search box at the top finds nodes by ID. A debug toggle shows fully qualified
 node names instead of display names.

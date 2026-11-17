@@ -419,6 +419,7 @@ export function createApp(
       targetGraph = await getGraphForRef(req.query.ref, multiCache, graph)
     }
 
+    const namespaces = getNamespaces(targetGraph)
     const nodes = listNodes(targetGraph, filter)
       .filter(node => includeCore || !targetGraph.templates.get(node.template)?.info?.core)
       .map(node => {
@@ -427,6 +428,7 @@ export function createApp(
           id: ownership.id,
           template: ownership.template,
           namespace: ownership.namespace,
+          kind: namespaces.get(ownership.namespace)?.kind ?? 'component',
           state: ownership.state,
           stability: ownership.stability,
           parentId: ownership.parentId,
@@ -458,7 +460,8 @@ export function createApp(
           ? new Set(filterExcludeTemplates)
           : getStructuralNodeTemplates(targetGraph)
 
-      const nodes: Array<{ id: string; template: string; namespace: string; state: string; stability: string; parentId: string | null }> = []
+      const namespaces = getNamespaces(targetGraph)
+      const nodes: Array<{ id: string; template: string; namespace: string; kind: string; state: string; stability: string; parentId: string | null }> = []
       for (const node of targetGraph.nodesById.values()) {
         if (filterTemplates?.length && !filterTemplates.includes(node.template)) continue
         if (excludeSet?.has(node.template)) continue
@@ -467,6 +470,7 @@ export function createApp(
           id: node.id,
           template: node.template,
           namespace: node.namespace,
+          kind: namespaces.get(node.namespace)?.kind ?? 'component',
           state: node.state,
           stability: node.stability,
           parentId: ownership?.parentId ?? null,

@@ -4,15 +4,42 @@ function getDisplayName(nodeId) {
   return nodeId.split('.').pop();
 }
 
-function buildComponentMap(nodes, edges) {
-  const componentCounts = new Map();
+const KIND_PALETTE = ['#2f6fb0', '#b0562f', '#4a8a3c', '#8a3c7a', '#b08a2f', '#2f8a8a', '#7a3c3c', '#5a5ab0'];
+
+// Stable colour per kind id. The default kind has a fixed slot; others hash into the rest.
+function kindColour(kind) {
+  const id = kind ?? 'component';
+  if (id === 'component') return KIND_PALETTE[0];
+  let hash = 0;
+  for (const ch of id) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  return KIND_PALETTE[1 + (hash % (KIND_PALETTE.length - 1))];
+}
+
+// Distinct kind ids present in a node list, sorted.
+function collectKinds(nodes) {
+  return [...new Set(nodes.map(n => n.kind ?? 'component'))].sort((a, b) => a.localeCompare(b));
+}
+
+// Keep only nodes of one kind (and edges between them). null/'all' keeps everything.
+function filterByKind(nodes, edges, kind) {
+  if (!kind || kind === 'all') return { nodes, edges };
+  const kept = nodes.filter(n => (n.kind ?? 'component') === kind);
+  const ids = new Set(kept.map(n => n.id));
+  return { nodes: kept, edges: edges.filter(e => ids.has(e.from) && ids.has(e.to)) };
+}
+
+function buildNamespaceMap(nodes, edges) {
+  const counts = new Map();
+  const kinds = new Map();
   for (const node of nodes) {
-    componentCounts.set(node.namespace, (componentCounts.get(node.namespace) ?? 0) + 1);
+    counts.set(node.namespace, (counts.get(node.namespace) ?? 0) + 1);
+    kinds.set(node.namespace, node.kind ?? 'component');
   }
 
-  const componentNodes = [...componentCounts.entries()].map(([namespace, count]) => ({
+  const componentNodes = [...counts.entries()].map(([namespace, count]) => ({
     id: namespace,
     namespace,
+    kind: kinds.get(namespace),
     count,
   }));
 
@@ -112,8 +139,8 @@ function filterOwnerScope(nodes, edges, parentId) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { buildComponentMap, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName, computeConnectedComponents, filterThreadScope, filterOwnerScope };
+  module.exports = { buildNamespaceMap, kindColour, collectKinds, filterByKind, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName, computeConnectedComponents, filterThreadScope, filterOwnerScope };
 }
 if (typeof window !== 'undefined') {
-  window.CorumGraphUtils = { buildComponentMap, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName, computeConnectedComponents, filterThreadScope, filterOwnerScope };
+  window.CorumGraphUtils = { buildNamespaceMap, kindColour, collectKinds, filterByKind, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName, computeConnectedComponents, filterThreadScope, filterOwnerScope };
 }

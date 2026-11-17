@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-function loadNavModule(): { buildNavTree: Function; buildOverlayIndicatorIds: Function } {
+function loadNavModule(): { buildNavTree: Function; buildOverlayIndicatorIds: Function; groupNamespacesByKind: Function } {
   const navJs = readFileSync(join(__dirname, '../../web/nav.js'), 'utf8')
   const context = vm.createContext({ window: {} as Record<string, unknown> })
   vm.runInContext(navJs, context)
@@ -50,5 +50,38 @@ describe('buildNavTree', () => {
     const groupLabels: string[] = Array.from((orderNode.navChildren ?? []).map((g: any) => String(g.label)))
 
     assert.deepStrictEqual(groupLabels, ['Operations', 'Schemas'])
+  })
+})
+
+describe('groupNamespacesByKind', () => {
+  const registry = [
+    { id: 'component', label: 'Component' },
+    { id: 'journey', label: 'Journey' },
+  ]
+  const nodes = [
+    { id: 'shared.A.a', namespace: 'shared', kind: 'component' },
+    { id: 'billing.A.a', namespace: 'billing', kind: 'component' },
+    { id: 'signup.J.j', namespace: 'signup', kind: 'journey' },
+    { id: 'signup.J.k', namespace: 'signup', kind: 'journey' },
+    { id: 'pay.X.x', namespace: 'pay', kind: 'mystery' },
+  ]
+
+  it('creates one section per kind, labelled from the registry, default kind first', () => {
+    const { groupNamespacesByKind } = loadNavModule()
+    const sections = groupNamespacesByKind(nodes, registry)
+    assert.deepStrictEqual(
+      JSON.parse(JSON.stringify(sections)),
+      [
+        { kind: 'component', label: 'Component', namespaces: ['billing', 'shared'] },
+        { kind: 'journey', label: 'Journey', namespaces: ['signup'] },
+        { kind: 'mystery', label: 'mystery', namespaces: ['pay'] },
+      ],
+    )
+  })
+
+  it('treats nodes without a kind as the default component kind', () => {
+    const { groupNamespacesByKind } = loadNavModule()
+    const sections = groupNamespacesByKind([{ id: 'a.T.x', namespace: 'a' }], [])
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(sections.map((s: any) => [s.kind, s.label]))), [['component', 'component']])
   })
 })
