@@ -43,10 +43,10 @@ assert(fuzzyMatch('o.o', 'orders.DomainModel.order')?.score === 1, 'non-consecut
 
 // searchNodes
 const nodes = [
-  { id: 'orders.DomainModel.order', template: 'DomainModel', component: 'orders' },
-  { id: 'orders.RestAPI.OrdersApi', template: 'RestAPI', component: 'orders' },
-  { id: 'payments.DomainModel.payment', template: 'DomainModel', component: 'payments' },
-  { id: 'orders.DomainModel.order.schemas.OrderSchema', template: 'Schema', component: 'orders', parentId: 'orders.DomainModel.order' },
+  { id: 'orders.DomainModel.order', template: 'DomainModel', namespace: 'orders' },
+  { id: 'orders.RestAPI.OrdersApi', template: 'RestAPI', namespace: 'orders' },
+  { id: 'payments.DomainModel.payment', template: 'DomainModel', namespace: 'payments' },
+  { id: 'orders.DomainModel.order.schemas.OrderSchema', template: 'Schema', namespace: 'orders', parentId: 'orders.DomainModel.order' },
 ];
 const templates = [{ name: 'DomainModel', ui: { colour: '#f00', displayName: 'Domain Model' } }];
 

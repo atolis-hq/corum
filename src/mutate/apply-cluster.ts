@@ -303,7 +303,7 @@ export function materialiseRootDocument(
   if (parts.length < 3) {
     throw new MutationError([mutationDiagnostic(
       'error',
-      `create node: '${id}' is not a valid cluster root id (component.Template.name)`,
+      `create node: '${id}' is not a valid cluster root id (namespace.Template.name)`,
       id,
     )])
   }

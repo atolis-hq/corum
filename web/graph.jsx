@@ -340,7 +340,7 @@ function buildRFNodesForNodes(graphNodes, templateMap, onNodeClick, viewingRef, 
       data: {
         nodeId: n.id,
         label: getDisplayName(n.id),
-        component: n.component,
+        component: n.namespace,
         templateLabel: tmpl?.ui?.displayName ?? n.template,
         colour,
         state: n.state,
@@ -592,7 +592,7 @@ function GraphToolbar({ edgeTypes, visibleEdgeTypes, onToggleEdgeType, showMinim
                     onClick={() => { onFocalNode(n.id); setSearchQuery(''); setSearchOpen(false); }}
                   >
                     <span style={{ fontWeight: 500 }}>{getDisplayName(n.id)}</span>
-                    <span style={{ color: 'var(--ink-3)', fontSize: 10, marginLeft: 4 }}>{n.component}</span>
+                    <span style={{ color: 'var(--ink-3)', fontSize: 10, marginLeft: 4 }}>{n.namespace}</span>
                   </div>
                 ))}
               </div>
@@ -736,7 +736,7 @@ function GraphView({ route, viewingRef, templates }) {
       id: n.id,
       type: 'componentCard',
       position: { x: 0, y: 0 },
-      data: { label: n.component, count: n.count, onClick: () => navToComponent(n.component) },
+      data: { label: n.namespace, count: n.count, onClick: () => navToComponent(n.namespace) },
     }));
     const rfE = filteredCmEdges.map(e => {
       const repType = e.types.find(t => visibleEdgeTypes.has(t)) ?? e.types[0];
@@ -763,7 +763,7 @@ function GraphView({ route, viewingRef, templates }) {
   // Level 2: component interior
   const level2 = useMemo(() => {
     if (!graphData || !selectedComponent) return null;
-    const compNodes = graphData.nodes.filter(n => n.component === selectedComponent);
+    const compNodes = graphData.nodes.filter(n => n.namespace === selectedComponent);
     const compNodeIds = new Set(compNodes.map(n => n.id));
     const internalEdges = graphData.edges.filter(e => compNodeIds.has(e.from) && compNodeIds.has(e.to));
     const crossEdges = graphData.edges.filter(e =>
@@ -928,7 +928,7 @@ function GraphView({ route, viewingRef, templates }) {
     <div className="graph-section">
       <GraphBreadcrumb
         level={level}
-        selectedComponent={selectedComponent ?? (focalNodeId ? nodeById.get(focalNodeId)?.component ?? null : null)}
+        selectedComponent={selectedComponent ?? (focalNodeId ? nodeById.get(focalNodeId)?.namespace ?? null : null)}
         focalNodeId={focalNodeId}
         onNavigateToRoot={navToRoot}
         onNavigateToComponent={navToComponent}

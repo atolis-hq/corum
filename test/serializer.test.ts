@@ -14,7 +14,7 @@ const sample = [
   {
     id: 'orders.APIEndpoint.create-order',
     template: 'APIEndpoint',
-    component: 'orders',
+    namespace: 'orders',
     state: 'agreed',
     stability: 'stable',
   },
@@ -36,7 +36,7 @@ describe('MCP serializers', () => {
   it('ToonSerializer serializes with the TOON library', () => {
     const text = new ToonSerializer().serialize(sample)
     assert.deepEqual(decodeToon(text), sample)
-    assert.match(text, /^\[1\]\{id,template,component,state,stability\}:/)
+    assert.match(text, /^\[1\]\{id,template,namespace,state,stability\}:/)
   })
 
   it('getSerializer resolves yaml by default and rejects old LEAN format', () => {
@@ -51,7 +51,7 @@ describe('MCP serializers', () => {
     const source = {
       id: 'root',
       template: 'DomainModel',
-      component: 'orders',
+      namespace: 'orders',
       state: 'agreed',
       stability: 'stable',
       schemaVersion: '1',
@@ -67,7 +67,7 @@ describe('MCP serializers', () => {
     assert.deepEqual(compactKeys(source), {
       i: 'root',
       t: 'DomainModel',
-      cp: 'orders',
+      ns: 'orders',
       s: 'agreed',
       st: 'stable',
       sv: '1',

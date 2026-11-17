@@ -298,7 +298,7 @@ describe('cluster loader', () => {
 
     const field = result.nodes.get('orders.DomainModel.order.schemas.order.fields.id')!
     assert.equal(field.template, 'Field')
-    assert.equal(field.component, 'orders')
+    assert.equal(field.namespace, 'orders')
     assert.equal(field.properties.type, 'uuid')
     assert.equal(field.properties.nullable, false)
     assert.equal(field.properties.collection, undefined)
@@ -474,8 +474,8 @@ describe('edge loader', () => {
 
   it('warns and falls back on an invalid edge state, without erroring', () => {
     const nodes = new Map<string, Node>([
-      ['a.DomainModel.a', { id: 'a.DomainModel.a', template: 'DomainModel', component: 'a', state: 'proposed', stability: 'unstable', schemaVersion: '1', lastModifiedAt: '2026-01-01', properties: {} }],
-      ['b.DomainModel.b', { id: 'b.DomainModel.b', template: 'DomainModel', component: 'b', state: 'proposed', stability: 'unstable', schemaVersion: '1', lastModifiedAt: '2026-01-01', properties: {} }],
+      ['a.DomainModel.a', { id: 'a.DomainModel.a', template: 'DomainModel', namespace: 'a', state: 'proposed', stability: 'unstable', schemaVersion: '1', lastModifiedAt: '2026-01-01', properties: {} }],
+      ['b.DomainModel.b', { id: 'b.DomainModel.b', template: 'DomainModel', namespace: 'b', state: 'proposed', stability: 'unstable', schemaVersion: '1', lastModifiedAt: '2026-01-01', properties: {} }],
     ])
     const content: ContentMap = new Map([
       ['edges/bad.edges.yaml', 'edges:\n  - from: a.DomainModel.a\n    to: b.DomainModel.b\n    type: reads\n    state: bogus\n'],
@@ -491,8 +491,8 @@ describe('edge loader', () => {
 
   it('warns and falls back on an invalid edge stability, without erroring', () => {
     const nodes = new Map<string, Node>([
-      ['a.DomainModel.a', { id: 'a.DomainModel.a', template: 'DomainModel', component: 'a', state: 'proposed', stability: 'unstable', schemaVersion: '1', lastModifiedAt: '2026-01-01', properties: {} }],
-      ['b.DomainModel.b', { id: 'b.DomainModel.b', template: 'DomainModel', component: 'b', state: 'proposed', stability: 'unstable', schemaVersion: '1', lastModifiedAt: '2026-01-01', properties: {} }],
+      ['a.DomainModel.a', { id: 'a.DomainModel.a', template: 'DomainModel', namespace: 'a', state: 'proposed', stability: 'unstable', schemaVersion: '1', lastModifiedAt: '2026-01-01', properties: {} }],
+      ['b.DomainModel.b', { id: 'b.DomainModel.b', template: 'DomainModel', namespace: 'b', state: 'proposed', stability: 'unstable', schemaVersion: '1', lastModifiedAt: '2026-01-01', properties: {} }],
     ])
     const content: ContentMap = new Map([
       ['edges/bad.edges.yaml', 'edges:\n  - from: a.DomainModel.a\n    to: b.DomainModel.b\n    type: reads\n    stability: bogus\n'],
@@ -508,7 +508,7 @@ describe('edge loader', () => {
 
   it('loads a hidden-type edge with a dangling to (retired id) without any diagnostic', () => {
     const nodes = new Map<string, Node>([
-      ['a.DomainModel.new', { id: 'a.DomainModel.new', template: 'DomainModel', component: 'a', state: 'proposed', stability: 'unstable', schemaVersion: '1', lastModifiedAt: '2026-01-01', properties: {} }],
+      ['a.DomainModel.new', { id: 'a.DomainModel.new', template: 'DomainModel', namespace: 'a', state: 'proposed', stability: 'unstable', schemaVersion: '1', lastModifiedAt: '2026-01-01', properties: {} }],
     ])
     const content: ContentMap = new Map([
       ['edges/trail.edges.yaml', 'edges:\n  - from: a.DomainModel.new\n    to: a.DomainModel.old\n    type: renamed-from\n'],
@@ -539,7 +539,7 @@ describe('edge loader', () => {
 
   it('keeps warn-and-drop behaviour for a non-hidden edge with a dangling to', () => {
     const nodes = new Map<string, Node>([
-      ['a.DomainModel.a', { id: 'a.DomainModel.a', template: 'DomainModel', component: 'a', state: 'proposed', stability: 'unstable', schemaVersion: '1', lastModifiedAt: '2026-01-01', properties: {} }],
+      ['a.DomainModel.a', { id: 'a.DomainModel.a', template: 'DomainModel', namespace: 'a', state: 'proposed', stability: 'unstable', schemaVersion: '1', lastModifiedAt: '2026-01-01', properties: {} }],
     ])
     const content: ContentMap = new Map([
       ['edges/broken.edges.yaml', 'edges:\n  - from: a.DomainModel.a\n    to: a.DomainModel.gone\n    type: reads\n'],
@@ -674,7 +674,7 @@ describe('cluster loader — Mapping nodes', () => {
 
     const mapping = result.nodes.get('orders.DomainModel.order.mappings.surcharge-by-zone')!
     assert.equal(mapping.template, 'Mapping')
-    assert.equal(mapping.component, 'orders')
+    assert.equal(mapping.namespace, 'orders')
     assert.equal(mapping.properties['key-ref'], 'orders.DomainModel.order.enums.shipping-zone')
     assert.equal(mapping.properties['type'], 'string')
   })

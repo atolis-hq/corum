@@ -71,7 +71,7 @@ export function loadClusters(
     const root: Node = {
       id: record.id,
       template: record.template,
-      component: meta.component,
+      namespace: meta.component,
       state: asState(meta.state, 'proposed', diagnostics, key, record.id),
       stability: asStability(meta.stability, 'unstable', diagnostics, key, record.id),
       schemaVersion: record.schemaVersion,
@@ -181,7 +181,7 @@ export function materialiseChildren(
         id: childId,
         parentId: parent.id,
         template: childTemplateName,
-        component: parent.component,
+        namespace: parent.namespace,
         state: asState(value.state, parent.state, diagnostics, filePath, childId),
         stability: asStability(value.stability, parent.stability, diagnostics, filePath, childId),
         schemaVersion: parent.schemaVersion,

@@ -190,7 +190,7 @@ export function resolveIncomingAliases(
 export function detectPossibleRenames(diff: DiffResult, specPath: string): Diagnostic[] {
   const diagnostics: Diagnostic[] = []
   const addedByGroup = new Map<string, Node[]>()
-  const groupKey = (node: Node) => `${node.template}|${node.parentId ?? node.component}`
+  const groupKey = (node: Node) => `${node.template}|${node.parentId ?? node.namespace}`
 
   for (const added of diff.toAdd) {
     const key = groupKey(added)

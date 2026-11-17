@@ -10,10 +10,10 @@ const { buildComponentMap, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName
   }
 
   const nodes = [
-    { id: 'orders.DomainModel.order', template: 'DomainModel', component: 'orders', state: 'agreed', stability: 'stable' },
-    { id: 'orders.RestAPI.ordersApi', template: 'RestAPI', component: 'orders', state: 'agreed', stability: 'stable' },
-    { id: 'payments.DomainModel.payment', template: 'DomainModel', component: 'payments', state: 'proposed', stability: 'unstable' },
-    { id: 'payments.RestAPI.paymentsApi', template: 'RestAPI', component: 'payments', state: 'proposed', stability: 'unstable' },
+    { id: 'orders.DomainModel.order', template: 'DomainModel', namespace: 'orders', state: 'agreed', stability: 'stable' },
+    { id: 'orders.RestAPI.ordersApi', template: 'RestAPI', namespace: 'orders', state: 'agreed', stability: 'stable' },
+    { id: 'payments.DomainModel.payment', template: 'DomainModel', namespace: 'payments', state: 'proposed', stability: 'unstable' },
+    { id: 'payments.RestAPI.paymentsApi', template: 'RestAPI', namespace: 'payments', state: 'proposed', stability: 'unstable' },
   ];
 
   const edges = [
@@ -55,7 +55,7 @@ const { buildComponentMap, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName
   assert(ccAll.length === 1, 'computeConnectedComponents: fully linked graph is one component');
   const ccSplit = computeConnectedComponents(nodes, [edges[0], edges[2]]);
   assert(ccSplit.length === 2, 'computeConnectedComponents: removing bridge edge splits components');
-  const ccIsolated = computeConnectedComponents([...nodes, { id: 'lone.Node.x', template: 'X', component: 'lone' }], edges);
+  const ccIsolated = computeConnectedComponents([...nodes, { id: 'lone.Node.x', template: 'X', namespace: 'lone' }], edges);
   assert(ccIsolated.some(c => c.length === 1 && c[0] === 'lone.Node.x'), 'computeConnectedComponents: isolated node is own component');
   const ccMerged = computeConnectedComponents(nodes, [edges[0], edges[2]], [{ from: 'orders.DomainModel.order', to: 'payments.DomainModel.payment' }]);
   assert(ccMerged.length === 1, 'computeConnectedComponents: extraLinks merge components');

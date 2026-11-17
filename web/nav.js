@@ -55,15 +55,15 @@ function buildNavTree(nodes, templates) {
     const nodeWithChildren = { ...node, navChildren };
 
     if (navGroup) {
-      if (!groupsByComponent.has(node.component)) groupsByComponent.set(node.component, new Map());
-      const componentGroups = groupsByComponent.get(node.component);
+      if (!groupsByComponent.has(node.namespace)) groupsByComponent.set(node.namespace, new Map());
+      const componentGroups = groupsByComponent.get(node.namespace);
       if (!componentGroups.has(navGroup)) componentGroups.set(navGroup, new Map());
       const subtypeMap = componentGroups.get(navGroup);
       if (!subtypeMap.has(node.template)) subtypeMap.set(node.template, []);
       subtypeMap.get(node.template).push(nodeWithChildren);
     } else {
-      if (!plainByComponent.has(node.component)) plainByComponent.set(node.component, new Map());
-      const componentMap = plainByComponent.get(node.component);
+      if (!plainByComponent.has(node.namespace)) plainByComponent.set(node.namespace, new Map());
+      const componentMap = plainByComponent.get(node.namespace);
       if (!componentMap.has(node.template)) componentMap.set(node.template, []);
       componentMap.get(node.template).push(nodeWithChildren);
     }

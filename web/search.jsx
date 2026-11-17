@@ -82,7 +82,7 @@ function SearchModal({ nodes, templates, onNavigate, onClose }) {
                 >
                   <TemplateBadge name={tplName} colour={colour} />
                   <span className="search-result-name">{name}</span>
-                  <span className="search-result-component">{node.component}</span>
+                  <span className="search-result-component">{node.namespace}</span>
                 </div>
               );
             })}

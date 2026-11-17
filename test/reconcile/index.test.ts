@@ -7,7 +7,7 @@ function makeNode(id: string, overrides: Partial<Node> = {}): Node {
   return {
     id,
     template: 'APIEndpoint',
-    component: 'orders',
+    namespace: 'orders',
     state: 'implemented',
     stability: 'unstable',
     schemaVersion: '1',

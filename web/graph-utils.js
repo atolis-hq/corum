@@ -7,12 +7,12 @@ function getDisplayName(nodeId) {
 function buildComponentMap(nodes, edges) {
   const componentCounts = new Map();
   for (const node of nodes) {
-    componentCounts.set(node.component, (componentCounts.get(node.component) ?? 0) + 1);
+    componentCounts.set(node.namespace, (componentCounts.get(node.namespace) ?? 0) + 1);
   }
 
-  const componentNodes = [...componentCounts.entries()].map(([component, count]) => ({
-    id: component,
-    component,
+  const componentNodes = [...componentCounts.entries()].map(([namespace, count]) => ({
+    id: namespace,
+    namespace,
     count,
   }));
 
@@ -22,9 +22,9 @@ function buildComponentMap(nodes, edges) {
     const fromNode = nodeById.get(edge.from);
     const toNode = nodeById.get(edge.to);
     if (!fromNode || !toNode) continue;
-    if (fromNode.component === toNode.component) continue;
-    const key = `${fromNode.component}__${toNode.component}`;
-    if (!compEdgeMap.has(key)) compEdgeMap.set(key, { from: fromNode.component, to: toNode.component, types: new Set() });
+    if (fromNode.namespace === toNode.namespace) continue;
+    const key = `${fromNode.namespace}__${toNode.namespace}`;
+    if (!compEdgeMap.has(key)) compEdgeMap.set(key, { from: fromNode.namespace, to: toNode.namespace, types: new Set() });
     compEdgeMap.get(key).types.add(edge.type);
   }
 

@@ -11,6 +11,8 @@ import {
   getGraphSummary,
   getLineage,
   getLinkedFields,
+  getKindRegistry,
+  getNamespaces,
   getStructuralNodeTemplates,
   getVisibleEdgeTypes,
   isVisibleEdgeType,
@@ -81,7 +83,8 @@ function parseListNodesFilter(value: unknown): ListNodesFilter {
   return {
     templates: toStringArray(filterArg.templates),
     excludeTemplates: toStringArray(filterArg.exclude_templates),
-    component: typeof filterArg.component === 'string' ? filterArg.component : undefined,
+    namespace: typeof filterArg.namespace === 'string' ? filterArg.namespace : undefined,
+    kind: typeof filterArg.kind === 'string' ? filterArg.kind : undefined,
     state: typeof filterArg.state === 'string'
       ? filterArg.state as ListNodesFilter['state']
       : toStringArray(filterArg.state) as ListNodesFilter['state'] | undefined,
@@ -99,7 +102,7 @@ function summarizeNode(node: Graph['nodesById'] extends Map<string, infer T> ? T
   return {
     id: node.id,
     template: node.template,
-    component: node.component,
+    namespace: node.namespace,
     state: node.state,
     stability: node.stability,
     ...(includeProvenance ? withProvenance(node) : {}),
@@ -119,7 +122,7 @@ function fullNode(node: Graph['nodesById'] extends Map<string, infer T> ? T : ne
   return {
     id: node.id,
     template: node.template,
-    component: node.component,
+    namespace: node.namespace,
     state: node.state,
     stability: node.stability,
     ...(node.corum !== undefined ? { corum: node.corum } : {}),
@@ -172,7 +175,7 @@ function mapLineageNode(
   return {
     ...base,
     template: String(node.template),
-    component: String(node.component),
+    namespace: String(node.namespace),
     state: String(node.state),
     stability: String(node.stability),
     properties: (node.properties ?? {}) as Record<string, unknown>,
@@ -481,6 +484,8 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
           template_names: [...targetGraph.templates.keys()].sort(),
           node_templates_in_use: [...nodeTemplatesInUse].sort(),
           edge_types_in_use: [...edgeTypesInUse].sort(),
+          kinds: getKindRegistry(targetGraph),
+          namespaces: [...getNamespaces(targetGraph)].sort(([a], [b]) => a.localeCompare(b)).map(([name, ns]) => ({ namespace: name, kind: ns.kind })),
           ...(includeStatic ? {
             valid_edge_types: [...(targetGraph.edgeTypes?.keys() ?? [])],
             states: [...STATE_VALUES],
@@ -976,7 +981,8 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
             properties: {
               templates: { type: 'array', items: { type: 'string' }, description: 'Include only these templates (OR).' },
               exclude_templates: { type: 'array', items: { type: 'string' }, description: 'Exclude these templates.' },
-              component: { type: 'string', description: 'Filter by component.' },
+              namespace: { type: 'string', description: 'Filter by namespace (first ID segment).' },
+              kind: { type: 'string', description: 'Filter by namespace kind (exact match, e.g. component).' },
               state: { oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
               stability: { oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
             },
@@ -1042,7 +1048,8 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
             properties: {
               templates: { type: 'array', items: { type: 'string' } },
               exclude_templates: { type: 'array', items: { type: 'string' } },
-              component: { type: 'string' },
+              namespace: { type: 'string' },
+              kind: { type: 'string' },
               state: { oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
               stability: { oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
             },
@@ -1056,7 +1063,7 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
     },
     {
       name: 'get_graph_metadata',
-      description: 'Discover graph contents: template names, node templates in use, edge types in use. Call first; only traverse edge types listed in edge_types_in_use. include_static_enums:true adds valid edge types, states, stabilities, directions, formats.',
+      description: 'Discover graph contents: template names, node templates in use, edge types in use, the kind registry and each namespace\'s kind. Call first; only traverse edge types listed in edge_types_in_use. include_static_enums:true adds valid edge types, states, stabilities, directions, formats.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -1107,7 +1114,7 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
     },
     {
       name: 'get_graph_summary',
-      description: 'High-level stats: node count, component count, orphan breakdown, edge counts by type, diagnostic count.',
+      description: 'High-level stats: node count, namespace count and counts by kind, orphan breakdown, edge counts by type, diagnostic count.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -1118,7 +1125,7 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
     },
     {
       name: 'search_nodes',
-      description: 'Ranked fuzzy search for root nodes by ID segment. Returns slim summaries (id, template, component, state, stability). Preferred discovery entry point; use list_nodes only for exhaustive filtered inventories.',
+      description: 'Ranked fuzzy search for root nodes by ID segment. Returns slim summaries (id, template, namespace, state, stability). Preferred discovery entry point; use list_nodes only for exhaustive filtered inventories.',
       inputSchema: {
         type: 'object',
         required: ['queries'],

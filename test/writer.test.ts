@@ -353,7 +353,7 @@ describe('graph writer', () => {
     graph.nodesById.set(`${paymentFieldParent}.fields.adjustmentAmount`, {
       id: `${paymentFieldParent}.fields.adjustmentAmount`,
       template: 'Field',
-      component: 'payments',
+      namespace: 'payments',
       parentId: paymentFieldParent,
       state: 'agreed',
       stability: 'stable',

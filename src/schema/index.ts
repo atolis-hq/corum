@@ -34,7 +34,8 @@ export interface NodeCorum {
 export interface Node {
   id: string
   template: string
-  component: string
+  /** First ID segment. */
+  namespace: string
   /** Owning parent node id, materialised at load time for owned children. */
   parentId?: string
   state: State

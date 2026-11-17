@@ -19,7 +19,7 @@ const TEMPLATES = new Map<string, Template>([
 function node(id: string, template: string, properties: Record<string, unknown> = {}): Node {
   const parts = id.split('.')
   const parentId = parts.length > 3 ? parts.slice(0, -2).join('.') : undefined
-  return { id, ...(parentId !== undefined && { parentId }), template, component: 'test', state: 'agreed', stability: 'stable', schemaVersion: '1', lastModifiedAt: '2026-07-01', properties }
+  return { id, ...(parentId !== undefined && { parentId }), template, namespace: 'test', state: 'agreed', stability: 'stable', schemaVersion: '1', lastModifiedAt: '2026-07-01', properties }
 }
 
 function edge(from: string, to: string, type: Edge['type']): Edge {

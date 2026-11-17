@@ -321,7 +321,7 @@ function node(id: string, properties: Record<string, unknown> = {}): Node {
   return {
     id,
     template: 'DomainModel',
-    component: 'test',
+    namespace: 'test',
     state: 'proposed',
     stability: 'unstable',
     schemaVersion: '1.0',

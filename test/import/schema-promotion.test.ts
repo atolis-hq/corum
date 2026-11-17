@@ -13,7 +13,7 @@ function makeNode(id: string, state: Node['state'] = 'implemented'): Node {
     id,
     ...(parts.length > 3 && { parentId: parts.slice(0, -2).join('.') }),
     template: parts[1] ?? 'Unknown',
-    component: parts[0],
+    namespace: parts[0],
     state,
     stability: 'unstable',
     schemaVersion: '1',

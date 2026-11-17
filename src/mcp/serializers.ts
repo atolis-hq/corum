@@ -49,7 +49,7 @@ export function getSerializer(format: unknown): Serializer {
 const COMPACT_KEY_MAP: Record<string, string> = {
   id: 'i',
   template: 't',
-  component: 'cp',
+  namespace: 'ns',
   state: 's',
   stability: 'st',
   schemaVersion: 'sv',

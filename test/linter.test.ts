@@ -17,7 +17,7 @@ function makeTemplate(name: string, overrides: Partial<Template> = {}): Template
 
 function makeNode(overrides: Partial<Node> & { id: string; template: string }): Node {
   return {
-    component: 'orders',
+    namespace: 'orders',
     state: 'proposed',
     stability: 'unstable',
     schemaVersion: '1',

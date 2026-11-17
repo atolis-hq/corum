@@ -709,7 +709,7 @@ function makeNode(
     id,
     ...(parentId !== undefined && { parentId }),
     template,
-    component,
+    namespace: component,
     state: 'implemented',
     stability: 'unstable',
     schemaVersion: '1',

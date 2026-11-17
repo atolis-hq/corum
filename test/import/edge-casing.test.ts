@@ -8,7 +8,7 @@ function makeNode(id: string): Node {
   return {
     id,
     template: parts[1] ?? 'Unknown',
-    component: parts[0],
+    namespace: parts[0],
     state: 'implemented',
     stability: 'unstable',
     schemaVersion: '1',
