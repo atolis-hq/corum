@@ -1,3 +1,4 @@
+import { getNamespaces } from '../src/graph/index.js'
 import { after, beforeEach, describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -653,3 +654,63 @@ describe('working session (local git source)', () => {
     assert.equal(forced.recordedTrail, true)
   })
 })
+
+for (const backend of ['file', 'git'] as const) {
+  it(`retains namespace declarations through ${backend} apply, rename, delete, autosave and commit`, async () => {
+    const declaration = '# namespace metadata\ndescription: "Preserve me"\nkind: journey\n'
+    let source: GraphSource
+    if (backend === 'file') {
+      const fixture = makeFileFixture()
+      fs.writeFileSync(path.join(fixture.graphDir, 'nodes/orders/namespace.yaml'), declaration)
+      source = fixture.source
+    } else {
+      const fixture = await makeGitFixture()
+      source = fixture.source
+      const filepath = '.corum/graph/nodes/orders/namespace.yaml'
+      fs.writeFileSync(path.join(fixture.repoDir, filepath), declaration)
+      await git.add({ fs, dir: fixture.repoDir, filepath })
+      await git.commit({ fs, dir: fixture.repoDir, message: 'declare namespace', author: { name: 'Test', email: 'test@test.com' } })
+    }
+    const session = await startSession(source, { autosave: true, ...(backend === 'git' ? { branch: 'namespace-work', create: true } : {}) })
+    assert.deepEqual(getNamespaces(session.graph).get('orders'), { kind: 'journey', description: 'Preserve me' })
+    const check = async () => {
+      const ref = session.branch
+      assert.equal((await source.loadGraphContent(ref)).get('nodes/orders/namespace.yaml'), declaration)
+      assert.equal(getNamespaces(await loadGraph({ source, ref })).get('orders')?.kind, 'journey')
+    }
+    await session.applyCluster({
+      id: 'orders.Schema.fresh', template: 'Schema', schemaVersion: '1.0',
+      metadata: { component: 'orders', state: 'proposed', stability: 'unstable', lastModifiedAt: '2026-07-01' },
+    }, 'merge')
+    await check()
+    await session.renameNode('orders.Schema.fresh', 'renamed')
+    await check()
+    await session.deleteNode('orders.Schema.renamed')
+    await check()
+    await session.updateNode(CUSTOMER, { properties: { description: 'Updated' } })
+    // Membership follows in-memory changes before any reload, for both sources.
+    await session.createNode({
+      document: {
+        id: 'payments.Schema.new', template: 'Schema',
+        metadata: { state: 'proposed', stability: 'unstable' },
+      },
+    })
+    assert.deepEqual(getNamespaces(session.graph).get('payments'), { kind: 'component' })
+    assert.equal(session.graph.namespaceDeclarations?.has('payments'), false)
+    await session.deleteNode('payments.Schema.new', { purge: true })
+    assert.equal(getNamespaces(session.graph).has('payments'), false)
+    for (const node of [...session.graph.nodesById.values()]) {
+      if (!node.parentId && node.id.startsWith('orders.')) {
+        await session.deleteNode(node.id, { purge: true })
+      }
+    }
+    assert.equal(session.graph.nodesById.size, 0)
+    assert.deepEqual(getNamespaces(session.graph).get('orders'), { kind: 'journey', description: 'Preserve me' })
+    await check()
+    const declarationPaths = [...(await source.loadGraphContent(session.branch)).keys()]
+      .filter(key => key.endsWith('/namespace.yaml'))
+    assert.deepEqual(declarationPaths, ['nodes/orders/namespace.yaml'])
+    await session.commitChanges('preserve namespace')
+    await check()
+  })
+}

@@ -103,7 +103,14 @@ export interface Diagnostic {
   message: string
 }
 
+export interface Namespace {
+  kind: string
+  description?: string
+}
+
 export interface Graph {
+  /** Parsed declarations only; use getNamespaces() to derive current namespace membership. */
+  namespaceDeclarations?: Map<string, Namespace>
   nodesById: Map<string, Node>
   edgesByFrom: Map<string, Edge[]>
   edgesByTo: Map<string, Edge[]>
