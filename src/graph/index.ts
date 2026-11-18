@@ -697,6 +697,11 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
   return result
 }
 
+/** Display label for a kind; unknown kinds fall back to the kind id. */
+export function getKindLabel(graph: Graph, kind: string): string {
+  return graph.kinds?.get(kind)?.label ?? (kind === 'component' ? 'Component' : kind)
+}
+
 /** Derive membership from current nodes, retaining declarations for empty namespaces. */
 export function getNamespaces(graph: Graph): Map<string, Namespace> {
   const namespaces = new Map<string, Namespace>()

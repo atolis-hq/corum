@@ -141,5 +141,5 @@ The loader keeps parsed declarations in `graph.namespaceDeclarations`.
 `getNamespaces(graph)` derives current namespaces from declarations and node ID
 prefixes, defaulting to kind `component`. Declarations are metadata, not nodes. Kind IDs
 are exact strings; unknown kinds are retained with a warning and use generic display.
-Currently only `component` is registered. Saves, imports, and working-session writes
+Packs may register kinds and labels through `kinds.yaml`; `component` is always available. Saves, imports, and working-session writes
 preserve declaration files verbatim and do not create files for undeclared namespaces.

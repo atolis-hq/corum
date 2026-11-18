@@ -62,6 +62,7 @@ adapters, versioned and installed together.
   templates/         one YAML file per template
   adapters/          import adapters (e.g. openapi.yaml)
   edge-types.yaml    optional extra edge types
+  kinds.yaml         optional namespace kinds
 ```
 
 ```yaml
@@ -109,6 +110,34 @@ A pack can add edge types in `edge-types.yaml`. Each needs a `category`
 for data carried on the edge. Core types cannot be overridden. The category
 decides how tools treat the type: summary counts, lineage defaults and
 collapse filtering.
+
+### Custom kinds
+
+Every namespace (the first segment of a node ID) has one **kind**, which
+classifies it and decides how tools label it. A pack can declare kinds in an
+optional `kinds.yaml`:
+
+```yaml
+kinds:
+  journey:
+    label: Journey          # display label, required
+    templates: [Journey, Step]   # optional, advisory
+```
+
+- Kind ids are free strings matched exactly, including case and punctuation.
+- The `core` pack declares `component` (label `Component`). It is the built-in
+  default, so it exists even when no pack declares kinds.
+- Redeclaring a kind with an identical definition in another pack is fine;
+  redeclaring it with a different definition is an error diagnostic.
+- A namespace whose declared kind is not in the registry still loads. Lint
+  warns, and the kind id is shown as its label.
+- If a kind lists `templates`, lint warns when a namespace of that kind owns
+  other templates. This is advisory only; the loader and write path never
+  enforce it. `component` is unrestricted.
+- A malformed `kinds.yaml` is an error diagnostic and does not stop loading.
+
+Kinds are classification and display metadata only. Engine behaviour keys off
+template roles, never kinds.
 
 ### Writing your own pack
 
