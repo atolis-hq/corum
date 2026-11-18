@@ -162,4 +162,13 @@ function groupNamespacesByKind(nodes, kindRegistry) {
   });
 }
 
-window.CorumNav = { buildNavTree, buildOverlayIndicatorIds, groupNamespacesByKind };
+// Edges crossing a namespace boundary. The namespace is the first ID segment.
+function namespaceEdges(edges, namespace) {
+  const inNs = id => id.split('.')[0] === namespace;
+  return {
+    inbound: edges.filter(e => inNs(e.to) && !inNs(e.from)),
+    outbound: edges.filter(e => inNs(e.from) && !inNs(e.to)),
+  };
+}
+
+window.CorumNav = { buildNavTree, buildOverlayIndicatorIds, groupNamespacesByKind, namespaceEdges };

@@ -75,6 +75,15 @@ test('direct links retain branch context and browser Back reaches the list', asy
   await expectList(page);
 });
 
+test('generic namespace page opens as a detail pane and Back returns to the list', async ({ page }) => {
+  await page.goto('/#/namespace?name=orders');
+  await expectDetail(page);
+  await expect(page.locator('.detail-pane h1')).toHaveText('orders');
+  await page.getByRole('button', { name: 'Back to namespaces' }).click();
+  await expect(page).toHaveURL(/\/namespaces$/);
+  await expect(page.locator('.detail-pane')).toHaveAttribute('inert', '');
+});
+
 test('reduced motion, landscape, dashboard and graph', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 667, height: 375 });

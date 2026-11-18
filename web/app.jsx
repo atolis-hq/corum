@@ -11,7 +11,7 @@ const {
   PropertiesTable,
   SchemaCard,
 } = window.CorumPrimitives;
-const { buildNavTree, buildOverlayIndicatorIds, groupNamespacesByKind } = window.CorumNav;
+const { buildNavTree, buildOverlayIndicatorIds, groupNamespacesByKind, namespaceEdges } = window.CorumNav;
 const { parseRoute, buildRoute } = window.CorumRouter;
 const { kindColour } = window.CorumGraphUtils;
 const { SearchModal } = window.CorumSearch;
@@ -226,7 +226,7 @@ function NavTree({ navTree, kindSections, templates, activeNodeId, onNode, onNam
     }}>
       {kindSections.map(section => (
         <div key={section.kind} className="nav-kind-section" data-kind={section.kind}>
-        <div className="nav-kind-head">{section.label}</div>
+        {kindSections.length > 1 && <div className="nav-kind-head">{section.label}</div>}
       {section.namespaces.map(component => {
         const entries = navTree.get(component) ?? [];
         return (
@@ -790,9 +790,7 @@ function NamespacePage({ namespace, nodes, templates, kinds, onNavigate, viewing
   }
 
   const nodeMap = new Map((graph?.nodes ?? []).map(n => [n.id, n]));
-  const inNs = id => id.split('.')[0] === namespace;
-  const inbound = (graph?.edges ?? []).filter(e => inNs(e.to) && !inNs(e.from));
-  const outbound = (graph?.edges ?? []).filter(e => inNs(e.from) && !inNs(e.to));
+  const { inbound, outbound } = namespaceEdges(graph?.edges ?? [], namespace);
 
   function NodeLink({ id }) {
     const node = nodeMap.get(id);
@@ -1213,7 +1211,7 @@ function App() {
   useEffect(() => {
     let previous = parseRoute(window.location.hash);
     function syncHistory(next) {
-      if (matchMedia('(max-width: 780px)').matches && next.pathname === '/node' && !history.state?.corumDetail) {
+      if (matchMedia('(max-width: 780px)').matches && (next.pathname === '/node' || next.pathname === '/namespace') && !history.state?.corumDetail) {
         // Seed a list entry behind direct links and nodes opened from other sections.
         const hash = location.hash;
         history.replaceState(null, '', buildRoute({ pathname: '/namespaces', branch: next.branch }));
@@ -1223,7 +1221,7 @@ function App() {
     syncHistory(previous);
     const handler = () => {
       const next = parseRoute(location.hash);
-      if (next.pathname === '/node' && previous.pathname === '/namespaces') {
+      if ((next.pathname === '/node' || next.pathname === '/namespace') && previous.pathname === '/namespaces') {
         history.replaceState({ corumDetail: true }, '');
       } else {
         syncHistory(next);
@@ -1257,7 +1255,7 @@ function App() {
 
   const activeNodeId = route.pathname === '/node' ? route.params.get('id') : null;
   if (activeNodeId) retainedNode.current = activeNodeId;
-  const detailOpen = route.pathname === '/node';
+  const detailOpen = route.pathname === '/node' || route.pathname === '/namespace';
   const activeNamespace = route.pathname === '/namespace' ? route.params.get('name') : null;
   const activeSection = activeNodeId || activeNamespace ? 'namespaces' : (route.pathname.slice(1) || 'dashboard');
   const navTree = useMemo(() => buildNavTree(nodes, templates), [nodes, templates]);

@@ -3,7 +3,7 @@
 const { useState, useEffect, useMemo, useCallback, useRef } = React;
 const { navigate, Icon, TemplateBadge, StateTag, StabilityTag } = window.CorumPrimitives;
 const { buildRoute, parseRoute } = window.CorumRouter;
-const { buildNamespaceMap, filterByKind, collectKinds, kindColour, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName, computeConnectedComponents, filterThreadScope, filterOwnerScope } = window.CorumGraphUtils;
+const { buildNamespaceMap, filterByKind, resolveKindFilter, collectKinds, kindColour, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName, computeConnectedComponents, filterThreadScope, filterOwnerScope } = window.CorumGraphUtils;
 
 const RF = window.ReactFlow;
 const ReactFlowCanvas = RF.ReactFlow || RF.default;
@@ -683,7 +683,9 @@ function GraphView({ route, viewingRef, templates }) {
   const focalNodeId = route.params.get('focus') ?? null;
   const level = focalNodeId ? 'focus' : selectedComponent ? 'interior' : 'component';
   // Namespace-level map defaults to the default kind; 'all' shows every kind.
-  const kindFilter = route.params.get('kind') ?? 'component';
+  const requestedKind = route.params.get('kind');
+  const kindFilter = resolveKindFilter(requestedKind, graphData?.nodes ?? []);
+  const kindParams = requestedKind ? { kind: requestedKind } : {};
   const [kindRegistry, setKindRegistry] = useState([]);
 
   useEffect(() => {
@@ -702,12 +704,12 @@ function GraphView({ route, viewingRef, templates }) {
   useEffect(() => { setScope(null); }, [selectedComponent]);
 
   const navToRoot = useCallback(() => {
-    navigate(buildRoute({ pathname: '/graph', params: {}, branch: viewingRef }));
-  }, [viewingRef]);
+    navigate(buildRoute({ pathname: '/graph', params: { ...kindParams }, branch: viewingRef }));
+  }, [viewingRef, requestedKind]);
 
   const navToComponent = useCallback(component => {
-    navigate(buildRoute({ pathname: '/graph', params: { component }, branch: viewingRef }));
-  }, [viewingRef]);
+    navigate(buildRoute({ pathname: '/graph', params: { component, ...kindParams }, branch: viewingRef }));
+  }, [viewingRef, requestedKind]);
 
   const navToFocus = useCallback(nodeId => {
     const params = { focus: nodeId };

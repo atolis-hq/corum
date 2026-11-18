@@ -28,6 +28,13 @@ function filterByKind(nodes, edges, kind) {
   return { nodes: kept, edges: edges.filter(e => ids.has(e.from) && ids.has(e.to)) };
 }
 
+// Kind filter in effect: an explicit choice wins; otherwise the default kind,
+// or 'all' when the graph has no namespaces of the default kind.
+function resolveKindFilter(requested, nodes) {
+  if (requested) return requested;
+  return collectKinds(nodes).includes('component') ? 'component' : 'all';
+}
+
 function buildNamespaceMap(nodes, edges) {
   const counts = new Map();
   const kinds = new Map();
@@ -139,8 +146,8 @@ function filterOwnerScope(nodes, edges, parentId) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { buildNamespaceMap, kindColour, collectKinds, filterByKind, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName, computeConnectedComponents, filterThreadScope, filterOwnerScope };
+  module.exports = { buildNamespaceMap, kindColour, collectKinds, filterByKind, resolveKindFilter, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName, computeConnectedComponents, filterThreadScope, filterOwnerScope };
 }
 if (typeof window !== 'undefined') {
-  window.CorumGraphUtils = { buildNamespaceMap, kindColour, collectKinds, filterByKind, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName, computeConnectedComponents, filterThreadScope, filterOwnerScope };
+  window.CorumGraphUtils = { buildNamespaceMap, kindColour, collectKinds, filterByKind, resolveKindFilter, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName, computeConnectedComponents, filterThreadScope, filterOwnerScope };
 }

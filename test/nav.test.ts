@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-function loadNavModule(): { buildNavTree: Function; buildOverlayIndicatorIds: Function; groupNamespacesByKind: Function } {
+function loadNavModule(): { buildNavTree: Function; buildOverlayIndicatorIds: Function; groupNamespacesByKind: Function; namespaceEdges: Function } {
   const navJs = readFileSync(join(__dirname, '../../web/nav.js'), 'utf8')
   const context = vm.createContext({ window: {} as Record<string, unknown> })
   vm.runInContext(navJs, context)
@@ -50,6 +50,21 @@ describe('buildNavTree', () => {
     const groupLabels: string[] = Array.from((orderNode.navChildren ?? []).map((g: any) => String(g.label)))
 
     assert.deepStrictEqual(groupLabels, ['Operations', 'Schemas'])
+  })
+})
+
+describe('namespaceEdges', () => {
+  it('selects only edges crossing the namespace boundary', () => {
+    const { namespaceEdges } = loadNavModule()
+    const edges = [
+      { id: '1', from: 'orders.A.a', to: 'orders.A.b' },
+      { id: '2', from: 'signup.J.j', to: 'orders.A.a' },
+      { id: '3', from: 'orders.A.a', to: 'pay.X.x' },
+      { id: '4', from: 'pay.X.x', to: 'billing.X.y' },
+    ]
+    const { inbound, outbound } = namespaceEdges(edges, 'orders')
+    assert.deepStrictEqual(inbound.map((e: any) => e.id), ['2'])
+    assert.deepStrictEqual(outbound.map((e: any) => e.id), ['3'])
   })
 })
 

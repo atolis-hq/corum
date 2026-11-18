@@ -106,6 +106,11 @@ const { buildNamespaceMap, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName
   assert(filterByKind(kNodes, kEdges, 'all').nodes.length === 3, 'filterByKind: all keeps everything');
   assert(filterByKind(kNodes, kEdges, 'mystery').nodes.length === 0, 'filterByKind: unrecognised kind matches exactly');
   assert(kindColour('journey') === kindColour('journey') && kindColour('journey') !== kindColour('component'), 'kindColour: stable and distinct from component');
+  const { resolveKindFilter } = graphUtils;
+  assert(resolveKindFilter(null, kNodes) === 'component', 'resolveKindFilter: defaults to component when present');
+  assert(resolveKindFilter(null, [{ id: 's.J.j', namespace: 's', kind: 'journey' }]) === 'all', 'resolveKindFilter: falls back to all when no component namespace');
+  assert(resolveKindFilter(null, [{ id: 's.J.j', namespace: 's', kind: 'mystery' }]) === 'all', 'resolveKindFilter: falls back to all for unknown-only kinds');
+  assert(resolveKindFilter('journey', kNodes) === 'journey', 'resolveKindFilter: explicit choice wins');
   const km = buildNamespaceMap(kNodes, kEdges);
   assert(km.nodes.find(n => n.id === 'signup')?.kind === 'journey', 'buildNamespaceMap: carries kind');
 

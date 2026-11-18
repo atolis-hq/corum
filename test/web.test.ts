@@ -1312,7 +1312,7 @@ describe('web server', () => {
     })
 
     it('graph: kind filter defaults to component and colours nodes by kind', () => {
-      assert.match(graph, /const kindFilter = route\.params\.get\('kind'\) \?\? 'component';/)
+      assert.match(graph, /const kindFilter = resolveKindFilter\(requestedKind, graphData\?\.nodes \?\? \[\]\);/)
       assert.match(graph, /filterByKind\(graphData\.nodes, graphData\.edges, kindFilter\)/)
       assert.match(graph, /aria-label="Kind filter"/)
       assert.match(graph, /\{ id: 'all', label: 'All' \}/)
@@ -1385,7 +1385,7 @@ describe('web server', () => {
     })
 
     it('app: overlay nav dots are derived from diff-aware indicator ids', () => {
-      assert.match(app, /const \{ buildNavTree, buildOverlayIndicatorIds, groupNamespacesByKind \} = window\.CorumNav;/)
+      assert.match(app, /const \{ buildNavTree, buildOverlayIndicatorIds, groupNamespacesByKind, namespaceEdges \} = window\.CorumNav;/)
       assert.match(app, /setOverlayIndicatorIds\(buildOverlayIndicatorIds\(nodes, templates, data\.nodes \|\| \[\], activeOverlayRefs\)\);/)
       assert.doesNotMatch(app, /\.filter\(node => activeOverlayRefs\.some\(ref => node\.branches\.includes\(ref\)\)\)\s*\.map\(node => node\.id\)/)
     })
