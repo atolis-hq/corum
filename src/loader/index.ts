@@ -40,7 +40,9 @@ export async function loadGraph(options: LoadOptions): Promise<Graph> {
 
   const graphContent = await source.loadGraphContent(ref)
   const clusterResult = loadClusters(graphContent, templates, diagnostics)
-  const edgeResult = loadEdges(graphContent, clusterResult.nodes, diagnostics, edgeTypes)
+  const generatedEdgeIds = new Set<string>()
+  for (const edges of clusterResult.edgesByFrom.values()) for (const e of edges) generatedEdgeIds.add(e.id)
+  const edgeResult = loadEdges(graphContent, clusterResult.nodes, diagnostics, edgeTypes, generatedEdgeIds)
 
   const edgesByFrom = cloneEdgeMap(clusterResult.edgesByFrom)
   const edgesByTo = cloneEdgeMap(clusterResult.edgesByTo)
