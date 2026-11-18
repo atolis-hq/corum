@@ -15,6 +15,7 @@ import {
   getNamespaces,
   getStructuralNodeTemplates,
   getVisibleEdgeTypes,
+  isLiveEdge,
   isVisibleEdgeType,
   listNodes,
   searchNodes,
@@ -448,7 +449,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
           const edges: Array<{ id: string; from: string; to: string; type: string }> = []
           for (const edgeList of targetGraph.edgesByFrom.values()) {
             for (const edge of edgeList) {
-              if (!isVisibleEdgeType(targetGraph, edge.type) || !nodeIds.has(edge.from) || !nodeIds.has(edge.to)) continue
+              if (!isLiveEdge(edge) || !isVisibleEdgeType(targetGraph, edge.type) || !nodeIds.has(edge.from) || !nodeIds.has(edge.to)) continue
               edges.push({ id: edge.id, from: edge.from, to: edge.to, type: edge.type })
             }
           }

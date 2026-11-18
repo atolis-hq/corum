@@ -1,5 +1,5 @@
 import type { Edge, Graph, Node } from '../schema/index.js'
-import { getStructuralNodeTemplates, isVisibleEdgeType, isOwnedDescendant } from './index.js'
+import { getStructuralNodeTemplates, isLiveEdge, isVisibleEdgeType, isOwnedDescendant } from './index.js'
 import { getTemplateRole } from './roles.js'
 import type { ClusterViewResult } from './index.js'
 
@@ -185,7 +185,7 @@ function buildField(
   // Gather outbound field edges that cross the cluster boundary
   const fieldEdges: Record<string, string[]> = {}
   for (const e of graph.edgesByFrom.get(fieldNode.id) ?? []) {
-    if (!FIELD_EDGE_TYPES.has(e.type)) continue
+    if (!FIELD_EDGE_TYPES.has(e.type) || !isLiveEdge(e)) continue
     if (isOwnedDescendant(graph, e.to, rootId)) continue
     const targets = fieldEdges[e.type] ?? []
     targets.push(e.to)

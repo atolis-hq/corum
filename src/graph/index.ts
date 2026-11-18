@@ -57,6 +57,11 @@ export function isVisibleEdgeType(graph: Graph, type: string): boolean {
   return def.category !== 'structural' && def.hidden !== true
 }
 
+/** Soft-removed edges (state 'removed') are kept for history but not followed by default traversals. */
+export function isLiveEdge(edge: Edge): boolean {
+  return edge.state !== 'removed'
+}
+
 export function getVisibleEdgeTypes(graph: Graph): EdgeType[] {
   return [...(graph.edgeTypes ?? CORE_EDGE_TYPE_MAP).values()]
     .filter(def => def.category !== 'structural' && def.hidden !== true)
@@ -187,7 +192,7 @@ export function getCluster(graph: Graph, nodeId: string): ClusterResult {
 
   for (const id of clusterIds) {
     for (const edge of graph.edgesByFrom.get(id) ?? []) {
-      if (clusterIds.has(edge.to) && !seen.has(edge.id)) {
+      if (clusterIds.has(edge.to) && isLiveEdge(edge) && !seen.has(edge.id)) {
         edges.push(edge)
         seen.add(edge.id)
       }
@@ -226,12 +231,12 @@ export function getClusterView(graph: Graph, nodeId: string, includeEdgeTypes: E
 
   for (const id of clusterIds) {
     for (const edge of graph.edgesByFrom.get(id) ?? []) {
-      if (!requestedTypes.has(edge.type) || seen.has(edge.id)) continue
+      if (!requestedTypes.has(edge.type) || !isLiveEdge(edge) || seen.has(edge.id)) continue
       edges.push(edge)
       seen.add(edge.id)
     }
     for (const edge of graph.edgesByTo.get(id) ?? []) {
-      if (!inboundTypes.has(edge.type) || seen.has(edge.id)) continue
+      if (!inboundTypes.has(edge.type) || !isLiveEdge(edge) || seen.has(edge.id)) continue
       edges.push(edge)
       seen.add(edge.id)
     }
@@ -289,7 +294,7 @@ export function expandExternalNodes(graph: Graph, externalIds: Iterable<string>)
     }
     // Follow outbound uses-type one hop to collect referenced enum/schema types
     for (const edge of graph.edgesByFrom.get(id) ?? []) {
-      if (edge.type !== 'uses-type' || result.has(edge.to)) continue
+      if (edge.type !== 'uses-type' || !isLiveEdge(edge) || result.has(edge.to)) continue
       const target = graph.nodesById.get(edge.to)
       if (!target) continue
       result.add(edge.to)
@@ -327,7 +332,7 @@ export function getLinkedFields(graph: Graph, nodeId: string): LinkedFieldsResul
   // dangling. Edges are returned as authored; node IDs are the live ones.
   for (const edgeList of graph.edgesByFrom.values()) {
     for (const edge of edgeList) {
-      if (edge.type !== 'maps-to' || seen.has(edge.id)) continue
+      if (edge.type !== 'maps-to' || !isLiveEdge(edge) || seen.has(edge.id)) continue
       const from = resolveLive(edge.from)
       const to = resolveLive(edge.to)
       if (!ownedFieldIds.has(from) && !ownedFieldIds.has(to)) continue
@@ -418,7 +423,7 @@ export function getGraphSummary(graph: Graph): GraphSummary {
   const edgesByType: Record<string, number> = {}
   for (const edgeList of graph.edgesByFrom.values()) {
     for (const edge of edgeList) {
-      if (!isVisibleEdgeType(graph, edge.type)) continue
+      if (!isLiveEdge(edge) || !isVisibleEdgeType(graph, edge.type)) continue
       edgesByType[edge.type] = (edgesByType[edge.type] ?? 0) + 1
       nodesWithEdges.add(edge.from)
       nodesWithEdges.add(edge.to)
@@ -510,7 +515,7 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
   const defaultEdgeTypes = new Set<EdgeType>()
   for (const edgeList of graph.edgesByFrom.values()) {
     for (const edge of edgeList) {
-      if (isVisibleEdgeType(graph, edge.type)) defaultEdgeTypes.add(edge.type)
+      if (isLiveEdge(edge) && isVisibleEdgeType(graph, edge.type)) defaultEdgeTypes.add(edge.type)
     }
   }
   const edgeTypeSet = options.edgeTypes ? new Set(options.edgeTypes) : defaultEdgeTypes
@@ -583,7 +588,7 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
       if (current.distance >= depth) continue
 
       for (const edge of graph.edgesByFrom.get(current.id) ?? []) {
-        if (!edgeTypeSet.has(edge.type)) continue
+        if (!isLiveEdge(edge) || !edgeTypeSet.has(edge.type)) continue
         const toId = resolveLive(edge.to)
         const node = graph.nodesById.get(toId)
         if (!node || !isIncluded(node)) continue
@@ -608,7 +613,7 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
       if (current.distance >= depth) continue
 
       for (const edge of graph.edgesByTo.get(current.id) ?? []) {
-        if (!inboundTypeSet.has(edge.type)) continue
+        if (!isLiveEdge(edge) || !inboundTypeSet.has(edge.type)) continue
         const fromId = resolveLive(edge.from)
         const node = graph.nodesById.get(fromId)
         if (!node || !isIncluded(node)) continue
@@ -646,7 +651,7 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
   const nodesWithEdges = new Set<string>()
   for (const id of combinedSet) {
     for (const edge of graph.edgesByFrom.get(id) ?? []) {
-      if (seenEdgeIds.has(edge.id) || !edgeTypeSet.has(edge.type)) continue
+      if (seenEdgeIds.has(edge.id) || !isLiveEdge(edge) || !edgeTypeSet.has(edge.type)) continue
       // Endpoints resolve through the alias map so an edge referencing a
       // retired ID still connects to the live node it was traversed to.
       const from = resolveLive(edge.from)
@@ -673,7 +678,7 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
     for (const id of prunedIds) {
       for (const edge of [...(graph.edgesByFrom.get(id) ?? []), ...(graph.edgesByTo.get(id) ?? [])]) {
         if (danglingSeenIds.has(edge.id) || seenEdgeIds.has(edge.id)) continue
-        if (!edgeTypeSet.has(edge.type)) continue
+        if (!isLiveEdge(edge) || !edgeTypeSet.has(edge.type)) continue
         const from = resolveLive(edge.from)
         const to = resolveLive(edge.to)
         const otherId = from === id ? to : from

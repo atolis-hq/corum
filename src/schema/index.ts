@@ -61,6 +61,8 @@ export interface Edge {
   derivation?: 'determined' | 'inferred' | 'manual'
   derivedBy?: string
   generated?: true
+  /** Set when a mutation changes the edge (e.g. soft-delete cascade). */
+  lastModifiedAt?: string
 }
 
 export interface Template {

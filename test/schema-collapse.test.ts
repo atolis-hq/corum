@@ -57,6 +57,20 @@ describe('collapseClusterSchemas', () => {
       assert.deepEqual(result.schemas, { order: { id: { type: 'uuid' } } })
     })
 
+    it('omits removed-state field edges (soft-deleted targets)', () => {
+      const root = node(ROOT, 'DomainModel')
+      const schema = node(`${ROOT}.schemas.s`, 'Schema')
+      const field = node(`${ROOT}.schemas.s.fields.id`, 'Field', { type: 'uuid', nullable: false })
+      const target = node('other.Schema.t', 'Schema')
+      const live = edge(field.id, target.id, 'maps-to')
+      const removed = { ...edge(field.id, target.id, 'derived-from'), state: 'removed' as const }
+      const g = graph([root, schema, field, target], [live, removed])
+
+      const result = collapseClusterSchemas(g, cluster(root, [schema, field]))
+
+      assert.deepEqual(result.schemas['s']['id'].edges, { 'maps-to': [target.id] })
+    })
+
     it('includes nullable: true only when field is nullable', () => {
       const root = node(ROOT, 'DomainModel')
       const schema = node(`${ROOT}.schemas.s`, 'Schema')
