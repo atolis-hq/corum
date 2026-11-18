@@ -14,10 +14,14 @@ export function loadEdges(
   nodes: Map<string, Node>,
   diagnostics: Diagnostic[],
   edgeTypes: ReadonlyMap<string, EdgeTypeDef> = CORE_EDGE_TYPE_MAP,
+  generatedEdgeIds: ReadonlySet<string> = new Set(),
 ): EdgeResult {
   const result: EdgeResult = { edgesByFrom: new Map(), edgesByTo: new Map() }
+  // Edge ID -> source file of the kept edge. Generated edges win over explicit
+  // ones; among explicit edges the first file (sorted by key) wins.
+  const seen = new Map<string, string>()
 
-  for (const key of listYamlKeys(content, 'edges')) {
+  for (const key of listYamlKeys(content, 'edges').sort()) {
     let raw: unknown
     try {
       raw = parseYaml(readYaml(content, key))
@@ -61,8 +65,19 @@ export function loadEdges(
       if (unresolvedEndpoint) continue
 
       const properties = edgeRecord.properties
+      const id = `${edgeRecord.from}__${edgeRecord.type}__${edgeRecord.to}`
+      const firstSource = generatedEdgeIds.has(id) ? 'generated' : seen.get(id)
+      if (firstSource !== undefined) {
+        diagnostics.push({
+          severity: 'error',
+          file: key,
+          message: `duplicate edge ID '${id}' declared in ${key} and ${firstSource}; keeping the first seen (generated edges first, then edge files in sorted path order) and ignoring this one`,
+        })
+        continue
+      }
+      seen.set(id, key)
       addEdge(result, {
-        id: `${edgeRecord.from}__${edgeRecord.type}__${edgeRecord.to}`,
+        id,
         from: edgeRecord.from,
         to: edgeRecord.to,
         type: edgeRecord.type as EdgeType,

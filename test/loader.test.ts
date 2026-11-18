@@ -820,3 +820,48 @@ describe('cluster loader — structural uses-type edges', () => {
     assert.equal(usesTypeToPayment.length, 1, 'duplicate uses-type edges must be de-duplicated')
   })
 })
+
+describe('duplicate edge IDs', () => {
+  const edgeFrom = 'orders.APIEndpoint.complete-order'
+  const edgeTo = 'orders.DomainModel.order.operations.complete'
+  const edgeYaml = `edges:\n  - from: ${edgeFrom}\n    to: ${edgeTo}\n    type: calls\n`
+  const edgeId = `${edgeFrom}__calls__${edgeTo}`
+
+  it('keeps one edge and reports an error naming the ID and both files', async () => {
+    const { nodes } = await loadSampleClusters()
+    const diagnostics: Diagnostic[] = []
+    const content: ContentMap = new Map([
+      ['edges/b.yaml', edgeYaml],
+      ['edges/a.yaml', edgeYaml],
+    ])
+    const result = loadEdges(content, nodes, diagnostics)
+    const kept = (result.edgesByFrom.get(edgeFrom) ?? []).filter(e => e.id === edgeId)
+    assert.equal(kept.length, 1)
+    assert.equal((result.edgesByTo.get(edgeTo) ?? []).filter(e => e.id === edgeId).length, 1)
+    const dups = diagnostics.filter(d => d.message.includes('duplicate edge ID'))
+    assert.equal(dups.length, 1)
+    assert.equal(dups[0].severity, 'error')
+    // sorted order: a.yaml wins, b.yaml is the ignored duplicate
+    assert.equal(dups[0].file, 'edges/b.yaml')
+    assert.ok(dups[0].message.includes(edgeId))
+    assert.ok(dups[0].message.includes('edges/a.yaml'))
+    assert.ok(dups[0].message.includes('edges/b.yaml'))
+  })
+
+  it('reports an explicit edge duplicating a generated edge', async () => {
+    const { nodes } = await loadSampleClusters()
+    const diagnostics: Diagnostic[] = []
+    const result = loadEdges(new Map([['edges/a.yaml', edgeYaml]]), nodes, diagnostics, undefined, new Set([edgeId]))
+    assert.equal([...result.edgesByFrom.values()].flat().length, 0)
+    const dups = diagnostics.filter(d => d.message.includes('duplicate edge ID'))
+    assert.equal(dups.length, 1)
+    assert.equal(dups[0].severity, 'error')
+    assert.ok(dups[0].message.includes('generated'))
+    assert.ok(dups[0].message.includes('edges/a.yaml'))
+  })
+
+  it('sample graph loads with no duplicate edge diagnostics', async () => {
+    const graph = await loadGraph({ source: new FileGraphSource({ graphDir: fixtureGraphDir }), strict: false })
+    assert.equal(graph.diagnostics.filter(d => d.message.includes('duplicate edge ID')).length, 0)
+  })
+})
