@@ -23,9 +23,9 @@ it for a team, see [Hosting the web UI](configuration.md#hosting-the-web-ui).
 
 The left rail switches between three views:
 
-- **Dashboard** - high-level statistics for the graph: nodes, components,
+- **Dashboard** - high-level statistics for the graph: nodes, namespaces,
   edges and diagnostics.
-- **Models** - browse nodes by component and template. A node's page shows its
+- **Models** - browse nodes by namespace and template. A node's page shows its
   properties, its schemas and fields (with their types and field-level
   links), and its enums. Template colours and icons come from each template's
   `ui` settings.

@@ -15,7 +15,7 @@ function createNode(id: string): Node {
   return {
     id,
     template: 'DomainEvent',
-    component: 'orders',
+    namespace: 'orders',
     state: 'agreed',
     stability: 'stable',
     schemaVersion: '1.0.0',
@@ -194,7 +194,7 @@ describe('graph queries', () => {
     })
 
     it('filters by component', () => {
-      const ordersNodes = listNodes(graph, { component: 'orders' })
+      const ordersNodes = listNodes(graph, { namespace: 'orders' })
       assert.equal(ordersNodes.length, 113)
     })
 
@@ -205,7 +205,7 @@ describe('graph queries', () => {
     })
 
     it('filters by multiple criteria', () => {
-      const apiEndpoints = listNodes(graph, { templates: ['APIEndpoint'], component: 'orders' })
+      const apiEndpoints = listNodes(graph, { templates: ['APIEndpoint'], namespace: 'orders' })
       assert.equal(apiEndpoints.length, 4)
       assert.ok(apiEndpoints.some(n => n.id === 'orders.APIEndpoint.create-order'))
     })
@@ -323,7 +323,8 @@ describe('graph queries', () => {
     it('returns correct node and component counts', () => {
       const summary = getGraphSummary(graph)
       assert.equal(summary.nodeCount, 151)
-      assert.equal(summary.componentCount, 3)
+      assert.equal(summary.namespaceCount, 3)
+      assert.deepEqual(summary.namespacesByKind, { component: 3 })
     })
 
     it('returns edge counts by type with non-zero triggers', () => {
@@ -353,14 +354,14 @@ describe('graph queries', () => {
       assert.ok(summary.nodesByTemplate.DomainModel > 0)
       assert.ok(summary.nodesByTemplate.Schema > 0)
       assert.ok(summary.nodesByTemplate.Field > 0)
-      assert.ok(summary.nodesByComponent.orders > 0)
-      assert.ok(summary.nodesByComponent.payments > 0)
+      assert.ok(summary.nodesByNamespace.orders > 0)
+      assert.ok(summary.nodesByNamespace.payments > 0)
       assert.equal(
         Object.values(summary.nodesByTemplate).reduce<number>((a, b) => a + b, 0),
         summary.nodeCount,
       )
       assert.equal(
-        Object.values(summary.nodesByComponent).reduce<number>((a, b) => a + b, 0),
+        Object.values(summary.nodesByNamespace).reduce<number>((a, b) => a + b, 0),
         summary.nodeCount,
       )
       assert.equal(

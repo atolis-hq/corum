@@ -356,7 +356,7 @@ function makeNode(template: string, component: string, specPath: string, id: str
     id,
     ...(parentId !== undefined && { parentId }),
     template,
-    component,
+    namespace: component,
     state: 'implemented',
     stability: 'unstable',
     schemaVersion: '1',

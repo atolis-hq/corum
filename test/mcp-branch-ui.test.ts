@@ -21,7 +21,7 @@ function makeMinimalGraph(): Graph {
   nodesById.set('comp.Widget.first', {
     id: 'comp.Widget.first',
     template: 'Widget',
-    component: 'comp',
+    namespace: 'comp',
     state: 'draft' as const,
     stability: 'unstable' as const,
     schemaVersion: '1',

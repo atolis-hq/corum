@@ -70,7 +70,7 @@ describe('MCP handlers', () => {
 
     it('filters by component', async () => {
       const handlers = createMcpHandlers(graph)
-      const result = await handlers.list_nodes({ filter: { component: 'orders' }, format: 'json' })
+      const result = await handlers.list_nodes({ filter: { namespace: 'orders' }, format: 'json' })
       const nodes = JSON.parse(result.content[0].text)
       assert.equal(nodes.length, 113)
     })
@@ -94,7 +94,7 @@ describe('MCP handlers', () => {
     it('returns TOON output using the toon format', async () => {
       const handlers = createMcpHandlers(graph)
       const result = await handlers.list_nodes({ filter: { templates: ['APIEndpoint'] }, format: 'toon' })
-      assert.match(result.content[0].text, /^\[\d+\]\{id,template,component,state,stability\}:/)
+      assert.match(result.content[0].text, /^\[\d+\]\{id,template,namespace,state,stability\}:/)
     })
 
     it('TOON output round trips through the official library', async () => {
@@ -114,10 +114,10 @@ describe('MCP handlers', () => {
       assert.equal(nodes[0].t, 'APIEndpoint')
       assert.ok(nodes.some((n: Record<string, unknown>) => n.i === 'orders.APIEndpoint.create-order'))
       assert.equal(nodes[0].t, 'APIEndpoint')
-      assert.ok(nodes.some((n: Record<string, unknown>) => n.cp === 'orders'))
+      assert.ok(nodes.some((n: Record<string, unknown>) => n.ns === 'orders'))
       assert.equal(nodes[0].st, 'stable')
       assert.ok(!('id' in nodes[0]))
-      assert.ok(!('component' in nodes[0]))
+      assert.ok(!('namespace' in nodes[0]))
       assert.ok(!('stability' in nodes[0]))
     })
 
@@ -128,7 +128,7 @@ describe('MCP handlers', () => {
       assert.equal(nodes.length, 5)
       assert.ok(nodes.some(n => n.i === 'orders.APIEndpoint.create-order'))
       assert.equal(nodes[0].t, 'APIEndpoint')
-      assert.ok(nodes.some(n => n.cp === 'orders'))
+      assert.ok(nodes.some(n => n.ns === 'orders'))
       assert.ok(!('id' in nodes[0]))
     })
 
@@ -139,9 +139,9 @@ describe('MCP handlers', () => {
       assert.equal(nodes.length, 5)
       assert.ok(nodes.some(n => n.i === 'orders.APIEndpoint.create-order'))
       assert.equal(nodes[0].t, 'APIEndpoint')
-      assert.ok(nodes.some(n => n.cp === 'orders'))
+      assert.ok(nodes.some(n => n.ns === 'orders'))
       assert.ok(!('id' in nodes[0]))
-      assert.match(result.content[0].text, /^\[\d+\]\{i,t,cp,s,st\}:/)
+      assert.match(result.content[0].text, /^\[\d+\]\{i,t,ns,s,st\}:/)
     })
 
     it('returns error for invalid format', async () => {
@@ -156,11 +156,11 @@ describe('MCP handlers', () => {
       const source = new FileGraphSource({ graphDir: fixtureGraphDir })
       const branch = await source.defaultBranch()
       const handlers = createMcpHandlers(graph, source)
-      const result = await handlers.list_nodes({ branch, filter: { component: 'orders' }, format: 'json' })
+      const result = await handlers.list_nodes({ branch, filter: { namespace: 'orders' }, format: 'json' })
       const nodes = JSON.parse(result.content[0].text)
 
       assert.equal(nodes.length, 113)
-      assert.ok(nodes.every((node: Record<string, unknown>) => node.component === 'orders'))
+      assert.ok(nodes.every((node: Record<string, unknown>) => node.namespace === 'orders'))
     })
 
     it('lists nodes from the selected source-backed branch', async () => {
@@ -528,7 +528,8 @@ describe('MCP handlers', () => {
       const result = await handlers.get_graph_summary({ format: 'json' })
       const summary = JSON.parse(result.content[0].text)
       assert.equal(summary.nodeCount, 151)
-      assert.equal(summary.componentCount, 3)
+      assert.equal(summary.namespaceCount, 3)
+      assert.deepEqual(summary.namespacesByKind, { component: 3 })
       assert.ok(typeof summary.orphanNodeCount === 'number')
       assert.ok(typeof summary.edgesByType === 'object')
       assert.ok(summary.edgesByType.triggers > 0)
@@ -657,7 +658,7 @@ describe('MCP handlers', () => {
 
       assert.ok(Array.isArray(data.edges))
       assert.equal(placed.template, 'DomainEvent')
-      assert.equal(placed.component, 'orders')
+      assert.equal(placed.namespace, 'orders')
       assert.ok('properties' in placed)
       assert.ok('lastModifiedAt' in placed)
       assert.ok(!('schemaVersion' in placed))
@@ -722,13 +723,13 @@ describe('MCP handlers', () => {
     it('supports component, state, and stability filters', async () => {
       const handlers = createMcpHandlers(graph)
       const result = await handlers.get_graph({
-        filter: { component: 'payments', state: 'agreed', stability: 'stable' },
+        filter: { namespace: 'payments', state: 'agreed', stability: 'stable' },
         format: 'json',
       })
       const data = JSON.parse(result.content[0].text)
 
       assert.ok(data.nodes.length > 0)
-      assert.ok(data.nodes.every((n: Record<string, unknown>) => n.component === 'payments'))
+      assert.ok(data.nodes.every((n: Record<string, unknown>) => n.namespace === 'payments'))
       assert.ok(data.nodes.every((n: Record<string, unknown>) => n.state === 'agreed'))
       assert.ok(data.nodes.every((n: Record<string, unknown>) => n.stability === 'stable'))
     })
@@ -738,7 +739,7 @@ describe('MCP handlers', () => {
     it('mentions supported formats, graph incompleteness, and avoids mojibake', () => {
       assert.match(USAGE_GUIDE_PROMPT, /format "json"/)
       assert.match(USAGE_GUIDE_PROMPT, /Missing edges do not prove no relationship exists\./)
-      assert.match(USAGE_GUIDE_PROMPT, /naming, shared component context, schema similarity, and lineage adjacency as hypotheses/i)
+      assert.match(USAGE_GUIDE_PROMPT, /naming, shared namespace context, schema similarity, and lineage adjacency as hypotheses/i)
       assert.match(USAGE_GUIDE_PROMPT, /format "toon"/)
       assert.doesNotMatch(USAGE_GUIDE_PROMPT, /â/)
       assert.doesNotMatch(USAGE_GUIDE_PROMPT, /component list/)

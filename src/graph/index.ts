@@ -66,7 +66,8 @@ export function getVisibleEdgeTypes(graph: Graph): EdgeType[] {
 export type ListNodesFilter = {
   templates?: string[]
   excludeTemplates?: string[]
-  component?: string
+  namespace?: string
+  kind?: string
   state?: State | State[]
   stability?: Stability | Stability[]
 }
@@ -91,8 +92,9 @@ export type LinkedFieldsResult = {
 
 export type GraphSummary = {
   nodeCount: number
-  componentCount: number
-  nodesByComponent: Record<string, number>
+  namespaceCount: number
+  namespacesByKind: Record<string, number>
+  nodesByNamespace: Record<string, number>
   nodesByTemplate: Record<string, number>
   nodesByState: Record<string, number>
   nodesByStability: Record<string, number>
@@ -144,10 +146,12 @@ export type GetLineageOptions = {
 }
 
 export function listNodes(graph: Graph, filter: ListNodesFilter = {}): Node[] {
+  const namespaces = filter.kind !== undefined ? getNamespaces(graph) : undefined
   return [...graph.nodesById.values()].filter(node => {
     if (filter.templates?.length && !filter.templates.includes(node.template)) return false
     if (filter.excludeTemplates?.length && filter.excludeTemplates.includes(node.template)) return false
-    if (filter.component !== undefined && node.component !== filter.component) return false
+    if (filter.namespace !== undefined && node.namespace !== filter.namespace) return false
+    if (namespaces !== undefined && namespaces.get(node.namespace)?.kind !== filter.kind) return false
     if (filter.state !== undefined) {
       const states = Array.isArray(filter.state) ? filter.state : [filter.state]
       if (!states.includes(node.state)) return false
@@ -391,19 +395,23 @@ export function computeClusterOverlay(
 }
 
 export function getGraphSummary(graph: Graph): GraphSummary {
-  const components = new Set<string>()
-  const nodesByComponent: Record<string, number> = {}
+  const nodesByNamespace: Record<string, number> = {}
   const nodesByTemplate: Record<string, number> = {}
   const nodesByState: Record<string, number> = {}
   const nodesByStability: Record<string, number> = {}
   for (const node of graph.nodesById.values()) {
-    if (node.component) {
-      components.add(node.component)
-      nodesByComponent[node.component] = (nodesByComponent[node.component] ?? 0) + 1
+    if (node.namespace) {
+      nodesByNamespace[node.namespace] = (nodesByNamespace[node.namespace] ?? 0) + 1
     }
     nodesByTemplate[node.template] = (nodesByTemplate[node.template] ?? 0) + 1
     nodesByState[node.state] = (nodesByState[node.state] ?? 0) + 1
     nodesByStability[node.stability] = (nodesByStability[node.stability] ?? 0) + 1
+  }
+
+  const namespaces = getNamespaces(graph)
+  const namespacesByKind: Record<string, number> = {}
+  for (const ns of namespaces.values()) {
+    namespacesByKind[ns.kind] = (namespacesByKind[ns.kind] ?? 0) + 1
   }
 
   const nodesWithEdges = new Set<string>()
@@ -426,8 +434,9 @@ export function getGraphSummary(graph: Graph): GraphSummary {
 
   return {
     nodeCount: graph.nodesById.size,
-    componentCount: components.size,
-    nodesByComponent,
+    namespaceCount: namespaces.size,
+    namespacesByKind,
+    nodesByNamespace,
     nodesByTemplate,
     nodesByState,
     nodesByStability,
@@ -700,6 +709,16 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
 /** Display label for a kind; unknown kinds fall back to the kind id. */
 export function getKindLabel(graph: Graph, kind: string): string {
   return graph.kinds?.get(kind)?.label ?? (kind === 'component' ? 'Component' : kind)
+}
+
+/** Kind registry (id, label); always includes the default component kind. */
+export function getKindRegistry(graph: Graph): Array<{ id: string; label: string }> {
+  const registry = new Map<string, { id: string; label: string }>()
+  registry.set('component', { id: 'component', label: getKindLabel(graph, 'component') })
+  for (const kind of graph.kinds?.values() ?? []) {
+    registry.set(kind.id, { id: kind.id, label: getKindLabel(graph, kind.id) })
+  }
+  return [...registry.values()]
 }
 
 /** Derive membership from current nodes, retaining declarations for empty namespaces. */

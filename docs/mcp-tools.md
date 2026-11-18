@@ -28,10 +28,10 @@ read/write workflow, output formats and graph-completeness caveats.
 
 | Tool | Description |
 | --- | --- |
-| `get_graph_metadata` | Template names, templates in use, edge types, valid enum values. Usually the first call. `edge_types_in_use` avoids traversing types that don't exist. Pass `include_static_enums: true` for valid edge types, states, stabilities and formats |
-| `get_graph_summary` | Node, component and edge counts, orphan breakdown, diagnostics |
+| `get_graph_metadata` | Template names, templates in use, edge types, the kind registry (`kinds`: id, label), each namespace's kind (`namespaces`), valid enum values. Usually the first call. `edge_types_in_use` avoids traversing types that don't exist. Pass `include_static_enums: true` for valid edge types, states, stabilities and formats |
+| `get_graph_summary` | Node, namespace (with counts by kind) and edge counts, orphan breakdown, diagnostics |
 | `search_nodes` | Fuzzy search of root nodes by ID, with template filters and property search. Accepts `queries: string[]` |
-| `list_nodes` | Inventory using a `filter` of `templates`, `exclude_templates`, `component`, `state`, `stability` |
+| `list_nodes` | Inventory using a `filter` of `templates`, `exclude_templates`, `namespace` (first ID segment), `kind` (namespace kind, exact match), `state`, `stability` |
 | `list_templates` / `get_template` | Template summaries and full detail |
 | `get_cluster` | A node's structure. Schemas and enums are collapsed into compact blocks by default; pass `collapse_schemas: false` for node-per-field output |
 | `get_graph` | The semantic graph as `{ nodes, edges }`, excluding structural templates and edges by default |

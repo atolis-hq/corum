@@ -96,7 +96,7 @@ function normalizeContentKey(value: string): string {
 function toClusterDocument(graph: Graph, root: Node): Record<string, unknown> {
   const sourceDoc = loadSourceClusterDocument(graph, root)
   const metadata: Record<string, unknown> = {
-    component: root.component,
+    component: root.namespace,
     state: root.state,
     stability: root.stability,
     lastModifiedAt: root.lastModifiedAt,

@@ -13,7 +13,10 @@ import {
   getClusterView,
   getGraphSummary,
   expandExternalNodes,
+  getKindLabel,
+  getKindRegistry,
   getLineage,
+  getNamespaces,
   getStructuralNodeTemplates,
   isVisibleEdgeType,
   listNodes,
@@ -394,7 +397,7 @@ export function createApp(
   })
 
   app.get('/api/nodes', async (req, res) => {
-    const { component, state, stability } = req.query
+    const { namespace, kind, state, stability } = req.query
     const includeCore = req.query.includeCore === 'true'
     const singleTemplate = typeof req.query.template === 'string' && req.query.template
       ? [req.query.template]
@@ -406,7 +409,8 @@ export function createApp(
         : undefined
     const filter: ListNodesFilter = {
       templates: multiTemplates ?? singleTemplate,
-      component: typeof component === 'string' ? component : undefined,
+      namespace: typeof namespace === 'string' ? namespace : undefined,
+      kind: typeof kind === 'string' ? kind : undefined,
       state: typeof state === 'string' ? state as ListNodesFilter['state'] : undefined,
       stability: typeof stability === 'string' ? stability as ListNodesFilter['stability'] : undefined,
     }
@@ -422,7 +426,7 @@ export function createApp(
         return {
           id: ownership.id,
           template: ownership.template,
-          component: ownership.component,
+          namespace: ownership.namespace,
           state: ownership.state,
           stability: ownership.stability,
           parentId: ownership.parentId,
@@ -454,7 +458,7 @@ export function createApp(
           ? new Set(filterExcludeTemplates)
           : getStructuralNodeTemplates(targetGraph)
 
-      const nodes: Array<{ id: string; template: string; component: string; state: string; stability: string; parentId: string | null }> = []
+      const nodes: Array<{ id: string; template: string; namespace: string; state: string; stability: string; parentId: string | null }> = []
       for (const node of targetGraph.nodesById.values()) {
         if (filterTemplates?.length && !filterTemplates.includes(node.template)) continue
         if (excludeSet?.has(node.template)) continue
@@ -462,7 +466,7 @@ export function createApp(
         nodes.push({
           id: node.id,
           template: node.template,
-          component: node.component,
+          namespace: node.namespace,
           state: node.state,
           stability: node.stability,
           parentId: ownership?.parentId ?? null,
@@ -487,6 +491,20 @@ export function createApp(
     } catch (err) {
       res.status(500).json({ error: String(err) })
     }
+  })
+
+  app.get('/api/kinds', async (req, res) => {
+    let targetGraph = graph
+    if (typeof req.query.ref === 'string' && multiCache) {
+      targetGraph = await getGraphForRef(req.query.ref, multiCache, graph)
+    }
+    const namespaces = getNamespaces(targetGraph)
+    res.json({
+      kinds: getKindRegistry(targetGraph),
+      namespaces: [...namespaces]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([name, ns]) => ({ namespace: name, kind: ns.kind, label: getKindLabel(targetGraph, ns.kind) })),
+    })
   })
 
   app.get('/api/stats', async (req, res) => {

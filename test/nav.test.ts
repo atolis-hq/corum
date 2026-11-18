@@ -38,9 +38,9 @@ describe('buildNavTree', () => {
     // Schemas node appears before Operations in the array — insertion order would produce ['Schemas', 'Operations']
     // The fix should sort to ['Operations', 'Schemas']
     const nodes = [
-      { id: 'orders.DomainModel.Order', template: 'DomainModel', component: 'orders', state: 'proposed', stability: 'unstable' },
-      { id: 'orders.DomainModel.Order.schemas.Order', template: 'Schema', component: 'orders', state: 'proposed', stability: 'unstable', parentId: 'orders.DomainModel.Order', ownedSection: 'schemas' },
-      { id: 'orders.DomainModel.Order.operations.Place', template: 'DomainOperation', component: 'orders', state: 'proposed', stability: 'unstable', parentId: 'orders.DomainModel.Order', ownedSection: 'operations' },
+      { id: 'orders.DomainModel.Order', template: 'DomainModel', namespace: 'orders', state: 'proposed', stability: 'unstable' },
+      { id: 'orders.DomainModel.Order.schemas.Order', template: 'Schema', namespace: 'orders', state: 'proposed', stability: 'unstable', parentId: 'orders.DomainModel.Order', ownedSection: 'schemas' },
+      { id: 'orders.DomainModel.Order.operations.Place', template: 'DomainOperation', namespace: 'orders', state: 'proposed', stability: 'unstable', parentId: 'orders.DomainModel.Order', ownedSection: 'operations' },
     ]
 
     const tree = buildNavTree(nodes, templates)

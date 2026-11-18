@@ -63,7 +63,7 @@ function makeTestGraph(): Graph {
   const orderNode = {
     id: 'orders.Order',
     template: 'DomainModel',
-    component: 'orders',
+    namespace: 'orders',
     state: 'agreed' as const,
     stability: 'stable' as const,
     schemaVersion: '1',
@@ -73,7 +73,7 @@ function makeTestGraph(): Graph {
   const schemaNode = {
     id: 'orders.Order.schemas.order', parentId: 'orders.Order',
     template: 'Schema',
-    component: 'orders',
+    namespace: 'orders',
     state: 'agreed' as const,
     stability: 'stable' as const,
     schemaVersion: '1',
@@ -83,7 +83,7 @@ function makeTestGraph(): Graph {
   const fieldNode = {
     id: 'orders.Order.schemas.order.fields.id', parentId: 'orders.Order.schemas.order',
     template: 'Field',
-    component: 'orders',
+    namespace: 'orders',
     state: 'agreed' as const,
     stability: 'stable' as const,
     schemaVersion: '1',
@@ -93,7 +93,7 @@ function makeTestGraph(): Graph {
   const externalSchemaNode = {
     id: 'billing.Invoice.schemas.order',
     template: 'Schema',
-    component: 'billing',
+    namespace: 'billing',
     state: 'agreed' as const,
     stability: 'stable' as const,
     schemaVersion: '1',
@@ -103,7 +103,7 @@ function makeTestGraph(): Graph {
   const externalFieldNode = {
     id: 'billing.Invoice.schemas.order.fields.id', parentId: 'billing.Invoice.schemas.order',
     template: 'Field',
-    component: 'billing',
+    namespace: 'billing',
     state: 'agreed' as const,
     stability: 'stable' as const,
     schemaVersion: '1',
@@ -113,7 +113,7 @@ function makeTestGraph(): Graph {
   const operationNode = {
     id: 'orders.Order.operations.cancel', parentId: 'orders.Order',
     template: 'DomainOperation',
-    component: 'orders',
+    namespace: 'orders',
     state: 'proposed' as const,
     stability: 'stable' as const,
     schemaVersion: '1',
@@ -123,7 +123,7 @@ function makeTestGraph(): Graph {
   const orphanOperationNode = {
     id: 'orders.CancelOrder',
     template: 'DomainOperation',
-    component: 'orders',
+    namespace: 'orders',
     state: 'draft' as const,
     stability: 'unstable' as const,
     schemaVersion: '1',
@@ -605,19 +605,36 @@ describe('web server', () => {
       assert.equal(body[0].id, 'orders.Order')
     })
 
-    it('filters by component', async () => {
-      const res = await fetch(`http://localhost:${handle.port}/api/nodes?component=orders`)
+    it('filters by namespace', async () => {
+      const res = await fetch(`http://localhost:${handle.port}/api/nodes?namespace=orders`)
       const body = await res.json() as Array<{ id: string }>
       assert.equal(body.length, 3)
     })
 
-    it('returns id, template, component, state, stability, and navigation ownership only', async () => {
+    it('filters by kind', async () => {
+      const all = await (await fetch(`http://localhost:${handle.port}/api/nodes`)).json() as Array<{ id: string }>
+      const res = await fetch(`http://localhost:${handle.port}/api/nodes?kind=component`)
+      const body = await res.json() as Array<{ id: string }>
+      assert.equal(body.length, all.length)
+      const none = await (await fetch(`http://localhost:${handle.port}/api/nodes?kind=journey`)).json() as Array<{ id: string }>
+      assert.equal(none.length, 0)
+    })
+
+    it('GET /api/kinds returns the kind registry and namespace kinds', async () => {
+      const res = await fetch(`http://localhost:${handle.port}/api/kinds`)
+      const body = await res.json() as { kinds: Array<{ id: string; label: string }>; namespaces: Array<{ namespace: string; kind: string }> }
+      assert.deepEqual(body.kinds.find(k => k.id === 'component'), { id: 'component', label: 'Component' })
+      assert.deepEqual(body.namespaces.find(n => n.namespace === 'orders')?.kind, 'component')
+    })
+
+    it('returns id, template, namespace, state, stability, and navigation ownership only', async () => {
       const res = await fetch(`http://localhost:${handle.port}/api/nodes`)
       const body = await res.json() as Array<Record<string, unknown>>
       const node = body[0]
       assert.ok('id' in node)
       assert.ok('template' in node)
-      assert.ok('component' in node)
+      assert.ok('namespace' in node)
+      assert.ok(!('component' in node))
       assert.ok('state' in node)
       assert.ok('stability' in node)
       assert.ok(!('properties' in node))
@@ -733,25 +750,25 @@ describe('web server', () => {
       const mappingGraph: Graph = {
         nodesById: new Map([
           ['orders.Order', {
-            id: 'orders.Order', template: 'DomainModel', component: 'orders',
+            id: 'orders.Order', template: 'DomainModel', namespace: 'orders',
             state: 'agreed' as const, stability: 'stable' as const,
             schemaVersion: '1', lastModifiedAt: '2026-04-18',
             properties: {},
           }],
           ['orders.Order.schemas.prices', {
-            id: 'orders.Order.schemas.prices', parentId: 'orders.Order', template: 'Schema', component: 'orders',
+            id: 'orders.Order.schemas.prices', parentId: 'orders.Order', template: 'Schema', namespace: 'orders',
             state: 'agreed' as const, stability: 'stable' as const,
             schemaVersion: '1', lastModifiedAt: '2026-04-18',
             properties: {},
           }],
           ['orders.Order.schemas.prices.fields.pricesByZone', {
-            id: 'orders.Order.schemas.prices.fields.pricesByZone', parentId: 'orders.Order.schemas.prices', template: 'Field', component: 'orders',
+            id: 'orders.Order.schemas.prices.fields.pricesByZone', parentId: 'orders.Order.schemas.prices', template: 'Field', namespace: 'orders',
             state: 'agreed' as const, stability: 'stable' as const,
             schemaVersion: '1', lastModifiedAt: '2026-04-18',
             properties: { $ref: '#/mappings/pricesByZone', nullable: false },
           }],
           ['orders.Order.schemas.prices.mappings.pricesByZone', {
-            id: 'orders.Order.schemas.prices.mappings.pricesByZone', parentId: 'orders.Order.schemas.prices', template: 'Mapping', component: 'orders',
+            id: 'orders.Order.schemas.prices.mappings.pricesByZone', parentId: 'orders.Order.schemas.prices', template: 'Mapping', namespace: 'orders',
             state: 'agreed' as const, stability: 'stable' as const,
             schemaVersion: '1', lastModifiedAt: '2026-04-18',
             properties: { type: 'decimal' },
@@ -889,9 +906,9 @@ describe('web server', () => {
       assert.equal(res.status, 200)
       const body = await res.json() as {
         nodeCount: number
-        componentCount: number
+        namespaceCount: number
         orphanNodeCount: number
-        nodesByComponent: Record<string, number>
+        nodesByNamespace: Record<string, number>
         nodesByTemplate: Record<string, number>
         nodesByState: Record<string, number>
         nodesByStability: Record<string, number>
@@ -899,9 +916,9 @@ describe('web server', () => {
         diagnosticCount: number
       }
       assert.equal(body.nodeCount, 7)
-      assert.equal(body.componentCount, 2)
+      assert.equal(body.namespaceCount, 2)
       assert.equal(body.orphanNodeCount, 1)
-      assert.deepEqual(body.nodesByComponent, {
+      assert.deepEqual(body.nodesByNamespace, {
         billing: 2,
         orders: 5,
       })
@@ -1422,9 +1439,9 @@ describe('web server', () => {
       assert.doesNotMatch(app, /const nodesByTemplate = \[\.\.\.nodes\.reduce\(/)
       assert.doesNotMatch(app, /const nodesByState = \[\.\.\.nodes\.reduce\(/)
       assert.doesNotMatch(app, /const nodesByStability = \[\.\.\.nodes\.reduce\(/)
-      assert.match(app, /<HeroCard value=\{stats \? stats\.componentCount : '\u2026'\} label="Components" \/>/)
+      assert.match(app, /<HeroCard value=\{stats \? stats\.namespaceCount : '\u2026'\} label="Components" \/>/)
       assert.match(app, /<HeroCard value=\{stats \? stats\.nodeCount : '\u2026'\} label="Nodes" \/>/)
-      assert.match(app, /Object\.entries\(stats\.nodesByComponent\)/)
+      assert.match(app, /Object\.entries\(stats\.nodesByNamespace\)/)
       assert.match(app, /Object\.entries\(stats\.nodesByTemplate\)/)
       assert.match(app, /Object\.entries\(stats\.nodesByState\)/)
       assert.match(app, /Object\.entries\(stats\.nodesByStability\)/)

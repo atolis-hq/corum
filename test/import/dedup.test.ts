@@ -11,7 +11,7 @@ function makeNode(id: string, adapterId: string, extra: Record<string, unknown> 
     id,
     ...(parts.length > 3 && { parentId: parts.slice(0, -2).join('.') }),
     template: parts[1] ?? 'Unknown',
-    component: parts[0],
+    namespace: parts[0],
     state: 'implemented',
     stability: 'unstable',
     schemaVersion: '1',

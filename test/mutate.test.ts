@@ -27,7 +27,7 @@ function makeNode(id: string, extra: Partial<Node> = {}): Node {
   return {
     id,
     template: 'Schema',
-    component: id.split('.')[0],
+    namespace: id.split('.')[0],
     state: 'proposed',
     stability: 'unstable',
     schemaVersion: '1.0.0',

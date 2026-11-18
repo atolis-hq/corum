@@ -91,7 +91,7 @@ function lintInlineStandaloneSchemaCollisions(graph: Graph, diagnostics: Diagnos
     if (parts.length < 3 || parts[parts.length - 2] !== 'schemas') continue
 
     const name = parts[parts.length - 1]
-    const standaloneId = `${node.component}.Schema.${name}`
+    const standaloneId = `${node.namespace}.Schema.${name}`
     const standalone = graph.nodesById.get(standaloneId)
     if (!standalone || standalone.state === 'removed') continue
 

@@ -552,7 +552,7 @@ function DashboardPage({ nodes, templates, gitMode, viewingRef, branches, branch
     : [];
 
   const nodesByComponent = stats
-    ? Object.entries(stats.nodesByComponent).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    ? Object.entries(stats.nodesByNamespace).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     : [];
 
   const nodesByState = stats
@@ -574,7 +574,7 @@ function DashboardPage({ nodes, templates, gitMode, viewingRef, branches, branch
   return (
     <div className="content">
       <div className="dashboard-hero">
-        <HeroCard value={stats ? stats.componentCount : '…'} label="Components" />
+        <HeroCard value={stats ? stats.namespaceCount : '…'} label="Components" />
         <HeroCard value={stats ? stats.nodeCount : '…'} label="Nodes" />
         <HeroCard value={totalEdges} label="Edges" />
         <HeroCard value={stats ? stats.orphanNodeCount : '…'} label="Orphan Nodes" />
@@ -902,7 +902,7 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
 
       <div className="meta-strip">
         {[
-          ['Component', root.component],
+          ['Component', root.namespace],
           ['State', root.state],
           ['Stability', root.stability],
           ['Schema version', root.schemaVersion],
