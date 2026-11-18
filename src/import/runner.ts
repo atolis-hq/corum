@@ -10,6 +10,7 @@ import { deduplicateResults } from './dedup.js'
 import type { EntryResult } from './dedup.js'
 import { buildExistingSchemaIndex, detectSchemaPromotions, rewritePromotedSchemaEdges } from './schema-promotion.js'
 import { resolveEdgeCasing } from './edge-casing.js'
+import { specKey } from './spec-key.js'
 import type { ImportConfig } from './config.js'
 import type { AdapterPackConfig } from '../adapters/index.js'
 import type { Diagnostic } from '../schema/index.js'
@@ -76,8 +77,9 @@ export async function runImport(
       continue
     }
 
-    const specPath = path.resolve(entry.spec)
-    const resolvedEntry = { ...entry, spec: specPath }
+    const absSpec = path.resolve(entry.spec)
+    const specPath = specKey(entry.spec)
+    const resolvedEntry = { ...entry, spec: absSpec }
     const adapter = getAdapter(resolvedEntry.adapter)
     const result = await adapter.import(resolvedEntry, {
       packConfig,
@@ -89,7 +91,8 @@ export async function runImport(
 
     if (result.diagnostics.some(d => d.severity === 'error')) continue
 
-    entryResults.push({ adapterId: entry.adapter, specPath, nodes: result.nodes, edges: result.edges })
+    const nodes = result.nodes.map(n => (n.extractedFrom === absSpec ? { ...n, extractedFrom: specPath } : n))
+    entryResults.push({ adapterId: entry.adapter, specPath, nodes, edges: result.edges })
   }
 
   if (config.deduplication?.length) {

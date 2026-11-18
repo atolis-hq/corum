@@ -166,6 +166,20 @@ use deduplication rules when several adapters describe the same thing.
 > explicit partial-import mode are planned. Treat imports of derived or
 > inferred data as branch-only until reviewed.
 
+## Provenance and removal
+
+Each imported node records `extractedFrom`: the `spec` path exactly as written
+in the import config entry, normalised (forward slashes, no leading `./`, no
+redundant separators). Absolute paths in the config stay absolute. It does not
+depend on the working directory or machine, so the same config gives the same
+values everywhere. The spec file itself is still read relative to the current
+working directory. Removal detection compares nodes against this key.
+
+There is no migration: nodes imported earlier with an absolute-path
+`extractedFrom` are updated in place on re-import if still present in the spec,
+but are treated as coming from a different source for removal, so nodes already
+dropped from a spec are not marked `removed` by the first re-import.
+
 ## Imports and renames
 
 Imports never guess renames. If a spec renames something, the importer treats
