@@ -333,6 +333,24 @@ describe('alias map and resolution', () => {
     assert.equal(resolveAlias(graph, aliasMap, 'orders.xy.fields.a'), 'orders.xy.fields.a')
   })
 
+  it('leaves an independent root sharing a retired prefix unchanged', () => {
+    const graph = makeGraph([makeNode('orders.Schema.baz')])
+    const aliasMap = new Map([['orders.Schema.foo', 'orders.Schema.baz']])
+    assert.equal(resolveAlias(graph, aliasMap, 'orders.Schema.foo.bar'), 'orders.Schema.foo.bar')
+  })
+
+  it('still resolves retired owned children, even if not yet in the graph', () => {
+    const graph = makeGraph([makeNode('orders.Schema.baz')])
+    const aliasMap = new Map([['orders.Schema.foo', 'orders.Schema.baz']])
+    assert.equal(resolveAlias(graph, aliasMap, 'orders.Schema.foo.fields.x'), 'orders.Schema.baz.fields.x')
+  })
+
+  it('documents ambiguity: an independent root shaped like an owned child resolves via the prefix', () => {
+    const graph = makeGraph([makeNode('orders.Schema.baz')])
+    const aliasMap = new Map([['orders.Schema.foo', 'orders.Schema.baz']])
+    assert.equal(resolveAlias(graph, aliasMap, 'orders.Schema.foo.fields.bar'), 'orders.Schema.baz.fields.bar')
+  })
+
   it('resolves chains to fixpoint and guards against cycles', () => {
     const graph = makeGraph([makeNode('orders.Schema.c')])
     const chained = new Map([
