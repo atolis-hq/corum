@@ -217,6 +217,30 @@ describe('working session (file source)', () => {
     )
   })
 
+  it('rejects a non-default branch before loading any content', async () => {
+    const { source } = makeFileFixture()
+    let loaded = false
+    const original = source.loadGraphContent.bind(source)
+    source.loadGraphContent = async (...args: Parameters<typeof original>) => {
+      loaded = true
+      return original(...args)
+    }
+    await assert.rejects(
+      () => startSession(source, { branch: 'feature-x' }),
+      (err: unknown) =>
+        err instanceof MutationError && /single branch \('local'\)/.test(err.message) && /feature-x/.test(err.message),
+    )
+    assert.equal(loaded, false)
+    assert.equal(getActiveSession(), null)
+  })
+
+  it('accepts an explicit default branch', async () => {
+    const { source } = makeFileFixture()
+    const session = await startSession(source, { branch: 'local' })
+    assert.equal(session.branch, 'local')
+    session.discard()
+  })
+
   it('detects a moved head at commit (no autosave)', async () => {
     const { source, graphDir } = makeFileFixture()
     const session = await startSession(source, { autosave: false })
