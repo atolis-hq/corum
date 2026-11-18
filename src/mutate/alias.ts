@@ -26,12 +26,30 @@ export function rewriteIdPrefix(id: string, oldPrefix: string, newPrefix: string
   return null
 }
 
+/** True when `suffix` is one or more `section.name` pairs. */
+function hasOwnedChildShape(suffix: string): boolean {
+  const segments = suffix.split('.')
+  return segments.length >= 2 && segments.length % 2 === 0
+}
+
 /**
  * Resolve a (possibly retired) ID to a live ID through the alias map.
  * Live node wins outright; exact hits and longest dot-boundary prefix
  * rewrites are applied to fixpoint with a cycle guard. An unresolved ID is
  * returned unchanged — the caller decides what that means (genuinely new
  * node, unknown node, …).
+ *
+ * Prefix rewrites apply only when the unmatched suffix has owned-child shape:
+ * `section.name` pairs (an even number of segments, at least two), e.g.
+ * `fields.x`. An independent root that merely shares a retired prefix
+ * (`orders.Schema.foo.bar` after `foo` → `baz`) has a one-segment suffix and is
+ * left unchanged. Shape is checked on the ID only, so retired children that do
+ * not exist in the graph yet still resolve.
+ *
+ * Known ambiguity: an independent root whose suffix happens to look like an
+ * owned child (`orders.Schema.foo.fields.bar`) is indistinguishable by shape
+ * and still resolves through the prefix (to `orders.Schema.baz.fields.bar`).
+ * Ownership really comes from `parentId`, which bare IDs do not carry.
  */
 export function resolveAlias(graph: Graph, aliasMap: Map<string, string>, id: string): string {
   const seen = new Set<string>()
@@ -46,7 +64,8 @@ export function resolveAlias(graph: Graph, aliasMap: Map<string, string>, id: st
       continue
     }
 
-    // Longest dot-boundary prefix with a mapping.
+    // Longest dot-boundary prefix with a mapping whose unmatched suffix has
+    // owned-child shape (see resolveAlias docs).
     let prefix = id
     let rewritten: string | undefined
     for (;;) {
@@ -54,7 +73,7 @@ export function resolveAlias(graph: Graph, aliasMap: Map<string, string>, id: st
       if (dot === -1) break
       prefix = prefix.slice(0, dot)
       const mapped = aliasMap.get(prefix)
-      if (mapped !== undefined) {
+      if (mapped !== undefined && hasOwnedChildShape(id.slice(prefix.length + 1))) {
         rewritten = mapped + id.slice(prefix.length)
         break
       }
