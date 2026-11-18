@@ -25,7 +25,7 @@ The left rail switches between three views:
 
 - **Dashboard** - graph-wide statistics: nodes, namespaces, edges and
   diagnostics, plus a count of namespaces by kind.
-- **Namespaces** - browse nodes by namespace and template. The sidebar has one
+- **Models** - browse nodes by namespace and template. The sidebar has one
   section per kind, labelled from the kind registry (for example `Component`
   and any pack-defined kind); a kind with no registry entry appears under its
   kind id. A node's page shows its properties, its schemas and fields (with

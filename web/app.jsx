@@ -96,7 +96,7 @@ function TopBar({ onSearchOpen }) {
 function NavRail({ activeSection, onSection, debugMode, onDebugMode }) {
   const items = [
     { id: 'dashboard', icon: 'grip', label: 'Dashboard' },
-    { id: 'namespaces', icon: 'circle-nodes', label: 'Namespaces' },
+    { id: 'namespaces', icon: 'circle-nodes', label: 'Models' },
     { id: 'graph', icon: 'diagram-project', label: 'Graph' },
   ];
 
@@ -756,7 +756,7 @@ function DashboardPage({ nodes, templates, kinds, gitMode, viewingRef, branches,
 }
 
 function NamespacesPage() {
-  return <div className="content"><h1>Namespaces</h1></div>;
+  return <div className="content"><h1>Models</h1></div>;
 }
 
 // Generic fallback view for any namespace: owned nodes plus inbound and outbound edges.
@@ -1437,7 +1437,7 @@ function App() {
         >
           {showTree && (
             <button type="button" className="mobile-back" onClick={() => history.back()}>
-              <span aria-hidden="true">←</span> Back to namespaces
+              <span aria-hidden="true">←</span> Back to models
             </button>
           )}
           {page}
