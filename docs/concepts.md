@@ -52,7 +52,7 @@ Every node has:
 ### IDs
 
 IDs encode ownership as a dot path. A root node is
-`component.Template.name`; anything it owns appends to that path:
+`namespace.Template.name`; anything it owns appends to that path:
 
 ```
 orders.DomainModel.order                                  root node
@@ -61,6 +61,38 @@ orders.DomainModel.order.schemas.order.fields.id          owned field
 ```
 
 Segments use letters, digits, `_` and `-`. `__` is reserved for edge IDs.
+
+### Namespaces and kinds
+
+The first segment of an ID is its **namespace**. For `orders.DomainModel.order`
+the namespace is `orders`. A namespace groups the nodes that belong together,
+and it exists as soon as any node uses it; there is nothing to declare.
+
+Each namespace has exactly one **kind**, which classifies it and decides how
+tools label and group it. The default kind is `component`, so a graph of
+services, APIs and domain models needs no extra setup. Packs can add other
+kinds (for example a journey or an event model) without any change to Corum
+itself; see [Custom kinds](templates-and-packs.md#custom-kinds).
+
+To give a namespace a kind other than `component`, add a small file in its
+folder:
+
+```yaml
+# .corum/graph/nodes/checkout/namespace.yaml
+kind: journey
+description: The customer checkout journey   # optional
+```
+
+A few things to know:
+
+- The declaration is metadata about the namespace. It is not a node, so it
+  has no ID and no edges.
+- A kind that no pack declares still loads: lint warns, and tools show the kind
+  id as its label.
+- A kind classifies the namespace, not the templates inside it. A `component`
+  namespace usually holds several templates (endpoints, models, events).
+- Namespaces don't contain each other. A journey owns its own nodes and relates
+  to nodes in component namespaces through ordinary [edges](#edges).
 
 ### State and stability
 
@@ -128,7 +160,7 @@ This one block produces an endpoint node, schema nodes, and a node per field. Re
 at a node elsewhere in the graph.
 
 On disk, clusters live under
-`.corum/graph/nodes/<component>/<Template>s/<name>.yaml`.
+`.corum/graph/nodes/<namespace>/<Template>s/<name>.yaml`.
 
 ## Edges
 
