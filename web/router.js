@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  var KNOWN_PATHS = new Set(['/dashboard', '/components', '/node', '/graph']);
+  var KNOWN_PATHS = new Set(['/dashboard', '/namespaces', '/namespace', '/node', '/graph']);
 
   function parseRoute(hash) {
     var raw = (hash || '').replace(/^#/, '') || '/dashboard';

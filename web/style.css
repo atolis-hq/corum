@@ -171,6 +171,28 @@ button {
   border-right: 1px solid var(--rule);
 }
 
+.nav-kind-head {
+  padding: 10px 6px 2px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  border-bottom: 1px solid var(--rule-2);
+}
+
+.ns-kind-pill {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.graph-kind-filter {
+  font-size: 12px;
+  padding: 3px 6px;
+}
+
 .nav-section-head {
   display: flex;
   align-items: center;

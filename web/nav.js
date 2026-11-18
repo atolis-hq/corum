@@ -140,4 +140,35 @@ function buildOverlayIndicatorIds(nodes, templates, overlayNodes, activeOverlayR
   return indicatorIds;
 }
 
-window.CorumNav = { buildNavTree, buildOverlayIndicatorIds };
+// Group namespaces into one navigation section per kind. Labels come from the
+// kind registry ([{ id, label }]); unrecognised kinds are labelled with their id.
+// The default kind is listed first, then the rest by label.
+function groupNamespacesByKind(nodes, kindRegistry) {
+  const labelByKind = new Map((kindRegistry ?? []).map(kind => [kind.id, kind.label]));
+  const kindByNamespace = new Map();
+  for (const node of nodes) {
+    if (!kindByNamespace.has(node.namespace)) kindByNamespace.set(node.namespace, node.kind ?? 'component');
+  }
+  const sections = new Map();
+  for (const [namespace, kind] of kindByNamespace) {
+    if (!sections.has(kind)) sections.set(kind, { kind, label: labelByKind.get(kind) ?? kind, namespaces: [] });
+    sections.get(kind).namespaces.push(namespace);
+  }
+  for (const section of sections.values()) section.namespaces.sort((a, b) => a.localeCompare(b));
+  return [...sections.values()].sort((a, b) => {
+    if (a.kind === 'component') return -1;
+    if (b.kind === 'component') return 1;
+    return a.label.localeCompare(b.label) || a.kind.localeCompare(b.kind);
+  });
+}
+
+// Edges crossing a namespace boundary. The namespace is the first ID segment.
+function namespaceEdges(edges, namespace) {
+  const inNs = id => id.split('.')[0] === namespace;
+  return {
+    inbound: edges.filter(e => inNs(e.to) && !inNs(e.from)),
+    outbound: edges.filter(e => inNs(e.from) && !inNs(e.to)),
+  };
+}
+
+window.CorumNav = { buildNavTree, buildOverlayIndicatorIds, groupNamespacesByKind, namespaceEdges };

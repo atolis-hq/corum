@@ -1,7 +1,7 @@
 const { test, expect } = require('@playwright/test');
 
 async function openList(page) {
-  await page.goto('/#/components');
+  await page.goto('/#/namespaces');
   await page.locator('.nav-section-head').filter({ hasText: 'orders' }).click();
   const template = page.locator('.nav-template-head').filter({ hasText: 'Domain' }).first();
   await template.click();
@@ -16,7 +16,7 @@ async function expectDetail(page) {
 }
 
 async function expectList(page) {
-  await expect(page).toHaveURL(/\/components$/);
+  await expect(page).toHaveURL(/\/namespaces$/);
   await expect(page.locator('.nav-node-item.active')).toBeFocused();
   await expect(page.locator('.detail-pane')).toHaveAttribute('inert', '');
   await expect(page.locator('.list-pane')).not.toHaveAttribute('inert');
@@ -39,7 +39,7 @@ test('keyboard drill-down, Back, browser history, retained list and resizing', a
   await item.focus();
   await item.press('Enter');
   await expectDetail(page);
-  const back = page.getByRole('button', { name: 'Back to components' });
+  const back = page.getByRole('button', { name: 'Back to namespaces' });
   expect((await back.boundingBox()).height).toBeGreaterThanOrEqual(44);
   await back.click();
   await expectList(page);
@@ -68,11 +68,20 @@ test('direct links retain branch context and browser Back reaches the list', asy
   await expectDetail(page);
   await page.goBack();
   await expectList(page);
-  await expect(page).toHaveURL(/#\/feature%2Fmobile\/components$/);
+  await expect(page).toHaveURL(/#\/feature%2Fmobile\/namespaces$/);
   await page.goForward();
   await expectDetail(page);
-  await page.getByRole('button', { name: 'Back to components' }).click();
+  await page.getByRole('button', { name: 'Back to namespaces' }).click();
   await expectList(page);
+});
+
+test('generic namespace page opens as a detail pane and Back returns to the list', async ({ page }) => {
+  await page.goto('/#/namespace?name=orders');
+  await expectDetail(page);
+  await expect(page.locator('.detail-pane h1')).toHaveText('orders');
+  await page.getByRole('button', { name: 'Back to namespaces' }).click();
+  await expect(page).toHaveURL(/\/namespaces$/);
+  await expect(page.locator('.detail-pane')).toHaveAttribute('inert', '');
 });
 
 test('reduced motion, landscape, dashboard and graph', async ({ page }) => {
@@ -82,7 +91,7 @@ test('reduced motion, landscape, dashboard and graph', async ({ page }) => {
   await page.locator('.nav-node-item').first().click();
   await expectDetail(page);
   expect(await page.locator('.detail-pane').evaluate(el => getComputedStyle(el).transitionDuration)).toBe('0s');
-  await page.getByRole('button', { name: 'Back to components' }).click();
+  await page.getByRole('button', { name: 'Back to namespaces' }).click();
   await expectList(page);
   await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
   await expect(page.locator('.hero-card').first()).toBeVisible();

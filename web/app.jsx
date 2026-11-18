@@ -11,8 +11,9 @@ const {
   PropertiesTable,
   SchemaCard,
 } = window.CorumPrimitives;
-const { buildNavTree, buildOverlayIndicatorIds } = window.CorumNav;
+const { buildNavTree, buildOverlayIndicatorIds, groupNamespacesByKind, namespaceEdges } = window.CorumNav;
 const { parseRoute, buildRoute } = window.CorumRouter;
+const { kindColour } = window.CorumGraphUtils;
 const { SearchModal } = window.CorumSearch;
 
 // uses-type is excluded here: it's the auto-generated type-reference edge
@@ -95,7 +96,7 @@ function TopBar({ onSearchOpen }) {
 function NavRail({ activeSection, onSection, debugMode, onDebugMode }) {
   const items = [
     { id: 'dashboard', icon: 'grip', label: 'Dashboard' },
-    { id: 'components', icon: 'circle-nodes', label: 'Models' },
+    { id: 'namespaces', icon: 'circle-nodes', label: 'Namespaces' },
     { id: 'graph', icon: 'diagram-project', label: 'Graph' },
   ];
 
@@ -134,7 +135,7 @@ function entryKey(entry) {
   return entry.kind === 'group' ? entry.groupTemplateName : entry.templateName;
 }
 
-function NavTree({ navTree, templates, activeNodeId, onNode, overlayIndicatorIds }) {
+function NavTree({ navTree, kindSections, templates, activeNodeId, onNode, onNamespace, overlayIndicatorIds }) {
   const sortedComponents = [...navTree.keys()].sort((a, b) => a.localeCompare(b));
   const [openComponent, setOpenComponent] = useState();
   const [openEntryKeys, setOpenEntryKeys] = useState(new Set());
@@ -197,9 +198,11 @@ function NavTree({ navTree, templates, activeNodeId, onNode, overlayIndicatorIds
     setOpenGroupKeys(new Set());
   }, [activeNodeId, navTree]);
 
-  function toggleComponent(component) {
+  function toggleComponent(component, kind) {
     if (openComponent === component) { openComponentWithEntries(null); }
     else { openComponentWithEntries(component); }
+    // Kinds other than the default have no dedicated view: open the generic namespace page.
+    if (kind !== 'component') onNamespace(component);
   }
 
   function toggleEntry(key) {
@@ -221,11 +224,14 @@ function NavTree({ navTree, templates, activeNodeId, onNode, overlayIndicatorIds
         event.target.click();
       }
     }}>
-      {sortedComponents.map(component => {
-        const entries = navTree.get(component);
+      {kindSections.map(section => (
+        <div key={section.kind} className="nav-kind-section" data-kind={section.kind}>
+        {kindSections.length > 1 && <div className="nav-kind-head">{section.label}</div>}
+      {section.namespaces.map(component => {
+        const entries = navTree.get(component) ?? [];
         return (
           <div key={component}>
-            <div className="nav-section-head" role="button" tabIndex={0} aria-expanded={openComponent === component} onClick={() => toggleComponent(component)}>
+            <div className="nav-section-head" role="button" tabIndex={0} aria-expanded={openComponent === component} onClick={() => toggleComponent(component, section.kind)}>
               <span>{component}</span>
               <Icon name={openComponent === component ? 'chevron-down' : 'chevron-right'} size={12} />
             </div>
@@ -361,6 +367,8 @@ function NavTree({ navTree, templates, activeNodeId, onNode, overlayIndicatorIds
           </div>
         );
       })}
+        </div>
+      ))}
     </div>
   );
 }
@@ -516,7 +524,7 @@ function HeroCard({ value, label }) {
   );
 }
 
-function DashboardPage({ nodes, templates, gitMode, viewingRef, branches, branchResults }) {
+function DashboardPage({ nodes, templates, kinds, gitMode, viewingRef, branches, branchResults }) {
   const [stats, setStats] = useState(null);
   const [branchDiff, setBranchDiff] = useState(null);
 
@@ -551,6 +559,11 @@ function DashboardPage({ nodes, templates, gitMode, viewingRef, branches, branch
     ? Object.entries(stats.nodesByTemplate).sort((a, b) => b[1] - a[1])
     : [];
 
+  const kindLabels = new Map((kinds ?? []).map(kind => [kind.id, kind.label]));
+  const namespacesByKind = stats
+    ? Object.entries(stats.namespacesByKind ?? {}).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    : [];
+
   const nodesByComponent = stats
     ? Object.entries(stats.nodesByNamespace).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     : [];
@@ -574,7 +587,7 @@ function DashboardPage({ nodes, templates, gitMode, viewingRef, branches, branch
   return (
     <div className="content">
       <div className="dashboard-hero">
-        <HeroCard value={stats ? stats.namespaceCount : '…'} label="Components" />
+        <HeroCard value={stats ? stats.namespaceCount : '…'} label="Namespaces" />
         <HeroCard value={stats ? stats.nodeCount : '…'} label="Nodes" />
         <HeroCard value={totalEdges} label="Edges" />
         <HeroCard value={stats ? stats.orphanNodeCount : '…'} label="Orphan Nodes" />
@@ -614,7 +627,23 @@ function DashboardPage({ nodes, templates, gitMode, viewingRef, branches, branch
         </div>
 
         <div className="dashboard-panel">
-          <div className="card-head">Nodes by Component</div>
+          <div className="card-head">Namespaces by Kind</div>
+          <div className="card-body" style={{ padding: '12px 16px' }}>
+            {stats === null && <div className="label-sm">Loading…</div>}
+            {namespacesByKind.map(([kind, count]) => (
+              <div key={kind} className="stat-row">
+                <span className="stat-row-label">
+                  <span className="stat-colour-dot" style={{ background: kindColour(kind) }} />
+                  {kindLabels.get(kind) ?? kind}
+                </span>
+                <span className="stat-row-value">{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="dashboard-panel">
+          <div className="card-head">Nodes by Namespace</div>
           <div className="card-body" style={{ padding: '12px 16px' }}>
             {stats === null && <div className="label-sm">Loading…</div>}
             {nodesByComponent.map(([name, count]) => (
@@ -726,8 +755,106 @@ function DashboardPage({ nodes, templates, gitMode, viewingRef, branches, branch
   );
 }
 
-function ComponentsPage() {
-  return <div className="content"><h1>Components</h1></div>;
+function NamespacesPage() {
+  return <div className="content"><h1>Namespaces</h1></div>;
+}
+
+// Generic fallback view for any namespace: owned nodes plus inbound and outbound edges.
+// Contains no knowledge of specific kinds; richer views are a separate plugin mechanism.
+function NamespacePage({ namespace, nodes, templates, kinds, onNavigate, viewingRef }) {
+  const [graph, setGraph] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    setGraph(null);
+    setError(null);
+    const refParam = viewingRef ? `?ref=${encodeURIComponent(viewingRef)}` : '';
+    fetch(`/api/graph${refParam}`)
+      .then(res => res.ok ? res.json() : Promise.reject(res.status))
+      .then(setGraph)
+      .catch(err => setError(String(err)));
+  }, [namespace, viewingRef]);
+
+  const owned = nodes.filter(node => node.namespace === namespace);
+  if (owned.length === 0) {
+    return <div className="content"><p className="label-sm">Namespace not found: {namespace}</p></div>;
+  }
+  const kind = owned[0].kind ?? 'component';
+  const kindLabel = (kinds ?? []).find(k => k.id === kind)?.label ?? kind;
+  const templateMap = new Map(templates.map(t => [t.name, t]));
+
+  const byTemplate = new Map();
+  for (const node of owned) {
+    if (!byTemplate.has(node.template)) byTemplate.set(node.template, []);
+    byTemplate.get(node.template).push(node);
+  }
+
+  const nodeMap = new Map((graph?.nodes ?? []).map(n => [n.id, n]));
+  const { inbound, outbound } = namespaceEdges(graph?.edges ?? [], namespace);
+
+  function NodeLink({ id }) {
+    const node = nodeMap.get(id);
+    const tmpl = node ? templateMap.get(node.template) : null;
+    return (
+      <span
+        role="link" tabIndex={0}
+        style={{ cursor: 'pointer' }}
+        title={id}
+        onClick={() => onNavigate(id)}
+        onKeyDown={event => { if (event.key === 'Enter') onNavigate(id); }}
+      >
+        <span style={{ fontWeight: 500 }}>{displayName(id)}</span>
+        {tmpl && <span className="label-sm"> · {templateDisplayName(tmpl)}</span>}
+        <span className="label-sm mono"> {id}</span>
+      </span>
+    );
+  }
+
+  function EdgeList({ title, edges, endpoint }) {
+    return (
+      <div className="card" style={{ marginBottom: 16 }} data-testid={`namespace-${title.toLowerCase()}`}>
+        <div className="card-head">{title} ({edges.length})</div>
+        <div className="card-body" style={{ padding: '12px 16px' }}>
+          {graph === null && !error && <div className="label-sm">Loading…</div>}
+          {error && <div style={{ color: 'var(--warn)' }}>Error loading edges: {error}</div>}
+          {graph !== null && edges.length === 0 && <div className="label-sm">None.</div>}
+          {edges.map(edge => (
+            <div key={edge.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0' }}>
+              <span className="tag" style={EDGE_TYPE_STYLES[edge.type] ?? {}}>{edge.type}</span>
+              <NodeLink id={edge[endpoint]} />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="content">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
+        <h1 style={{ margin: 0 }}>{namespace}</h1>
+        <span className="ns-kind-pill" style={{ background: kindColour(kind) }}>{kindLabel}</span>
+      </div>
+      <div className="label-sm" style={{ marginBottom: 16 }}>Namespace · {owned.length} {owned.length === 1 ? 'node' : 'nodes'}</div>
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-head">Owned nodes</div>
+        <div className="card-body" style={{ padding: '12px 16px' }}>
+          {[...byTemplate.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([templateName, list]) => (
+            <div key={templateName} style={{ marginBottom: 10 }}>
+              <div className="label-xs" style={{ marginBottom: 4 }}>{templateDisplayName(templateMap.get(templateName)) || templateName}</div>
+              {list.sort((a, b) => a.id.localeCompare(b.id)).map(node => (
+                <div key={node.id} style={{ padding: '3px 0' }}><NodeLink id={node.id} /></div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <EdgeList title="Inbound" edges={inbound} endpoint="from" />
+      <EdgeList title="Outbound" edges={outbound} endpoint="to" />
+    </div>
+  );
 }
 
 function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate, viewingRef }) {
@@ -902,7 +1029,7 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
 
       <div className="meta-strip">
         {[
-          ['Component', root.namespace],
+          ['Namespace', root.namespace],
           ['State', root.state],
           ['Stability', root.stability],
           ['Schema version', root.schemaVersion],
@@ -985,6 +1112,7 @@ function resolveTemplates(templates) {
 function App() {
   const [templates, setTemplates] = useState([]);
   const [nodes, setNodes] = useState([]);
+  const [kinds, setKinds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [route, setRoute] = useState(() => parseRoute(window.location.hash));
@@ -1019,10 +1147,12 @@ function App() {
     return Promise.all([
       fetch(`/api/templates${refParam}`).then(response => response.ok ? response.json() : Promise.reject(response.status)),
       fetch(`/api/nodes${refParam}`).then(response => response.ok ? response.json() : Promise.reject(response.status)),
+      fetch(`/api/kinds${refParam}`).then(response => response.ok ? response.json() : Promise.reject(response.status)),
     ])
-      .then(([templateData, nodeData]) => {
+      .then(([templateData, nodeData, kindData]) => {
         setTemplates(resolveTemplates(templateData));
         setNodes(nodeData);
+        setKinds(kindData.kinds ?? []);
         setRefreshToken(token => token + 1);
         setLoading(false);
       })
@@ -1081,17 +1211,17 @@ function App() {
   useEffect(() => {
     let previous = parseRoute(window.location.hash);
     function syncHistory(next) {
-      if (matchMedia('(max-width: 780px)').matches && next.pathname === '/node' && !history.state?.corumDetail) {
+      if (matchMedia('(max-width: 780px)').matches && (next.pathname === '/node' || next.pathname === '/namespace') && !history.state?.corumDetail) {
         // Seed a list entry behind direct links and nodes opened from other sections.
         const hash = location.hash;
-        history.replaceState(null, '', buildRoute({ pathname: '/components', branch: next.branch }));
+        history.replaceState(null, '', buildRoute({ pathname: '/namespaces', branch: next.branch }));
         history.pushState({ corumDetail: true }, '', hash);
       }
     }
     syncHistory(previous);
     const handler = () => {
       const next = parseRoute(location.hash);
-      if (next.pathname === '/node' && previous.pathname === '/components') {
+      if ((next.pathname === '/node' || next.pathname === '/namespace') && previous.pathname === '/namespaces') {
         history.replaceState({ corumDetail: true }, '');
       } else {
         syncHistory(next);
@@ -1125,10 +1255,12 @@ function App() {
 
   const activeNodeId = route.pathname === '/node' ? route.params.get('id') : null;
   if (activeNodeId) retainedNode.current = activeNodeId;
-  const detailOpen = route.pathname === '/node';
-  const activeSection = activeNodeId ? 'components' : (route.pathname.slice(1) || 'dashboard');
+  const detailOpen = route.pathname === '/node' || route.pathname === '/namespace';
+  const activeNamespace = route.pathname === '/namespace' ? route.params.get('name') : null;
+  const activeSection = activeNodeId || activeNamespace ? 'namespaces' : (route.pathname.slice(1) || 'dashboard');
   const navTree = useMemo(() => buildNavTree(nodes, templates), [nodes, templates]);
-  const showTree = (activeSection === 'components' || activeNodeId) && activeSection !== 'graph';
+  const kindSections = useMemo(() => groupNamespacesByKind(nodes, kinds), [nodes, kinds]);
+  const showTree = (activeSection === 'namespaces' || activeNodeId) && activeSection !== 'graph';
   useEffect(() => {
     if (!mobile || !showTree) return;
     const pane = detailOpen ? detailPane.current : listPane.current;
@@ -1183,6 +1315,10 @@ function App() {
     navigate(buildRoute({ pathname: `/${section}`, params: {}, branch: viewingRef }));
   }
 
+  function handleNamespace(name) {
+    navigate(buildRoute({ pathname: '/namespace', params: { name }, branch: viewingRef }));
+  }
+
   function handleNode(nodeId) {
     navigate(buildRoute({ pathname: '/node', params: { id: nodeId }, branch: viewingRef }));
   }
@@ -1197,14 +1333,27 @@ function App() {
       <DashboardPage
         nodes={nodes}
         templates={templates}
+        kinds={kinds}
         gitMode={gitMode}
         viewingRef={viewingRef}
         branches={branches}
         branchResults={branchResults}
       />
     );
-  } else if (route.pathname === '/components') {
-    page = <ComponentsPage />;
+  } else if (route.pathname === '/namespaces') {
+    page = <NamespacesPage />;
+  } else if (route.pathname === '/namespace') {
+    page = (
+      <NamespacePage
+        key={activeNamespace}
+        namespace={activeNamespace}
+        nodes={nodes}
+        templates={templates}
+        kinds={kinds}
+        onNavigate={handleNode}
+        viewingRef={viewingRef}
+      />
+    );
   } else if (route.pathname === '/node') {
     page = (
       <NodePage
@@ -1272,9 +1421,11 @@ function App() {
           {showTree && !loading && !error && (
             <NavTree
               navTree={navTree}
+              kindSections={kindSections}
               templates={templates}
               activeNodeId={activeNodeId || retainedNode.current}
               onNode={handleNode}
+              onNamespace={handleNamespace}
               overlayIndicatorIds={overlayIndicatorIds}
             />
           )}
@@ -1286,7 +1437,7 @@ function App() {
         >
           {showTree && (
             <button type="button" className="mobile-back" onClick={() => history.back()}>
-              <span aria-hidden="true">←</span> Back to components
+              <span aria-hidden="true">←</span> Back to namespaces
             </button>
           )}
           {page}

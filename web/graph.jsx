@@ -3,7 +3,7 @@
 const { useState, useEffect, useMemo, useCallback, useRef } = React;
 const { navigate, Icon, TemplateBadge, StateTag, StabilityTag } = window.CorumPrimitives;
 const { buildRoute, parseRoute } = window.CorumRouter;
-const { buildComponentMap, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName, computeConnectedComponents, filterThreadScope, filterOwnerScope } = window.CorumGraphUtils;
+const { buildNamespaceMap, filterByKind, resolveKindFilter, collectKinds, kindColour, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName, computeConnectedComponents, filterThreadScope, filterOwnerScope } = window.CorumGraphUtils;
 
 const RF = window.ReactFlow;
 const ReactFlowCanvas = RF.ReactFlow || RF.default;
@@ -328,7 +328,7 @@ function makeRFEdge(edge, edgeStyles) {
   };
 }
 
-function buildRFNodesForNodes(graphNodes, templateMap, onNodeClick, viewingRef, fadedIds) {
+function buildRFNodesForNodes(graphNodes, templateMap, onNodeClick, viewingRef, fadedIds, kindByNamespace) {
   return graphNodes.map(n => {
     const tmpl = templateMap.get(n.template);
     const colour = tmpl?.ui?.colour ?? 'var(--ink-4)';
@@ -341,6 +341,7 @@ function buildRFNodesForNodes(graphNodes, templateMap, onNodeClick, viewingRef, 
         nodeId: n.id,
         label: getDisplayName(n.id),
         component: n.namespace,
+        kindColour: kindColour(n.kind ?? kindByNamespace?.get(n.namespace)),
         templateLabel: tmpl?.ui?.displayName ?? n.template,
         colour,
         state: n.state,
@@ -362,7 +363,7 @@ function buildRFEdgesForEdges(edges, visibleEdgeTypes) {
 // Level 1: component card node
 function ComponentCardNode({ data }) {
   return (
-    <div className="graph-component-card" onClick={data.onClick}>
+    <div className="graph-component-card" onClick={data.onClick} data-kind={data.kind} style={{ borderLeft: `4px solid ${data.kindColour}` }}>
       <RF.Handle type="target" position={RF.Position.Left} style={{ opacity: 0 }} />
       <div className="graph-component-card-name">{data.label}</div>
       <div className="graph-component-card-count">{data.count} {data.count === 1 ? 'node' : 'nodes'}</div>
@@ -384,7 +385,7 @@ function NodeCardNode({ data }) {
       <div className="graph-node-card-body">
         <div className="graph-node-card-text">
           <div className="graph-node-card-name" title={data.nodeId}>{data.label}</div>
-          <div className="graph-node-card-component">{data.component}</div>
+          <div className="graph-node-card-component" style={{ color: data.kindColour }}>{data.component}</div>
         </div>
         <div className="graph-node-card-type">
           <TemplateBadge name={data.templateLabel} colour={colour} />
@@ -510,7 +511,7 @@ function describeScope(scope, scopeOptions) {
   return parts.join(' · ');
 }
 
-function GraphToolbar({ edgeTypes, visibleEdgeTypes, onToggleEdgeType, showMinimap, onToggleMinimap, onResetLayout, level, depth, onDepth, allNodes, focalNodeId, onFocalNode, layoutMode, onLayoutMode, scope, onScope, scopeOptions, scopeInfo }) {
+function GraphToolbar({ edgeTypes, visibleEdgeTypes, onToggleEdgeType, showMinimap, onToggleMinimap, onResetLayout, level, kindOptions, kindFilter, onKindFilter, depth, onDepth, allNodes, focalNodeId, onFocalNode, layoutMode, onLayoutMode, scope, onScope, scopeOptions, scopeInfo }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [scopeOpen, setScopeOpen] = useState(false);
@@ -601,6 +602,19 @@ function GraphToolbar({ edgeTypes, visibleEdgeTypes, onToggleEdgeType, showMinim
           <div className="graph-toolbar-sep" />
         </>
       )}
+      {level === 'component' && kindOptions.length > 2 && (
+        <label className="graph-kind-filter-wrap">
+          <span className="label-xs">Kind </span>
+          <select
+            className="graph-kind-filter"
+            aria-label="Kind filter"
+            value={kindFilter}
+            onChange={e => onKindFilter(e.target.value)}
+          >
+            {kindOptions.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
+          </select>
+        </label>
+      )}
       {level === 'interior' && scopeOptions && (
         <>
           <div className="graph-scope" ref={scopeRef}>
@@ -668,16 +682,34 @@ function GraphView({ route, viewingRef, templates }) {
   const selectedComponent = route.params.get('component') ?? null;
   const focalNodeId = route.params.get('focus') ?? null;
   const level = focalNodeId ? 'focus' : selectedComponent ? 'interior' : 'component';
+  // Namespace-level map defaults to the default kind; 'all' shows every kind.
+  const requestedKind = route.params.get('kind');
+  const kindFilter = resolveKindFilter(requestedKind, graphData?.nodes ?? []);
+  const kindParams = requestedKind ? { kind: requestedKind } : {};
+  const [kindRegistry, setKindRegistry] = useState([]);
+
+  useEffect(() => {
+    const refParam = viewingRef ? `?ref=${encodeURIComponent(viewingRef)}` : '';
+    fetch(`/api/kinds${refParam}`)
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(data => setKindRegistry(data.kinds ?? []))
+      .catch(() => setKindRegistry([]));
+  }, [viewingRef]);
+
+  const navToKind = useCallback(kind => {
+    const params = kind === 'component' ? {} : { kind };
+    navigate(buildRoute({ pathname: '/graph', params, branch: viewingRef }));
+  }, [viewingRef]);
 
   useEffect(() => { setScope(null); }, [selectedComponent]);
 
   const navToRoot = useCallback(() => {
-    navigate(buildRoute({ pathname: '/graph', params: {}, branch: viewingRef }));
-  }, [viewingRef]);
+    navigate(buildRoute({ pathname: '/graph', params: { ...kindParams }, branch: viewingRef }));
+  }, [viewingRef, requestedKind]);
 
   const navToComponent = useCallback(component => {
-    navigate(buildRoute({ pathname: '/graph', params: { component }, branch: viewingRef }));
-  }, [viewingRef]);
+    navigate(buildRoute({ pathname: '/graph', params: { component, ...kindParams }, branch: viewingRef }));
+  }, [viewingRef, requestedKind]);
 
   const navToFocus = useCallback(nodeId => {
     const params = { focus: nodeId };
@@ -723,6 +755,18 @@ function GraphView({ route, viewingRef, templates }) {
     [availableEdgeTypes, hiddenEdgeTypes],
   );
 
+  const kindByNamespace = useMemo(
+    () => new Map((graphData?.nodes ?? []).map(n => [n.namespace, n.kind ?? 'component'])),
+    [graphData],
+  );
+  const kindOptions = useMemo(() => {
+    const labels = new Map(kindRegistry.map(k => [k.id, k.label]));
+    return [
+      { id: 'all', label: 'All' },
+      ...collectKinds(graphData?.nodes ?? []).map(id => ({ id, label: labels.get(id) ?? id })),
+    ];
+  }, [graphData, kindRegistry]);
+
   const templateColour = useCallback(templateName => {
     return templateMap.get(templateName)?.ui?.colour ?? 'var(--ink-4)';
   }, [templateMap]);
@@ -730,13 +774,14 @@ function GraphView({ route, viewingRef, templates }) {
   // Level 1: component map
   const level1 = useMemo(() => {
     if (!graphData) return null;
-    const { nodes: cmNodes, edges: cmEdges } = buildComponentMap(graphData.nodes, graphData.edges);
+    const shown = filterByKind(graphData.nodes, graphData.edges, kindFilter);
+    const { nodes: cmNodes, edges: cmEdges } = buildNamespaceMap(shown.nodes, shown.edges);
     const filteredCmEdges = cmEdges.filter(e => e.types.some(t => visibleEdgeTypes.has(t)));
     const rfN = cmNodes.map(n => ({
       id: n.id,
       type: 'componentCard',
       position: { x: 0, y: 0 },
-      data: { label: n.namespace, count: n.count, onClick: () => navToComponent(n.namespace) },
+      data: { label: n.namespace, count: n.count, kind: n.kind, kindColour: kindColour(n.kind), onClick: () => navToComponent(n.namespace) },
     }));
     const rfE = filteredCmEdges.map(e => {
       const repType = e.types.find(t => visibleEdgeTypes.has(t)) ?? e.types[0];
@@ -746,7 +791,7 @@ function GraphView({ route, viewingRef, templates }) {
       };
     });
     return { rfN, rfE };
-  }, [graphData, visibleEdgeTypes, layoutKey, navToComponent]);
+  }, [graphData, visibleEdgeTypes, layoutKey, navToComponent, kindFilter]);
 
   useEffect(() => {
     if (level !== 'component' || !level1) return;
@@ -816,13 +861,13 @@ function GraphView({ route, viewingRef, templates }) {
       }
     }
 
-    const rfN = buildRFNodesForNodes(visibleNodes, templateMap, navToFocus, viewingRef, externalNodeIds);
+    const rfN = buildRFNodesForNodes(visibleNodes, templateMap, navToFocus, viewingRef, externalNodeIds, kindByNamespace);
     const rfE = buildRFEdgesForEdges(visibleEdges, visibleEdgeTypes).map(e => {
       const isCross = crossEdges.some(ce => ce.id === e.id);
       return isCross ? { ...e, style: { ...e.style, opacity: 0.45 }, labelStyle: { ...e.labelStyle, opacity: 0.45 } } : e;
     });
     return { rfN, rfE, scopeOptions, scopeInfo };
-  }, [graphData, selectedComponent, availableEdgeTypes, visibleEdgeTypes, templateMap, layoutKey, navToFocus, scope]);
+  }, [graphData, selectedComponent, availableEdgeTypes, visibleEdgeTypes, templateMap, layoutKey, navToFocus, scope, kindByNamespace]);
 
   useEffect(() => {
     if (level !== 'interior' || !level2) return;
@@ -855,11 +900,11 @@ function GraphView({ route, viewingRef, templates }) {
       ...(focalNode && !focusData.nodes.some(n => n.id === focalNodeId) ? [focalNode] : []),
       ...focusData.nodes,
     ].map(n => ({ ...n, parentId: parentIdMap.get(n.id) ?? null }));
-    const rfN = buildRFNodesForNodes(lineageNodes, templateMap, navToFocus, viewingRef)
+    const rfN = buildRFNodesForNodes(lineageNodes, templateMap, navToFocus, viewingRef, undefined, kindByNamespace)
       .map(n => n.id === focalNodeId ? { ...n, data: { ...n.data, focal: true } } : n);
     const rfE = buildRFEdgesForEdges(applyEdgeTypeFilter(focusData.edges, visibleEdgeTypes), visibleEdgeTypes);
     return { rfN, rfE };
-  }, [focusData, focalNodeId, visibleEdgeTypes, templateMap, layoutKey, viewingRef, graphData, nodeById, navToFocus]);
+  }, [focusData, focalNodeId, visibleEdgeTypes, templateMap, layoutKey, viewingRef, graphData, nodeById, navToFocus, kindByNamespace]);
 
   useEffect(() => {
     if (level !== 'focus' || !level3) return;
@@ -941,6 +986,9 @@ function GraphView({ route, viewingRef, templates }) {
         onToggleMinimap={() => setShowMinimap(v => !v)}
         onResetLayout={() => { pendingViewportRef.current = { type: 'full' }; setLayoutKey(k => k + 1); }}
         level={level}
+        kindOptions={kindOptions}
+        kindFilter={kindFilter}
+        onKindFilter={navToKind}
         depth={depth}
         onDepth={setDepth}
         allNodes={graphData?.nodes ?? []}

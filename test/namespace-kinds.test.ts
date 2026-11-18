@@ -93,6 +93,15 @@ describe('kind filter and registry with mixed kinds', () => {
     assert.equal(byName.get('shared')?.kind, 'component')
   })
 
+  it('/api/nodes and /api/graph carry each node\'s namespace kind for UI grouping and colouring', async () => {
+    const nodes = await (await fetch(`http://localhost:${handle.port}/api/nodes`)).json() as Array<{ namespace: string; kind: string }>
+    const kindOf = (list: Array<{ namespace: string; kind: string }>) =>
+      Object.fromEntries([...new Set(list.map(n => `${n.namespace}=${n.kind}`))].sort().map(s => s.split('=')))
+    assert.deepEqual(kindOf(nodes), { orders: 'journey', payments: 'mystery' })
+    const g = await (await fetch(`http://localhost:${handle.port}/api/graph`)).json() as { nodes: Array<{ namespace: string; kind: string }> }
+    assert.deepEqual(kindOf(g.nodes), { orders: 'journey', payments: 'mystery' })
+  })
+
   it('/api/stats reports mixed kinds', async () => {
     const stats = await (await fetch(`http://localhost:${handle.port}/api/stats`)).json() as { namespacesByKind: Record<string, number> }
     assert.deepEqual(stats.namespacesByKind, { component: 1, journey: 1, mystery: 1 })
