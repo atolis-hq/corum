@@ -9,6 +9,9 @@ import { loadPacks } from '../src/loader/pack-loader.js'
 import { loadClusters } from '../src/loader/cluster-loader.js'
 import { loadEdges } from '../src/loader/edge-loader.js'
 import { loadGraph } from '../src/loader/index.js'
+import { getGraphSummary } from '../src/graph/index.js'
+import { deleteEdge } from '../src/mutate/delete.js'
+import { findEdgeById } from '../src/mutate/util.js'
 import { VALID_EDGE_TYPE_SET } from '../src/loader/constants.js'
 import { LoadError } from '../src/schema/index.js'
 import type { Diagnostic, Node, Template } from '../src/schema/index.js'
@@ -858,6 +861,69 @@ describe('duplicate edge IDs', () => {
     assert.equal(dups[0].severity, 'error')
     assert.ok(dups[0].message.includes('generated'))
     assert.ok(dups[0].message.includes('edges/a.yaml'))
+  })
+
+  async function withTempGraph<T>(extraEdgeFile: string, fn: (dir: string) => Promise<T>): Promise<T> {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-dup-edge-'))
+    try {
+      fs.cpSync(fixtureGraphDir, tmp, { recursive: true })
+      // Pack paths in graph.yaml are relative to the fixture dir; re-point them at the repo packs.
+      const graphYamlPath = path.join(tmp, 'graph.yaml')
+      fs.writeFileSync(
+        graphYamlPath,
+        fs.readFileSync(graphYamlPath, 'utf8').split('../../.corum').join(path.join(repoRoot, '.corum')),
+      )
+      fs.writeFileSync(path.join(tmp, 'edges', 'zz-dup.edges.yaml'), extraEdgeFile)
+      return await fn(tmp)
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true })
+    }
+  }
+
+  it('end to end: duplicate explicit edge leaves lookups, summary and delete unaffected', async () => {
+    const baseline = await loadGraph({ graphPath: fixtureGraphDir, strict: false })
+    await withTempGraph(edgeYaml, async dir => {
+      const graph = await loadGraph({ graphPath: dir, strict: false })
+      const dups = graph.diagnostics.filter(d => d.message.includes('duplicate edge ID'))
+      assert.equal(dups.length, 1)
+      assert.equal(dups[0].severity, 'error')
+      assert.ok(dups[0].message.includes(edgeId))
+      assert.ok(dups[0].message.includes('zz-dup.edges.yaml'))
+      assert.ok(dups[0].message.includes('corum.edges.yaml'))
+
+      assert.ok(findEdgeById(graph, edgeId))
+      // diagnosticCount legitimately differs (it includes the duplicate error); everything else must match.
+      const { diagnosticCount: dupDiagnosticCount, ...summary } = getGraphSummary(graph)
+      const { diagnosticCount: baseDiagnosticCount, ...baseSummary } = getGraphSummary(baseline)
+      assert.equal(dupDiagnosticCount, baseDiagnosticCount + 1)
+      assert.deepEqual(summary, baseSummary)
+
+      deleteEdge(graph, edgeId)
+      assert.equal(findEdgeById(graph, edgeId), undefined)
+      for (const map of [graph.edgesByFrom, graph.edgesByTo]) {
+        assert.equal([...map.values()].flat().filter(e => e.id === edgeId).length, 0)
+      }
+    })
+  })
+
+  it('end to end: explicit edge re-declaring a generated edge is rejected in favour of the generated one', async () => {
+    const baseline = await loadGraph({ graphPath: fixtureGraphDir, strict: false })
+    const generated = [...baseline.edgesByFrom.values()].flat().find(e => e.generated === true)
+    assert.ok(generated, 'sample graph should contain a generated edge')
+    const yaml = `edges:\n  - from: ${generated.from}\n    to: ${generated.to}\n    type: ${generated.type}\n`
+    await withTempGraph(yaml, async dir => {
+      const graph = await loadGraph({ graphPath: dir, strict: false })
+      const matching = [...graph.edgesByFrom.values()].flat().filter(e => e.id === generated.id)
+      assert.equal(matching.length, 1)
+      assert.equal(matching[0].generated, true)
+      assert.equal([...graph.edgesByTo.values()].flat().filter(e => e.id === generated.id).length, 1)
+      const dups = graph.diagnostics.filter(d => d.message.includes('duplicate edge ID'))
+      assert.equal(dups.length, 1)
+      assert.equal(dups[0].severity, 'error')
+      assert.ok(dups[0].message.includes(generated.id))
+      assert.ok(dups[0].message.includes('generated'))
+      assert.ok(dups[0].message.includes('zz-dup.edges.yaml'))
+    })
   })
 
   it('sample graph loads with no duplicate edge diagnostics', async () => {
