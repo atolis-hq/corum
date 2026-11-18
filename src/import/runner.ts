@@ -57,7 +57,9 @@ export async function runImport(
 
   // Diff against the branch we are importing into, so repeated imports to the
   // same design branch stay idempotent; a new branch starts from the default.
-  const graph = await loadGraph({ source, ref: targetBranchExists ? targetBranch : defaultBranch })
+  const graph = await loadGraph({ source, ref: targetBranchExists ? targetBranch : defaultBranch, strict: false })
+  const targetLoadErrors = graph.diagnostics.filter(d => d.severity === 'error')
+  allDiagnostics.push(...targetLoadErrors)
 
   // ADR-009b: snapshot of node identities before this run, and the shared
   // reuse-before-inline index (target graph + same-run entries as they land).
@@ -151,6 +153,10 @@ export async function runImport(
   // inline → standalone by this run.
   const promotions = detectSchemaPromotions(priorNodes, newlyCreatedSchemaIds)
   rewritePromotedSchemaEdges(graph, promotions, allDiagnostics)
+
+  // A non-strict load omits unparsable files, and the commit replaces graph
+  // content, so committing would silently delete them. Leave the target untouched.
+  if (targetLoadErrors.length > 0) return { diagnostics: allDiagnostics }
 
   const graphPath = runtimeConfig.kind === 'filesystem' ? runtimeConfig.graphPath : undefined
   const contentMap = serializeGraph(graph, { sourceGraphPath: graphPath, outputGraphPath: graphPath })
