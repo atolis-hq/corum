@@ -6,7 +6,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadGraph } from '../src/loader/index.js'
 import { serializeGraph } from '../src/writer/graph-writer.js'
-import { isStructuralEdgeType } from '../src/graph/index.js'
+import { getClusterView, getGraphSummary, getLineage, isStructuralEdgeType } from '../src/graph/index.js'
 import {
   MutationError,
   buildAliasMap,
@@ -381,6 +381,69 @@ describe('deleteNode', () => {
     assert.ok((graph.edgesByTo.get(SCHEMA) ?? []).some(e => e.type === 'uses-type'))
     // exact-segment: sibling untouched
     assert.equal(graph.nodesById.get(SIBLING_TRAP)!.state, 'proposed')
+  })
+
+  describe('soft delete edge cascade', () => {
+    const OUT_TARGET = 'billing.Schema.invoice'
+    const TRAIL_FROM = 'orders.DomainModel.order.schemas.legacy'
+    function makeCascadeFixture(): Graph {
+      const graph = makeRenameFixture()
+      graph.nodesById.set(OUT_TARGET, makeNode(OUT_TARGET))
+      graph.nodesById.set(TRAIL_FROM, makeNode(TRAIL_FROM, { parentId: ROOT }))
+      for (const edge of [
+        makeEdge(SCHEMA, 'derived-from', OUT_TARGET),
+        makeEdge(SCHEMA, 'renamed-from', TRAIL_FROM),
+      ]) {
+        const from = graph.edgesByFrom.get(edge.from) ?? []
+        from.push(edge)
+        graph.edgesByFrom.set(edge.from, from)
+        const to = graph.edgesByTo.get(edge.to) ?? []
+        to.push(edge)
+        graph.edgesByTo.set(edge.to, to)
+      }
+      return graph
+    }
+    const find = (graph: Graph, id: string) => allEdges(graph).find(e => e.id === id)!
+
+    it('marks inbound and outbound cross-cluster edges removed and keeps them', () => {
+      const graph = makeCascadeFixture()
+      deleteNode(graph, SCHEMA, {}, new Set([SCHEMA]))
+      const inbound = find(graph, `${CONSUMER}__uses-type__${SCHEMA}`)
+      const outbound = find(graph, `${SCHEMA}__derived-from__${OUT_TARGET}`)
+      for (const edge of [inbound, outbound]) {
+        assert.equal(edge.state, 'removed')
+        assert.ok(edge.lastModifiedAt)
+      }
+      assertIndexIntegrity(graph)
+    })
+
+    it('leaves structural and renamed-from trail edges untouched', () => {
+      const graph = makeCascadeFixture()
+      deleteNode(graph, SCHEMA, {}, new Set([SCHEMA]))
+      assert.equal(find(graph, `${SCHEMA}__has-field__${FIELD}`).state, 'proposed')
+      const trail = find(graph, `${SCHEMA}__renamed-from__${TRAIL_FROM}`)
+      assert.equal(trail.state, 'proposed')
+      assert.equal(trail.lastModifiedAt, undefined)
+    })
+
+    it('default traversals no longer follow removed edges', () => {
+      const graph = makeCascadeFixture()
+      const before = getLineage(graph, [CONSUMER], { direction: 'both' })
+      assert.ok(before.nodes.some(n => n.id === SCHEMA))
+      deleteNode(graph, SCHEMA, {}, new Set([SCHEMA]))
+      const after = getLineage(graph, [CONSUMER], { direction: 'both' })
+      assert.ok(!after.nodes.some(n => n.id === SCHEMA))
+      assert.ok(!after.edges.some(e => e.to === SCHEMA))
+      const view = getClusterView(graph, CONSUMER, ['uses-type'])
+      assert.ok(!view.edges.some(e => e.to === SCHEMA))
+      assert.equal(getGraphSummary(graph).edgesByType['uses-type'], undefined)
+    })
+
+    it('hard delete is unchanged', () => {
+      const graph = makeCascadeFixture()
+      deleteNode(graph, SCHEMA, { purge: true }, new Set([SCHEMA]))
+      assert.ok(!allEdges(graph).some(e => e.from === SCHEMA || e.to === SCHEMA))
+    })
   })
 
   it('hard deletes (purges) an unmaterialised node by default, leaving no orphan edges', () => {

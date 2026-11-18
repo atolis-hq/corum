@@ -1,4 +1,5 @@
 import type { Edge, Graph } from '../schema/index.js'
+import { isVisibleEdgeType } from '../graph/index.js'
 import { MutationError } from './errors.js'
 import { shouldRecordTrail } from './rename.js'
 import {
@@ -55,6 +56,14 @@ export function deleteNode(
       const subtreeNode = graph.nodesById.get(id)!
       subtreeNode.state = 'removed'
       subtreeNode.lastModifiedAt = timestamp
+    }
+    // Cascade: explicit, non-hidden edges touching the subtree stop being live.
+    // Edges are kept (like the removed nodes); trail and structural edges are untouched.
+    for (const edge of collectEdgesTouching(graph, subtreeIds)) {
+      if (edge.generated || edge.state === 'removed') continue
+      if (!isVisibleEdgeType(graph, edge.type)) continue
+      edge.state = 'removed'
+      edge.lastModifiedAt = timestamp
     }
     return { tier: 'soft', affectedIds: subtreeIds }
   }

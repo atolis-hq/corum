@@ -271,6 +271,7 @@ function toEdgeDocument(graph: Graph, edge: Edge): Record<string, unknown> {
   if (edge.state !== 'proposed') doc.state = edge.state
   if (edge.stability !== 'unstable') doc.stability = edge.stability
   if (edge.notes !== undefined) doc.notes = edge.notes
+  if (edge.lastModifiedAt !== undefined) doc.lastModifiedAt = edge.lastModifiedAt
   if (edge.properties !== undefined && Object.keys(edge.properties).length > 0) {
     doc.properties = orderEdgeProperties(graph, edge)
   }
