@@ -434,6 +434,8 @@ describe('deleteNode', () => {
       const after = getLineage(graph, [CONSUMER], { direction: 'both' })
       assert.ok(!after.nodes.some(n => n.id === SCHEMA))
       assert.ok(!after.edges.some(e => e.to === SCHEMA))
+      const explicit = getLineage(graph, [CONSUMER], { direction: 'both', edgeTypes: ['uses-type'] })
+      assert.ok(!explicit.nodes.some(n => n.id === SCHEMA))
       const view = getClusterView(graph, CONSUMER, ['uses-type'])
       assert.ok(!view.edges.some(e => e.to === SCHEMA))
       assert.equal(getGraphSummary(graph).edgesByType['uses-type'], undefined)

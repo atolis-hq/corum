@@ -409,6 +409,37 @@ describe('working session (file source)', () => {
     )
   })
 
+  it('soft delete cascades edges to removed; discard restores them; commit persists state and lastModifiedAt', async () => {
+    const { source, graphDir } = makeFileFixture()
+    fs.mkdirSync(path.join(graphDir, 'edges'), { recursive: true })
+    fs.writeFileSync(
+      path.join(graphDir, 'edges/test.edges.yaml'),
+      `edges:\n  - from: ${INVOICE}\n    to: ${CUSTOMER}\n    type: uses-type\n`,
+    )
+    const edgeId = `${INVOICE}__uses-type__${CUSTOMER}`
+    const findEdge = (g: { edgesByFrom: Map<string, Edge[]> }) => (g.edgesByFrom.get(INVOICE) ?? []).find(e => e.id === edgeId)
+
+    const first = await startSession(source, { autosave: false })
+    assert.equal(findEdge(first.graph)?.state, 'proposed')
+    const del = await first.deleteNode(CUSTOMER)
+    assert.equal(del.removedEdgeCount, 1)
+    assert.match(del.summary, /1 edge marked removed/)
+    assert.equal(findEdge(first.graph)?.state, 'removed')
+    assert.equal(first.pendingChanges().diff.edges.modified, 1)
+    first.discard()
+
+    const second = await startSession(source, { autosave: false })
+    assert.equal(findEdge(second.graph)?.state, 'proposed')
+    assert.equal(findEdge(second.graph)?.lastModifiedAt, undefined)
+    await second.deleteNode(CUSTOMER)
+    await second.commitChanges('soft delete customer')
+
+    const reloaded = await loadGraph({ source, strict: false })
+    const persisted = findEdge(reloaded)
+    assert.equal(persisted?.state, 'removed')
+    assert.ok(persisted?.lastModifiedAt)
+  })
+
   it('deleteNode soft-deletes materialised nodes and purges on request; deleteEdge is hard', async () => {
     const { source } = makeFileFixture()
     const session = await startSession(source, { autosave: false })

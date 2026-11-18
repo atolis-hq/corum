@@ -80,6 +80,8 @@ export interface RenameNodeResult extends OperationResult {
 export interface DeleteNodeResult extends OperationResult {
   tier: 'soft' | 'hard'
   affectedIds: string[]
+  /** Soft tier only: number of explicit edges cascaded to state removed. */
+  removedEdgeCount?: number
 }
 
 export interface DeleteEdgeResult extends OperationResult {
@@ -291,7 +293,7 @@ export class WorkingSession {
   async deleteNode(id: string, opts: DeleteNodeOptions = {}): Promise<DeleteNodeResult> {
     this.assertOpen()
     const result = deleteNodePrimitive(this.graph, id, opts, this.defaultBranchIds)
-    const summary = `delete ${id} (${result.tier}, ${result.affectedIds.length} node${result.affectedIds.length === 1 ? '' : 's'})`
+    const summary = `delete ${id} (${result.tier}, ${result.affectedIds.length} node${result.affectedIds.length === 1 ? '' : 's'}${result.removedEdgeCount ? `, ${result.removedEdgeCount} edge${result.removedEdgeCount === 1 ? '' : 's'} marked removed` : ''})`
     await this.record('delete_node', { id, ...opts }, summary)
     return { ...result, warnings: [], summary }
   }
