@@ -45,12 +45,15 @@ describe('import runner — stable extractedFrom', () => {
 
   async function runIn(cwd: string, config: ImportConfig, graphDir: string) {
     const prev = process.cwd()
+    const prevEnv = process.env.CORUM_GRAPH_PATH
     process.chdir(cwd)
     try {
       process.env.CORUM_GRAPH_PATH = graphDir
       await runImport(config, createGraphRuntimeConfig())
     } finally {
       process.chdir(prev)
+      if (prevEnv === undefined) delete process.env.CORUM_GRAPH_PATH
+      else process.env.CORUM_GRAPH_PATH = prevEnv
     }
   }
 
@@ -87,21 +90,31 @@ describe('import runner — stable extractedFrom', () => {
     }
   })
 
-  it('updates legacy absolute extractedFrom in place without duplicating', async () => {
+  it('updates legacy absolute extractedFrom in place; nodes dropped under the old key are not removed', async () => {
     const graphDir = await setup()
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-key-legacy-'))
     try {
-      const abs = path.join(cwd, 'orders.yaml')
-      fs.copyFileSync(path.join(specsDir, 'orders-simple.yaml'), abs)
-      const config = makeConfig('orders.yaml')
-      await runIn(cwd, config, graphDir)
-      const g = await loadGraph({ graphPath: graphDir })
-      const count = g.nodesById.size
-      // Simulate a legacy graph by re-importing and checking key; then count stability.
-      await runIn(cwd, config, graphDir)
-      const g2 = await loadGraph({ graphPath: graphDir })
-      assert.equal(g2.nodesById.size, count)
-      assert.equal(g2.nodesById.get('orders.APIEndpoint.createOrder')?.extractedFrom, 'orders.yaml')
+      const op = (id: string) => ({ post: { operationId: id, responses: {} } })
+      const spec = (paths: Record<string, unknown>) => JSON.stringify({ openapi: '3.0.3', info: { title: 'Orders', version: '1.0' }, paths })
+      const abs = path.join(cwd, 'orders.json')
+      fs.writeFileSync(abs, spec({ '/orders/create': op('createOrder'), '/orders/refund': op('refundOrder') }))
+
+      // An absolute spec in the config yields an absolute extractedFrom, like a legacy graph.
+      await runIn(cwd, makeConfig(abs), graphDir)
+      const legacy = await loadGraph({ graphPath: graphDir })
+      assert.equal(legacy.nodesById.get('orders.APIEndpoint.createOrder')?.extractedFrom, abs)
+      const count = legacy.nodesById.size
+
+      fs.writeFileSync(abs, spec({ '/orders/create': op('createOrder') }))
+      await runIn(cwd, makeConfig('orders.json'), graphDir)
+      const after = await loadGraph({ graphPath: graphDir })
+
+      assert.equal(after.nodesById.size, count)
+      assert.equal(after.nodesById.get('orders.APIEndpoint.createOrder')?.extractedFrom, 'orders.json')
+      const dropped = after.nodesById.get('orders.APIEndpoint.refundOrder')
+      assert.ok(dropped)
+      assert.equal(dropped.extractedFrom, abs)
+      assert.notEqual(dropped.state, 'removed')
     } finally {
       fs.rmSync(graphDir, { recursive: true, force: true })
       fs.rmSync(cwd, { recursive: true, force: true })
