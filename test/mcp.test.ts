@@ -1188,6 +1188,23 @@ describe('MCP write tools', () => {
     }
   })
 
+  it('start_changes on a file source rejects a non-default branch immediately', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-mcp-file-branch-'))
+    try {
+      const source = createWriteFilesSource(tmpDir)
+      const mainGraph = await loadGraph({ source, strict: false })
+      const handlers = createMcpHandlers(mainGraph, source)
+
+      const result = await handlers.start_changes({ branch: 'feature-x', format: 'json' })
+      assert.equal(result.isError, true)
+      assert.match(result.content[0].text, /single branch/)
+      assert.match(result.content[0].text, /feature-x/)
+      assert.equal(getActiveSession(), null)
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
   it('discard_changes refreshes file-source reads to the autosaved on-disk state when autosave is enabled', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-mcp-file-write-'))
     try {

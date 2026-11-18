@@ -195,6 +195,13 @@ export async function startSession(
   const defaultBranch = await source.defaultBranch()
   const branch = options.branch ?? defaultBranch
 
+  if (isFileSource && options.branch !== undefined && options.branch !== defaultBranch) {
+    throw new MutationError([mutationDiagnostic(
+      'error',
+      `file sources have a single branch ('${defaultBranch}'); cannot start a session on '${options.branch}'`,
+    )])
+  }
+
   if (options.create) {
     if (isFileSource) {
       throw new MutationError([mutationDiagnostic(
