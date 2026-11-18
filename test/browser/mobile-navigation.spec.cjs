@@ -39,7 +39,7 @@ test('keyboard drill-down, Back, browser history, retained list and resizing', a
   await item.focus();
   await item.press('Enter');
   await expectDetail(page);
-  const back = page.getByRole('button', { name: 'Back to namespaces' });
+  const back = page.getByRole('button', { name: 'Back to models' });
   expect((await back.boundingBox()).height).toBeGreaterThanOrEqual(44);
   await back.click();
   await expectList(page);
@@ -71,7 +71,7 @@ test('direct links retain branch context and browser Back reaches the list', asy
   await expect(page).toHaveURL(/#\/feature%2Fmobile\/namespaces$/);
   await page.goForward();
   await expectDetail(page);
-  await page.getByRole('button', { name: 'Back to namespaces' }).click();
+  await page.getByRole('button', { name: 'Back to models' }).click();
   await expectList(page);
 });
 
@@ -79,7 +79,7 @@ test('generic namespace page opens as a detail pane and Back returns to the list
   await page.goto('/#/namespace?name=orders');
   await expectDetail(page);
   await expect(page.locator('.detail-pane h1')).toHaveText('orders');
-  await page.getByRole('button', { name: 'Back to namespaces' }).click();
+  await page.getByRole('button', { name: 'Back to models' }).click();
   await expect(page).toHaveURL(/\/namespaces$/);
   await expect(page.locator('.detail-pane')).toHaveAttribute('inert', '');
 });
@@ -91,7 +91,7 @@ test('reduced motion, landscape, dashboard and graph', async ({ page }) => {
   await page.locator('.nav-node-item').first().click();
   await expectDetail(page);
   expect(await page.locator('.detail-pane').evaluate(el => getComputedStyle(el).transitionDuration)).toBe('0s');
-  await page.getByRole('button', { name: 'Back to namespaces' }).click();
+  await page.getByRole('button', { name: 'Back to models' }).click();
   await expectList(page);
   await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
   await expect(page.locator('.hero-card').first()).toBeVisible();

@@ -1282,6 +1282,12 @@ describe('web server', () => {
       assert.match(styles, /\.overlay-conflict\s*\{[^}]*background:\s*color-mix\(in oklch,\s*#c44\s*5%,\s*var\(--paper\)\);/)
     })
 
+    it('app: primary nav and page heading say Models; dashboard card stays Namespaces', () => {
+      assert.match(app, /\{ id: 'namespaces', icon: 'circle-nodes', label: 'Models' \}/)
+      assert.match(app, /<h1>Models<\/h1>/)
+      assert.match(app, /label="Namespaces" \/>/)
+    })
+
     it('app: namespaces section navigation routes through /namespaces, with no /components route', () => {
       assert.match(app, /function handleSection\(section\) \{/)
       assert.match(app, /navigate\(buildRoute\(\{ pathname: `\/\$\{section\}`, params: \{\}, branch: viewingRef \}\)\);/)
