@@ -47,7 +47,7 @@ Status: none filed yet.
 - **Depends on:** issues 1-3.
 
 ## 7. Additional plugin test coverage
-- **Intended outcome:** Beyond the core tests, add coverage for: duplicate plugin ids across origins, `graph.yaml` `enabled: false` override of a built-in, `engines` prerelease handling, reload re-resolving the plugin list, and a branch named `p` (documented unreachable).
+- **Intended outcome:** Beyond the core tests, add coverage for: duplicate plugin ids across origins, `graph.yaml` `enabled: false` override of a built-in, `engines` prerelease handling, reload re-resolving the plugin list, a branch named `p` (documented unreachable), and an overlay/branch fixture so SchemaCard ghost-field rows and the overlay legend (`web/sdk/schema-rows.js`) are covered by an e2e or visual check (the sample graph has no overlay data, so the htm rewrite of these was not visually verified).
 - **Acceptance:** tests present and passing in `npm test` / `npm run test:web`.
 
 ## 8. Flaky Playwright specs (mobile navigation, table scroll)
