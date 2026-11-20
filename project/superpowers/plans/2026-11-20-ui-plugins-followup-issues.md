@@ -58,5 +58,13 @@ Status: none filed yet.
 - **Approach (non-binding):** Investigate whether focus is stolen by a later re-render; add a deterministic "app ready" marker (for example a `data-ready` attribute set once the first render completes) and wait on it. Re-check after the plugin core lands, since Babel is no longer the only startup cost.
 - **Labels:** `bug`. **Depends on:** none (can run any time; more useful after core Stage 3).
 
-## 9. Later / not yet issues (decide when needed)
+## 9. Make the generic node page reachable for single-claimant nodes
+- **Problem:** With a single plugin claiming a template (`opens`), `#/node?id=…` always `location.replace`s to the plugin page (`web/app.jsx` NodePage), so the generic node page for that node cannot be reached or shared. ADR-010 section 5a calls the generic page the canonical address and fallback; a plugin page also has no way to link back to it.
+- **Intended outcome:** Every node has a reachable, shareable generic view regardless of plugin claims, and resolution still redirects by default so "open node" lands in the claimant plugin.
+- **Acceptance:** Playwright spec: a node claimed by one plugin can be opened on the generic page via an explicit generic link, the plugin page offers a "Generic view" link, and the default `hrefForNode` still resolves to the plugin page.
+- **Constraints:** Do not change the resolution order in ADR-010 5a for default links; no new manifest fields unless the ADR is amended.
+- **Approach (non-binding):** A `view=generic` route parameter that bypasses redirect (and `hrefForNode(id, { via: 'generic' })`); add the link to the plugin-unavailable page and the Open-in bar. Update ADR-010 5a accordingly.
+- **Labels:** `bug`. **Depends on:** core Stage 2.
+
+## 10. Later / not yet issues (decide when needed)
 - Custom node renderers, plugin-defined extension points, shadow-DOM isolation, pinned default openers for ambiguous nodes, server-side extension hooks, a mock-host test harness, `corum plugin update`, per-user plugin overrides, standalone plugin install via the pack registry.
