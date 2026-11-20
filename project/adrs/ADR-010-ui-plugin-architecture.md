@@ -1,7 +1,7 @@
 # ADR 010 — UI Plugin Architecture
 
 **Date:** 2026-11-20
-**Status:** Proposed
+**Status:** Accepted
 **Supersedes:** the "Plugin extensibility" section of ADR-007 (the `window.CorumPlugins` registry). ADR-007's no-build-step decision still stands; its use of Babel-in-the-browser for JSX does not (see section 3).
 
 ## Decision
@@ -101,7 +101,24 @@ export function mountJourneyMap(el, ctx) {
 }
 ```
 
-`ctx` provides: current branch, the data client, `navigate`, `openNode`/`hrefForNode`, route params (including the focused node id), and for node-scoped contributions the node and its template. The SDK ships a React adapter (`corum:ui/react`: `mountReact(Component)`) that wraps a component in this contract. Built-in plugins use the adapter.
+`ctx` is one object per page mount, kept live by the host. Its fields:
+
+| Field | Meaning |
+|---|---|
+| `route`, `params` | The parsed current route and its query parameters (`URLSearchParams`), including the focused node `id`. |
+| `branch` | The branch segment of the URL, if any. |
+| `viewingRef` | The branch ref being viewed (`null` for file sources). |
+| `templates` | The loaded templates for the viewed graph. |
+| `api.get(path, params)` | Branch-aware GET over the `/api/*` endpoints (`path` is `/api/graph` or just `graph`; `params` is an object, `URLSearchParams` or list of pairs). It adds the `ref` query parameter from `viewingRef`, returns parsed JSON and throws on non-2xx. |
+| `navigate(hash)` | Set the location hash. |
+| `hrefForNode(id, { via })`, `openNode(id, { via })` | Node link resolution from section 5a, as an href or as a navigation. |
+| `hrefForPage(params, { page })` | Href for this plugin's own page (default: the current one) with the given query parameters and the viewed branch. |
+| `subscribe(listener)` | Calls `listener` when `route`/`params`, `viewingRef` or `templates` change; returns an unsubscribe function. |
+| `onError(error)` | Report an asynchronous failure so the host shows its error panel for this mount. |
+
+The host remounts a page only when the plugin, page or viewed branch changes. A change to query parameters alone (a graph focusing a node, a table changing sort order) does not remount: the page reads the new values through `subscribe`. Framework-neutral handlers should re-render from `ctx` inside their listener; the plugin owns its state across such changes.
+
+The SDK ships a React adapter (`corum:ui/react`: `mountReact(Component)`) that wraps a component in this contract. The component receives `ctx` as a prop, and a `useCtx()` hook returns the same value anywhere beneath it; both re-render whenever `subscribe` fires, so `ctx.params` and friends are plain values in render code. Built-in plugins use the adapter.
 
 The SDK (`corum:ui`) also exports the shared components currently in `web/primitives.jsx` (`SchemaCard`, `StateTag`, `StabilityTag`, `TemplateBadge`, `PropertiesTable`, `Icon`, ...). Plugins always obtain shared components from the SDK, never by file path or globals. This keeps future host-controlled overrides of shared components (for example replacing how a template renders in a card) possible without touching plugins. Such overrides are not part of v1.
 
@@ -216,7 +233,6 @@ After the first third-party plugin works: `corum plugin init <id>` (scaffold), `
 
 ## Open items (builder decisions)
 
-- The exact SDK and `ctx` shape, and which shared components are exported.
 - Whether the host shell's own code (Dashboard, node page) stays JSX compiled in the page or moves to plain ES modules too; it only needs to consume the SDK as an ES module.
 - Whether reactflow and elk have ESM builds that can be vendored or need generated shim modules.
 - Whether standalone plugin installation goes through the pack registry or a new registry entry type.
