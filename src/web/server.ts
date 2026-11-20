@@ -742,7 +742,17 @@ export function createApp(
     res.type('html').send(indexHtml)
   })
 
+  app.use(['/plugins', '/vendor'], (_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    next()
+  })
+
   registerVendorRoutes(app)
+
+  // Built-in plugin sources are reachable only through /plugins/:id/* (which enforces enabled state and extension rules).
+  app.use('/builtin', (_req, res) => {
+    res.status(404).json({ error: 'Not found' })
+  })
 
   app.use(express.static(WEB_DIR, {
     setHeaders(res, filePath) {
@@ -751,6 +761,19 @@ export function createApp(
       }
     },
   }))
+
+  // Final error handler: never leak stack traces or filesystem paths.
+  app.use((err: unknown, _req: express.Request, res: Response, next: express.NextFunction) => {
+    if (res.headersSent) {
+      next(err)
+      return
+    }
+    const status = typeof err === 'object' && err !== null && typeof (err as { status?: unknown }).status === 'number'
+      ? (err as { status: number }).status
+      : 500
+    const clientError = status >= 400 && status < 500
+    res.status(clientError ? status : 500).json({ error: clientError ? (status === 400 ? 'Bad request' : 'Request failed') : 'Internal server error' })
+  })
 
   return app
 }

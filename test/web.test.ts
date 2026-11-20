@@ -328,6 +328,36 @@ describe('web server', () => {
     })
   })
 
+  describe('plugin asset hardening', () => {
+    it('never serves /builtin/* through static handling', async () => {
+      for (const p of ['/builtin/graph/plugin.yaml', '/builtin/graph/index.js', '/builtin/']) {
+        const res = await fetch(`http://localhost:${handle.port}${p}`)
+        assert.equal(res.status, 404, p)
+      }
+    })
+
+    it('sets nosniff on plugin and vendor responses', async () => {
+      const plugin = await fetch(`http://localhost:${handle.port}/plugins/graph/index.js`)
+      assert.equal(plugin.status, 200)
+      assert.equal(plugin.headers.get('x-content-type-options'), 'nosniff')
+      for (const p of ['/vendor/react.umd.js', '/vendor/shims/react.js']) {
+        const res = await fetch(`http://localhost:${handle.port}${p}`)
+        assert.equal(res.headers.get('x-content-type-options'), 'nosniff', p)
+      }
+    })
+
+    it('returns JSON 400 without stack traces for malformed percent-escapes', async () => {
+      for (const p of ['/plugins/graph/%', '/vendor/%', '/api/overlay/%']) {
+        const res = await fetch(`http://localhost:${handle.port}${p}`)
+        assert.equal(res.status, 400, p)
+        assert.match(res.headers.get('content-type') ?? '', /application\/json/, p)
+        const text = await res.text()
+        assert.ok(!/node_modules|at\s|[A-Za-z]:\|\/Users\//.test(text), `${p}: ${text}`)
+        assert.ok(typeof (JSON.parse(text) as { error: unknown }).error === 'string')
+      }
+    })
+  })
+
   describe('multi-branch API', () => {
     let sourceHandle: WebServerHandle
 
