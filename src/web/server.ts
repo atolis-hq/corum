@@ -3,7 +3,6 @@ import express from 'express'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { existsSync, readFileSync, readdirSync, watch, type FSWatcher } from 'node:fs'
-import { readdir } from 'node:fs/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { AddressInfo } from 'node:net'
 import type { Response } from 'express'
@@ -33,12 +32,16 @@ import { getPropertySchemasFromTemplate } from '../loader/template-props.js'
 import type { EdgeType, Graph, MultiGraph, Node, Template } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
 import { registerVendorRoutes } from './vendor.js'
+import { resolvePluginAsset } from './plugins/assets.js'
+import { createPluginRuntime, type PluginRuntime } from './plugins/runtime.js'
 import { createGraphRuntimeConfig } from '../source/config.js'
+import { FileGraphSource } from '../source/file-source.js'
 import type { GraphSource } from '../source/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const WEB_DIR = path.join(__dirname, '..', '..', '..', 'web')
+const BUILTIN_PLUGIN_DIR = path.join(WEB_DIR, 'builtin')
 const require = createRequire(import.meta.url)
 const { version } = require('../../../package.json') as { version: string }
 
@@ -99,15 +102,6 @@ async function getGraphForRef(ref: string, cache: MultiGraphCache, fallback: Gra
   const multi = await cache.get()
   const branch = multi.branches.find(item => item.ref === ref)
   return branch?.graph ?? fallback
-}
-
-async function getPluginFiles(): Promise<string[]> {
-  try {
-    const files = await readdir(path.join(WEB_DIR, 'plugins'))
-    return files.filter(file => file.endsWith('.jsx'))
-  } catch {
-    return []
-  }
 }
 
 function getNavigationOwnership(graph: Graph, node: Node): { parentId: string; ownedSection: string } | undefined {
@@ -364,6 +358,12 @@ export function createApp(
   source?: GraphSource,
   multiCache?: MultiGraphCache,
   onReloadRequest?: () => Promise<void>,
+  pluginRuntime: PluginRuntime = createPluginRuntime({
+    graph,
+    graphDir: null,
+    builtinDir: BUILTIN_PLUGIN_DIR,
+    corumVersion: version,
+  }),
 ): express.Application {
   const app = express()
 
@@ -650,9 +650,29 @@ export function createApp(
   })
 
   app.get('/api/plugins', (_req, res) => {
-    getPluginFiles()
-      .then(files => res.json(files))
-      .catch(() => res.json([]))
+    res.setHeader('Cache-Control', 'no-cache')
+    res.json(pluginRuntime.statuses())
+  })
+
+  app.get('/plugins/:id/*', (req, res) => {
+    const dir = pluginRuntime.enabledDir(req.params.id)
+    const asset = dir ? resolvePluginAsset(dir, (req.params as Record<string, string>)[0] ?? '') : null
+    if (!asset) {
+      res.status(404).json({ error: 'Not found' })
+      return
+    }
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('ETag', asset.etag)
+    res.setHeader('Content-Type', asset.contentType)
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    const ifNoneMatch = req.headers['if-none-match']
+    if (typeof ifNoneMatch === 'string' && ifNoneMatch.split(',').some(tag => tag.trim() === asset.etag)) {
+      res.status(304).end()
+      return
+    }
+    res.sendFile(asset.file, { etag: false, lastModified: false, cacheControl: false, dotfiles: 'allow' }, err => {
+      if (err && !res.headersSent) res.status(404).json({ error: 'Not found' })
+    })
   })
 
   app.get('/api/branches', async (_req, res) => {
@@ -752,6 +772,15 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
   const reloadEvents = createReloadEvents()
   const multiCache = options.source ? createMultiGraphCache(options.source) : undefined
   let reloadInFlight: Promise<void> | null = null
+  // Git sources get built-in plugins only; standalone/pack plugin files are read from disk.
+  const pluginGraphDir = options.source && !(options.source instanceof FileGraphSource) ? null : graphPath
+  const pluginRuntime = createPluginRuntime({
+    graph,
+    graphDir: pluginGraphDir,
+    builtinDir: BUILTIN_PLUGIN_DIR,
+    corumVersion: version,
+    logger,
+  })
 
   async function reloadState(reason: string): Promise<void> {
     if (reloadInFlight) return reloadInFlight
@@ -761,6 +790,7 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
         : await loadGraph({ graphPath, strict: true })
       replaceGraph(graph, nextGraph)
       multiCache?.invalidate()
+      pluginRuntime.refresh()
       options.onReload?.()
       reloadEvents.notify()
       logger(`[corum] graph reloaded after ${reason}`)
@@ -773,7 +803,7 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
     }
   }
 
-  const app = createApp(graph, reloadEvents, options.source, multiCache, () => reloadState('manual reload'))
+  const app = createApp(graph, reloadEvents, options.source, multiCache, () => reloadState('manual reload'), pluginRuntime)
   const stopWatcher = isFileWatcherEnabled(options)
     ? startGraphFileWatcher(graph, {
         graphPath,
@@ -781,6 +811,7 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
         logger,
         onReload: () => {
           multiCache?.invalidate()
+          pluginRuntime.refresh()
           options.onReload?.()
           reloadEvents.notify()
         },
