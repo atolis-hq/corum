@@ -1,0 +1,7 @@
+id: graph
+version: 0.1.0
+engines: { corum: ">=0.1.0" }
+main: ./index.js
+contributes:
+  pages:
+    - { id: view, title: Graph, icon: diagram-project, order: 20, mount: mountGraph }

@@ -1259,6 +1259,7 @@ describe('web server', () => {
     let statusCodes = { primitives: 0, app: 0, graph: 0, styles: 0 }
 
     before(async () => {
+      const graphFiles = ['index.js', 'constants.js', 'layout.js', 'levels.js', 'rf-builders.js', 'node-cards.js', 'toolbar.js', 'view.js']
       const sdkFiles = ['ui.js', 'properties.js', 'schema-model.js', 'schema-rows.js', 'schema-card.js']
       const [primitivesRes, appRes, graphRes, styleRes] = await Promise.all([
         Promise.all(sdkFiles.map(file => fetch(`http://localhost:${handle.port}/sdk/${file}`))).then(responses => ({
@@ -1266,7 +1267,10 @@ describe('web server', () => {
           text: async () => (await Promise.all(responses.map(r => r.text()))).join('\n'),
         })),
         fetch(`http://localhost:${handle.port}/app.jsx`),
-        fetch(`http://localhost:${handle.port}/graph.jsx`),
+        Promise.all(graphFiles.map(file => fetch(`http://localhost:${handle.port}/plugins/graph/${file}`))).then(responses => ({
+          status: responses.every(r => r.status === 200) ? 200 : 500,
+          text: async () => (await Promise.all(responses.map(r => r.text()))).join('\n'),
+        })),
         fetch(`http://localhost:${handle.port}/style.css`),
       ])
       statusCodes = { primitives: primitivesRes.status, app: appRes.status, graph: graphRes.status, styles: styleRes.status }
@@ -1395,7 +1399,7 @@ describe('web server', () => {
     it('app: namespaces section navigation routes through /namespaces, with no /components route', () => {
       assert.match(app, /function handleSection\(section, pluginPage\) \{/)
       assert.match(app, /: `\/\$\{section\}`;\s*navigate\(buildRoute\(\{ pathname, params: \{\}, branch: viewingRef \}\)\);/)
-      assert.match(app, /const showTree = \(activeSection === 'namespaces' \|\| activeNodeId\) && activeSection !== 'graph';/)
+      assert.match(app, /const showTree = activeSection === 'namespaces' \|\| activeNodeId;/)
       assert.match(app, /} else if \(route\.pathname === '\/namespaces'\) \{\s*page = <NamespacesPage \/>;/)
       assert.doesNotMatch(app, /\/components/)
       assert.doesNotMatch(app, /ComponentsPage/)
@@ -1422,7 +1426,7 @@ describe('web server', () => {
     })
 
     it('graph: kind filter defaults to component and colours nodes by kind', () => {
-      assert.match(graph, /const kindFilter = resolveKindFilter\(requestedKind, graphData\?\.nodes \?\? \[\]\);/)
+      assert.match(graph, /const kindFilter = resolveKindFilter\(requestedKind, graphData\?\.nodes \?\? \[\]\)/)
       assert.match(graph, /filterByKind\(graphData\.nodes, graphData\.edges, kindFilter\)/)
       assert.match(graph, /aria-label="Kind filter"/)
       assert.match(graph, /\{ id: 'all', label: 'All' \}/)
@@ -1430,12 +1434,12 @@ describe('web server', () => {
     })
 
     it('graph: node cards render status beside stability in the footer, not in the header', () => {
-      assert.doesNotMatch(graph, /<div className="graph-node-card-header">\s*<TemplateBadge name=\{data\.templateLabel\} colour=\{colour\} \/>\s*<\/div>/)
-      assert.match(graph, /<div className="graph-node-card-footer">[\s\S]*<StabilityTag stability=\{data\.stability\} \/>[\s\S]*<StateTag state=\{data\.state\} \/>/)
+      assert.doesNotMatch(graph, /<div className="graph-node-card-header">\s*<\$\{TemplateBadge\} name=\$\{data\.templateLabel\} colour=\$\{colour\} \/>\s*<\/div>/)
+      assert.match(graph, /<div className="graph-node-card-footer">[\s\S]*<\$\{StabilityTag\} stability=\$\{data\.stability\} \/>[\s\S]*<\$\{StateTag\} state=\$\{data\.state\} \/>/)
     })
 
     it('graph: node card titles use a dedicated wrapped block instead of single-line truncation', () => {
-      assert.match(graph, /<div className="graph-node-card-body">\s*<div className="graph-node-card-text">\s*<div className="graph-node-card-name" title=\{data\.nodeId\}>\{data\.label\}<\/div>\s*<div className="graph-node-card-component" style=\{\{ color: data\.kindColour \}\}>\{data\.component\}<\/div>\s*<\/div>\s*<div className="graph-node-card-type">\s*<TemplateBadge name=\{data\.templateLabel\} colour=\{colour\} \/>\s*<\/div>\s*<\/div>/)
+      assert.match(graph, /<div className="graph-node-card-body">\s*<div className="graph-node-card-text">\s*<div className="graph-node-card-name" title=\$\{data\.nodeId\}>\$\{data\.label\}<\/div>\s*<div className="graph-node-card-component" style=\$\{\{ color: data\.kindColour \}\}>\$\{data\.component\}<\/div>\s*<\/div>\s*<div className="graph-node-card-type">\s*<\$\{TemplateBadge\} name=\$\{data\.templateLabel\} colour=\$\{colour\} \/>\s*<\/div>\s*<\/div>/)
       assert.match(styles, /\.graph-node-card-text\s*\{[^}]*min-height:\s*calc\(\(1\.25em \* 2\) \+ 12px\);/s)
       assert.match(styles, /\.graph-node-card-name\s*\{[^}]*white-space:\s*normal;[^}]*overflow:\s*visible;[^}]*text-overflow:\s*clip;[^}]*line-height:\s*1\.25;/s)
       assert.match(styles, /\.graph-node-card-type\s*\{[^}]*margin-top:\s*6px;/)
@@ -1445,45 +1449,51 @@ describe('web server', () => {
     })
 
     it('graph: depth control allows level 1 as the minimum step', () => {
-      assert.match(graph, /const DEPTH_STEPS = \[1, 2, 3, 4, 5, Infinity\];/)
+      assert.match(graph, /export const DEPTH_STEPS = \[1, 2, 3, 4, 5, Infinity\]/)
     })
 
     it('graph: node cards keep parent labels even when the parent node is outside the visible focus depth', () => {
-      assert.match(graph, /const parentLabel = n\.parentId \? getDisplayName\(n\.parentId\) : null;/)
+      assert.match(graph, /const parentLabel = n\.parentId \? getDisplayName\(n\.parentId\) : null/)
     })
 
-    it('graph: focus view fetches lineage data instead of using buildFocusGraph', () => {
+    it('graph: focus view fetches lineage data through ctx.api instead of using buildFocusGraph', () => {
       assert.doesNotMatch(graph, /buildFocusGraph/)
-      assert.match(graph, /const \[focusData, setFocusData\] = useState\(null\);/)
-      assert.match(graph, /const debounceTimerRef = useRef\(null\);/)
-      assert.match(graph, /fetch\(`\/api\/lineage\?\$\{params\}`\)/)
+      assert.match(graph, /const \[focusData, setFocusData\] = useState\(null\)/)
+      assert.match(graph, /const debounceTimerRef = useRef\(null\)/)
+      assert.match(graph, /ctx\.api\.get\('\/api\/lineage', \[/)
+      assert.doesNotMatch(graph, /\bfetch\(/)
     })
 
     it('graph: edge controls are derived from graph response types and new types default visible', () => {
-      assert.match(graph, /const availableEdgeTypes = useMemo\(\(\) => collectEdgeTypes\(graphData\?\.edges \?\? \[\], focusData\?\.edges \?\? \[\]\), \[graphData, focusData\]\);/)
+      assert.match(graph, /const availableEdgeTypes = useMemo\(\(\) => collectEdgeTypes\(graphData\?\.edges \?\? \[\], focusData\?\.edges \?\? \[\]\), \[graphData, focusData\]\)/)
       assert.match(graph, /function loadHiddenEdgeTypes\(\) \{[\s\S]*hiddenTypes/)
       assert.match(graph, /new Set\(availableEdgeTypes\.filter\(type => !hiddenEdgeTypes\.has\(type\)\)\)/)
-      assert.match(graph, /<GraphToolbar[\s\S]*edgeTypes=\{availableEdgeTypes\}/)
+      assert.match(graph, /<\$\{GraphToolbar\}[\s\S]*edgeTypes=\$\{availableEdgeTypes\}/)
       assert.doesNotMatch(graph, /ALL_EDGE_TYPES/)
     })
 
     it('graph: graph view keeps a single React Flow canvas instance and refits after node updates', () => {
-      assert.match(graph, /const \[reactFlowInstance, setReactFlowInstance\] = useState\(null\);/)
-      assert.match(graph, /const pendingViewportRef = useRef\(null\);/)
-      assert.match(graph, /const lastFocusedNodeIdRef = useRef\(null\);/)
-      assert.match(graph, /pendingViewportRef\.current = \{ type: 'full' \};/)
-      assert.match(graph, /const focalChanged = lastFocusedNodeIdRef\.current !== focalNodeId;/)
-      assert.match(graph, /if \(focalChanged\) \{[\s\S]*pendingViewportRef\.current = \{ type: 'focus', nodeId: focalNodeId \};/)
-      assert.match(graph, /const measuredId = pending\.type === 'focus' \? pending\.nodeId : rfNodes\[0\]\?\.id;/)
-      assert.match(graph, /const measuredNode = measuredId \? reactFlowInstance\.getNode\(measuredId\) : null;/)
+      assert.match(graph, /const \[reactFlowInstance, setReactFlowInstance\] = useState\(null\)/)
+      assert.match(graph, /const pendingViewportRef = useRef\(null\)/)
+      assert.match(graph, /const lastFocusedNodeIdRef = useRef\(null\)/)
+      assert.match(graph, /pendingViewportRef\.current = \{ type: 'full' \}/)
+      assert.match(graph, /const focalChanged = lastFocusedNodeIdRef\.current !== focalNodeId/)
+      assert.match(graph, /if \(focalChanged\) \{[\s\S]*pendingViewportRef\.current = \{ type: 'focus', nodeId: focalNodeId \}/)
+      assert.match(graph, /const measuredId = pending\.type === 'focus' \? pending\.nodeId : rfNodes\[0\]\?\.id/)
+      assert.match(graph, /const measuredNode = measuredId \? reactFlowInstance\.getNode\(measuredId\) : null/)
       assert.match(graph, /if \(!measuredNode\?\.width \|\| !measuredNode\?\.height\) \{/)
       assert.match(graph, /requestAnimationFrame\(fitPendingViewport\)/)
       assert.match(graph, /pending\.type === 'focus'/)
-      assert.match(graph, /reactFlowInstance\.fitView\(\{\s*duration: 0,\s*padding: 0\.2,\s*\}\);/)
+      assert.match(graph, /reactFlowInstance\.fitView\(\{\s*duration: 0,\s*padding: 0\.2,\s*\}\)/)
       assert.doesNotMatch(graph, /nodes:\s*\[\{\s*id:\s*pending\.nodeId\s*\}\]/)
-      assert.match(graph, /pendingViewportRef\.current = null;/)
-      assert.match(graph, /onInit=\{setReactFlowInstance\}/)
+      assert.match(graph, /pendingViewportRef\.current = null/)
+      assert.match(graph, /onInit=\$\{setReactFlowInstance\}/)
       assert.doesNotMatch(graph, /key=\{canvasInstanceKey\}/)
+    })
+
+    it('graph: plugin ports reach the host only through the import map and corum:ui', () => {
+      assert.doesNotMatch(graph, /window\.CorumHost|window\.CorumRouter|window\.ReactFlow|window\.ELK/)
+      assert.match(graph, /export const mountGraph = mountReact\(GraphView\)/)
     })
 
     it('app: initial route state is derived from window.location.hash', () => {

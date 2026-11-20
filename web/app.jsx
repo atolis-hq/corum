@@ -105,7 +105,6 @@ function NavRail({ activeSection, onSection, pluginPages = [], debugMode, onDebu
   const items = [
     { id: 'dashboard', icon: 'grip', label: 'Dashboard' },
     { id: 'namespaces', icon: 'circle-nodes', label: 'Models' },
-    { id: 'graph', icon: 'diagram-project', label: 'Graph' },
     ...pluginPages.map(page => ({
       id: pluginSectionId(page),
       icon: page.icon ?? 'puzzle-piece',
@@ -909,7 +908,7 @@ function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate, viewing
         <button
           className="graph-nav-link"
           title="View in graph"
-          onClick={e => { e.stopPropagation(); navigate(buildRoute({ pathname: '/graph', params: { focus: linkedNodeId }, branch: viewingRef })); }}
+          onClick={e => { e.stopPropagation(); navigate(buildRoute({ pathname: '/p/graph/view', params: { focus: linkedNodeId }, branch: viewingRef })); }}
           style={{ marginLeft: 'auto' }}
         >
           <Icon name="diagram-project" size={11} />
@@ -1152,7 +1151,7 @@ function NodePage({ nodeId, templates, templatesByName, onNavigate, refreshToken
           <StabilityTag stability={root.stability} />
           <button
             className="graph-nav-link"
-            onClick={() => navigate(buildRoute({ pathname: '/graph', params: { focus: root.id }, branch: viewingRef }))}
+            onClick={() => navigate(buildRoute({ pathname: '/p/graph/view', params: { focus: root.id }, branch: viewingRef }))}
             title="View in graph"
           >
             <Icon name="diagram-project" size={11} />
@@ -1419,7 +1418,7 @@ function App() {
   const pluginPages = hostReady ? hostRegistry.pages() : [];
   const navTree = useMemo(() => buildNavTree(nodes, templates), [nodes, templates]);
   const kindSections = useMemo(() => groupNamespacesByKind(nodes, kinds), [nodes, kinds]);
-  const showTree = (activeSection === 'namespaces' || activeNodeId) && activeSection !== 'graph';
+  const showTree = activeSection === 'namespaces' || activeNodeId;
   useEffect(() => {
     if (!mobile || !showTree) return;
     const pane = detailOpen ? detailPane.current : listPane.current;
@@ -1534,14 +1533,6 @@ function App() {
     );
   } else if (route.plugin) {
     page = <PluginPage route={route} templates={templates} templatesByName={templatesByName} nodes={nodes} viewingRef={viewingRef} />;
-  } else if (route.pathname === '/graph') {
-    page = (
-      <window.CorumGraph.GraphView
-        route={route}
-        viewingRef={viewingRef}
-        templates={templates}
-      />
-    );
   } else {
     page = <div className="content"><p className="label-sm">Page not found.</p></div>;
   }

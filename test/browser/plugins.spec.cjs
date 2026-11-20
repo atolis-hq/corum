@@ -15,11 +15,13 @@ test('ok plugin mounts at its route and has a nav entry', async ({ page }) => {
   await expect(page.getByTestId('plugin-ok')).toHaveCount(0);
 });
 
-test('nav rail lists host items (Dashboard, Models, Graph) before plugin pages', async ({ page }) => {
+test('nav rail lists host items (Dashboard, Models) before plugin pages sorted by order', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.nav-rail-item', { hasText: 'OK Plugin' })).toBeVisible();
   const labels = await page.locator('.nav-rail-item span').allTextContents();
-  expect(labels.slice(0, 4)).toEqual(['Dashboard', 'Models', 'Graph', 'OK Plugin']);
+  expect(labels.slice(0, 2)).toEqual(['Dashboard', 'Models']);
+  // Orders: OK Plugin 10, Broken Import 20 and Graph 20 (title tie-break), Throws On Mount 30.
+  expect(labels.slice(2, 6)).toEqual(['OK Plugin', 'Broken Import', 'Graph', 'Throws On Mount']);
   expect(labels[labels.length - 1]).toBe('Debug');
 });
 
