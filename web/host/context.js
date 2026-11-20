@@ -54,7 +54,7 @@ export function createPluginContext(env, initialState, onError) {
   function hrefForNode(id, opts = {}) {
     const root = rootOf(id, lookupNodes())
     const keys = root ? env.matchKeysFor(root.template, state.templatesByName ?? new Map()) : []
-    return env.hrefForNode(env.registry, id, keys, { branch: state.viewingRef, via: opts.via })
+    return env.hrefForNode(env.registry, id, keys, { branch: state.viewingRef, via: opts.via, page: opts.page })
   }
 
   const ctx = {

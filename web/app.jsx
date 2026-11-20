@@ -1040,7 +1040,7 @@ function OpenInBar({ nodeId, claimants, actions, keys, viewingRef }) {
     <div className="open-in-bar" data-testid="open-in" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
       {claimants.length > 0 && <span className="label-xs">Open in…</span>}
       {claimants.map(claim => (
-        <a key={`${claim.pluginId}/${claim.id}`} href={hrefForNode(hostRegistry, nodeId, keys, { branch: viewingRef, via: claim.pluginId })}>
+        <a key={`${claim.pluginId}/${claim.id}`} href={hrefForNode(hostRegistry, nodeId, keys, { branch: viewingRef, via: claim.pluginId, page: claim.id })}>
           {claim.title}
         </a>
       ))}

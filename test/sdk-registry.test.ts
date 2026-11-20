@@ -156,6 +156,19 @@ describe('resolveNodeTarget / hrefForNode', () => {
     assert.deepEqual(resolveNodeTarget(reg, ['Journey'], { via: 'off' }), { kind: 'generic' })
   })
 
+  it('via links directly to the plugin page without requiring opens', () => {
+    const reg = createRegistry()
+    reg.registerPlugin(plugin('viewer', [page('late', []), page('early', [])].map((p, i) => ({ ...p, order: i === 0 ? 50 : 10 }))))
+    reg.registerPlugin(plugin('off', [page('x', [])], { status: 'disabled' }))
+    // first page by order, no opens needed, node type irrelevant
+    assert.deepEqual(resolveNodeTarget(reg, ['Anything'], { via: 'viewer' }), { kind: 'page', pluginId: 'viewer', pageId: 'early' })
+    assert.deepEqual(resolveNodeTarget(reg, ['Anything'], { via: 'viewer', page: 'late' }), { kind: 'page', pluginId: 'viewer', pageId: 'late' })
+    assert.deepEqual(resolveNodeTarget(reg, ['Anything'], { via: 'viewer', page: 'nope' }), { kind: 'generic' })
+    assert.deepEqual(resolveNodeTarget(reg, ['Anything'], { via: 'off' }), { kind: 'generic' })
+    assert.equal(hrefForNode(reg, 'a.b', ['Anything'], { via: 'viewer', page: 'late' }), '#/p/viewer/late?id=a.b')
+    assert.equal(hrefForNode(reg, 'a.b', [], { via: 'viewer' }), '#/p/viewer/early?id=a.b')
+  })
+
   it('hrefForNode builds generic, page and branch hrefs', () => {
     const reg = createRegistry()
     assert.equal(hrefForNode(reg, 'a.b', ['Journey'], {}), '#/node?id=a.b')
