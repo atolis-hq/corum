@@ -1,0 +1,8 @@
+id: needs-missing-template
+version: 1.0.0
+engines: { corum: ">=0.1.0" }
+requires: { templates: [NoSuchTemplate] }
+main: ./index.js
+contributes:
+  pages:
+    - { id: home, title: "Needs Missing", icon: puzzle-piece, order: 40, mount: mount, opens: [] }

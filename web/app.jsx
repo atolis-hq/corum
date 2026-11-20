@@ -10,7 +10,11 @@ const {
   TemplateBadge,
   PropertiesTable,
   SchemaCard,
+  matchKeysFor,
+  resolveNodeTarget,
+  hrefForNode,
 } = window.CorumHost.sdk;
+const hostRegistry = window.CorumHost.registry;
 const { buildNavTree, buildOverlayIndicatorIds, groupNamespacesByKind, namespaceEdges } = window.CorumNav;
 const { parseRoute, buildRoute } = window.CorumRouter;
 const { kindColour } = window.CorumGraphUtils;
@@ -93,11 +97,21 @@ function TopBar({ onSearchOpen }) {
   );
 }
 
-function NavRail({ activeSection, onSection, debugMode, onDebugMode }) {
+function pluginSectionId(page) {
+  return `plugin:${page.pluginId}/${page.id}`;
+}
+
+function NavRail({ activeSection, onSection, pluginPages = [], debugMode, onDebugMode }) {
   const items = [
     { id: 'dashboard', icon: 'grip', label: 'Dashboard' },
     { id: 'namespaces', icon: 'circle-nodes', label: 'Models' },
     { id: 'graph', icon: 'diagram-project', label: 'Graph' },
+    ...pluginPages.map(page => ({
+      id: pluginSectionId(page),
+      icon: page.icon ?? 'puzzle-piece',
+      label: page.title,
+      pluginPage: page,
+    })),
   ];
 
   return (
@@ -106,7 +120,7 @@ function NavRail({ activeSection, onSection, debugMode, onDebugMode }) {
         <button
           key={item.id}
           className={`nav-rail-item${activeSection === item.id ? ' active' : ''}`}
-          onClick={() => onSection(item.id)}
+          onClick={() => onSection(item.id, item.pluginPage)}
           title={item.label}
           type="button"
         >
@@ -936,7 +950,103 @@ function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate, viewing
   );
 }
 
-function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, overlayRefs, compact = true }) {
+class PluginErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error) {
+    console.error(`Plugin "${this.props.pluginId}" failed`, error);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="content" data-testid="plugin-error">
+          <h1>Plugin error</h1>
+          <p style={{ color: 'var(--warn)' }}>
+            Plugin "{this.props.pluginId}" failed: {this.state.error.message ?? String(this.state.error)}
+          </p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function PluginMount({ page, ctx }) {
+  const ref = React.useRef(null);
+  const [error, setError] = useState(null);
+  if (error) throw error;
+  useEffect(() => {
+    const dispose = page.mount(ref.current, { ...ctx, onError: setError });
+    return () => { if (typeof dispose === 'function') dispose(); };
+  }, [page.pluginId, page.id, ctx.routeKey]);
+  return <div ref={ref} className="plugin-host" data-plugin={page.pluginId} data-page={page.id} />;
+}
+
+function PluginUnavailablePage({ pluginId, reason, nodeId, viewingRef }) {
+  return (
+    <div className="content">
+      <h1>Plugin unavailable</h1>
+      <p>{reason ?? `Plugin "${pluginId}" is not available.`}</p>
+      {nodeId && (
+        <p>
+          <a href={buildRoute({ pathname: '/node', params: { id: nodeId }, branch: viewingRef })}>
+            Open the generic node page
+          </a>
+        </p>
+      )}
+    </div>
+  );
+}
+
+function PluginPage({ route, templates, viewingRef }) {
+  const { id: pluginId, page: pageId } = route.plugin;
+  const page = hostRegistry.findPage(pluginId, pageId);
+  if (!page) {
+    const entry = hostRegistry.plugins().find(plugin => plugin.id === pluginId);
+    let reason;
+    if (!entry) reason = `Plugin "${pluginId}" is not installed.`;
+    else if (entry.status !== 'enabled') reason = `Plugin "${pluginId}" is ${entry.status}${entry.reason ? `: ${entry.reason}` : '.'}`;
+    else reason = `Plugin "${pluginId}" has no page "${pageId}".`;
+    return (
+      <PluginUnavailablePage pluginId={pluginId} reason={reason} nodeId={route.params.get('id')} viewingRef={viewingRef} />
+    );
+  }
+  const routeKey = `${route.branch ?? ''}${route.pathname}?${route.params.toString()}`;
+  const ctx = { route, params: route.params, branch: route.branch, viewingRef, templates, routeKey };
+  return (
+    <PluginErrorBoundary key={routeKey} pluginId={pluginId}>
+      <PluginMount page={page} ctx={ctx} />
+    </PluginErrorBoundary>
+  );
+}
+
+function OpenInBar({ nodeId, claimants, actions, keys, viewingRef }) {
+  return (
+    <div className="open-in-bar" data-testid="open-in" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+      {claimants.length > 0 && <span className="label-xs">Open in…</span>}
+      {claimants.map(claim => (
+        <a key={`${claim.pluginId}/${claim.id}`} href={hrefForNode(hostRegistry, nodeId, keys, { branch: viewingRef, via: claim.pluginId })}>
+          {claim.title}
+        </a>
+      ))}
+      {claimants.length > 0 && (
+        <a href={buildRoute({ pathname: '/node', params: { id: nodeId }, branch: viewingRef })}>Generic view</a>
+      )}
+      {actions.map(action => (
+        <a key={`${action.pluginId}/${action.id}`} href={buildRoute({ pathname: `/p/${action.pluginId}/${action.page}`, params: { id: nodeId }, branch: viewingRef })}>
+          {action.label}
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function NodePage({ nodeId, templates, templatesByName, onNavigate, refreshToken, viewingRef, overlayRefs, compact = true }) {
   const [cluster, setCluster] = useState(null);
   const [error, setError] = useState(null);
 
@@ -954,9 +1064,31 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
       .catch(err => setError(String(err)));
   }, [nodeId, refreshToken, viewingRef, overlayRefs]);
 
+  const rootNode = cluster?.root ?? null;
+  const matchKeys = useMemo(
+    () => (rootNode && !rootNode.parentId ? matchKeysFor(rootNode.template, templatesByName) : []),
+    [rootNode, templatesByName],
+  );
+  const target = useMemo(
+    () => (matchKeys.length > 0 ? resolveNodeTarget(hostRegistry, matchKeys) : { kind: 'generic' }),
+    [matchKeys],
+  );
+
+  useEffect(() => {
+    if (target.kind !== 'page') return;
+    location.replace(buildRoute({
+      pathname: `/p/${target.pluginId}/${target.pageId}`,
+      params: { id: rootNode.id },
+      branch: viewingRef,
+    }));
+  }, [target, rootNode, viewingRef]);
+
   if (!nodeId) return <div className="content"><p className="label-sm">No node selected.</p></div>;
   if (error) return <div className="content"><p style={{ color: 'var(--warn)' }}>Error loading node: {error}</p></div>;
-  if (!cluster) return <div className="content"><p className="label-sm">Loading...</p></div>;
+  if (!cluster || target.kind === 'page') return <div className="content"><p className="label-sm">Loading...</p></div>;
+
+  const claimants = target.kind === 'chooser' ? target.claimants : [];
+  const nodeActions = matchKeys.length > 0 ? hostRegistry.nodeActionsFor(matchKeys) : [];
 
   const { root, descendants, includedNodes, edges } = cluster;
   const clusterIds = new Set([root.id, ...descendants.map(d => d.id)]);
@@ -998,6 +1130,9 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
 
   return (
     <div className="content">
+      {(claimants.length > 0 || nodeActions.length > 0) && (
+        <OpenInBar nodeId={root.id} claimants={claimants} actions={nodeActions} keys={matchKeys} viewingRef={viewingRef} />
+      )}
       <div id={anchorIdForNode(root.id)} style={{ marginBottom: 18 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
           <h1 style={{ margin: 0 }}>{displayName(root.id)}</h1>
@@ -1130,6 +1265,14 @@ function App() {
     try { return localStorage.getItem('corum:debugMode') === 'true'; } catch { return false; }
   });
   const [searchOpen, setSearchOpen] = useState(false);
+  const [allTemplates, setAllTemplates] = useState([]);
+  const [hostReady, setHostReady] = useState(false);
+
+  useEffect(() => {
+    window.CorumHost.ready.then(() => setHostReady(true));
+  }, []);
+
+  const templatesByName = useMemo(() => new Map(allTemplates.map(template => [template.name, template])), [allTemplates]);
 
   function handleDebugMode() {
     setDebugMode(prev => {
@@ -1144,11 +1287,13 @@ function App() {
     const refParam = targetViewingRef ? `?ref=${encodeURIComponent(targetViewingRef)}` : '';
     return Promise.all([
       fetch(`/api/templates${refParam}`).then(response => response.ok ? response.json() : Promise.reject(response.status)),
+      fetch(`/api/templates?includeCore=true${targetViewingRef ? `&ref=${encodeURIComponent(targetViewingRef)}` : ''}`).then(response => response.ok ? response.json() : Promise.reject(response.status)),
       fetch(`/api/nodes${refParam}`).then(response => response.ok ? response.json() : Promise.reject(response.status)),
       fetch(`/api/kinds${refParam}`).then(response => response.ok ? response.json() : Promise.reject(response.status)),
     ])
-      .then(([templateData, nodeData, kindData]) => {
+      .then(([templateData, allTemplateData, nodeData, kindData]) => {
         setTemplates(resolveTemplates(templateData));
+        setAllTemplates(allTemplateData);
         setNodes(nodeData);
         setKinds(kindData.kinds ?? []);
         setRefreshToken(token => token + 1);
@@ -1255,7 +1400,12 @@ function App() {
   if (activeNodeId) retainedNode.current = activeNodeId;
   const detailOpen = route.pathname === '/node' || route.pathname === '/namespace';
   const activeNamespace = route.pathname === '/namespace' ? route.params.get('name') : null;
-  const activeSection = activeNodeId || activeNamespace ? 'namespaces' : (route.pathname.slice(1) || 'dashboard');
+  const activeSection = activeNodeId || activeNamespace
+    ? 'namespaces'
+    : route.plugin
+      ? `plugin:${route.plugin.id}/${route.plugin.page}`
+      : (route.pathname.slice(1) || 'dashboard');
+  const pluginPages = hostReady ? hostRegistry.pages() : [];
   const navTree = useMemo(() => buildNavTree(nodes, templates), [nodes, templates]);
   const kindSections = useMemo(() => groupNamespacesByKind(nodes, kinds), [nodes, kinds]);
   const showTree = (activeSection === 'namespaces' || activeNodeId) && activeSection !== 'graph';
@@ -1309,8 +1459,9 @@ function App() {
       .catch(() => setOverlayIndicatorIds(new Set()));
   }, [viewingRef, overlayMode, overlayRefs, branches, nodes, templates]);
 
-  function handleSection(section) {
-    navigate(buildRoute({ pathname: `/${section}`, params: {}, branch: viewingRef }));
+  function handleSection(section, pluginPage) {
+    const pathname = pluginPage ? `/p/${pluginPage.pluginId}/${pluginPage.id}` : `/${section}`;
+    navigate(buildRoute({ pathname, params: {}, branch: viewingRef }));
   }
 
   function handleNamespace(name) {
@@ -1321,8 +1472,12 @@ function App() {
     navigate(buildRoute({ pathname: '/node', params: { id: nodeId }, branch: viewingRef }));
   }
 
+  function handleSearchNode(nodeId, templateName) {
+    navigate(hrefForNode(hostRegistry, nodeId, matchKeysFor(templateName, templatesByName), { branch: viewingRef }));
+  }
+
   let page;
-  if (loading) {
+  if (loading || !hostReady) {
     page = <div className="content"><p className="label-sm">Loading graph...</p></div>;
   } else if (error) {
     page = <div className="content"><p style={{ color: 'var(--warn)' }}>Error loading graph: {error}</p></div>;
@@ -1358,6 +1513,7 @@ function App() {
         key={activeNodeId}
         nodeId={activeNodeId}
         templates={templates}
+        templatesByName={templatesByName}
         onNavigate={handleNode}
         refreshToken={refreshToken}
         viewingRef={viewingRef}
@@ -1365,6 +1521,8 @@ function App() {
         compact={!debugMode}
       />
     );
+  } else if (route.plugin) {
+    page = <PluginPage route={route} templates={templates} viewingRef={viewingRef} />;
   } else if (route.pathname === '/graph') {
     page = (
       <window.CorumGraph.GraphView
@@ -1383,7 +1541,7 @@ function App() {
         <SearchModal
           nodes={nodes}
           templates={templates}
-          onNavigate={handleNode}
+          onNavigate={handleSearchNode}
           onClose={() => setSearchOpen(false)}
         />
       )}
@@ -1414,7 +1572,7 @@ function App() {
           inert={mobile && showTree && detailOpen ? '' : undefined}
           aria-hidden={mobile && showTree && detailOpen ? true : undefined}
         >
-          <NavRail activeSection={activeSection} onSection={handleSection} debugMode={debugMode} onDebugMode={handleDebugMode} />
+          <NavRail activeSection={activeSection} onSection={handleSection} pluginPages={pluginPages} debugMode={debugMode} onDebugMode={handleDebugMode} />
           {mobile && showTree && !detailOpen && (loading || error) && page}
           {showTree && !loading && !error && (
             <NavTree

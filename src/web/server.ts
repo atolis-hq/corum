@@ -392,6 +392,7 @@ export function createApp(
         core: template.info?.core ?? false,
         abstract: template.info?.abstract ?? false,
         extends: template.extends,
+        role: template.info?.role,
         description: template.info?.description,
         ui: template.ui,
       }))

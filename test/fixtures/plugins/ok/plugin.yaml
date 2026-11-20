@@ -1,0 +1,10 @@
+id: ok
+version: 1.0.0
+engines: { corum: ">=0.1.0" }
+requires: { templates: [] }
+main: ./index.js
+contributes:
+  pages:
+    - { id: home, title: "OK Plugin", icon: puzzle-piece, order: 10, mount: mount, opens: [] }
+  nodeActions:
+    - { id: view-in-ok, label: "View in OK", appliesTo: [DomainModel], page: home }

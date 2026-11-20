@@ -40,7 +40,7 @@ function SearchModal({ nodes, templates, onNavigate, onClose }) {
         if (results.length > 0) setSelectedIndex(i => (i - 1 + results.length) % results.length);
       }
       if (e.key === 'Enter' && results[selectedIndex]) {
-        onNavigate(results[selectedIndex].node.id);
+        onNavigate(results[selectedIndex].node.id, results[selectedIndex].node.template);
         onClose();
       }
     }
@@ -77,7 +77,7 @@ function SearchModal({ nodes, templates, onNavigate, onClose }) {
                 <div
                   key={node.id}
                   className={`search-result-row${index === selectedIndex ? ' selected' : ''}`}
-                  onClick={() => { onNavigate(node.id); onClose(); }}
+                  onClick={() => { onNavigate(node.id, node.template); onClose(); }}
                   title={node.id}
                 >
                   <TemplateBadge name={tplName} colour={colour} />

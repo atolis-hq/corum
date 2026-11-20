@@ -585,6 +585,13 @@ describe('web server', () => {
       assert.deepEqual(names, ['DomainModel', 'DomainOperation', 'Field', 'Schema'])
     })
 
+    it('exposes info.role so the UI can resolve match keys', async () => {
+      const res = await fetch(`http://localhost:${handle.port}/api/templates?includeCore=true`)
+      const body = await res.json() as Array<{ name: string; role?: string }>
+      const withRole = body.filter(t => t.role !== undefined)
+      assert.ok(withRole.length > 0, 'at least one fixture template declares a role')
+    })
+
     it('includes ui config in response', async () => {
       const res = await fetch(`http://localhost:${handle.port}/api/templates`)
       const body = await res.json() as Array<{ name: string; ui?: { colour?: string; displayName?: string; nav?: { nestOwned?: unknown[] } } }>
@@ -1386,8 +1393,8 @@ describe('web server', () => {
     })
 
     it('app: namespaces section navigation routes through /namespaces, with no /components route', () => {
-      assert.match(app, /function handleSection\(section\) \{/)
-      assert.match(app, /navigate\(buildRoute\(\{ pathname: `\/\$\{section\}`, params: \{\}, branch: viewingRef \}\)\);/)
+      assert.match(app, /function handleSection\(section, pluginPage\) \{/)
+      assert.match(app, /: `\/\$\{section\}`;\s*navigate\(buildRoute\(\{ pathname, params: \{\}, branch: viewingRef \}\)\);/)
       assert.match(app, /const showTree = \(activeSection === 'namespaces' \|\| activeNodeId\) && activeSection !== 'graph';/)
       assert.match(app, /} else if \(route\.pathname === '\/namespaces'\) \{\s*page = <NamespacesPage \/>;/)
       assert.doesNotMatch(app, /\/components/)
