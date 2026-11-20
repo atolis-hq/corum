@@ -50,5 +50,13 @@ Status: none filed yet.
 - **Intended outcome:** Beyond the core tests, add coverage for: duplicate plugin ids across origins, `graph.yaml` `enabled: false` override of a built-in, `engines` prerelease handling, reload re-resolving the plugin list, and a branch named `p` (documented unreachable).
 - **Acceptance:** tests present and passing in `npm test` / `npm run test:web`.
 
-## 8. Later / not yet issues (decide when needed)
+## 8. Flaky Playwright specs (mobile navigation, table scroll)
+- **Problem:** Two existing browser specs fail intermittently, unrelated to the plugin work. Observed on 2026-11-20: `test/browser/mobile-navigation.spec.cjs` (the `toBeFocused` assertion near line 66) failed 1 of 8 runs on the pre-plugin `index.html` and 2 of 6 (agent saw 3 of 5) on the vendored-libraries `index.html`; `test/browser/table-scroll.spec.cjs` (393px viewport) failed about 4 of 6 baseline runs. Both appear timing-dependent (focus assertion racing with in-browser Babel compile and render).
+- **Intended outcome:** Both specs pass reliably (no failures in at least 20 consecutive local runs and in CI) without weakening what they verify.
+- **Acceptance:** `npx playwright test test/browser/mobile-navigation.spec.cjs test/browser/table-scroll.spec.cjs --repeat-each=20` passes; assertions still check focus behaviour and scrollability.
+- **Constraints:** Fix test synchronisation (wait on a real readiness signal such as app-rendered state or an explicit focus condition), not by adding fixed sleeps or raising timeouts alone; do not change user-visible behaviour unless the flake reveals a real bug.
+- **Approach (non-binding):** Investigate whether focus is stolen by a later re-render; add a deterministic "app ready" marker (for example a `data-ready` attribute set once the first render completes) and wait on it. Re-check after the plugin core lands, since Babel is no longer the only startup cost.
+- **Labels:** `bug`. **Depends on:** none (can run any time; more useful after core Stage 3).
+
+## 9. Later / not yet issues (decide when needed)
 - Custom node renderers, plugin-defined extension points, shadow-DOM isolation, pinned default openers for ambiguous nodes, server-side extension hooks, a mock-host test harness, `corum plugin update`, per-user plugin overrides, standalone plugin install via the pack registry.
