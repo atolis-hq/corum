@@ -14,7 +14,7 @@ const sandbox = {
 }
 vm.runInNewContext(script, sandbox)
 const { parseRoute, buildRoute } = sandbox.module.exports as {
-  parseRoute: (hash: string) => { branch: string | null; pathname: string; params: URLSearchParams }
+  parseRoute: (hash: string) => { branch: string | null; pathname: string; params: URLSearchParams; plugin: { id: string; page: string | null } | null }
   buildRoute: (opts: { pathname: string; params: Record<string, string>; branch: string | null }) => string
 }
 
@@ -65,7 +65,48 @@ describe('parseRoute', () => {
   })
 })
 
+describe('parseRoute plugin routes', () => {
+  it('plugin page without branch', () => {
+    const r = parseRoute('#/p/journeys/map?id=a')
+    assert.equal(r.branch, null)
+    assert.equal(r.pathname, '/p/journeys/map')
+    assert.equal(r.plugin?.id, 'journeys')
+    assert.equal(r.plugin?.page, 'map')
+    assert.equal(r.params.get('id'), 'a')
+  })
+
+  it('plugin page with branch prefix', () => {
+    const r = parseRoute('#/main/p/journeys/map')
+    assert.equal(r.branch, 'main')
+    assert.equal(r.pathname, '/p/journeys/map')
+    assert.equal(r.plugin?.id, 'journeys')
+    assert.equal(r.plugin?.page, 'map')
+  })
+
+  it('plugin route without page', () => {
+    const r = parseRoute('#/p/journeys')
+    assert.equal(r.plugin?.id, 'journeys')
+    assert.equal(r.plugin?.page, null)
+  })
+
+  it('a plugin whose id is p still routes', () => {
+    const r = parseRoute('#/p/p/home')
+    assert.equal(r.plugin?.id, 'p')
+    assert.equal(r.plugin?.page, 'home')
+  })
+
+  it('non-plugin routes have null plugin', () => {
+    assert.equal(parseRoute('#/dashboard').plugin, null)
+    assert.equal(parseRoute('#/main/node?id=x').plugin, null)
+  })
+})
+
 describe('buildRoute', () => {
+  it('plugin page routes', () => {
+    assert.equal(buildRoute({ pathname: '/p/journeys/map', params: { id: 'x' }, branch: 'main' }), '#/main/p/journeys/map?id=x')
+    assert.equal(buildRoute({ pathname: '/p/journeys/map', params: { id: 'x' }, branch: null }), '#/p/journeys/map?id=x')
+  })
+
   it('plain hash when branch is null', () => {
     assert.equal(buildRoute({ pathname: '/dashboard', params: {}, branch: null }), '#/dashboard')
   })

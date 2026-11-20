@@ -12,19 +12,35 @@
     var segments = pathPart.split('/').filter(Boolean);
 
     if (segments.length === 0) {
-      return { branch: null, pathname: '/dashboard', params: params };
+      return { branch: null, pathname: '/dashboard', params: params, plugin: null };
     }
 
-    var firstDecoded = decodeURIComponent(segments[0]);
-    var firstAsPath = '/' + firstDecoded;
+    var decoded = segments.map(decodeURIComponent);
 
+    // 'p' is a reserved first segment for plugin routes: /p/<id>/<page>.
+    if (decoded[0] === 'p') {
+      return pluginRoute(null, decoded, params);
+    }
+
+    var firstAsPath = '/' + decoded[0];
     if (KNOWN_PATHS.has(firstAsPath)) {
-      return { branch: null, pathname: firstAsPath, params: params };
+      return { branch: null, pathname: firstAsPath, params: params, plugin: null };
     }
 
-    var branch = firstDecoded;
-    var pathname = segments[1] ? '/' + decodeURIComponent(segments[1]) : '/dashboard';
-    return { branch: branch, pathname: pathname, params: params };
+    var branch = decoded[0];
+    if (decoded[1] === 'p') {
+      return pluginRoute(branch, decoded.slice(1), params);
+    }
+    var pathname = decoded[1] ? '/' + decoded[1] : '/dashboard';
+    return { branch: branch, pathname: pathname, params: params, plugin: null };
+  }
+
+  function pluginRoute(branch, parts, params) {
+    // parts: ['p', id, page?]
+    var id = parts[1] || '';
+    var page = parts[2] || null;
+    var pathname = '/p/' + id + (page ? '/' + page : '');
+    return { branch: branch, pathname: pathname, params: params, plugin: { id: id, page: page } };
   }
 
   function buildRoute(opts) {
