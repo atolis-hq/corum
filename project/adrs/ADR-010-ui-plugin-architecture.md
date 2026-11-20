@@ -193,7 +193,7 @@ Plugins share one page, so isolation is by convention, not sandbox:
 
 ### 8. Trust
 
-A plugin is arbitrary JavaScript running with the full privileges of the page, and plugins can arrive through a graph repo. This is accepted, with the same trust level as installing a package. There is no sandbox. Docs must say so, and plugin installation should be as explicit as pack installation.
+A plugin is arbitrary JavaScript running with the full privileges of the page, and plugins can arrive through a graph repo. This is accepted, with the same trust level as installing a package. There is no sandbox. Docs must say so, and plugin installation should be as explicit as pack installation. Standalone `plugins: - path:` entries in `graph.yaml` may point at any directory containing a `plugin.yaml`, under the same trust model as installing a package: the path is an explicit act of installation by whoever controls the graph configuration.
 
 ### 9. Versioning and updates
 

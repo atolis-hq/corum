@@ -66,5 +66,13 @@ Status: none filed yet.
 - **Approach (non-binding):** A `view=generic` route parameter that bypasses redirect (and `hrefForNode(id, { via: 'generic' })`); add the link to the plugin-unavailable page and the Open-in bar. Update ADR-010 5a accordingly.
 - **Labels:** `bug`. **Depends on:** core Stage 2.
 
-## 10. Later / not yet issues (decide when needed)
+## 10. SDK primitives build node links without the branch
+- **Problem:** SDK schema rows build `/node?id=` links themselves (`web/sdk/schema-rows.js`, around line 122) and omit the viewed branch/overlay, violating ADR-010 5a ("nothing builds node URLs itself"). Links from a SchemaCard on a non-default branch drop back to the default branch.
+- **Intended outcome:** All node links produced by SDK primitives go through a host-provided link helper (the same `hrefForNode`/`buildRoute` path as `ctx.hrefForNode`) that honours the viewed branch and overlay, so a link never changes the branch being viewed.
+- **Acceptance:** Unit test that SDK schema rows render hrefs from the injected helper (branch prefixed when a branch is viewed); Playwright check that clicking a node reference inside a SchemaCard on a branch keeps the branch in the URL.
+- **Constraints:** No change to the plugin-facing SDK exports beyond accepting the helper; generic node page URLs stay unchanged.
+- **Approach (non-binding):** Pass a `hrefForNode` (or link component) prop/context into `SchemaCard` and schema rows instead of concatenating `#/node?id=`.
+- **Labels:** `bug`. **Depends on:** none.
+
+## 11. Later / not yet issues (decide when needed)
 - Custom node renderers, plugin-defined extension points, shadow-DOM isolation, pinned default openers for ambiguous nodes, server-side extension hooks, a mock-host test harness, `corum plugin update`, per-user plugin overrides, standalone plugin install via the pack registry.
