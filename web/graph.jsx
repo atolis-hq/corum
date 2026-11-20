@@ -1,7 +1,7 @@
 /* Graph view: interactive three-level canvas using React Flow + ELK.js. */
 
 const { useState, useEffect, useMemo, useCallback, useRef } = React;
-const { navigate, Icon, TemplateBadge, StateTag, StabilityTag } = window.CorumPrimitives;
+const { navigate, Icon, TemplateBadge, StateTag, StabilityTag } = window.CorumHost.sdk;
 const { buildRoute, parseRoute } = window.CorumRouter;
 const { buildNamespaceMap, filterByKind, resolveKindFilter, collectKinds, kindColour, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName, computeConnectedComponents, filterThreadScope, filterOwnerScope } = window.CorumGraphUtils;
 

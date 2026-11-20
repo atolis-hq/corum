@@ -10,7 +10,7 @@ const {
   TemplateBadge,
   PropertiesTable,
   SchemaCard,
-} = window.CorumPrimitives;
+} = window.CorumHost.sdk;
 const { buildNavTree, buildOverlayIndicatorIds, groupNamespacesByKind, namespaceEdges } = window.CorumNav;
 const { parseRoute, buildRoute } = window.CorumRouter;
 const { kindColour } = window.CorumGraphUtils;
@@ -964,8 +964,6 @@ function NodePage({ nodeId, templates, onNavigate, refreshToken, viewingRef, ove
   const template = templates.find(item => item.name === root.template);
   const colour = template?.ui?.colour ?? null;
   const nestedSections = new Set((template?.ui?.nav?.nestOwned ?? []).map(item => item.section));
-  const Plugin = window.CorumPlugins?.[root.template];
-  if (Plugin) return <Plugin node={root} cluster={cluster} template={template} />;
 
   const displayChildren = new Map();
   for (const child of descendants) {

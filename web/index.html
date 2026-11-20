@@ -8,6 +8,7 @@
       "imports": {
         "corum:ui": "/sdk/index.js",
         "corum:ui/react": "/sdk/react.js",
+        "htm": "/vendor/htm.module.js",
         "react": "/vendor/shims/react.js",
         "react-dom": "/vendor/shims/react-dom.js",
         "react-dom/client": "/vendor/shims/react-dom-client.js",
@@ -25,9 +26,6 @@
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" />
   <link rel="stylesheet" href="/vendor/reactflow.css" />
-  <script>
-    window.CorumPlugins = {};
-  </script>
 </head>
 <body>
   <div id="root"></div>
@@ -40,22 +38,9 @@
   <script src="nav.js"></script>
   <script src="router.js"></script>
   <script src="graph-utils.js"></script>
-  <script type="text/babel" src="primitives.jsx"></script>
+  <script type="module" src="host/boot.js"></script>
   <script type="text/babel" src="search.jsx"></script>
   <script type="text/babel" src="graph.jsx"></script>
-  <script type="text/babel">
-    fetch('/api/plugins')
-      .then(response => response.ok ? response.json() : [])
-      .then(files => {
-        for (const file of files) {
-          const script = document.createElement('script');
-          script.type = 'text/babel';
-          script.src = `/plugins/${file}`;
-          document.body.appendChild(script);
-        }
-      })
-      .catch(() => {});
-  </script>
   <script type="text/babel" src="app.jsx"></script>
 </body>
 </html>
