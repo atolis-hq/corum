@@ -1259,7 +1259,7 @@ describe('web server', () => {
     let statusCodes = { primitives: 0, app: 0, graph: 0, styles: 0 }
 
     before(async () => {
-      const sdkFiles = ['ui.js', 'properties.js', 'schema-model.js', 'schema-card.js']
+      const sdkFiles = ['ui.js', 'properties.js', 'schema-model.js', 'schema-rows.js', 'schema-card.js']
       const [primitivesRes, appRes, graphRes, styleRes] = await Promise.all([
         Promise.all(sdkFiles.map(file => fetch(`http://localhost:${handle.port}/sdk/${file}`))).then(responses => ({
           status: responses.every(r => r.status === 200) ? 200 : 500,
@@ -1285,9 +1285,9 @@ describe('web server', () => {
 
     it('primitives: buildPropertyRows uses depth for nested row indentation', () => {
       assert.match(primitives, /function buildPropertyRows\(entries, onNavigate, depth = 0/)
-      assert.match(primitives, /const rows = buildPropertyRows\(entries, onNavigate, 0, '', propertyHints\);/)
-      assert.match(primitives, /className: `prop-row\$\{row\.depth > 0 \? ' nested' : ''\}`/)
-      assert.match(primitives, /className: "mono prop-key-cell"/)
+      assert.match(primitives, /const rows = buildPropertyRows\(entries, onNavigate, 0, '', propertyHints\)/)
+      assert.ok(primitives.includes("className=${`prop-row${row.depth > 0 ? ' nested' : ''}`}"))
+      assert.match(primitives, /className="mono prop-key-cell"/)
       assert.match(primitives, /'--prop-depth': row\.depth/)
     })
 
@@ -1302,7 +1302,7 @@ describe('web server', () => {
 
     it('primitives: edge links rendered with separators between multiple links', () => {
       assert.match(primitives, /links\.map\(\(edge, index\) => \{/)
-      assert.match(primitives, /index > 0 && React\.createElement\("span", \{\s*key: `sep-\$\{edge\.id\}`\s*\}, ' '\)/)
+      assert.ok(primitives.includes("${index > 0 && html`<span key=${`sep-${edge.id}`}>${' '}</span>`}"))
     })
 
     it('app: templateDisplayName resolves ui.displayName and is used for labels', () => {
@@ -1334,12 +1334,12 @@ describe('web server', () => {
       assert.match(primitives, /function SchemaFieldRows\(\{\s*schemaNodeId,\s*model,\s*prefix = '',\s*depth = 0,\s*visited = new Set\(\),\s*edges = \[\],\s*overlayFields,\s*overlayRefs,\s*compact = false\s*\}\)/)
       assert.match(primitives, /const childSchemaNode = !canExpandMapping/)
       assert.match(primitives, /const childGhostFields = childSchemaNode \? overlayFieldsForSchema\(overlayFields, childSchemaNode\.id\) : \[\];/)
-      assert.match(primitives, /React\.createElement\(SchemaFieldRows, \{[\s\S]*overlayFields: overlayFields,\s*overlayRefs: overlayRefs/)
-      assert.match(primitives, /childGhostFields\.length > 0 && React\.createElement\(GhostFieldRows, \{\s*fields: childGhostFields,\s*overlayRefs: overlayRefs,\s*prefix: childPrefix,\s*depth: depth \+ 1,\s*compact: compact\s*\}\)/)
+      assert.match(primitives, /<\$\{SchemaFieldRows\}[\s\S]*overlayFields=\$\{overlayFields\}\s*overlayRefs=\$\{overlayRefs\}/)
+      assert.match(primitives, /childGhostFields\.length > 0 && html`<\$\{GhostFieldRows\} fields=\$\{childGhostFields\} overlayRefs=\$\{overlayRefs\} prefix=\$\{childPrefix\} depth=\$\{depth \+ 1\} compact=\$\{compact\} \/>`/)
       assert.match(primitives, /function GhostFieldRows\(\{\s*fields,\s*overlayRefs,\s*prefix = '',\s*depth = 0,\s*compact = false\s*\}\)/)
       assert.match(primitives, /const name = compact \? fieldLocalName\(field\.id\) : prefix \+ fieldLocalName\(field\.id\);/)
-      assert.match(primitives, /className: `field-row overlay-ghost \$\{stripeClass\}\$\{depth > 0 \? ' nested' : ''\}`/)
-      assert.match(primitives, /'--field-depth': depth/)
+      assert.ok(primitives.includes("className=${`field-row overlay-ghost ${stripeClass}${depth > 0 ? ' nested' : ''}`}"))
+      assert.ok(primitives.includes("'--field-depth': depth"))
     })
 
     it('primitives: fieldSchemaName resolves fields from standalone Schema nodes', () => {

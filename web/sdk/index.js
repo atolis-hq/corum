@@ -1,8 +1,5 @@
 /* Corum UI SDK: the plugin-facing module behind the `corum:ui` import-map specifier. */
-import React from 'react'
-import htm from 'htm'
-
-export const html = htm.bind(React.createElement)
+export { html } from './html.js'
 
 export { navigate, BrandMark, Icon, StateTag, StabilityTag, Chip, TemplateBadge } from './ui.js'
 export { PropertyValue, PropertiesTable } from './properties.js'
