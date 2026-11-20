@@ -94,3 +94,16 @@ test('child nodes resolve to their owning root and redirect with the child id', 
   await expect(page.getByTestId('plugin-claim-solo')).toBeVisible();
   await expect.poll(() => page.url()).toContain(`/p/claim-solo/home?id=${field}`);
 });
+
+test('a failing /api/plugins shows a non-blocking notice instead of silently hiding plugins', async ({ page }) => {
+  await page.route('**/api/plugins', route => route.fulfill({ status: 500, json: { error: 'boom' } }));
+  await page.goto('/');
+  await expect(page.getByTestId('plugins-failed')).toContainText('Plugins failed to load');
+  await expect(page.locator('.nav-rail-item', { hasText: 'Dashboard' })).toBeVisible();
+});
+
+test('a failing host module load shows a readable error instead of a blank page', async ({ page }) => {
+  await page.route('**/sdk/index.js', route => route.abort());
+  await page.goto('/');
+  await expect(page.getByTestId('boot-error')).toContainText('failed to start');
+});

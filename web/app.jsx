@@ -1,5 +1,16 @@
 /* Main app: router, nav shell, data loading, and node pages. */
 
+if (!window.CorumHost) {
+  // boot.js or an import-map module failed to load: say so instead of leaving a blank page.
+  const box = document.getElementById('root');
+  const message = document.createElement('div');
+  message.setAttribute('data-testid', 'boot-error');
+  message.style.cssText = 'padding:24px;font:14px/1.5 system-ui,sans-serif;color:#7f1d1d';
+  message.textContent = 'Corum failed to start: the UI modules could not be loaded. Check the browser console and the server, then reload the page.';
+  box.appendChild(message);
+  throw new Error('window.CorumHost is not available (boot.js failed to load)');
+}
+
 const { useState, useEffect, useCallback, useMemo } = React;
 const {
   navigate,
@@ -1565,6 +1576,15 @@ function App() {
         />
       )}
       <TopBar onSearchOpen={() => setSearchOpen(true)} />
+      {hostReady && window.CorumHost.pluginsFailed && (
+        <div
+          data-testid="plugins-failed"
+          role="status"
+          style={{ position: 'fixed', right: 12, bottom: 12, zIndex: 50, padding: '8px 12px', background: 'var(--paper-3)', border: '1px solid var(--rule-2)', borderRadius: 6, fontSize: 12, color: 'var(--warn)' }}
+        >
+          Plugins failed to load. Reload the page to retry.
+        </div>
+      )}
       {gitMode && (
         <BranchBar
           branches={branches}
