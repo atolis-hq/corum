@@ -32,6 +32,7 @@ import { getOwnedSections } from '../loader/pack-loader.js'
 import { getPropertySchemasFromTemplate } from '../loader/template-props.js'
 import type { EdgeType, Graph, MultiGraph, Node, Template } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
+import { registerVendorRoutes } from './vendor.js'
 import { createGraphRuntimeConfig } from '../source/config.js'
 import type { GraphSource } from '../source/index.js'
 
@@ -719,6 +720,8 @@ export function createApp(
     res.setHeader('Cache-Control', 'no-cache')
     res.type('html').send(indexHtml)
   })
+
+  registerVendorRoutes(app)
 
   app.use(express.static(WEB_DIR, {
     setHeaders(res, filePath) {

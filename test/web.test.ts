@@ -304,6 +304,30 @@ describe('web server', () => {
     })
   })
 
+  describe('vendor assets', () => {
+    it('serves the allowlisted UMD bundle as javascript', async () => {
+      const res = await fetch(`http://localhost:${handle.port}/vendor/react.umd.js`)
+      assert.equal(res.status, 200)
+      assert.match(res.headers.get('content-type') ?? '', /text\/javascript/)
+    })
+
+    it('serves generated shims with explicit named exports', async () => {
+      const react = await fetch(`http://localhost:${handle.port}/vendor/shims/react.js`)
+      assert.equal(react.status, 200)
+      assert.match(await react.text(), /export const useState/)
+      const jsx = await fetch(`http://localhost:${handle.port}/vendor/shims/react-jsx-runtime.js`)
+      assert.equal(jsx.status, 200)
+      assert.match(await jsx.text(), /export function jsx/)
+    })
+
+    it('rejects traversal and names outside the allowlist', async () => {
+      for (const p of ['/vendor/nope.js', '/vendor/..%2fpackage.json', '/vendor/shims/nope.js', '/vendor/shims/..%2f..%2fpackage.json']) {
+        const res = await fetch(`http://localhost:${handle.port}${p}`)
+        assert.equal(res.status, 404, p)
+      }
+    })
+  })
+
   describe('multi-branch API', () => {
     let sourceHandle: WebServerHandle
 
