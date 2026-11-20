@@ -72,3 +72,16 @@ test('unclaimed node shows the generic page', async ({ page }) => {
   await expect(page.locator('[data-testid="open-in"]')).toHaveCount(0);
   await expect(page).toHaveURL(/#\/(.+\/)?node\?id=/);
 });
+
+test('plugin page is not remounted when only query params change', async ({ page }) => {
+  await page.goto('/#/p/mount-counter/home?n=1');
+  await expect(page.getByTestId('counter-n')).toHaveText('1');
+  await expect(page.getByTestId('counter-mounts')).toHaveText('1');
+  await page.getByTestId('counter-next').click();
+  await expect(page.getByTestId('counter-n')).toHaveText('2');
+  await expect(page.getByTestId('counter-mounts')).toHaveText('1');
+  // A different page does remount it.
+  await page.locator('.nav-rail-item', { hasText: 'Dashboard' }).click();
+  await page.locator('.nav-rail-item', { hasText: 'Mount Counter' }).click();
+  await expect(page.getByTestId('counter-mounts')).toHaveText('2');
+});

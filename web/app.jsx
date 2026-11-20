@@ -976,14 +976,24 @@ class PluginErrorBoundary extends React.Component {
   }
 }
 
-function PluginMount({ page, ctx }) {
+function PluginMount({ page, hostState }) {
   const ref = React.useRef(null);
+  const handleRef = React.useRef(null);
   const [error, setError] = useState(null);
   if (error) throw error;
+  if (!handleRef.current) {
+    handleRef.current = window.CorumHost.createContext(
+      { pluginId: page.pluginId, pageId: page.id },
+      hostState,
+      setError,
+    );
+  }
+  // Route, param, branch and template changes reach the mounted page through ctx.subscribe; no remount.
+  useEffect(() => { handleRef.current.update(hostState); });
   useEffect(() => {
-    const dispose = page.mount(ref.current, { ...ctx, onError: setError });
+    const dispose = page.mount(ref.current, handleRef.current.ctx);
     return () => { if (typeof dispose === 'function') dispose(); };
-  }, [page.pluginId, page.id, ctx.routeKey]);
+  }, []);
   return <div ref={ref} className="plugin-host" data-plugin={page.pluginId} data-page={page.id} />;
 }
 
@@ -1003,7 +1013,7 @@ function PluginUnavailablePage({ pluginId, reason, nodeId, viewingRef }) {
   );
 }
 
-function PluginPage({ route, templates, viewingRef }) {
+function PluginPage({ route, templates, templatesByName, nodes, viewingRef }) {
   const { id: pluginId, page: pageId } = route.plugin;
   const page = hostRegistry.findPage(pluginId, pageId);
   if (!page) {
@@ -1016,11 +1026,12 @@ function PluginPage({ route, templates, viewingRef }) {
       <PluginUnavailablePage pluginId={pluginId} reason={reason} nodeId={route.params.get('id')} viewingRef={viewingRef} />
     );
   }
-  const routeKey = `${route.branch ?? ''}${route.pathname}?${route.params.toString()}`;
-  const ctx = { route, params: route.params, branch: route.branch, viewingRef, templates, routeKey };
+  // Remount only when the plugin, page or viewed branch changes, never for query-param changes.
+  const mountKey = `${pluginId}/${pageId}@${viewingRef ?? ''}`;
+  const hostState = { route, viewingRef, templates, nodes, templatesByName };
   return (
-    <PluginErrorBoundary key={routeKey} pluginId={pluginId}>
-      <PluginMount page={page} ctx={ctx} />
+    <PluginErrorBoundary key={mountKey} pluginId={pluginId}>
+      <PluginMount page={page} hostState={hostState} />
     </PluginErrorBoundary>
   );
 }
@@ -1522,7 +1533,7 @@ function App() {
       />
     );
   } else if (route.plugin) {
-    page = <PluginPage route={route} templates={templates} viewingRef={viewingRef} />;
+    page = <PluginPage route={route} templates={templates} templatesByName={templatesByName} nodes={nodes} viewingRef={viewingRef} />;
   } else if (route.pathname === '/graph') {
     page = (
       <window.CorumGraph.GraphView
