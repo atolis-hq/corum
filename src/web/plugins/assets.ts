@@ -50,3 +50,13 @@ export function resolvePluginAsset(pluginDir: string, requestPath: string): Plug
     return null
   }
 }
+
+/** RFC 9110 weak comparison of an If-None-Match header against the current entity tag. */
+export function ifNoneMatchSatisfied(header: string | undefined, etag: string): boolean {
+  if (typeof header !== 'string') return false
+  const strip = (tag: string) => tag.trim().replace(/^W\//, '')
+  return header.split(',').some(tag => {
+    const trimmed = tag.trim()
+    return trimmed === '*' || strip(trimmed) === strip(etag)
+  })
+}

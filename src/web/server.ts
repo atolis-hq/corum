@@ -32,7 +32,7 @@ import { getPropertySchemasFromTemplate } from '../loader/template-props.js'
 import type { EdgeType, Graph, MultiGraph, Node, Template } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
 import { registerVendorRoutes } from './vendor.js'
-import { resolvePluginAsset } from './plugins/assets.js'
+import { ifNoneMatchSatisfied, resolvePluginAsset } from './plugins/assets.js'
 import { createPluginRuntime, type PluginRuntime } from './plugins/runtime.js'
 import { createGraphRuntimeConfig } from '../source/config.js'
 import { FileGraphSource } from '../source/file-source.js'
@@ -687,12 +687,11 @@ export function createApp(
     res.setHeader('ETag', asset.etag)
     res.setHeader('Content-Type', asset.contentType)
     res.setHeader('X-Content-Type-Options', 'nosniff')
-    const ifNoneMatch = req.headers['if-none-match']
-    if (typeof ifNoneMatch === 'string' && ifNoneMatch.split(',').some(tag => tag.trim() === asset.etag)) {
+    if (ifNoneMatchSatisfied(req.headers['if-none-match'], asset.etag)) {
       res.status(304).end()
       return
     }
-    res.sendFile(asset.file, { etag: false, lastModified: false, cacheControl: false, dotfiles: 'allow' }, err => {
+    res.sendFile(asset.file, { etag: false, lastModified: false, cacheControl: false, acceptRanges: false, dotfiles: 'allow' }, err => {
       if (err && !res.headersSent) res.status(404).json({ error: 'Not found' })
     })
   })

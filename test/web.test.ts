@@ -1141,6 +1141,22 @@ describe('web server', () => {
       assert.equal(again.status, 304)
     })
 
+    it('honours weak and wildcard If-None-Match and ignores Range', async () => {
+      const first = await fetch(`${base}/plugins/on/index.js`)
+      const etag = first.headers.get('etag') ?? ''
+      assert.ok(etag)
+      for (const header of [`W/${etag}`, '*', `"nope", ${etag}`]) {
+        const res = await fetch(`${base}/plugins/on/index.js`, { headers: { 'If-None-Match': header } })
+        assert.equal(res.status, 304, header)
+      }
+      const other = await fetch(`${base}/plugins/on/index.js`, { headers: { 'If-None-Match': '"other"' } })
+      assert.equal(other.status, 200)
+      const ranged = await fetch(`${base}/plugins/on/index.js`, { headers: { Range: 'bytes=0-3' } })
+      assert.equal(ranged.status, 200)
+      assert.equal(ranged.headers.get('content-range'), null)
+      assert.match(await ranged.text(), /export const id/)
+    })
+
     it('does not serve disabled, unavailable or unknown plugins', async () => {
       for (const id of ['off', 'needs-missing', 'nope']) {
         const res = await fetch(`${base}/plugins/${id}/index.js`)
@@ -1371,7 +1387,9 @@ describe('web server', () => {
       assert.match(app, /new EventSource\('\/api\/events'\)/)
       assert.match(app, /const refreshBranchState = useCallback\(\(\) => \{/)
       assert.match(app, /const refreshAllData = useCallback\(\(\) => \{/)
-      assert.match(app, /eventSource\.addEventListener\('graph-reloaded', refreshAllData\)/)
+      assert.match(app, /eventSource\.addEventListener\('graph-reloaded', onGraphReloaded\)/)
+      assert.match(app, /refreshAllData\(\);\s*\};/)
+      assert.match(app, /pluginsChangedOnServer\(\)/)
       assert.match(app, /refreshToken/)
       assert.match(app, /fetch\(`\/api\/cluster\?nodeId=\$\{encodeURIComponent\(nodeId\)\}&includeEdges=maps-to,reads,uses-type,triggers,produces,calls,implements\$\{refParam\}\$\{overlayParam\}`\)/)
     })
