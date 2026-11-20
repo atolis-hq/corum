@@ -13,6 +13,7 @@ const {
   matchKeysFor,
   resolveNodeTarget,
   hrefForNode,
+  owningRoot,
 } = window.CorumHost.sdk;
 const hostRegistry = window.CorumHost.registry;
 const { buildNavTree, buildOverlayIndicatorIds, groupNamespacesByKind, namespaceEdges } = window.CorumNav;
@@ -1076,8 +1077,9 @@ function NodePage({ nodeId, templates, templatesByName, onNavigate, refreshToken
 
   const rootNode = cluster?.root ?? null;
   const matchKeys = useMemo(
-    () => (rootNode && !rootNode.parentId ? matchKeysFor(rootNode.template, templatesByName) : []),
-    [rootNode, templatesByName],
+    // Child nodes resolve through their owning cluster root (cluster.owner), like roots do.
+    () => (rootNode ? matchKeysFor(cluster.owner?.template ?? rootNode.template, templatesByName) : []),
+    [rootNode, cluster, templatesByName],
   );
   const target = useMemo(
     () => (matchKeys.length > 0 ? resolveNodeTarget(hostRegistry, matchKeys) : { kind: 'generic' }),
@@ -1282,6 +1284,7 @@ function App() {
     window.CorumHost.ready.then(() => setHostReady(true));
   }, []);
 
+  const nodesById = useMemo(() => new Map(nodes.map(node => [node.id, node])), [nodes]);
   const templatesByName = useMemo(() => new Map(allTemplates.map(template => [template.name, template])), [allTemplates]);
 
   function handleDebugMode() {
@@ -1483,7 +1486,8 @@ function App() {
   }
 
   function handleSearchNode(nodeId, templateName) {
-    navigate(hrefForNode(hostRegistry, nodeId, matchKeysFor(templateName, templatesByName), { branch: viewingRef }));
+    const root = owningRoot(nodeId, nodesById);
+    navigate(hrefForNode(hostRegistry, nodeId, matchKeysFor(root?.template ?? templateName, templatesByName), { branch: viewingRef }));
   }
 
   let page;

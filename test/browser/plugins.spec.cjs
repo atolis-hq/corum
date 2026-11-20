@@ -87,3 +87,10 @@ test('plugin page is not remounted when only query params change', async ({ page
   await page.locator('.nav-rail-item', { hasText: 'Mount Counter' }).click();
   await expect(page.getByTestId('counter-mounts')).toHaveText('2');
 });
+
+test('child nodes resolve to their owning root and redirect with the child id', async ({ page }) => {
+  const field = 'orders.DomainEvent.order-placed.schemas.order-placed-payload.fields.orderId';
+  await page.goto(`/#/node?id=${field}`);
+  await expect(page.getByTestId('plugin-claim-solo')).toBeVisible();
+  await expect.poll(() => page.url()).toContain(`/p/claim-solo/home?id=${field}`);
+});

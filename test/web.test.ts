@@ -545,6 +545,22 @@ describe('web server', () => {
       assert.deepEqual(withRef.map(t => t.name).sort(), noRef.map(t => t.name).sort())
     })
 
+    it('reports the owning root for child nodes in /api/cluster and /api/nodes', async () => {
+      const fieldId = 'orders.DomainModel.order.schemas.order.fields.customerId'
+      const cluster = await fetch(`http://localhost:${sourceHandle.port}/api/cluster?nodeId=${encodeURIComponent(fieldId)}`)
+      assert.equal(cluster.status, 200)
+      const body = await cluster.json() as { owner?: { id: string; template: string } }
+      assert.deepEqual(body.owner, { id: 'orders.DomainModel.order', template: 'DomainModel' })
+      const rootCluster = await fetch(`http://localhost:${sourceHandle.port}/api/cluster?nodeId=orders.DomainModel.order`)
+      assert.equal(((await rootCluster.json()) as { owner?: unknown }).owner, undefined)
+
+      const nodes = await (await fetch(`http://localhost:${sourceHandle.port}/api/nodes?includeCore=true`)).json() as Array<{ id: string; rootId?: string; rootTemplate?: string }>
+      const field = nodes.find(n => n.id === fieldId)
+      assert.equal(field?.rootId, 'orders.DomainModel.order')
+      assert.equal(field?.rootTemplate, 'DomainModel')
+      assert.equal(nodes.find(n => n.id === 'orders.DomainModel.order')?.rootId, undefined)
+    })
+
     it('GET /api/cluster returns overlay: null when overlayRefs not provided', async () => {
       const branchesRes = await fetch(`http://localhost:${sourceHandle.port}/api/branches`)
       const { default: defaultRef } = await branchesRes.json() as { default: string }

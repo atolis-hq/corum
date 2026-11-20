@@ -1,15 +1,5 @@
 /* Plugin context: the `ctx` object handed to a page's mount(el, ctx), kept live by the host. */
 
-function rootOf(id, nodesById) {
-  let node = nodesById.get(id)
-  const seen = new Set()
-  while (node?.parentId && !seen.has(node.id)) {
-    seen.add(node.id)
-    node = nodesById.get(node.parentId)
-  }
-  return node ?? null
-}
-
 function toSearchParams(params) {
   if (params instanceof URLSearchParams) return new URLSearchParams(params)
   if (Array.isArray(params)) return new URLSearchParams(params)
@@ -17,7 +7,7 @@ function toSearchParams(params) {
 }
 
 /*
- * env:   { registry, hrefForNode, matchKeysFor, navigate, buildRoute, fetchImpl?, pluginId, pageId }
+ * env:   { registry, owningRoot, hrefForNode, matchKeysFor, navigate, buildRoute, fetchImpl?, pluginId, pageId }
  * state: { route, viewingRef, templates, nodes, templatesByName }  (nodes/templatesByName stay host-side)
  * Returns { ctx, update(nextState) }. ctx fields are getters over the latest state, so the same object
  * stays valid for the life of a mount; subscribe() reports changes to route, viewingRef and templates.
@@ -52,7 +42,7 @@ export function createPluginContext(env, initialState, onError) {
   }
 
   function hrefForNode(id, opts = {}) {
-    const root = rootOf(id, lookupNodes())
+    const root = env.owningRoot(id, lookupNodes())
     const keys = root ? env.matchKeysFor(root.template, state.templatesByName ?? new Map()) : []
     return env.hrefForNode(env.registry, id, keys, { branch: state.viewingRef, via: opts.via, page: opts.page })
   }

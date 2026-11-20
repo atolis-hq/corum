@@ -127,6 +127,21 @@ function getNavigationOwnership(graph: Graph, node: Node): { parentId: string; o
   return undefined
 }
 
+/** Walk materialized parentId links to the cluster root; undefined for roots. */
+function getOwningRoot(graph: Graph, node: Node, firstParentId?: string): Node | undefined {
+  let current: Node = node
+  let parentId = current.parentId ?? firstParentId
+  const seen = new Set<string>([current.id])
+  while (parentId !== undefined && !seen.has(parentId)) {
+    const parent = graph.nodesById.get(parentId)
+    if (!parent) break
+    seen.add(parent.id)
+    current = parent
+    parentId = current.parentId
+  }
+  return current === node ? undefined : current
+}
+
 function summarizeNodeForNavigation(graph: Graph, node: Node): Node & { parentId?: string; ownedSection?: string } {
   const ownership = getNavigationOwnership(graph, node)
   return {
@@ -436,6 +451,10 @@ export function createApp(
           stability: ownership.stability,
           parentId: ownership.parentId,
           ownedSection: ownership.ownedSection,
+          ...(() => {
+            const owner = getOwningRoot(targetGraph, node, ownership.parentId)
+            return owner ? { rootId: owner.id, rootTemplate: owner.template } : {}
+          })(),
         }
       })
     res.json(nodes)
@@ -634,8 +653,10 @@ export function createApp(
       }
       const includedNodes = expandExternalNodes(targetGraph, externalIds)
 
+      const owner = getOwningRoot(targetGraph, cluster.root)
       res.json({
         root: summarizeNodeForNavigation(targetGraph, annotateNode(targetGraph, cluster.root)),
+        ...(owner ? { owner: { id: owner.id, template: owner.template } } : {}),
         descendants: cluster.descendants.map(child => summarizeNodeForNavigation(targetGraph, annotateNode(targetGraph, child))),
         includedNodes: includedNodes.map(node => summarizeNodeForNavigation(targetGraph, annotateNode(targetGraph, node))),
         edges: cluster.edges,

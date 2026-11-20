@@ -17,6 +17,7 @@ function createContext(identity, state, onError) {
     ...identity,
     registry,
     hrefForNode: sdk.hrefForNode,
+    owningRoot: sdk.owningRoot,
     matchKeysFor: sdk.matchKeysFor,
     navigate: sdk.navigate,
     buildRoute: window.CorumRouter.buildRoute,

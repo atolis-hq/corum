@@ -1,5 +1,25 @@
 /* Node link resolution: which page should open a node (pure, no DOM). */
 
+/**
+ * The cluster root that owns a node, as { id, template }. Uses server-supplied
+ * rootId/rootTemplate when present (survives nodes hidden from the list, e.g. core
+ * templates), otherwise walks parentId over the known nodes. Null if unknown.
+ */
+export function owningRoot(id, nodesById) {
+  const start = nodesById.get(id)
+  if (!start) return null
+  if (start.rootId && start.rootTemplate) return { id: start.rootId, template: start.rootTemplate }
+  let node = start
+  const seen = new Set()
+  while (node?.parentId && !seen.has(node.id)) {
+    seen.add(node.id)
+    const parent = nodesById.get(node.parentId)
+    if (!parent) break
+    node = parent
+  }
+  return { id: node.id, template: node.template }
+}
+
 export function resolveNodeTarget(registry, matchKeys, opts = {}) {
   if (opts.via) {
     // Direct link (ADR-010 5a): skips resolution, so the page need not claim the node.

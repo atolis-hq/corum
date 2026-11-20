@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url'
 const load = (dir: string, file: string) => import(pathToFileURL(path.join(process.cwd(), 'web', dir, file)).href)
 const { createPluginContext } = await load('host', 'context.js')
 const { createRegistry } = await load('sdk', 'registry.js')
-const { hrefForNode } = await load('sdk', 'resolve-node.js')
+const { hrefForNode, owningRoot } = await load('sdk', 'resolve-node.js')
 const { matchKeysFor } = await load('sdk', 'match-keys.js')
 
 function route(search = '', branch: string | null = null) {
@@ -19,6 +19,7 @@ function setup(overrides: Record<string, unknown> = {}) {
   const env = {
     registry,
     hrefForNode,
+    owningRoot,
     matchKeysFor,
     navigate: (hash: string) => { calls.navigated.push(hash) },
     buildRoute: ({ pathname, params, branch }: { pathname: string; params?: Record<string, string>; branch?: string | null }) => {

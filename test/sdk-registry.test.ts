@@ -186,3 +186,20 @@ describe('resolveNodeTarget / hrefForNode', () => {
     assert.equal(hrefForNode(reg, 'a.b', ['Journey'], {}), '#/node?id=a.b')
   })
 })
+
+describe('owningRoot', () => {
+  const nodes = new Map([
+    ['r', { id: 'r', template: 'DomainModel' }],
+    ['r.schemas.s', { id: 'r.schemas.s', template: 'Schema', parentId: 'r' }],
+    ['r.schemas.s.fields.f', { id: 'r.schemas.s.fields.f', template: 'Field', parentId: 'r.schemas.s' }],
+    ['x.fields.f', { id: 'x.fields.f', template: 'Field', rootId: 'x', rootTemplate: 'Schema' }],
+  ])
+
+  it('walks parentId to the root and prefers server-supplied rootTemplate', async () => {
+    const { owningRoot } = await load('resolve-node.js')
+    assert.deepEqual(owningRoot('r', nodes), { id: 'r', template: 'DomainModel' })
+    assert.deepEqual(owningRoot('r.schemas.s.fields.f', nodes), { id: 'r', template: 'DomainModel' })
+    assert.deepEqual(owningRoot('x.fields.f', nodes), { id: 'x', template: 'Schema' })
+    assert.equal(owningRoot('missing', nodes), null)
+  })
+})
