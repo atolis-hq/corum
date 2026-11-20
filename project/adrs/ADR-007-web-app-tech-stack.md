@@ -25,6 +25,8 @@ Option 1 was chosen because:
 
 ## Plugin extensibility
 
+> **Superseded by [ADR-010](ADR-010-ui-plugin-architecture.md).** The text below is kept for history only.
+
 The plugin system (`window.CorumPlugins` registry) is designed to be stable across a future migration to a bundler. Template name is the only coupling point. When TypeScript becomes a priority, the core app can move to a bundled build without breaking existing plugin files.
 
 ## Consequences
