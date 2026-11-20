@@ -7,7 +7,7 @@ const hostDir = path.join(process.cwd(), 'web', 'host')
 const sdkDir = path.join(process.cwd(), 'web', 'sdk')
 const load = (dir: string, file: string) => import(pathToFileURL(path.join(dir, file)).href)
 
-const { loadPlugins } = await load(hostDir, 'plugin-loader.js')
+const { loadPlugins, pluginsChanged } = await load(hostDir, 'plugin-loader.js')
 const { createRegistry } = await load(sdkDir, 'registry.js')
 
 function status(id: string, main = './index.js', extra: Record<string, unknown> = {}) {
@@ -95,5 +95,40 @@ describe('loadPlugins', () => {
       registry,
     })
     assert.equal(registry.plugins().length, 0)
+  })
+})
+
+describe('pluginsChanged', () => {
+  it('is false for the same plugins in any order', () => {
+    assert.equal(pluginsChanged([status('a'), status('b')], [status('b'), status('a')]), false)
+  })
+
+  it('detects added, removed, status and version changes', () => {
+    const base = [status('a'), status('b')]
+    assert.equal(pluginsChanged(base, [status('a')]), true)
+    assert.equal(pluginsChanged(base, [...base, status('c')]), true)
+    assert.equal(pluginsChanged(base, [status('a'), status('b', './index.js', { status: 'disabled' })]), true)
+    assert.equal(pluginsChanged(base, [status('a'), status('b', './index.js', { version: '2.0.0' })]), true)
+  })
+
+  it('ignores unrelated fields and treats a missing previous list as changed', () => {
+    assert.equal(pluginsChanged([status('a')], [status('a', './index.js', { reason: undefined, origin: 'builtin' })]), false)
+    assert.equal(pluginsChanged(null, [status('a')]), true)
+    assert.equal(pluginsChanged([status('a')], null), false)
+  })
+})
+
+describe('loadPlugins result', () => {
+  it('returns the statuses, or null when the list fails to load', async () => {
+    const registry = createRegistry()
+    const list = [status('a')]
+    assert.deepEqual(await loadPlugins({ fetchPlugins: async () => list, importModule: async () => ({}), registry }), list)
+    const originalError = console.error
+    console.error = () => {}
+    try {
+      assert.equal(await loadPlugins({ fetchPlugins: async () => { throw new Error('x') }, importModule: async () => ({}), registry: createRegistry() }), null)
+    } finally {
+      console.error = originalError
+    }
   })
 })

@@ -1347,9 +1347,16 @@ function App() {
   useEffect(() => {
     if (!window.EventSource) return;
     const eventSource = new EventSource('/api/events');
-    eventSource.addEventListener('graph-reloaded', refreshAllData);
+    // The plugin registry is built once at boot, so a changed plugin list needs a full page reload.
+    const onGraphReloaded = () => {
+      window.CorumHost.pluginsChangedOnServer().then(changed => {
+        if (changed) location.reload();
+      });
+      refreshAllData();
+    };
+    eventSource.addEventListener('graph-reloaded', onGraphReloaded);
     return () => {
-      eventSource.removeEventListener('graph-reloaded', refreshAllData);
+      eventSource.removeEventListener('graph-reloaded', onGraphReloaded);
       eventSource.close();
     };
   }, [refreshAllData]);
