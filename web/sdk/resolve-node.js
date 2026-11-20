@@ -47,3 +47,8 @@ export function hrefForNode(registry, nodeId, matchKeys, { branch, via, page } =
   const pathname = target.kind === 'page' ? `/p/${target.pluginId}/${target.pageId}` : '/node'
   return buildHref(pathname, nodeId, branch)
 }
+
+/** True when the page exists in an enabled plugin (host chrome should not link to pages that are not there). */
+export function isPageAvailable(registry, pluginId, pageId) {
+  return registry.findPage(pluginId, pageId) !== null
+}

@@ -51,3 +51,24 @@ test('a node page "view in graph" link lands on the plugin route with focus', as
   await expect(page.locator('.graph-breadcrumb-current')).toHaveText('order');
   await expect(page.locator('.react-flow__node').first()).toBeVisible();
 });
+
+test('View in graph buttons are absent when the graph plugin is disabled', async ({ page }) => {
+  await page.route('**/api/plugins', async route => {
+    const response = await route.fetch();
+    const list = await response.json();
+    await route.fulfill({
+      response,
+      json: list.map(plugin => (plugin.id === 'graph' ? { ...plugin, status: 'disabled' } : plugin)),
+    });
+  });
+  await page.goto('/#/node?id=orders.DomainModel.order');
+  await expect(page.locator('.detail-pane').getByText('orders.DomainModel.order', { exact: true })).toBeVisible();
+  await expect(page.locator('button[title="View in graph"]')).toHaveCount(0);
+  await expect(page.locator('.graph-nav-link')).toHaveCount(0);
+});
+
+test('View in graph button is present on the node page when the graph plugin is enabled', async ({ page }) => {
+  await page.goto('/#/node?id=orders.DomainModel.order');
+  await expect(page.locator('.detail-pane').getByText('orders.DomainModel.order', { exact: true })).toBeVisible();
+  await expect(page.locator('button[title="View in graph"]').first()).toBeVisible();
+});

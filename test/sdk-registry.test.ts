@@ -203,3 +203,16 @@ describe('owningRoot', () => {
     assert.equal(owningRoot('missing', nodes), null)
   })
 })
+
+describe('isPageAvailable', () => {
+  it('is true only for pages of enabled plugins', async () => {
+    const { isPageAvailable } = await load('resolve-node.js')
+    const reg = createRegistry()
+    reg.registerPlugin(plugin('graph', [{ id: 'view', title: 'Graph', mount: 'm' }]))
+    reg.registerPlugin(plugin('off', [{ id: 'view', title: 'Off', mount: 'm' }], { status: 'disabled' }))
+    assert.equal(isPageAvailable(reg, 'graph', 'view'), true)
+    assert.equal(isPageAvailable(reg, 'graph', 'nope'), false)
+    assert.equal(isPageAvailable(reg, 'off', 'view'), false)
+    assert.equal(isPageAvailable(reg, 'missing', 'view'), false)
+  })
+})

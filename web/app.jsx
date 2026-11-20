@@ -14,8 +14,10 @@ const {
   resolveNodeTarget,
   hrefForNode,
   owningRoot,
+  isPageAvailable,
 } = window.CorumHost.sdk;
 const hostRegistry = window.CorumHost.registry;
+const hasGraphPage = () => isPageAvailable(hostRegistry, 'graph', 'view');
 const { buildNavTree, buildOverlayIndicatorIds, groupNamespacesByKind, namespaceEdges } = window.CorumNav;
 const { parseRoute, buildRoute } = window.CorumRouter;
 const { kindColour } = window.CorumGraphUtils;
@@ -906,14 +908,16 @@ function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate, viewing
         <span style={{ fontWeight: 500, fontSize: 13 }}>{name}</span>
         {node && <StateTag state={node.state} />}
         {node && <StabilityTag stability={node.stability} />}
-        <button
-          className="graph-nav-link"
-          title="View in graph"
-          onClick={e => { e.stopPropagation(); navigate(buildRoute({ pathname: '/p/graph/view', params: { focus: linkedNodeId }, branch: viewingRef })); }}
-          style={{ marginLeft: 'auto' }}
-        >
-          <Icon name="diagram-project" size={11} />
-        </button>
+        {hasGraphPage() && (
+          <button
+            className="graph-nav-link"
+            title="View in graph"
+            onClick={e => { e.stopPropagation(); navigate(buildRoute({ pathname: '/p/graph/view', params: { focus: linkedNodeId }, branch: viewingRef })); }}
+            style={{ marginLeft: 'auto' }}
+          >
+            <Icon name="diagram-project" size={11} />
+          </button>
+        )}
       </div>
     );
   }
@@ -1151,14 +1155,16 @@ function NodePage({ nodeId, templates, templatesByName, onNavigate, refreshToken
           <TemplateBadge name={templateDisplayName(template)} colour={colour} />
           <StateTag state={root.state} />
           <StabilityTag stability={root.stability} />
-          <button
-            className="graph-nav-link"
-            onClick={() => navigate(buildRoute({ pathname: '/p/graph/view', params: { focus: root.id }, branch: viewingRef }))}
-            title="View in graph"
-          >
-            <Icon name="diagram-project" size={11} />
-            <span>Graph</span>
-          </button>
+          {hasGraphPage() && (
+            <button
+              className="graph-nav-link"
+              onClick={() => navigate(buildRoute({ pathname: '/p/graph/view', params: { focus: root.id }, branch: viewingRef }))}
+              title="View in graph"
+            >
+              <Icon name="diagram-project" size={11} />
+              <span>Graph</span>
+            </button>
+          )}
         </div>
         <div className="label-sm mono">{root.id}</div>
       </div>
