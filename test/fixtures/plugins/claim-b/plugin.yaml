@@ -5,4 +5,4 @@ requires: { templates: [] }
 main: ./index.js
 contributes:
   pages:
-    - { id: home, title: "Claim B", icon: puzzle-piece, order: 60, mount: mount, opens: [DomainModel] }
+    - { id: home, title: "Claim B", icon: cubes, order: 60, mount: mount, opens: [DomainModel] }

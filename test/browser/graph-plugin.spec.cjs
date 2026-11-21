@@ -9,7 +9,7 @@ test('Graph is a plugin page with a React Flow canvas and an active nav entry', 
   const graphItem = page.locator('.nav-rail-item', { hasText: 'Graph' });
   await expect(graphItem).toHaveClass(/active/);
   const labels = await page.locator('.nav-rail-item span').allTextContents();
-  expect(labels.slice(0, 2)).toEqual(['Dashboard', 'Models']);
+  expect(labels.slice(0, 2)).toEqual(['Dashboard', 'Explorer']);
   expect(labels).toContain('Graph');
 });
 

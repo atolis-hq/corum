@@ -43,7 +43,7 @@ one again. Enabling does not bypass version or template requirements.
 Configuration applies to everyone using this graph, with no per-user toggle.
 
 The built-in Graph page has ID `graph`. Disabling it removes its navigation
-entry and its "View in graph" node actions. Dashboard and Models are currently
+entry and its "View in graph" node actions. Dashboard and Explorer are currently
 host features and cannot be disabled through plugin configuration.
 
 Plugin IDs must be unique. Discovery visits built-ins, pack plugins, then

@@ -5,4 +5,4 @@ requires: { templates: [NoSuchTemplate] }
 main: ./index.js
 contributes:
   pages:
-    - { id: home, title: "Needs Missing", icon: puzzle-piece, order: 40, mount: mount, opens: [] }
+    - { id: home, title: "Needs Missing", icon: ban, order: 40, mount: mount, opens: [] }

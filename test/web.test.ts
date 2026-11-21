@@ -1574,9 +1574,9 @@ describe('web server', () => {
       assert.match(styles, /\.overlay-conflict\s*\{[^}]*background:\s*color-mix\(in oklch,\s*#c44\s*5%,\s*var\(--paper\)\);/)
     })
 
-    it('app: primary nav and page heading say Models; dashboard card stays Namespaces', () => {
-      assert.match(app, /\{ id: 'namespaces', icon: 'circle-nodes', label: 'Models' \}/)
-      assert.match(app, /<h1>Models<\/h1>/)
+    it('app: primary nav and page heading say Explorer; dashboard card stays Namespaces', () => {
+      assert.match(app, /\{ id: 'namespaces', icon: 'sitemap', label: 'Explorer' \}/)
+      assert.match(app, /<h1>Explorer<\/h1>/)
       assert.match(app, /label="Namespaces" \/>/)
     })
 

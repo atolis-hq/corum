@@ -25,7 +25,7 @@ The left rail switches between three views:
 
 - **Dashboard** - graph-wide statistics: nodes, namespaces, edges and
   diagnostics, plus a count of namespaces by kind.
-- **Models** - browse nodes by namespace and template. The sidebar has one
+- **Explorer** - browse nodes by namespace and template. The sidebar has one
   section per kind, labelled from the kind registry (for example `Component`
   and any pack-defined kind); a kind with no registry entry appears under its
   kind id. A node's page shows its properties, its schemas and fields (with
@@ -50,7 +50,7 @@ rail and actions to **Open in** menus on node pages and connection rows, with
 optional icon shortcuts beside node titles and connections. Menu membership
 (`menu`, default `true`) and icon placement (`quick`) are independent settings.
 Connection actions target the linked node and preserve the viewed branch.
-Dashboard and Models currently remain in the host UI.
+Dashboard and Explorer currently remain in the host UI.
 
 For filesystem sources, configure plugins in the graph's `graph.yaml`:
 

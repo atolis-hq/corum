@@ -17,11 +17,11 @@ test('ok plugin mounts at its route and has a nav entry', async ({ page }) => {
   await expect(page.getByTestId('plugin-ok')).toHaveCount(0);
 });
 
-test('nav rail lists host items (Dashboard, Models) before plugin pages sorted by order', async ({ page }) => {
+test('nav rail lists host items (Dashboard, Explorer) before plugin pages sorted by order', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.nav-rail-item', { hasText: 'OK Plugin' })).toBeVisible();
   const labels = await page.locator('.nav-rail-item span').allTextContents();
-  expect(labels.slice(0, 2)).toEqual(['Dashboard', 'Models']);
+  expect(labels.slice(0, 2)).toEqual(['Dashboard', 'Explorer']);
   // Orders: OK Plugin 10, Broken Import 20 and Graph 20 (title tie-break), Throws On Mount 30.
   expect(labels.slice(2, 6)).toEqual(['OK Plugin', 'Broken Import', 'Graph', 'Throws On Mount']);
   expect(labels[labels.length - 1]).toBe('Debug');
@@ -380,7 +380,7 @@ test('plugin pages refetch after a graph reload without remounting', async ({ pa
 test.describe('explorer view bypass (view=explorer)', () => {
   const EVENT_NAME = 'order-placed';
 
-  test('clicking a claimed event in the Models tree stays on the Explorer node page', async ({ page }) => {
+  test('clicking a claimed event in the Explorer tree stays on the Explorer node page', async ({ page }) => {
     await page.goto('/#/namespaces');
     const item = page.locator(`.nav-node-item[title="${EVENT}"]`);
     const orders = page.locator('.nav-section-head', { hasText: /^orders$/i });

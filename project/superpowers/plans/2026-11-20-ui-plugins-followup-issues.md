@@ -1,4 +1,4 @@
-# UI Plugins: Follow-up Issues (to file after the core lands)
+﻿# UI Plugins: Follow-up Issues (to file after the core lands)
 
 Source: `project/adrs/ADR-010-ui-plugin-architecture.md` and `project/superpowers/plans/2026-11-20-ui-plugin-architecture.md`.
 
@@ -8,19 +8,19 @@ Status: none filed yet.
 
 ---
 
-## 1. Port Models/Explorer to a built-in plugin (planned)
+## 1. Port the Explorer (formerly Models) to a built-in plugin (planned)
 - **Decision (product owner):** the Explorer becomes a built-in plugin. The Explorer is the Models section: the secondary navigation tree (namespaces grouped by kind, then node types, then nodes) and the namespace overview pages. The node detail page (`NodePage`) is the canonical page for any node and stays in the host. No routing change is needed for this port. Plugging into search results (without changing the core search) is a separate, later idea.
 - **Problem:** The Models/Explorer (`NavTree`, `NamespacePage`, `NamespacesPage`, node tree in `web/app.jsx`) is still hardcoded host code; only Graph proves the plugin path.
 - **Intended outcome:** Models/Explorer is a built-in plugin (`web/builtin/explorer/`) using the same manifest/loader/SDK as Graph. The host keeps only the Dashboard, generic node page, shell and search. Deep links to namespaces and nodes keep working.
-- **Acceptance:** `npm test`, `npm run test:web`; `#/p/explorer/…` routes work; `#/node?id=…` generic page unchanged; existing mobile-navigation and table-scroll specs pass.
+- **Acceptance:** `npm test`, `npm run test:web`; `#/p/explorer/â€¦` routes work; `#/node?id=â€¦` generic page unchanged; existing mobile-navigation and table-scroll specs pass.
 - **Constraints:** Do not change `/api/*` contracts or the manifest schema; ADR-010 section 5a resolution rules unchanged.
-- **Approach (non-binding):** Mechanical JSX → htm port as done for Graph; move `nav.js` helpers under the plugin.
+- **Approach (non-binding):** Mechanical JSX â†’ htm port as done for Graph; move `nav.js` helpers under the plugin.
 - **Depends on:** core Stage 3. The nav helpers (`buildNavTree`, `buildOverlayIndicatorIds`, `groupNamespacesByKind`, `namespaceEdges`) move into the Explorer plugin as private modules instead of staying on `window.CorumNav`; they are not SDK exports (decided: navigation and search are host features plugins plug into).
 
 ## 2. Git-source plugin assets (pack-bundled and standalone)
 - **Problem:** For git sources, discovery returns built-ins only; pack-bundled and standalone plugins from the repo are not served.
 - **Intended outcome:** With a git source, plugins listed in `pack.yaml` `plugins:` and `graph.yaml` `plugins:` are discovered and served from the default-branch ref, pinned to one commit per request, with the same path-prefix, extension-allowlist, and ETag rules as file sources. Other branches/overlays use the default branch's plugin set; `requires.templates` is evaluated against the default-branch graph.
-- **Acceptance:** tests with an in-memory/local git fixture: asset served, traversal rejected, YAML never served, ETag derived from blob/commit id, plugin dir missing at ref → `unavailable` with reason.
+- **Acceptance:** tests with an in-memory/local git fixture: asset served, traversal rejected, YAML never served, ETag derived from blob/commit id, plugin dir missing at ref â†’ `unavailable` with reason.
 - **Constraints:** Do not change the YAML-only `loadPackContent` behaviour for template loading.
 - **Approach (non-binding):** Add a `readPluginFile(ref, path)` capability on `GraphSource` using `git.listFiles`/`readBlob`.
 - **Depends on:** core Stage 2.
@@ -60,7 +60,7 @@ Status: none filed yet.
 - **Labels:** `bug`. **Depends on:** none (can run any time; more useful after core Stage 3).
 
 ## 9. Make the Explorer node page reachable for single-claimant nodes (minimal fix) (done in PR 5)
-- **Problem:** With a single plugin claiming a template (`opens`), `#/node?id=…` always `location.replace`s to the plugin page (`web/app.jsx` NodePage), so the host's built-in node page (the Explorer view) for that node cannot be reached or shared.
+- **Problem:** With a single plugin claiming a template (`opens`), `#/node?id=â€¦` always `location.replace`s to the plugin page (`web/app.jsx` NodePage), so the host's built-in node page (the Explorer view) for that node cannot be reached or shared.
 - **Intended outcome:** Every node has a reachable, shareable Explorer view regardless of plugin claims, with no new configuration. Resolved links still resolve to the claimant plugin as today.
 - **Acceptance:** Playwright spec: `#/node?id=X&view=explorer` shows the Explorer node page for a node claimed by one plugin; the "Open in" menu offers an "Explorer view" link that uses it; the resolved `hrefForNode` still resolves to the plugin page.
 - **Constraints (decided):** No new `graph.yaml` options and no routing redesign; do not change the resolution order in ADR-010 5a for resolved links. Rendering a plugin in place instead of redirecting, and pinned default views, are explicitly deferred (see the "Later" list).

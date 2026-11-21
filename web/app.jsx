@@ -120,7 +120,7 @@ function pluginSectionId(page) {
 function NavRail({ activeSection, onSection, pluginPages = [], debugMode, onDebugMode }) {
   const items = [
     { id: 'dashboard', icon: 'grip', label: 'Dashboard' },
-    { id: 'namespaces', icon: 'circle-nodes', label: 'Models' },
+    { id: 'namespaces', icon: 'sitemap', label: 'Explorer' },
     ...pluginPages.map(page => ({
       id: pluginSectionId(page),
       icon: page.icon ?? 'puzzle-piece',
@@ -785,7 +785,7 @@ function DashboardPage({ nodes, templates, kinds, gitMode, viewingRef, branches,
 }
 
 function NamespacesPage() {
-  return <div className="content"><h1>Models</h1></div>;
+  return <div className="content"><h1>Explorer</h1></div>;
 }
 
 // Generic fallback view for any namespace: owned nodes plus inbound and outbound edges.
@@ -1481,7 +1481,7 @@ function App() {
     navigate(buildRoute({ pathname: '/namespace', params: { name }, branch: viewingRef }));
   }
 
-  // Navigation that starts inside Models (tree, connections, schema references, namespace lists) stays in the Explorer view.
+  // Navigation that starts inside the Explorer (tree, connections, schema references, namespace lists) stays in the Explorer view.
   function handleNode(nodeId) {
     navigate(hrefForExplorerView(nodeId, { branch: viewingRef }));
   }
