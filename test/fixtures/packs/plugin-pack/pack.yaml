@@ -1,0 +1,10 @@
+name: plugin-pack
+version: "1.0.0"
+templates:
+  - PackDemo
+plugins:
+  - ui/pack-demo
+files:
+  - ui/pack-demo/plugin.yaml
+  - ui/pack-demo/index.js
+  - ui/pack-demo/lib/message.js
