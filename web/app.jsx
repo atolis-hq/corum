@@ -25,6 +25,7 @@ const {
   resolveNodeTarget,
   hrefForNode,
   hrefForAction,
+  hrefForExplorerView,
   owningRoot,
   kindColour,
 } = window.CorumHost.sdk;
@@ -119,7 +120,7 @@ function pluginSectionId(page) {
 function NavRail({ activeSection, onSection, pluginPages = [], debugMode, onDebugMode }) {
   const items = [
     { id: 'dashboard', icon: 'grip', label: 'Dashboard' },
-    { id: 'namespaces', icon: 'circle-nodes', label: 'Models' },
+    { id: 'namespaces', icon: 'sitemap', label: 'Explorer' },
     ...pluginPages.map(page => ({
       id: pluginSectionId(page),
       icon: page.icon ?? 'puzzle-piece',
@@ -784,7 +785,7 @@ function DashboardPage({ nodes, templates, kinds, gitMode, viewingRef, branches,
 }
 
 function NamespacesPage() {
-  return <div className="content"><h1>Models</h1></div>;
+  return <div className="content"><h1>Explorer</h1></div>;
 }
 
 // Generic fallback view for any namespace: owned nodes plus inbound and outbound edges.
@@ -1046,7 +1047,7 @@ function PluginPage({ route, templates, templatesByName, nodes, viewingRef, revi
   );
 }
 
-function NodePage({ nodeId, templates, templatesByName, onNavigate, refreshToken, viewingRef, overlayRefs, compact = true }) {
+function NodePage({ nodeId, explorerView = false, templates, templatesByName, onNavigate, refreshToken, viewingRef, overlayRefs, compact = true }) {
   const [cluster, setCluster] = useState(null);
   const [error, setError] = useState(null);
 
@@ -1071,8 +1072,9 @@ function NodePage({ nodeId, templates, templatesByName, onNavigate, refreshToken
     [rootNode, cluster, templatesByName],
   );
   const target = useMemo(
-    () => (matchKeys.length > 0 ? resolveNodeTarget(hostRegistry, matchKeys) : { kind: 'generic' }),
-    [matchKeys],
+    // view=explorer always shows this page: no redirect, even with a single claimant (ADR-010 5a).
+    () => (matchKeys.length > 0 && !explorerView ? resolveNodeTarget(hostRegistry, matchKeys) : { kind: 'generic' }),
+    [matchKeys, explorerView],
   );
 
   useEffect(() => {
@@ -1479,8 +1481,9 @@ function App() {
     navigate(buildRoute({ pathname: '/namespace', params: { name }, branch: viewingRef }));
   }
 
+  // Navigation that starts inside the Explorer (tree, connections, schema references, namespace lists) stays in the Explorer view.
   function handleNode(nodeId) {
-    navigate(buildRoute({ pathname: '/node', params: { id: nodeId }, branch: viewingRef }));
+    navigate(hrefForExplorerView(nodeId, { branch: viewingRef }));
   }
 
   function handleSearchNode(nodeId, templateName) {
@@ -1524,6 +1527,7 @@ function App() {
       <NodePage
         key={activeNodeId}
         nodeId={activeNodeId}
+        explorerView={route.params.get('view') === 'explorer'}
         templates={templates}
         templatesByName={templatesByName}
         onNavigate={handleNode}

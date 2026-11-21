@@ -17,11 +17,11 @@ test('ok plugin mounts at its route and has a nav entry', async ({ page }) => {
   await expect(page.getByTestId('plugin-ok')).toHaveCount(0);
 });
 
-test('nav rail lists host items (Dashboard, Models) before plugin pages sorted by order', async ({ page }) => {
+test('nav rail lists host items (Dashboard, Explorer) before plugin pages sorted by order', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.nav-rail-item', { hasText: 'OK Plugin' })).toBeVisible();
   const labels = await page.locator('.nav-rail-item span').allTextContents();
-  expect(labels.slice(0, 2)).toEqual(['Dashboard', 'Models']);
+  expect(labels.slice(0, 2)).toEqual(['Dashboard', 'Explorer']);
   // Orders: OK Plugin 10, Broken Import 20 and Graph 20 (title tie-break), Throws On Mount 30.
   expect(labels.slice(2, 6)).toEqual(['OK Plugin', 'Broken Import', 'Graph', 'Throws On Mount']);
   expect(labels[labels.length - 1]).toBe('Debug');
@@ -59,7 +59,7 @@ test('node claimed by two plugins shows an Open in menu and node actions', async
   await bar.getByRole('button', { name: /open in/i }).click();
   await expect(bar.getByRole('menuitem', { name: 'Claim A' })).toBeVisible();
   await expect(bar.getByRole('menuitem', { name: 'Claim B' })).toBeVisible();
-  await expect(bar.getByRole('menuitem', { name: /default view/i })).toBeVisible();
+  await expect(bar.getByRole('menuitem', { name: /explorer view/i })).toBeVisible();
   await expect(bar.getByRole('menuitem', { name: 'View in OK' })).toBeVisible();
   await bar.getByRole('menuitem', { name: 'Claim B' }).click();
   await expect(page.getByTestId('plugin-claim-b')).toBeVisible();
@@ -93,7 +93,7 @@ test('node title row shows quick-link icons and the Open in menu icon last, list
   // The menu lists everything, quick actions included, with the existing separator.
   await trigger.click();
   const menu = page.getByRole('menu');
-  for (const name of ['Default view', 'Claim A', 'Claim B', 'View in OK', 'View in graph']) {
+  for (const name of ['Explorer view', 'Claim A', 'Claim B', 'View in OK', 'View in graph']) {
     await expect(menu.getByRole('menuitem', { name })).toBeVisible();
   }
   await expect(menu.getByRole('menuitem', { name: 'View in OK', exact: true })).toHaveCount(1);
@@ -265,9 +265,9 @@ test('node claimed by one plugin redirects to its page', async ({ page }) => {
 test('unclaimed node shows the generic page', async ({ page }) => {
   await page.goto(`/#/node?id=${SCHEMA_NODE}`);
   await expect(page.locator('.detail-pane h1')).toBeVisible();
-  // No claimant pages: the menu holds only node actions, never a Default view entry.
+  // No claimant pages: the menu holds only node actions, never a Explorer view entry.
   await page.getByTestId('node-title-row').getByRole('button', { name: /open in/i }).click();
-  await expect(page.getByRole('menuitem', { name: /default view/i })).toHaveCount(0);
+  await expect(page.getByRole('menuitem', { name: /explorer view/i })).toHaveCount(0);
   await expect(page.getByRole('menuitem', { name: 'View in graph' })).toBeVisible();
   await expect(page).toHaveURL(/#\/(.+\/)?node\?id=/);
 });
@@ -337,7 +337,7 @@ test('a plugin page renders SDK node links and a SchemaCard for the node it is o
   const trigger = heading.getByRole('button', { name: 'Open in', exact: true });
   await trigger.click();
   const menu = heading.getByRole('menu');
-  for (const name of ['Default view', 'Claim A', 'Claim B', 'View in OK', 'View in graph']) {
+  for (const name of ['Explorer view', 'Claim A', 'Claim B', 'View in OK', 'View in graph']) {
     await expect(menu.getByRole('menuitem', { name, exact: true })).toBeVisible();
   }
   await expect(menu.getByRole('separator')).toHaveCount(1);
@@ -375,4 +375,78 @@ test('plugin pages refetch after a graph reload without remounting', async ({ pa
     expect(await page.evaluate(() => location.hash)).toBe(hash);
     page.removeAllListeners('request');
   }
+});
+
+test.describe('explorer view bypass (view=explorer)', () => {
+  const EVENT_NAME = 'order-placed';
+
+  test('clicking a claimed event in the Explorer tree stays on the Explorer node page', async ({ page }) => {
+    await page.goto('/#/namespaces');
+    const item = page.locator(`.nav-node-item[title="${EVENT}"]`);
+    const orders = page.locator('.nav-section-head', { hasText: /^orders$/i });
+    await expect(orders).toBeVisible();
+    if ((await orders.getAttribute('aria-expanded')) !== 'true') await orders.click();
+    // Expand collapsed template groups until the event shows.
+    for (const head of await page.locator('.nav-template-head[aria-expanded="false"]').all()) {
+      if (await item.count()) break;
+      await head.click();
+    }
+    await item.click();
+    await expect(page.locator('.detail-pane h1')).toHaveText(EVENT_NAME);
+    await expect.poll(() => page.url()).toContain(`node?id=${EVENT}&view=explorer`);
+    await expect(page.getByTestId('plugin-claim-solo')).toHaveCount(0);
+    await page.screenshot({ path: process.env.CORUM_SHOT_DIR ? `${process.env.CORUM_SHOT_DIR}/explorer-click.png` : undefined });
+  });
+
+  test('view=explorer renders the Explorer page and its Open in menu lists the claimant and Explorer view', async ({ page }) => {
+    await page.goto(`/#/node?id=${EVENT}&view=explorer`);
+    await expect(page.locator('.detail-pane h1')).toHaveText(EVENT_NAME);
+    await page.getByTestId('node-title-row').getByRole('button', { name: /open in/i }).click();
+    await expect(page.getByRole('menuitem', { name: 'Claim Solo' })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'Explorer view' })).toBeVisible();
+    await expect(page.getByTestId('plugin-claim-solo')).toHaveCount(0);
+  });
+
+  test('view=explorer shows the page with the menu when several plugins claim the node', async ({ page }) => {
+    await page.goto(`/#/node?id=${MODEL}&view=explorer`);
+    await expect(page.locator('.detail-pane h1')).toHaveText('order');
+    await page.getByTestId('node-title-row').getByRole('button', { name: /open in/i }).click();
+    await expect(page.getByRole('menuitem', { name: 'Claim A' })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'Claim B' })).toBeVisible();
+  });
+
+  test('a plugin page shows the node and links; Explorer view does not bounce back', async ({ page }) => {
+    await page.goto(`/#/p/claim-solo/home?id=${EVENT}`);
+    const header = page.getByTestId('plugin-claim-solo-node');
+    await expect(header).toContainText(EVENT_NAME);
+    await page.screenshot({ path: process.env.CORUM_SHOT_DIR ? `${process.env.CORUM_SHOT_DIR}/plugin-header.png` : undefined });
+    await header.getByRole('button', { name: /open in/i }).click();
+    await page.getByRole('menuitem', { name: 'Explorer view' }).click();
+    await expect(page.locator('.detail-pane h1')).toHaveText(EVENT_NAME);
+    await page.waitForTimeout(500);
+    await expect(page).toHaveURL(/node\?id=.*&view=explorer/);
+    await expect(page.getByTestId('plugin-claim-solo')).toHaveCount(0);
+  });
+
+  test('search for a claimed event still lands on the plugin page', async ({ page }) => {
+    await page.goto('/#/dashboard');
+    await page.locator('.topbar-search').click();
+    await page.locator('.search-modal-input').fill(EVENT_NAME);
+    await page.locator('.search-result-row', { hasText: EVENT_NAME }).first().click();
+    await expect(page.getByTestId('plugin-claim-solo')).toBeVisible();
+    await expect(page).toHaveURL(/#\/(.+\/)?p\/claim-solo\/home\?id=/);
+  });
+
+  test('a connection row click inside the Explorer view stays on Explorer views', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('corum:edgePanelOpen', 'true'));
+    await page.goto(`/#/node?id=${MODEL}&view=explorer`);
+    const row = page.locator('[data-testid="edge-row"]').first();
+    await expect(row).toBeVisible();
+    const linkedId = await row.getAttribute('title');
+    await row.click();
+    await expect(page.locator('.detail-pane h1')).toBeVisible();
+    await expect.poll(() => page.url()).toContain('view=explorer');
+    await expect.poll(() => decodeURIComponent(page.url())).toContain(`id=${linkedId}`);
+    await expect(page.getByTestId('plugin-claim-solo')).toHaveCount(0);
+  });
 });

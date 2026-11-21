@@ -192,7 +192,7 @@ describe('architecture: manifests and SDK surface', () => {
   // Adding or removing an SDK export is a compatibility promise to every plugin author.
   const SDK_UI_EXPORTS = [
     'BrandMark', 'Chip', 'Icon', 'PropertiesTable', 'PropertyValue', 'SchemaCard', 'StabilityTag', 'StateTag', 'TemplateBadge',
-    'createRegistry', 'getDisplayName', 'hrefForAction', 'hrefForNode', 'html', 'isPageAvailable', 'kindColour', 'matchKeysFor',
+    'createRegistry', 'getDisplayName', 'hrefForAction', 'hrefForExplorerView', 'hrefForNode', 'html', 'isPageAvailable', 'kindColour', 'matchKeysFor',
     'navigate', 'owningRoot', 'resolveNodeTarget',
   ]
   const SDK_REACT_EXPORTS = ['CtxProvider', 'NodeLinks', 'OpenInMenu', 'QuickLinks', 'mountReact', 'useApi', 'useCtx']

@@ -36,6 +36,7 @@ function createContext(identity, state, onError) {
     registry,
     hrefForNode: sdk.hrefForNode,
     hrefForAction: sdk.hrefForAction,
+    hrefForExplorerView: sdk.hrefForExplorerView,
     owningRoot: sdk.owningRoot,
     matchKeysFor: sdk.matchKeysFor,
     navigate: sdk.navigate,

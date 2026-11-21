@@ -5,4 +5,4 @@ requires: { templates: [] }
 main: ./index.js
 contributes:
   pages:
-    - { id: home, title: "Broken Import", icon: puzzle-piece, order: 20, mount: mount, opens: [] }
+    - { id: home, title: "Broken Import", icon: bug, order: 20, mount: mount, opens: [] }

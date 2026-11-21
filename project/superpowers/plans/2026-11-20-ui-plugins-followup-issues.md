@@ -1,4 +1,4 @@
-# UI Plugins: Follow-up Issues (to file after the core lands)
+﻿# UI Plugins: Follow-up Issues (to file after the core lands)
 
 Source: `project/adrs/ADR-010-ui-plugin-architecture.md` and `project/superpowers/plans/2026-11-20-ui-plugin-architecture.md`.
 
@@ -8,19 +8,19 @@ Status: none filed yet.
 
 ---
 
-## 1. Port Models/Explorer to a built-in plugin (planned)
+## 1. Port the Explorer (formerly Models) to a built-in plugin (planned)
 - **Decision (product owner):** the Explorer becomes a built-in plugin. The Explorer is the Models section: the secondary navigation tree (namespaces grouped by kind, then node types, then nodes) and the namespace overview pages. The node detail page (`NodePage`) is the canonical page for any node and stays in the host. No routing change is needed for this port. Plugging into search results (without changing the core search) is a separate, later idea.
 - **Problem:** The Models/Explorer (`NavTree`, `NamespacePage`, `NamespacesPage`, node tree in `web/app.jsx`) is still hardcoded host code; only Graph proves the plugin path.
 - **Intended outcome:** Models/Explorer is a built-in plugin (`web/builtin/explorer/`) using the same manifest/loader/SDK as Graph. The host keeps only the Dashboard, generic node page, shell and search. Deep links to namespaces and nodes keep working.
-- **Acceptance:** `npm test`, `npm run test:web`; `#/p/explorer/…` routes work; `#/node?id=…` generic page unchanged; existing mobile-navigation and table-scroll specs pass.
+- **Acceptance:** `npm test`, `npm run test:web`; `#/p/explorer/â€¦` routes work; `#/node?id=â€¦` generic page unchanged; existing mobile-navigation and table-scroll specs pass.
 - **Constraints:** Do not change `/api/*` contracts or the manifest schema; ADR-010 section 5a resolution rules unchanged.
-- **Approach (non-binding):** Mechanical JSX → htm port as done for Graph; move `nav.js` helpers under the plugin.
+- **Approach (non-binding):** Mechanical JSX â†’ htm port as done for Graph; move `nav.js` helpers under the plugin.
 - **Depends on:** core Stage 3. The nav helpers (`buildNavTree`, `buildOverlayIndicatorIds`, `groupNamespacesByKind`, `namespaceEdges`) move into the Explorer plugin as private modules instead of staying on `window.CorumNav`; they are not SDK exports (decided: navigation and search are host features plugins plug into).
 
 ## 2. Git-source plugin assets (pack-bundled and standalone)
 - **Problem:** For git sources, discovery returns built-ins only; pack-bundled and standalone plugins from the repo are not served.
 - **Intended outcome:** With a git source, plugins listed in `pack.yaml` `plugins:` and `graph.yaml` `plugins:` are discovered and served from the default-branch ref, pinned to one commit per request, with the same path-prefix, extension-allowlist, and ETag rules as file sources. Other branches/overlays use the default branch's plugin set; `requires.templates` is evaluated against the default-branch graph.
-- **Acceptance:** tests with an in-memory/local git fixture: asset served, traversal rejected, YAML never served, ETag derived from blob/commit id, plugin dir missing at ref → `unavailable` with reason.
+- **Acceptance:** tests with an in-memory/local git fixture: asset served, traversal rejected, YAML never served, ETag derived from blob/commit id, plugin dir missing at ref â†’ `unavailable` with reason.
 - **Constraints:** Do not change the YAML-only `loadPackContent` behaviour for template loading.
 - **Approach (non-binding):** Add a `readPluginFile(ref, path)` capability on `GraphSource` using `git.listFiles`/`readBlob`.
 - **Depends on:** core Stage 2.
@@ -59,12 +59,12 @@ Status: none filed yet.
 - **Approach (non-binding):** Investigate whether focus is stolen by a later re-render; add a deterministic "app ready" marker (for example a `data-ready` attribute set once the first render completes) and wait on it. Re-check after the plugin core lands, since Babel is no longer the only startup cost.
 - **Labels:** `bug`. **Depends on:** none (can run any time; more useful after core Stage 3).
 
-## 9. Make the default node page reachable for single-claimant nodes (minimal fix)
-- **Problem:** With a single plugin claiming a template (`opens`), `#/node?id=…` always `location.replace`s to the plugin page (`web/app.jsx` NodePage), so the default node page for that node cannot be reached or shared.
-- **Intended outcome:** Every node has a reachable, shareable default view regardless of plugin claims, with no new configuration. Default links still resolve to the claimant plugin as today.
-- **Acceptance:** Playwright spec: `#/node?id=X&view=default` shows the default node page for a node claimed by one plugin; the "Open in" menu offers a "Default view" link that uses it; the default `hrefForNode` still resolves to the plugin page.
-- **Constraints (decided):** No new `graph.yaml` options and no routing redesign; do not change the resolution order in ADR-010 5a for default links. Rendering a plugin in place instead of redirecting, and pinned default views, are explicitly deferred (see the "Later" list).
-- **Approach (non-binding):** A `view=default` query parameter that bypasses the redirect.
+## 9. Make the Explorer node page reachable for single-claimant nodes (minimal fix) (done in PR 5)
+- **Problem:** With a single plugin claiming a template (`opens`), `#/node?id=â€¦` always `location.replace`s to the plugin page (`web/app.jsx` NodePage), so the host's built-in node page (the Explorer view) for that node cannot be reached or shared.
+- **Intended outcome:** Every node has a reachable, shareable Explorer view regardless of plugin claims, with no new configuration. Resolved links still resolve to the claimant plugin as today.
+- **Acceptance:** Playwright spec: `#/node?id=X&view=explorer` shows the Explorer node page for a node claimed by one plugin; the "Open in" menu offers an "Explorer view" link that uses it; the resolved `hrefForNode` still resolves to the plugin page.
+- **Constraints (decided):** No new `graph.yaml` options and no routing redesign; do not change the resolution order in ADR-010 5a for resolved links. Rendering a plugin in place instead of redirecting, and pinned default views, are explicitly deferred (see the "Later" list).
+- **Approach (non-binding):** A `view=explorer` query parameter that bypasses the redirect.
 - **Labels:** `bug`. **Depends on:** core Stage 2.
 
 ## 10. SDK primitives build node links without the branch
@@ -129,7 +129,14 @@ Status: none filed yet.
 - **Constraints:** Core packs (`core`, `domain`, `rest`, `messaging`) stay lean: templates only, no plugin code. Generic UIs (Graph, Explorer, Dashboard) stay built-in; pack-specific UIs ship inside their pack.
 - **Depends on:** core Stage 3.
 
-## 19. Small items (one line each; expand when picked up)
+## 19. Search returns all nodes and opens the owning view
+- **Problem:** `searchNodes` (`src/graph/index.ts`) skips every node that has a parent (`findParent(...) !== undefined`), so owned children (operations, schemas, fields, enums, enum values) cannot be found from the web search; for example searching "place" does not return `orders.DomainModel.order.operations.place`.
+- **Intended outcome (product owner):** All nodes are searchable in the web UI, and opening a child result opens its owning view (the cluster root's resolved view, scrolled to the child).
+- **Acceptance:** Playwright spec: searching an operation name returns it with its owner shown and navigates to the owning page.
+- **Constraints:** Keep the MCP `search_nodes` root-only behaviour unless decided otherwise; avoid flooding results with fields and enum values (rank or cap).
+- **Labels:** `bug`, `enhancement`. **Depends on:** none.
+
+## 20. Small items (one line each; expand when picked up)
 - **Plugin/pack manifest read cost:** discovery re-reads and parses `graph.yaml` and each `pack.yaml` on every refresh (about 8 ms on the sample graph; the pack scan is most of it). Cache by file mtime if reloads become frequent.
 - **React warning check:** confirm `mountReact` unmounting (web/sdk/react.js) does not trigger React's "synchronously unmount a root while rendering" warning, using a development React build (only the production build is served today).
 - **Keyboard accessibility of the Open in menu:** arrow-key navigation, focus on open and return of focus to the trigger on close (it has `role="menu"` and Escape/outside-click dismissal only).
@@ -137,5 +144,5 @@ Status: none filed yet.
 - **Browser specs in CI:** run `npm run test:web` in CI (needs Playwright browsers), since only unit tests run there today.
 - **Theme switcher in the UI:** covered by the theming epic (issue 16).
 
-## 20. Later / not yet issues (decide when needed)
+## 21. Later / not yet issues (decide when needed)
 - Rendering the claimant plugin in place at the stable `#/node?id=X` URL instead of redirecting (a nice-to-have; with no new configuration it only differs from the redirect for single-claimant nodes), pinned default views per template, a `pack.yaml` field that switches built-in plugins on or off (`requires.templates` and the `plugins:` overrides cover current needs), plugging into search results without changing the core search (for example a search-provider contribution type), custom node renderers, plugin-defined extension points, shadow-DOM isolation, pinned default openers for ambiguous nodes, server-side extension hooks, a mock-host test harness, `corum plugin update`, per-user plugin overrides, standalone plugin install via the pack registry, a node search/picker component only if a plugin demonstrates a need (search is a host feature).

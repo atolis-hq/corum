@@ -5,4 +5,4 @@ requires: { templates: [] }
 main: ./index.js
 contributes:
   pages:
-    - { id: home, title: "Mount Counter", icon: puzzle-piece, order: 80, mount: mountCounter, opens: [] }
+    - { id: home, title: "Mount Counter", icon: calculator, order: 80, mount: mountCounter, opens: [] }

@@ -7,7 +7,7 @@ function toSearchParams(params) {
 }
 
 /*
- * env:   { registry, owningRoot, hrefForNode, hrefForAction, matchKeysFor, navigate, buildRoute, fetchImpl?, pluginId, pageId }
+ * env:   { registry, owningRoot, hrefForNode, hrefForAction, hrefForExplorerView, matchKeysFor, navigate, buildRoute, fetchImpl?, pluginId, pageId }
  * state: { route, viewingRef, templates, revision, nodes, templatesByName }  (nodes/templatesByName stay host-side;
  *        revision is the host's data revision, bumped on every graph reload)
  * Returns { ctx, update(nextState) }. ctx fields are getters over the latest state, so the same object
@@ -64,7 +64,7 @@ export function createPluginContext(env, initialState, onError) {
         relations: actions.filter(action => action.quick.includes('relations')).map(actionLink),
       },
       menu: {
-        defaultHref: claimants.length > 0 ? env.buildRoute({ pathname: '/node', params: { id }, branch }) : null,
+        explorerHref: claimants.length > 0 ? env.hrefForExplorerView(id, { branch }) : null,
         destinations: claimants.map(claim => linkOf(
           `${claim.pluginId}/${claim.id}`,
           claim,
