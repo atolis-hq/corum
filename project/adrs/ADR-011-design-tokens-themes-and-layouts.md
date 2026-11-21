@@ -54,9 +54,9 @@ Adopted from Material 3 (`on-*` roles): a fill token is paired with a token for 
 
 There is no per-component tier. Component styling is in the host stylesheet and is derived from semantic tokens. Add a third tier only if a concrete theme need cannot be met without it.
 
-**Format.** Tokens are authored in the W3C Design Tokens Community Group (DTCG) JSON format (`$value`, `$type`, `$description`, `{group.token}` aliases) in `web/sdk/tokens.json`, with Corum-specific metadata under `$extensions.corum` (`since`, `deprecated`). The CSS custom properties for the default theme and the style guide's token listing are generated from this file by a small script (no build step for plugin authors; the generated CSS is committed). This keeps the contract importable from Figma, Tokens Studio and Style Dictionary. DTCG has no theming model, so a theme is a set of values for the same token names (section 3), not a DTCG feature.
+**Format.** Tokens are authored in the W3C Design Tokens Community Group (DTCG) JSON format (`$value`, `$type`, `$description`, `{group.token}` aliases) in `web/sdk/tokens.json`, with Corum-specific metadata under `$extensions.corum` (`since`, `origin`). The CSS custom properties for the default theme and the style guide's token listing are generated from this file by a small script (no build step for plugin authors; the generated CSS is committed). This keeps the contract importable from Figma, Tokens Studio and Style Dictionary. DTCG has no theming model, so a theme is a set of values for the same token names (section 3), not a DTCG feature.
 
-**Migration of existing names.** The current names remain as **deprecated aliases** in a single compatibility block, with the exact mapping confirmed against real usage during the audit. Proposed: `--paper`→`--background`, `--paper-2`→`--card`, `--paper-3`→`--muted`, `--ink`→`--foreground`, `--ink-2`→`--secondary-foreground`, `--ink-3`→`--muted-foreground`, `--ink-4`→`--subtle-foreground`, `--rule`→`--border`, `--rule-2`→`--border-strong`, `--accent-2`→`--accent-soft`, `--accent-ink`→`--accent-text`, `--ok`→`--success`, `--warn`→`--warning`. Existing classes and variables are not renamed without a migration note (#181 constraint). Aliases are removed no earlier than the release after all in-tree uses are migrated.
+**Renaming existing names (no backwards compatibility).** The current names are replaced outright. There are **no alias layer and no deprecation period**, consistent with ADR-010. Every in-tree use (stylesheet, host, built-in plugins, docs, tests) is renamed in one change, and the old names are removed. Proposed mapping, confirmed against real usage during that change: `--paper`→`--background`, `--paper-2`→`--card`, `--paper-3`→`--muted`, `--ink`→`--foreground`, `--ink-2`→`--secondary-foreground`, `--ink-3`→`--muted-foreground`, `--ink-4`→`--subtle-foreground`, `--rule`→`--border`, `--rule-2`→`--border-strong`, `--accent-2`→`--accent-soft`, `--accent-ink`→`--accent-text`, `--ok`→`--success`, `--warn`→`--warning`. The mapping is recorded in the PR description and release notes as the migration note for third-party plugin authors, whose plugins using old names will lose styling until updated. A test fails if any old name remains in `web/`.
 
 **Versioning.** The contract version is a single integer, `--corum-tokens-version`, set by the host. A snapshot test over `tokens.json` and the documented class list fails when a documented token or class is removed or renamed without a version bump and migration note, mirroring the SDK export snapshot. Adding a token is non-breaking (recorded in `since`); removing or renaming one is breaking (version bump).
 
@@ -124,13 +124,13 @@ The popover follows the keyboard-accessible pattern of the Open in menu (#197): 
 - Third parties and packs can add themes without changing the host, using the mechanism ADR-010 already provides.
 - Plugins are styled by the global stylesheet if they use the documented tokens and classes; the snapshot test makes that contract enforceable.
 - Packs keep their one-hex colour authoring, and a new theme works with them automatically through derivation.
-- Cost: a `color-mix()`-based derivation (supported by all current evergreen browsers) and a deprecated alias block that must be removed later.
+- Cost: a `color-mix()`-based derivation (supported by all current evergreen browsers) and a one-off breaking rename for third-party plugins using the old variable names.
 - Dark mode becomes reachable from the UI for the first time.
 - Theme selection is not shared between users or devices.
 
 ## Alternatives considered
 
-- **Keep `--paper`/`--ink` as the public vocabulary.** Least churn, but names describe appearance rather than role. Kept only as deprecated aliases.
+- **Keep `--paper`/`--ink` as the public vocabulary.** Least churn, but names describe appearance rather than role. Rejected; the names are replaced, with no aliases.
 - **Role names of our own (`--surface-1`, `--text-1`).** Equivalent in structure, but unfamiliar to plugin authors and agents; the shadcn/Radix names cost nothing extra.
 - **Adopting a full third-party system (Material 3, Primer, Carbon).** Hundreds of tokens to version and test, tied to another product's components. Names and ideas are adopted selectively.
 - **Ad-hoc token JSON.** Not importable by design tools; DTCG is the standard interchange format.
@@ -146,10 +146,11 @@ The popover follows the keyboard-accessible pattern of the Open in menu (#197): 
 
 Delivered as separate issues tracked from #181, in this order:
 
-1. Settings popover and theme switcher (replaces Debug button), with the alias layer, `data-theme` on `<html>`, persistence and no-flash boot.
-2. Token audit: stylesheet hex colours to tokens.
-3. Token audit: script hex colours to tokens, pack-colour derivation, fallback palette and a single edge-type styling helper. Ratchet reaches zero.
-4. Contract document (`docs/styling.md`), DTCG `tokens.json`, CSS generation script and the snapshot test. (Issue 1 introduces the new names and aliases by hand; this issue makes `tokens.json` the source of truth.)
-5. `contributes.themes` in the plugin manifest and loader, built-in `themes` plugin, one additional example theme.
-6. Style guide built-in plugin.
-7. Layouts (`contributes.layouts`, `data-layout`, one alternative layout).
+1. Token rename: replace the old variable names with the semantic names across all in-tree CSS and JS (no aliases), unify `data-theme` on `<html>`, and add a test that fails if an old name remains.
+2. Settings popover and theme switcher (replaces Debug button), with persistence and no-flash boot.
+3. Token audit: stylesheet hex colours to tokens.
+4. Token audit: script hex colours to tokens, pack-colour derivation, fallback palette and a single edge-type styling helper. Ratchet reaches zero.
+5. Contract document (`docs/styling.md`), DTCG `tokens.json`, CSS generation script and the snapshot test. (Issue 1 introduces the new names by hand; this issue makes `tokens.json` the source of truth.)
+6. `contributes.themes` in the plugin manifest and loader, built-in `themes` plugin, one additional example theme.
+7. Style guide built-in plugin.
+8. Layouts (`contributes.layouts`, `data-layout`, one alternative layout).
