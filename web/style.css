@@ -1,3 +1,8 @@
+/* Host-owned: themes must not set this. */
+:root {
+  --corum-tokens-version: 1;
+}
+
 :root,
 [data-theme="light"] {
   --background: #ffffff;
@@ -20,7 +25,6 @@
   --radius-sm: 4px;
   --radius: 6px;
   --radius-lg: 10px;
-  --corum-tokens-version: 1;
   color-scheme: light;
 }
 
