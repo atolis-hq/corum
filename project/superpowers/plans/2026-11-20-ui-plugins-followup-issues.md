@@ -74,5 +74,16 @@ Status: none filed yet.
 - **Approach (non-binding):** Pass a `hrefForNode` (or link component) prop/context into `SchemaCard` and schema rows instead of concatenating `#/node?id=`.
 - **Labels:** `bug`. **Depends on:** none.
 
-## 11. Later / not yet issues (decide when needed)
+## 11. Vendor fonts and Font Awesome (no runtime CDN)
+- **Problem:** `web/index.html` still loads Google Fonts and Font Awesome from CDNs. Every fresh browser (each Playwright context) makes several HTTPS connections and DNS lookups to third parties; during local test runs on Windows this contributed thousands of sockets to the TIME_WAIT pile (observed 2026-11-21: roughly 6,600 to port 443 and 3,700 to port 53 out of ~17,800), which eventually made every browser fail with `net::ERR_ADDRESS_IN_USE`. The app also does not work offline.
+- **Intended outcome:** The UI makes no third-party requests at runtime: fonts and icons are served by the host (like the vendored scripts), so the app works offline and tests do not depend on the network.
+- **Acceptance:** Playwright spec asserting that loading the app triggers no requests to hosts other than the Corum server; visual parity of icons and fonts on Dashboard, node page and Graph.
+- **Constraints:** Respect font and icon licences (include licence files); keep the `fa-solid fa-<name>` class usage working.
+- **Approach (non-binding):** Serve a subset of Font Awesome free-solid and the two font families from `node_modules` or vendored files via the existing `/vendor` allowlist.
+- **Labels:** `enhancement`.
+
+## 12. Local verification gaps to re-run once the machine is clean
+- The final menu and quick-link changes (commits after `2d761c5`) passed unit tests but their Playwright specs could not be re-run locally on 2026-11-21 because of the socket exhaustion above. CI runs `npm test` only (no browser specs). Re-run `npx playwright test` locally after a reboot and fix anything that surfaces.
+
+## 13. Later / not yet issues (decide when needed)
 - Custom node renderers, plugin-defined extension points, shadow-DOM isolation, pinned default openers for ambiguous nodes, server-side extension hooks, a mock-host test harness, `corum plugin update`, per-user plugin overrides, standalone plugin install via the pack registry.
