@@ -11,12 +11,12 @@ function messageOf(error) {
 function signatureOf(statuses) {
   return JSON.stringify(
     statuses
-      .map(item => [item.id, item.status, item.version ?? item.manifest?.version ?? ''])
+      .map(item => [item.id, item.status, item.version ?? item.manifest?.version ?? '', item.revision ?? ''])
       .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)),
   )
 }
 
-/** True when the plugin list (ids, statuses, versions) differs; a failed re-fetch (null) is not a change. */
+/** True when the plugin list (ids, statuses, versions, development revisions) differs; a failed re-fetch (null) is not a change. */
 export function pluginsChanged(previous, next) {
   if (!Array.isArray(next)) return false
   if (!Array.isArray(previous)) return true

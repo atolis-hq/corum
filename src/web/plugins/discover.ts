@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
@@ -11,6 +12,8 @@ export type DiscoveredPlugin = {
   origin: PluginOrigin
   /** Set when this plugin is listed but not usable (shadowed or duplicate); status becomes unavailable. */
   unavailableReason?: string
+  /** Development plugins only: fingerprint of the directory contents, so the browser can detect edits. */
+  revision?: string
 }
 
 export type PluginOverride = { id: string; enabled: boolean }
@@ -160,37 +163,74 @@ export function discoverPlugins(opts: DiscoverOptions): { plugins: DiscoveredPlu
   }
 
   // Development plugins last: they replace pack/standalone plugins of the same id for this run.
+  errors.push(...mergeDevPlugins(plugins, opts.devPluginDirs ?? []))
+
+  return { plugins, errors }
+}
+
+const REVISION_FILE_CAP = 5000
+
+/** Fingerprint of a directory's files (paths, sizes, mtimes); changes when any file is edited. */
+export function directoryRevision(root: string): string {
+  const hash = createHash('sha256')
+  let seen = 0
+  const walk = (dir: string): void => {
+    let entries
+    try { entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1)) } catch { return }
+    for (const entry of entries) {
+      if (seen >= REVISION_FILE_CAP) return
+      const file = path.join(dir, entry.name)
+      if (entry.isDirectory()) { walk(file); continue }
+      try {
+        const info = statSync(file)
+        seen++
+        hash.update(`${path.relative(root, file)}\0${info.size}\0${info.mtimeMs}\n`)
+      } catch { /* vanished mid-walk */ }
+    }
+  }
+  walk(root)
+  return hash.digest('hex').slice(0, 16)
+}
+
+/**
+ * Merge unpacked development plugins (`--plugin-dir`) into `plugins` in place. A development
+ * plugin replaces a pack/standalone plugin with the same id for this run (the replaced one gets an
+ * `unavailableReason`), cannot replace a built-in, and the first of two development plugins with
+ * one id wins. Returns warnings and errors for the caller to log. Mutates the given plugin objects,
+ * so pass copies when the originals are shared.
+ */
+export function mergeDevPlugins(plugins: DiscoveredPlugin[], devDirs: string[]): string[] {
+  const messages: string[] = []
   const devSeen = new Map<string, DiscoveredPlugin>()
-  for (const rawDir of opts.devPluginDirs ?? []) {
+  for (const rawDir of devDirs) {
     const dir = path.resolve(rawDir)
-    const manifest = readManifestFile(dir, `development plugin ${dir}`, errors)
+    const manifest = readManifestFile(dir, `development plugin ${dir}`, messages)
     if (!manifest) continue
+    const revision = directoryRevision(dir)
     const earlierDev = devSeen.get(manifest.id)
     if (earlierDev) {
       const reason = `duplicate plugin id "${manifest.id}"; keeping the development plugin at ${earlierDev.dir}`
-      errors.push(`development plugin ${dir}: ${reason}`)
-      plugins.push({ manifest, dir, origin: 'dev', unavailableReason: reason })
+      messages.push(`development plugin ${dir}: ${reason}`)
+      plugins.push({ manifest, dir, origin: 'dev', revision, unavailableReason: reason })
       continue
     }
-    const existing = byId.get(manifest.id)
+    const existing = plugins.find(plugin => plugin.manifest.id === manifest.id && plugin.unavailableReason === undefined)
     if (existing?.origin === 'builtin') {
       const reason = `cannot replace the built-in plugin "${manifest.id}"`
-      errors.push(`development plugin ${dir}: ${reason}`)
-      plugins.push({ manifest, dir, origin: 'dev', unavailableReason: reason })
+      messages.push(`development plugin ${dir}: ${reason}`)
+      plugins.push({ manifest, dir, origin: 'dev', revision, unavailableReason: reason })
       continue
     }
-    const plugin: DiscoveredPlugin = { manifest, dir, origin: 'dev' }
+    const plugin: DiscoveredPlugin = { manifest, dir, origin: 'dev', revision }
     devSeen.set(manifest.id, plugin)
     if (existing) {
-      errors.push(`warning: development plugin at ${dir} replaces ${existing.origin} plugin "${manifest.id}" at ${existing.dir} for this run`)
+      messages.push(`warning: development plugin at ${dir} replaces ${existing.origin} plugin "${manifest.id}" at ${existing.dir} for this run`)
       existing.unavailableReason = `shadowed by development plugin at ${dir}`
       plugins.splice(plugins.indexOf(existing), 0, plugin)
     } else {
       plugins.push(plugin)
     }
-    byId.set(manifest.id, plugin)
   }
-
-  return { plugins, errors }
+  return messages
 }
 

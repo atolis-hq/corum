@@ -1491,15 +1491,22 @@ describe('web server', () => {
           onReload: () => { reloads++ },
         })
         const base = `http://localhost:${handle.port}`
-        const list = await fetch(`${base}/api/plugins`).then(res => res.json()) as Array<{ id: string; origin: string; status: string }>
+        const list = await fetch(`${base}/api/plugins`).then(res => res.json()) as Array<{ id: string; origin: string; status: string; revision?: string }>
         const dev = list.find(entry => entry.id === 'dev-demo')
         assert.equal(dev?.origin, 'dev')
         assert.equal(dev?.status, 'enabled')
         assert.equal((await fetch(`${base}/plugins/dev-demo/index.js`)).status, 200)
         assert.equal((await fetch(`${base}/plugins/dev-demo/plugin.yaml`)).status, 404)
+        for (const attempt of ['../graph/graph.yaml', '%2e%2e/graph/graph.yaml', '%252e%252e/index.js', 'missing.js']) {
+          assert.equal((await fetch(`${base}/plugins/dev-demo/${attempt}`)).status, 404, attempt)
+        }
+        const revisionBefore = dev && (dev as { revision?: string }).revision
+        assert.ok(revisionBefore)
 
         fs.appendFileSync(path.join(dir, 'index.js'), '// edit\n')
         await eventually(async () => reloads, count => count >= 1)
+        const afterList = await fetch(`${base}/api/plugins`).then(res => res.json()) as Array<{ id: string; revision?: string }>
+        assert.notEqual(afterList.find(entry => entry.id === 'dev-demo')?.revision, revisionBefore)
         assert.deepEqual(fs.readFileSync(path.join(graphPath, 'graph.yaml')), graphYamlBefore)
       } finally {
         if (saved.w !== undefined) process.env.CORUM_FILE_WATCHER = saved.w

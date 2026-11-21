@@ -407,8 +407,14 @@ export function startGraphFileWatcher(
   function scheduleReload(root: string, filename?: string | Buffer | null): void {
     // Development plugin directories react to any file; everything else only to YAML.
     if (!devDirs.includes(root) && !isRelevantWatchEvent(filename)) return
-    const effect = filename ? classify(root, String(filename)) : { graph: true, plugins: true }
-    if (!effect) return
+    // An event without a filename from a development directory can only mean plugin files changed.
+    const found = filename
+      ? classify(root, String(filename))
+      : devDirs.includes(root) ? { graph: false, plugins: true } : { graph: true, plugins: true }
+    if (!found) return
+    // Without graph watching (development directories only) the graph is never reloaded from disk.
+    const effect = watchGraph ? found : { graph: false, plugins: found.plugins }
+    if (!effect.graph && !effect.plugins) return
     needGraphReload ||= effect.graph
     needPluginRefresh ||= effect.plugins
     if (timer) clearTimeout(timer)
@@ -750,12 +756,7 @@ export function createApp(
       if (gitPlugins) {
         const request = await gitPlugins.current()
         res.setHeader('Cache-Control', 'no-cache')
-        const dev = pluginRuntime.devStatuses()
-        const devIds = new Set(dev.filter(entry => entry.status === 'enabled').map(entry => entry.id))
-        const merged = request.statuses.map(entry => devIds.has(entry.id) && entry.origin !== 'builtin'
-          ? { ...entry, status: 'unavailable' as const, reason: 'shadowed by a development plugin' }
-          : entry)
-        res.json([...merged, ...dev])
+        res.json(request.statuses)
         return
       }
       res.setHeader('Cache-Control', 'no-cache')
@@ -767,21 +768,8 @@ export function createApp(
     try {
       const request = gitPlugins ? await gitPlugins.current() : null
       const plugin = request?.enabledPlugin(req.params.id)
-      const devDir = request && plugin?.origin !== 'builtin' ? pluginRuntime.enabledDevDir(req.params.id) : null
-      if (request && devDir) {
-        const asset = resolvePluginAsset(devDir, (req.params as Record<string, string>)[0] ?? '')
-        if (!asset) { res.status(404).json({ error: 'Not found' }); return }
-        res.setHeader('Cache-Control', 'no-cache')
-        res.setHeader('ETag', asset.etag)
-        res.setHeader('Content-Type', asset.contentType)
-        res.setHeader('X-Content-Type-Options', 'nosniff')
-        if (ifNoneMatchSatisfied(req.headers['if-none-match'], asset.etag)) { res.status(304).end(); return }
-        res.sendFile(asset.file, { etag: false, lastModified: false, cacheControl: false, acceptRanges: false, dotfiles: 'allow' }, err => {
-          if (err && !res.headersSent) res.status(404).json({ error: 'Not found' })
-        })
-        return
-      }
-      if (request && plugin?.origin !== 'builtin') {
+      // Built-in and development plugins live on local disk; everything else is read from the pinned commit.
+      if (request && plugin?.origin !== 'builtin' && plugin?.origin !== 'dev') {
         const asset = plugin ? await request.asset(plugin, (req.params as Record<string, string>)[0] ?? '') : null
         if (!asset) { res.status(404).json({ error: 'Not found' }); return }
         res.setHeader('Cache-Control', 'no-cache')
@@ -939,13 +927,15 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
     graphDir: pluginGraphDir,
     builtinDir: BUILTIN_PLUGIN_DIR,
     corumVersion: version,
-    devPluginDirs: options.pluginDirs,
+    // Git sources resolve development plugins inside their own pinned plugin state.
+    devPluginDirs: pluginGraphDir === null ? undefined : options.pluginDirs,
     logger,
   })
 
   const gitPlugins = options.source?.pluginSnapshot
-    ? createGitPluginState(options.source, BUILTIN_PLUGIN_DIR, version, logger)
+    ? createGitPluginState(options.source, BUILTIN_PLUGIN_DIR, version, logger, undefined, options.pluginDirs)
     : undefined
+  const devPluginWatchDirs = (options.pluginDirs ?? []).map(dir => path.resolve(dir))
 
   async function reloadState(reason: string): Promise<void> {
     if (reloadInFlight) return reloadInFlight
@@ -974,18 +964,21 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
 
   const app = createApp(graph, reloadEvents, options.source, multiCache, () => reloadState('manual reload'), pluginRuntime, gitPlugins)
   const watchGraphFiles = isFileWatcherEnabled(options)
-  const stopWatcher = watchGraphFiles || (options.pluginDirs?.length ?? 0) > 0
+  const stopWatcher = watchGraphFiles || devPluginWatchDirs.length > 0
     ? startGraphFileWatcher(graph, {
         graphPath,
         watchGraph: watchGraphFiles,
-        devPluginWatchDirs: () => pluginRuntime.devWatchDirs(),
+        devPluginWatchDirs: () => devPluginWatchDirs,
         debounceMs: options.fileWatcherDebounceMs,
         logger,
         pluginWatchDirs: () => pluginRuntime.watchDirs(),
         onReload: ({ graphReloaded, pluginsChanged }) => {
           // Node-data changes do not re-resolve plugins; plugin/pack/graph.yaml changes do.
           if (graphReloaded) multiCache?.invalidate()
-          if (pluginsChanged) pluginRuntime.refresh()
+          if (pluginsChanged) {
+            pluginRuntime.refresh()
+            gitPlugins?.refreshDev()
+          }
           options.onReload?.()
           reloadEvents.notify()
         },

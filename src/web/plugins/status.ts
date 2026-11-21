@@ -11,6 +11,8 @@ export type PluginStatus = {
   version: string
   status: PluginStatusValue
   reason?: string
+  /** Development plugins only: changes whenever a file in the plugin directory changes. */
+  revision?: string
   manifest: PluginManifest
 }
 
@@ -55,6 +57,7 @@ export function resolvePluginStatuses(plugins: DiscoveredPlugin[], ctx: StatusCo
       manifest: plugin.manifest,
     }
     if (reason !== undefined) result.reason = reason
+    if (plugin.revision !== undefined) result.revision = plugin.revision
     return result
   })
 }

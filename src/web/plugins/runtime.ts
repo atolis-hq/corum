@@ -25,12 +25,6 @@ export type PluginRuntime = {
   enabledDir(id: string): string | null
   /** Directories of registered standalone plugins, for the file watcher (their manifests). */
   watchDirs(): string[]
-  /** Development plugin directories: any file change inside them matters. */
-  devWatchDirs(): string[]
-  /** Statuses of development plugins only (used to overlay git-source plugin lists). */
-  devStatuses(): PluginStatus[]
-  /** Directory of an enabled development plugin, or null. */
-  enabledDevDir(id: string): string | null
 }
 
 function readGraphYaml(graphDir: string | null): unknown {
@@ -90,11 +84,5 @@ export function createPluginRuntime(options: PluginRuntimeOptions): PluginRuntim
       return status?.status === 'enabled' ? dirs.get(id) ?? null : null
     },
     watchDirs: () => standaloneDirs,
-    devStatuses: () => current.filter(entry => entry.origin === 'dev'),
-    enabledDevDir(id) {
-      const status = current.find(entry => entry.id === id && entry.origin === 'dev' && entry.status === 'enabled')
-      return status ? dirs.get(id) ?? null : null
-    },
-    devWatchDirs: () => (options.devPluginDirs ?? []).map(dir => path.resolve(dir)),
   }
 }

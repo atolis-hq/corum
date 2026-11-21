@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { parse as parseYaml } from 'yaml'
 import type { GraphSource, PluginSnapshot } from '../../source/index.js'
 import { loadGraph } from '../../loader/index.js'
-import { discoverPlugins, readPluginOverrides, readStandalonePaths, validatePluginsKey, type DiscoveredPlugin, type PluginOrigin } from './discover.js'
+import { discoverPlugins, mergeDevPlugins, readPluginOverrides, readStandalonePaths, validatePluginsKey, type DiscoveredPlugin, type PluginOrigin } from './discover.js'
 import { isSafeRelativePath, parsePluginManifest, type PluginManifest } from './manifest.js'
 import { parsePluginAssetPath } from './assets.js'
 import { resolvePluginStatuses, type PluginStatus } from './status.js'
@@ -12,7 +12,15 @@ function record(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {}
 }
 
-export type PluginRequest = Awaited<ReturnType<typeof computePluginRequest>>
+export type PluginRequest = {
+  ref: string
+  statuses: PluginStatus[]
+  errors: string[]
+  enabledPlugin(id: string): DiscoveredPlugin | null
+  asset(plugin: DiscoveredPlugin, requestPath: string): Promise<{ bytes: Buffer; contentType: string; etag: string } | null>
+  /** The same pinned commit with unpacked development plugins overlaid; they are read from local disk. */
+  withDev(devDirs: string[]): PluginRequest
+}
 
 /** Resolve the default-branch commit and compute plugin state for it (no caching). */
 export async function gitPluginRequest(source: GraphSource, builtinDir: string, corumVersion: string): Promise<PluginRequest> {
@@ -29,6 +37,8 @@ export type GitPluginState = {
   install(next: PluginRequest): void
   /** Current pinned state; never contacts the source once a full state exists. */
   current(): Promise<PluginRequest>
+  /** Re-read development plugins from disk (their files changed); the pinned commit is unchanged. */
+  refreshDev(): void
 }
 
 /**
@@ -39,8 +49,23 @@ export type GitPluginState = {
  */
 export function createGitPluginState(
   source: GraphSource, builtinDir: string, corumVersion: string,
-  logger: (message: string) => void = () => {}, retryMs = 5000,
+  logger: (message: string) => void = () => {}, retryMs = 5000, devDirs: string[] = [],
 ): GitPluginState {
+  let devView: { base: PluginRequest; view: PluginRequest } | null = null
+  let lastDevLog = ''
+  function withDev(base: PluginRequest): PluginRequest {
+    if (devDirs.length === 0) return base
+    if (devView?.base === base) return devView.view
+    const view = base.withDev(devDirs)
+    devView = { base, view }
+    const added = view.errors.filter(error => !base.errors.includes(error))
+    const signature = added.join('\n')
+    if (signature !== lastDevLog) {
+      lastDevLog = signature
+      for (const error of added) logger(`[corum] plugin: ${error}`)
+    }
+    return view
+  }
   let state: PluginRequest | null = null
   let fallback = false
   let nextRetryAt = 0
@@ -85,14 +110,15 @@ export function createGitPluginState(
     prepare,
     install,
     async current() {
-      if (state && !(fallback && Date.now() >= nextRetryAt)) return state
+      if (state && !(fallback && Date.now() >= nextRetryAt)) return withDev(state)
       building ??= build().finally(() => { building = null })
-      return building
+      return withDev(await building)
     },
+    refreshDev() { devView = null },
   }
 }
 
-async function computePluginRequest(snapshot: PluginSnapshot, builtinDir: string, corumVersion: string) {
+async function computePluginRequest(snapshot: PluginSnapshot, builtinDir: string, corumVersion: string): Promise<PluginRequest> {
   // A broken default-branch graph must not take plugins down: plugins that
   // require templates become unavailable, everything else keeps working.
   let templates = new Set<string>()
@@ -159,25 +185,34 @@ async function computePluginRequest(snapshot: PluginSnapshot, builtinDir: string
   for (const declared of readStandalonePaths(graphYaml)) {
     await add(declared, snapshot.graphDir, 'standalone')
   }
-  const statuses = [...resolvePluginStatuses(plugins, {
-    graphTemplates: templates, corumVersion,
-    overrides: readPluginOverrides(graphYaml),
-  }), ...missing]
-  return {
-    ref: snapshot.ref, statuses, errors,
-    enabledPlugin(id: string): DiscoveredPlugin | null {
-      return statuses.find(status => status.id === id)?.status === 'enabled'
-        ? plugins.find(plugin => plugin.manifest.id === id) ?? null : null
-    },
-    async asset(plugin: DiscoveredPlugin, requestPath: string) {
-      const request = parsePluginAssetPath(requestPath)
-      if (!request) return null
-      const bytes = await snapshot.readFile(path.posix.join(plugin.dir, request.decoded))
-      if (!bytes) return null
-      return {
-        bytes, contentType: request.contentType,
-        etag: `"${createHash('sha256').update(bytes).digest('hex')}"`,
-      }
-    },
+  const overrides = readPluginOverrides(graphYaml)
+
+  /** Assemble the request view, optionally overlaying development plugins (read from local disk). */
+  function assemble(devDirs: string[]): PluginRequest {
+    const all = plugins.map(plugin => ({ ...plugin }))
+    const devMessages = devDirs.length > 0 ? mergeDevPlugins(all, devDirs) : []
+    const statuses = [...resolvePluginStatuses(all, {
+      graphTemplates: templates, corumVersion, overrides,
+    }), ...missing]
+    return {
+      ref: snapshot.ref, statuses, errors: [...errors, ...devMessages],
+      enabledPlugin(id: string): DiscoveredPlugin | null {
+        // A shadowed or duplicate entry shares its id with the plugin that is served.
+        const enabled = statuses.some(status => status.id === id && status.status === 'enabled')
+        return enabled ? all.find(plugin => plugin.manifest.id === id && plugin.unavailableReason === undefined) ?? null : null
+      },
+      async asset(plugin: DiscoveredPlugin, requestPath: string) {
+        const request = parsePluginAssetPath(requestPath)
+        if (!request) return null
+        const bytes = await snapshot.readFile(path.posix.join(plugin.dir, request.decoded))
+        if (!bytes) return null
+        return {
+          bytes, contentType: request.contentType,
+          etag: `"${createHash('sha256').update(bytes).digest('hex')}"`,
+        }
+      },
+      withDev: assemble,
+    }
   }
+  return assemble([])
 }
