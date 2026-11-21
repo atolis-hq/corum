@@ -99,6 +99,57 @@ describe('parsePluginManifest', () => {
     })
   }
 
+  describe('sidebar and legacy page fields', () => {
+    const page = (extra: string) => withChange('opens: [Journey] }', `opens: [Journey], ${extra} }`)
+
+    it('parses nav, sidebar, nodeSidebar, detail and legacyPaths', () => {
+      const { manifest, errors } = parsePluginManifest(
+        page('nav: false, sidebar: mountTree, nodeSidebar: true, detail: true, legacyPaths: ["/namespaces", "/namespace"]'),
+      )
+      assert.deepEqual(errors, [])
+      const parsed = manifest!.contributes.pages[0]
+      assert.equal(parsed.nav, false)
+      assert.equal(parsed.sidebar, 'mountTree')
+      assert.equal(parsed.nodeSidebar, true)
+      assert.equal(parsed.detail, true)
+      assert.deepEqual(parsed.legacyPaths, ['/namespaces', '/namespace'])
+    })
+
+    it('omits the optional fields when absent', () => {
+      const parsed = parsePluginManifest(valid).manifest!.contributes.pages[0]
+      for (const key of ['nav', 'sidebar', 'nodeSidebar', 'detail', 'legacyPaths']) assert.ok(!(key in parsed), key)
+    })
+
+    it('rejects non-boolean flags', () => {
+      for (const flag of ['nav', 'nodeSidebar', 'detail']) {
+        const { manifest, errors } = parsePluginManifest(page(`${flag}: yes-please`))
+        assert.equal(manifest, null, flag)
+        assert.ok(errors.some(error => error.includes(`${flag} must be a boolean`)), errors.join('; '))
+      }
+    })
+
+    it('rejects an empty or non-string sidebar', () => {
+      for (const value of ['""', '5']) {
+        const { manifest, errors } = parsePluginManifest(page(`sidebar: ${value}`))
+        assert.equal(manifest, null)
+        assert.ok(errors.some(error => error.includes('sidebar must be a non-empty string')))
+      }
+    })
+
+    it('rejects malformed legacyPaths', () => {
+      const { errors } = parsePluginManifest(page('legacyPaths: namespaces'))
+      assert.ok(errors.some(error => error.includes('legacyPaths must be a list')))
+    })
+
+    it('rejects legacy paths that are not retired host routes, so /node and /dashboard cannot be claimed', () => {
+      for (const path of ['/node', '/dashboard', '/', '/anything', 'namespaces', '/p/other/home']) {
+        const { manifest, errors } = parsePluginManifest(page(`legacyPaths: ["${path}"]`))
+        assert.equal(manifest, null, path)
+        assert.ok(errors.some(error => error.includes('is not a deprecated host route')), `${path}: ${errors.join('; ')}`)
+      }
+    })
+  })
+
   it('rejects malformed YAML and non-mappings', () => {
     assert.equal(parsePluginManifest('id: [unclosed').manifest, null)
     assert.equal(parsePluginManifest('- a\n- b\n').manifest, null)

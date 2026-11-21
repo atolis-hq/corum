@@ -256,10 +256,13 @@ Optional page fields for master-detail screens such as the Explorer:
   entry is highlighted while a node is open.
 - `detail: true` (with `sidebar`) marks the page as the detail half of the
   layout: on narrow screens it replaces the panel, with a Back button.
-- `legacyPaths` lists host routes (for example `["/namespaces"]`) that redirect
-  to this page, keeping the branch and query parameters, while the plugin is
-  enabled. If the plugin is unavailable the host shows its "Plugin unavailable"
-  page for those routes.
+- `legacyPaths` lists retired host routes that redirect to this page, keeping
+  the branch and query parameters, while the plugin is enabled. Only the retired
+  Explorer routes `/namespaces` and `/namespace` are accepted; host routes such
+  as `/node` and `/dashboard` cannot be claimed and always win. If the plugin is
+  unavailable the host shows its "Plugin unavailable" page for those routes.
+  When several plugins claim a path, an enabled one wins, otherwise the first
+  registered.
 
 An optional `opens` list claims templates or roles that the page can display:
 

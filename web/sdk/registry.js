@@ -90,13 +90,17 @@ export function createRegistry() {
     nodeSidebarPage() {
       return allPages().filter(page => page.nodeSidebar).sort(byOrder)[0] ?? null
     },
-    /* The page, of any plugin whatever its status, that declares a host route as a legacy path: { page, entry }. */
+    /* The page, of any plugin whatever its status, that declares a retired host route as a legacy path:
+     * { page, entry }. An enabled claimant beats a disabled one; otherwise the first registered wins. */
     findLegacyPage(pathname) {
+      let fallback = null
       for (const entry of entries) {
         const page = pagesOf([entry]).find(candidate => candidate.legacyPaths.includes(pathname))
-        if (page) return { page, entry }
+        if (!page) continue
+        if (entry.status === 'enabled') return { page, entry }
+        fallback ??= { page, entry }
       }
-      return null
+      return fallback
     },
     claimants(matchKeys) {
       const keys = new Set(matchKeys)

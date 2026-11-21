@@ -45,6 +45,9 @@ export type PluginManifest = {
 
 const PLUGIN_ID = /^[a-z0-9-]+$/
 
+/** Retired host routes (they predate the Explorer plugin) that a plugin page may take over as redirects. */
+export const LEGACY_HOST_PATHS = ['/namespaces', '/namespace']
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -141,7 +144,9 @@ export function parsePluginManifest(yamlText: string): { manifest: PluginManifes
       const opens = stringList(raw.opens, `${label}.opens`, errors)
       const legacyPaths = stringList(raw.legacyPaths, `${label}.legacyPaths`, errors)
       for (const legacy of legacyPaths) {
-        if (!/^\/[A-Za-z0-9_-]+$/.test(legacy)) errors.push(`${label}.legacyPaths entry "${legacy}" must look like "/name"`)
+        if (!LEGACY_HOST_PATHS.includes(legacy)) {
+          errors.push(`${label}.legacyPaths entry "${legacy}" is not a deprecated host route (allowed: ${LEGACY_HOST_PATHS.join(', ')}); host routes such as /node and /dashboard cannot be claimed`)
+        }
       }
       for (const flag of ['nav', 'nodeSidebar', 'detail'] as const) {
         if (raw[flag] !== undefined && typeof raw[flag] !== 'boolean') errors.push(`${label}.${flag} must be a boolean`)

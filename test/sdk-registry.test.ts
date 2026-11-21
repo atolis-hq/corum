@@ -30,6 +30,60 @@ function plugin(
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 5))
 
+type SidebarPage = Page & { nav?: boolean; sidebar?: string; nodeSidebar?: boolean; detail?: boolean; legacyPaths?: string[] }
+const pagesOnly = (id: string, pages: SidebarPage[], status = 'enabled') => plugin(id, pages as Page[], { status })
+
+describe('registry sidebar and legacy pages', () => {
+  it('exposes nav, detail and legacy fields with defaults', () => {
+    const reg = createRegistry()
+    reg.registerPlugin(pagesOnly('a', [
+      { id: 'list', title: 'List', mount: 'm', sidebar: 's', nodeSidebar: true, legacyPaths: ['/namespaces'] },
+      { id: 'detail', title: 'Detail', mount: 'm', sidebar: 's', detail: true, nav: false },
+      { id: 'plain', title: 'Plain', mount: 'm', nodeSidebar: true, detail: true },
+    ]))
+    const [list, detail, plain] = ['list', 'detail', 'plain'].map(id => reg.findPage('a', id))
+    assert.deepEqual([list.nav, list.nodeSidebar, list.detail, list.sidebar, list.legacyPaths], [true, true, false, 's', ['/namespaces']])
+    assert.deepEqual([detail.nav, detail.detail, detail.nodeSidebar], [false, true, false])
+    // Without a sidebar, nodeSidebar and detail are meaningless.
+    assert.deepEqual([plain.sidebar, plain.nodeSidebar, plain.detail], [null, false, false])
+  })
+
+  it('nodeSidebarPage picks the enabled node-sidebar page with the lowest order', () => {
+    const reg = createRegistry()
+    assert.equal(reg.nodeSidebarPage(), null)
+    reg.registerPlugin(pagesOnly('late', [{ id: 'p', title: 'P', mount: 'm', sidebar: 's', nodeSidebar: true, order: 50 }]))
+    reg.registerPlugin(pagesOnly('early', [{ id: 'p', title: 'P', mount: 'm', sidebar: 's', nodeSidebar: true, order: 5 }]))
+    reg.registerPlugin(pagesOnly('off', [{ id: 'p', title: 'P', mount: 'm', sidebar: 's', nodeSidebar: true, order: 1 }], 'disabled'))
+    assert.equal(reg.nodeSidebarPage().pluginId, 'early')
+  })
+
+  it('findLegacyPage finds claimants of any status and prefers an enabled one', () => {
+    const reg = createRegistry()
+    const claim: SidebarPage = { id: 'p', title: 'P', mount: 'm', legacyPaths: ['/namespaces'] }
+    assert.equal(reg.findLegacyPage('/namespaces'), null)
+    reg.registerPlugin(pagesOnly('off', [claim], 'disabled'))
+    assert.equal(reg.findLegacyPage('/namespaces').entry.id, 'off')
+    assert.equal(reg.findLegacyPage('/namespace'), null)
+    reg.registerPlugin(pagesOnly('first', [claim]))
+    reg.registerPlugin(pagesOnly('second', [claim]))
+    const found = reg.findLegacyPage('/namespaces')
+    assert.equal(found.entry.id, 'first')
+    assert.equal(found.page.id, 'p')
+  })
+
+  it('mountSidebar loads the plugin and calls the sidebar export', async () => {
+    const reg = createRegistry()
+    const calls: string[] = []
+    reg.registerPlugin(plugin('a', [{ id: 'p', title: 'P', mount: 'mountPage', sidebar: 'mountTree' } as Page], {
+      mod: { mountTree: () => { calls.push('tree'); return () => calls.push('dispose') }, mountPage: () => calls.push('page') },
+    }))
+    const dispose = reg.findPage('a', 'p').mountSidebar({}, {})
+    await tick()
+    dispose()
+    assert.deepEqual(calls, ['tree', 'dispose'])
+  })
+})
+
 describe('registry', () => {
   it('disabled and unavailable plugins contribute nothing', () => {
     const reg = createRegistry()

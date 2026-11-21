@@ -1114,7 +1114,9 @@ function App() {
 
   // Host routes that predate their plugin (#/namespaces, #/namespace?name=…) redirect to the plugin page
   // that declares them; with that plugin unavailable they show the plugin-unavailable page instead.
-  const legacy = hostReady ? hostRegistry.findLegacyPage(route.pathname) : null;
+  // Host routes always win: a legacy path can never shadow the dashboard or the canonical node page.
+  const hostOwnsRoute = route.pathname === '/node' || route.pathname === '/dashboard' || route.pathname === '/';
+  const legacy = hostReady && !hostOwnsRoute ? hostRegistry.findLegacyPage(route.pathname) : null;
   const legacyHash = legacy && legacy.entry.status === 'enabled'
     ? buildRoute({ pathname: `/p/${legacy.page.pluginId}/${legacy.page.id}`, params: route.params, branch: route.branch })
     : null;

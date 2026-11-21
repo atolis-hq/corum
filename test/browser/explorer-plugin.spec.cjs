@@ -22,9 +22,11 @@ test('legacy namespace URLs keep the branch segment', async ({ page }) => {
 
 test('the Explorer namespace page opens nodes in the Explorer view', async ({ page }) => {
   await page.goto('/#/p/explorer/namespace?name=orders');
-  await page.locator('[role="link"]').first().click();
+  await expect(page.locator('.detail-pane h1')).toHaveText('orders');
+  await page.locator('.detail-pane .card', { hasText: 'Owned nodes' }).locator('[role="link"]').first().click();
   await expect.poll(() => page.url()).toContain('view=explorer');
-  await expect(page.locator('.nav-tree')).toBeVisible();
+  // The tree stays mounted beside the node page (hidden behind it at phone widths).
+  await expect(page.locator('.nav-tree')).toHaveCount(1);
 });
 
 test.describe('Explorer disabled', () => {
