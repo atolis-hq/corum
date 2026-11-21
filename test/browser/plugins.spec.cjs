@@ -50,15 +50,16 @@ test('unknown plugin shows Plugin unavailable with a link to the node page', asy
   await expect(page).toHaveURL(/#\/(.+\/)?node\?id=orders\.DomainModel\.order$/);
 });
 
-test('node claimed by two plugins shows the Open in bar and node actions', async ({ page }) => {
+test('node claimed by two plugins shows an Open in menu and node actions', async ({ page }) => {
   await page.goto(`/#/node?id=${MODEL}`);
   const bar = page.locator('[data-testid="open-in"]');
   await expect(bar).toBeVisible();
-  await expect(bar.getByRole('link', { name: 'Claim A' })).toBeVisible();
-  await expect(bar.getByRole('link', { name: 'Claim B' })).toBeVisible();
-  await expect(bar.getByRole('link', { name: /generic/i })).toBeVisible();
-  await expect(bar.getByRole('link', { name: 'View in OK' })).toBeVisible();
-  await bar.getByRole('link', { name: 'Claim B' }).click();
+  await bar.getByRole('button', { name: /open in/i }).click();
+  await expect(bar.getByRole('menuitem', { name: 'Claim A' })).toBeVisible();
+  await expect(bar.getByRole('menuitem', { name: 'Claim B' })).toBeVisible();
+  await expect(bar.getByRole('menuitem', { name: /generic/i })).toBeVisible();
+  await expect(bar.getByRole('menuitem', { name: 'View in OK' })).toBeVisible();
+  await bar.getByRole('menuitem', { name: 'Claim B' }).click();
   await expect(page.getByTestId('plugin-claim-b')).toBeVisible();
 });
 

@@ -1051,23 +1051,69 @@ function PluginPage({ route, templates, templatesByName, nodes, viewingRef }) {
   );
 }
 
-function OpenInBar({ nodeId, claimants, actions, keys, viewingRef }) {
+function OpenInMenu({ nodeId, claimants, actions, keys, viewingRef }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = React.useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function onDown(event) {
+      if (wrapRef.current && !wrapRef.current.contains(event.target)) setOpen(false);
+    }
+    function onKey(event) {
+      if (event.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const genericHref = buildRoute({ pathname: '/node', params: { id: nodeId }, branch: viewingRef });
   return (
-    <div className="open-in-bar" data-testid="open-in" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
-      {claimants.length > 0 && <span className="label-xs">Open in…</span>}
-      {claimants.map(claim => (
-        <a key={`${claim.pluginId}/${claim.id}`} href={hrefForNode(hostRegistry, nodeId, keys, { branch: viewingRef, via: claim.pluginId, page: claim.id })}>
-          {claim.title}
-        </a>
-      ))}
-      {claimants.length > 0 && (
-        <a href={buildRoute({ pathname: '/node', params: { id: nodeId }, branch: viewingRef })}>Generic view</a>
+    <div className="open-in" data-testid="open-in" ref={wrapRef}>
+      <button
+        type="button"
+        className="open-in-trigger"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(value => !value)}
+      >
+        <span>Open in</span>
+        <Icon name="chevron-down" size={10} />
+      </button>
+      {open && (
+        <div className="open-in-menu" role="menu">
+          {claimants.length > 0 && (
+            <a className="open-in-item" role="menuitem" href={genericHref} onClick={() => setOpen(false)}>Generic view</a>
+          )}
+          {claimants.map(claim => (
+            <a
+              key={`${claim.pluginId}/${claim.id}`}
+              className="open-in-item"
+              role="menuitem"
+              href={hrefForNode(hostRegistry, nodeId, keys, { branch: viewingRef, via: claim.pluginId, page: claim.id })}
+              onClick={() => setOpen(false)}
+            >
+              {claim.title}
+            </a>
+          ))}
+          {claimants.length > 0 && actions.length > 0 && <div className="open-in-sep" role="separator" />}
+          {actions.map(action => (
+            <a
+              key={`${action.pluginId}/${action.id}`}
+              className="open-in-item"
+              role="menuitem"
+              href={buildRoute({ pathname: `/p/${action.pluginId}/${action.page}`, params: { id: nodeId }, branch: viewingRef })}
+              onClick={() => setOpen(false)}
+            >
+              {action.label}
+            </a>
+          ))}
+        </div>
       )}
-      {actions.map(action => (
-        <a key={`${action.pluginId}/${action.id}`} href={buildRoute({ pathname: `/p/${action.pluginId}/${action.page}`, params: { id: nodeId }, branch: viewingRef })}>
-          {action.label}
-        </a>
-      ))}
     </div>
   );
 }
@@ -1157,9 +1203,6 @@ function NodePage({ nodeId, templates, templatesByName, onNavigate, refreshToken
 
   return (
     <div className="content">
-      {(claimants.length > 0 || nodeActions.length > 0) && (
-        <OpenInBar nodeId={root.id} claimants={claimants} actions={nodeActions} keys={matchKeys} viewingRef={viewingRef} />
-      )}
       <div id={anchorIdForNode(root.id)} style={{ marginBottom: 18 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
           <h1 style={{ margin: 0 }}>{displayName(root.id)}</h1>
@@ -1175,6 +1218,9 @@ function NodePage({ nodeId, templates, templatesByName, onNavigate, refreshToken
               <Icon name="diagram-project" size={11} />
               <span>Graph</span>
             </button>
+          )}
+          {(claimants.length > 0 || nodeActions.length > 0) && (
+            <OpenInMenu nodeId={root.id} claimants={claimants} actions={nodeActions} keys={matchKeys} viewingRef={viewingRef} />
           )}
         </div>
         <div className="label-sm mono">{root.id}</div>
