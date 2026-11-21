@@ -119,7 +119,7 @@ export function mountJourneyMap(el, ctx) {
 | `api.get(path, params)` | Branch-aware GET over the `/api/*` endpoints (`path` is `/api/graph` or just `graph`; `params` is an object, `URLSearchParams` or list of pairs). It adds the `ref` query parameter from `viewingRef`, returns parsed JSON and throws on non-2xx. |
 | `navigate(hash)` | Set the location hash. |
 | `hrefForNode(id, { via })`, `openNode(id, { via })` | Node link resolution from section 5a, as an href or as a navigation. |
-| `nodeLinks(id)` | The entries behind the quick links and the "Open in" menu for a node: `{ quick: { header, relations }, menu: { defaultHref, destinations, actions } }`, each link `{ key, pluginId, id, label, icon, href }`, resolved through the node's owning root with the node action and claim rules of section 5a. |
+| `nodeLinks(id)` | The entries behind the quick links and the "Open in" menu for a node: `{ quick: { header, relations }, menu: { explorerHref, destinations, actions } }`, each link `{ key, pluginId, id, label, icon, href }`, resolved through the node's owning root with the node action and claim rules of section 5a. |
 | `hrefForPage(params, { page })` | Href for this plugin's own page (default: the current one) with the given query parameters and the viewed branch. |
 | `subscribe(listener)` | Calls `listener` when `route`/`params`, `viewingRef`, `templates` or `revision` change; returns an unsubscribe function. |
 | `onError(error)` | Report an asynchronous failure so the host shows its error panel for this mount. |
@@ -184,6 +184,8 @@ Resolution:
 Because the chooser is the node page, ambiguity works for plain links and shared URLs and needs no popup. There is no priority field and no pinned default; the chooser is the only tie-break (a team-wide pin can be added later if wanted).
 
 Direct links skip resolution. `hrefForNode(id, { via: '<pluginId>' })` (and `openNode(id, { via })`) return the plugin page URL (`#/p/<id>/<page>?id=…`) for that node. The entries in the "Open in…" bar and `nodeActions` are plain links of this form, not redirects, so each is a stable, shareable URL, and cross-plugin links such as "View in journey" use it. Opening a direct link whose plugin is disabled or removed shows a host "plugin unavailable" page with the reason and a link to the generic node page. The resolved `#/node?id=…` link is the form that survives plugin changes.
+
+**Explorer view bypass.** The resolved link picks the primary plugin view; the host's built-in node page (the Explorer view, Models detail) must always stay reachable. `#/node?id=…&view=explorer` renders that page without redirecting, even with exactly one claimant (with several it shows the page with the Open in menu). `hrefForExplorerView(id, { branch })` builds it; the Open in menu's "Explorer view" entry (`ctx.nodeLinks(...).menu.explorerHref`) uses it, and navigation that starts inside Models (tree, connections, schema references) uses it so the Explorer stays in the Explorer. Resolved links (`#/node?id=…`) and search results are unchanged. There is no new configuration; rendering a plugin in place instead of redirecting, and pinned default views, remain deferred.
 
 Disabled or unavailable plugins are excluded from step 2, so a resolved link never points at a page that is not mounted.
 

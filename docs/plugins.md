@@ -312,7 +312,7 @@ navigation does not remount; subscribe to changes and read the live context.
 | `ctx.api.get(path, params)` | Fetch parsed JSON from an API endpoint; throws on non-2xx responses |
 | `ctx.navigate(hash)` | Navigate to a hash URL |
 | `ctx.hrefForNode(id, options)` | Resolve a node destination; optional `{ via: 'plugin-id', page: 'page-id' }` selects a plugin page |
-| `ctx.nodeLinks(id)` | Quick-link and **Open in** entries for a node, as `{ quick: { header, relations }, menu: { defaultHref, destinations, actions } }`. Each link is `{ key, pluginId, id, label, icon, href }`; `defaultHref` (the generic node page) is non-null only when a plugin page claims the node. A child node resolves through its owning root and keeps its own ID in every href. |
+| `ctx.nodeLinks(id)` | Quick-link and **Open in** entries for a node, as `{ quick: { header, relations }, menu: { explorerHref, destinations, actions } }`. Each link is `{ key, pluginId, id, label, icon, href }`; `explorerHref` (the Explorer view, `#/node?id=…&view=explorer`, which never redirects to a plugin) is non-null only when a plugin page claims the node. A child node resolves through its owning root and keeps its own ID in every href. |
 | `ctx.openNode(id, options)` | Navigate using the same resolution as `hrefForNode` |
 | `ctx.hrefForPage(params, options)` | Build a URL for this plugin, preserving the viewed branch; optional `{ page: 'map' }`, otherwise the current page |
 | `ctx.subscribe(listener)` | Listen for route/query, viewed-ref, template or `revision` changes; returns an unsubscribe function |
@@ -363,6 +363,14 @@ With one matching page, it opens that page; with several, the generic node
 page shows an **Open in** chooser; with none, it opens the generic node page.
 Only enabled, available plugins participate. Adding `opens` therefore changes
 where normal node links lead; omit it when you only want an optional action.
+
+The resolved link is the one that picks the primary plugin view. The host's
+built-in node page (the Explorer view) is always available at
+`#/node?id=<id>&view=explorer`, which never redirects to a plugin, even with a
+single claimant; the **Open in** menu's "Explorer view" entry uses it, and
+`hrefForExplorerView(nodeId, { branch })` builds it. Plugin pages shown for a
+node should include `<NodeLinks nodeId=... surface="header" />` so users can
+reach the other views.
 
 Direct plugin URLs bypass that choice. A link to a disabled, unavailable or
 removed plugin shows the host's unavailable page. Retain the node ID under
@@ -420,7 +428,7 @@ these are the styling hooks. The `ok` test fixture plugin
 `SchemaCard` and `BrandMark`, plus the helpers `getDisplayName(id)` (the last
 segment of a node ID) and `kindColour(kind)` (a stable colour per node kind).
 The remaining exports, `navigate`, `createRegistry`, `matchKeysFor`,
-`owningRoot`, `resolveNodeTarget`, `hrefForNode`, `hrefForAction` and
+`owningRoot`, `resolveNodeTarget`, `hrefForNode`, `hrefForAction`, `hrefForExplorerView` and
 `isPageAvailable`, are routing and registry plumbing the host shell uses;
 plugins should prefer the equivalent `ctx` members. Adding or removing an SDK
 export is a compatibility promise, so the export list is pinned by
