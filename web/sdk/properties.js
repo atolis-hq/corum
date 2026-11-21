@@ -1,10 +1,11 @@
 import React from 'react'
+import { NodeReference } from './node-reference.js'
 import { html } from './html.js'
 
 export function PropertyValue({ value, onNavigate }) {
   if (value === null || value === undefined) return html`<span className="prop-empty">-</span>`
   if (typeof value === 'object' && 'display' in value && 'nodeId' in value) {
-    return html`<a className="node-ref-link" onClick=${() => onNavigate && onNavigate(value.nodeId)}>${value.display}</a>`
+    return html`<${NodeReference} nodeId=${value.nodeId} onNavigate=${onNavigate}>${value.display}<//>`
   }
   if (typeof value === 'object' && 'display' in value) {
     return html`<span>${value.display}</span>`

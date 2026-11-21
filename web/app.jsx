@@ -1524,18 +1524,22 @@ function App() {
     );
   } else if (route.pathname === '/node') {
     page = (
-      <NodePage
-        key={activeNodeId}
-        nodeId={activeNodeId}
-        explorerView={route.params.get('view') === 'explorer'}
-        templates={templates}
-        templatesByName={templatesByName}
-        onNavigate={handleNode}
-        refreshToken={refreshToken}
-        viewingRef={viewingRef}
-        overlayRefs={activeOverlayRefs}
-        compact={!debugMode}
-      />
+      <CtxProvider ctx={route.params.get('view') === 'explorer'
+        ? { ...hostCtx, hrefForNode: id => hrefForExplorerView(id, { branch: viewingRef }) }
+        : hostCtx}>
+        <NodePage
+          key={activeNodeId}
+          nodeId={activeNodeId}
+          explorerView={route.params.get('view') === 'explorer'}
+          templates={templates}
+          templatesByName={templatesByName}
+          onNavigate={route.params.get('view') === 'explorer' ? handleNode : id => hostCtx.openNode(id)}
+          refreshToken={refreshToken}
+          viewingRef={viewingRef}
+          overlayRefs={activeOverlayRefs}
+          compact={!debugMode}
+        />
+      </CtxProvider>
     );
   } else if (route.plugin) {
     page = <PluginPage route={route} templates={templates} templatesByName={templatesByName} nodes={nodes} viewingRef={viewingRef} revision={revision} />;

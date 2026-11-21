@@ -1,4 +1,4 @@
-import { html, SchemaCard } from 'corum:ui'
+import { html, SchemaCard, PropertiesTable } from 'corum:ui'
 import { mountReact, useCtx, useApi, NodeLinks } from 'corum:ui/react'
 
 const anchorIdForNode = nodeId => `ok-anchor-${encodeURIComponent(nodeId)}`
@@ -14,6 +14,7 @@ function NodeDemo({ nodeId }) {
         <h2 style=${{ margin: 0 }}>${nodeId.split('.').pop()}</h2>
         <${NodeLinks} nodeId=${nodeId} surface="header" />
       </div>
+      ${cluster && html`<div data-testid="ok-properties"><${PropertiesTable} properties=${cluster.root.properties} /></div>`}
       ${schemas.length > 0 && html`
         <div data-testid="ok-schema">
           <${SchemaCard}

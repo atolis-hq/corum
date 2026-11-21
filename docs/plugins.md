@@ -427,6 +427,13 @@ these are the styling hooks. The `ok` test fixture plugin
 `StabilityTag`, `Chip`, `TemplateBadge`, `PropertyValue`, `PropertiesTable`,
 `SchemaCard` and `BrandMark`, plus the helpers `getDisplayName(id)` (the last
 segment of a node ID) and `kindColour(kind)` (a stable colour per node kind).
+Shared node references in `SchemaCard`, `PropertyValue` and `PropertiesTable` use
+the surrounding context's `hrefForNode`. Render them under `mountReact` or
+`CtxProvider` so links preserve the viewed branch and normal plugin resolution.
+An explicit property `onNavigate` callback still handles ordinary clicks (for
+example, scrolling to a node already displayed); the resolved href remains
+available for opening a new tab. The host supplies Explorer routing in Explorer views.
+
 The remaining exports, `navigate`, `createRegistry`, `matchKeysFor`,
 `owningRoot`, `resolveNodeTarget`, `hrefForNode`, `hrefForAction`, `hrefForExplorerView` and
 `isPageAvailable`, are routing and registry plumbing the host shell uses;

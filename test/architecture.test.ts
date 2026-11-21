@@ -73,6 +73,11 @@ const ALLOWED_BUILTIN_SPECIFIERS = new Set([
 ])
 
 describe('architecture: plugin boundary', () => {
+  it('shared UI builds node links only through the context resolver', () => {
+    expectNone(scan(sdkFiles.filter(file => path.basename(file) !== 'resolve-node.js'), /['"`][^'"`]*\/node(?:[?'"`]|\$\{)/),
+      'Shared UI must use ctx.hrefForNode instead of constructing node URLs:')
+  })
+
   it('built-in plugins import only their own files and the host specifiers', () => {
     const problems: string[] = []
     for (const file of builtinFiles) {
