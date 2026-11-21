@@ -293,6 +293,13 @@ describe('renameNode', () => {
   })
 })
 
+describe('mutationTimestamp', () => {
+  it('is a full UTC ISO date-time', async () => {
+    const { mutationTimestamp } = await import('../src/mutate/util.js')
+    assert.match(mutationTimestamp(), /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+  })
+})
+
 describe('alias map and resolution', () => {
   it('rewriteIdPrefix rewrites only on exact-segment boundaries', () => {
     assert.equal(rewriteIdPrefix('orders.x', 'orders.x', 'orders.y'), 'orders.y')

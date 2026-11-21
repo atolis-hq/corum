@@ -93,6 +93,27 @@ describe('corum import — basic fixture', () => {
     }
   })
 
+  it('strips transient x-aka from persisted nodes when no deduplication is configured', async () => {
+    const { graphDir, cleanup } = await setupGraphDir()
+    const specPath = path.join(graphDir, 'aka.corum.yaml')
+    fs.writeFileSync(specPath, `corum: '1.0'
+nodes:
+  orders.DomainEvent.AkaEvent:
+    type: DomainEvent
+    x-aka: [LegacyName]
+`)
+    try {
+      const config: ImportConfig = { imports: [{ adapter: 'corum', spec: specPath }] }
+      await runImport(config, makeRuntimeConfig(graphDir))
+      const graph = await loadGraph({ graphPath: graphDir })
+      const node = graph.nodesById.get('orders.DomainEvent.AkaEvent')
+      assert.ok(node, 'node imported')
+      assert.ok(!('x-aka' in node.properties), 'x-aka must not be persisted')
+    } finally {
+      cleanup()
+    }
+  })
+
   it('inlines single-cluster edge-only schemas and skips unused schemas', async () => {
     const { graphDir, cleanup } = await setupGraphDir()
     const specPath = path.join(graphDir, 'unresolved.corum.yaml')

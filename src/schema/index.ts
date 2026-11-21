@@ -21,6 +21,11 @@ export interface EdgeTypeDef {
   properties?: Record<string, unknown>
   /** Hidden edges are bookkeeping (e.g. renamed-from): excluded from summaries, lineage defaults, and collapsed views. */
   hidden?: boolean
+  /**
+   * Inbound traversal policy. 'outbound-only' types (consumer → type, e.g. reads)
+   * are not followed backwards from the target. Default 'bidirectional'.
+   */
+  traversal?: 'bidirectional' | 'outbound-only'
 }
 
 export interface NodeCorumIdentity {

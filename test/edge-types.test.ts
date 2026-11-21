@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadEdgeTypes } from '../src/loader/edge-type-loader.js'
+import { getClusterView, getLineage } from '../src/graph/index.js'
 import { loadPacks } from '../src/loader/pack-loader.js'
 import { loadClusters } from '../src/loader/cluster-loader.js'
 import { loadEdges } from '../src/loader/edge-loader.js'
@@ -189,6 +190,68 @@ describe('writer — edge properties and category-driven structural skip', () =>
   })
 })
 
+describe('pack-declared traversal drives inbound traversal', () => {
+  function makeGraph(): Graph {
+    const mk = (id: string) => ({
+      id,
+      template: 'Thing',
+      namespace: 'x',
+      state: 'agreed' as const,
+      stability: 'stable' as const,
+      schemaVersion: '1',
+      lastModifiedAt: '2026-01-01',
+      properties: {},
+    })
+    const target = mk('x.Thing.target')
+    const feeder = mk('x.Thing.feeder')
+    const linker = mk('x.Thing.linker')
+    const edge = (from: string, type: string) => ({
+      id: `${from}__${type}__${target.id}`,
+      from,
+      to: target.id,
+      type,
+      state: 'agreed' as const,
+      stability: 'stable' as const,
+    })
+    const edges = [edge(feeder.id, 'feeds'), edge(linker.id, 'links')]
+    const diagnostics: Diagnostic[] = []
+    const edgeTypes = loadEdgeTypes(new Map([[
+      'p/edge-types.yaml',
+      'edge-types:\n  feeds:\n    category: semantic\n    traversal: outbound-only\n  links:\n    category: semantic\n',
+    ]]), diagnostics)
+    return {
+      nodesById: new Map([target, feeder, linker].map(n => [n.id, n])),
+      edgesByFrom: new Map(edges.map(e => [e.from, [e]])),
+      edgesByTo: new Map([[target.id, edges]]),
+      templates: new Map(),
+      edgeTypes,
+      diagnostics,
+    }
+  }
+
+  it('getLineage skips outbound-only types inbound but follows bidirectional ones', () => {
+    const graph = makeGraph()
+    const ids = getLineage(graph, ['x.Thing.target'], { direction: 'upstream', edgeTypes: ['feeds', 'links'] })
+      .nodes.map(n => n.id)
+    assert.ok(!ids.includes('x.Thing.feeder'))
+    assert.ok(ids.includes('x.Thing.linker'))
+    const all = getLineage(graph, ['x.Thing.target'], {
+      direction: 'upstream',
+      edgeTypes: ['feeds', 'links'],
+      readsOutboundOnly: false,
+    }).nodes.map(n => n.id)
+    assert.ok(all.includes('x.Thing.feeder'))
+  })
+
+  it('getClusterView skips outbound-only types inbound but follows bidirectional ones', () => {
+    const graph = makeGraph()
+    const view = getClusterView(graph, 'x.Thing.target', ['feeds', 'links'])
+    const froms = view.edges.map(e => e.from)
+    assert.ok(!froms.includes('x.Thing.feeder'))
+    assert.ok(froms.includes('x.Thing.linker'))
+  })
+})
+
 describe('core edge type definitions', () => {
   it('declares each core type exactly once with a category', () => {
     for (const [name, def] of Object.entries(CORE_EDGE_TYPES)) {
@@ -198,6 +261,23 @@ describe('core edge type definitions', () => {
   })
 
   it('declares uses-type as a core semantic edge type', () => {
-    assert.deepEqual(CORE_EDGE_TYPES['uses-type'], { name: 'uses-type', category: 'semantic' })
+    assert.deepEqual(CORE_EDGE_TYPES['uses-type'], { name: 'uses-type', category: 'semantic', traversal: 'outbound-only' })
+  })
+
+  it('declares reads and uses-type as outbound-only', () => {
+    assert.equal(CORE_EDGE_TYPES['reads'].traversal, 'outbound-only')
+    assert.equal(CORE_EDGE_TYPES['uses-type'].traversal, 'outbound-only')
+  })
+
+  it('loads pack-declared traversal and rejects invalid values', () => {
+    const diagnostics: Diagnostic[] = []
+    const content: ContentMap = new Map([[
+      'p/edge-types.yaml',
+      'edge-types:\n  feeds:\n    category: semantic\n    traversal: outbound-only\n  bad:\n    category: semantic\n    traversal: sideways\n',
+    ]])
+    const edgeTypes = loadEdgeTypes(content, diagnostics)
+    assert.equal(edgeTypes.get('feeds')?.traversal, 'outbound-only')
+    assert.equal(edgeTypes.get('bad')?.traversal, undefined)
+    assert.ok(diagnostics.some(d => d.severity === 'error' && /sideways/.test(d.message)))
   })
 })
