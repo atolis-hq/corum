@@ -1,18 +1,15 @@
 /* React adapter: mount a React component under the framework-neutral mount contract. */
 import React from 'react'
 import { createRoot } from 'react-dom/client'
+import { CtxContext, useCtx, CtxProvider } from './ctx-context.js'
 
-const CtxContext = React.createContext(null)
+export { useCtx, CtxProvider }
+export { QuickLinks, OpenInMenu, NodeLinks } from './node-links.js'
 
 // ctx fields are getters over the host's live state; a spread freezes them into a plain snapshot.
 const snapshotOf = ctx => ({ ...ctx })
 
 const sameView = (a, b) => a.route === b.route && a.viewingRef === b.viewingRef && a.templates === b.templates
-
-/* The current ctx; the calling component re-renders when route, params, viewingRef or templates change. */
-export function useCtx() {
-  return React.useContext(CtxContext)
-}
 
 function CtxHost({ ctx, Component }) {
   const [snapshot, setSnapshot] = React.useState(() => snapshotOf(ctx))
