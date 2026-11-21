@@ -15,7 +15,14 @@ export type PluginNodeAction = {
   label: string
   appliesTo: string[]
   page: string
+  icon?: string
+  param?: string
+  menu?: boolean
+  quick?: QuickSurface[]
 }
+
+export const QUICK_SURFACES = ['header', 'relations'] as const
+export type QuickSurface = (typeof QUICK_SURFACES)[number]
 
 export type PluginManifest = {
   id: string
@@ -43,6 +50,18 @@ function stringList(value: unknown, label: string, errors: string[]): string[] {
     return []
   }
   return value as string[]
+}
+
+function quickSurfaces(value: unknown, label: string, errors: string[]): QuickSurface[] {
+  if (value === undefined) return []
+  if (!Array.isArray(value) || !value.every(isNonEmptyString)) {
+    errors.push(`${label} must be a list of surfaces (${QUICK_SURFACES.join(', ')})`)
+    return []
+  }
+  const known = new Set<string>(QUICK_SURFACES)
+  const unknown = value.filter(surface => !known.has(surface))
+  for (const surface of unknown) errors.push(`${label} has unknown surface "${surface}" (expected ${QUICK_SURFACES.join(', ')})`)
+  return unknown.length > 0 ? [] : (value as QuickSurface[])
 }
 
 /** True when the value is a relative POSIX path that stays inside its base directory. */
@@ -134,10 +153,19 @@ export function parsePluginManifest(yamlText: string): { manifest: PluginManifes
       if (!isNonEmptyString(raw.id)) errors.push(`${label}.id is required`)
       if (!isNonEmptyString(raw.label)) errors.push(`${label}.label is required`)
       const appliesTo = stringList(raw.appliesTo, `${label}.appliesTo`, errors)
+      if (raw.icon !== undefined && typeof raw.icon !== 'string') errors.push(`${label}.icon must be a string`)
+      if (raw.param !== undefined && !isNonEmptyString(raw.param)) errors.push(`${label}.param must be a non-empty string`)
+      if (raw.menu !== undefined && typeof raw.menu !== 'boolean') errors.push(`${label}.menu must be a boolean`)
+      const quick = quickSurfaces(raw.quick, `${label}.quick`, errors)
       if (!isNonEmptyString(raw.page)) errors.push(`${label}.page is required`)
       else if (!pageIds.has(raw.page)) errors.push(`${label}.page "${raw.page}" does not reference a declared page`)
       if (isNonEmptyString(raw.id) && isNonEmptyString(raw.label) && isNonEmptyString(raw.page) && pageIds.has(raw.page)) {
-        nodeActions.push({ id: raw.id, label: raw.label, appliesTo, page: raw.page })
+        const action: PluginNodeAction = { id: raw.id, label: raw.label, appliesTo, page: raw.page }
+        if (typeof raw.icon === 'string') action.icon = raw.icon
+        if (isNonEmptyString(raw.param)) action.param = raw.param
+        if (typeof raw.menu === 'boolean') action.menu = raw.menu
+        if (quick.length > 0) action.quick = quick
+        nodeActions.push(action)
       }
     })
   }

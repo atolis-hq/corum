@@ -21,6 +21,8 @@ export type PluginRuntime = {
   statuses(): PluginStatus[]
   /** Directory of an enabled plugin, or null (unknown, disabled or unavailable). */
   enabledDir(id: string): string | null
+  /** Directories of registered standalone plugins, for the file watcher (their manifests). */
+  watchDirs(): string[]
 }
 
 function readGraphYaml(graphDir: string | null): unknown {
@@ -37,6 +39,7 @@ function readGraphYaml(graphDir: string | null): unknown {
 export function createPluginRuntime(options: PluginRuntimeOptions): PluginRuntime {
   let current: PluginStatus[] = []
   let dirs = new Map<string, string>()
+  let standaloneDirs: string[] = []
   let lastErrors = ''
 
   function refresh(): void {
@@ -57,6 +60,7 @@ export function createPluginRuntime(options: PluginRuntimeOptions): PluginRuntim
       overrides: options.graphDir === null ? [] : readPluginOverrides(graphYaml),
     })
     dirs = new Map(discovered.plugins.map(plugin => [plugin.manifest.id, plugin.dir]))
+    standaloneDirs = discovered.plugins.filter(plugin => plugin.origin === 'standalone').map(plugin => plugin.dir)
 
     const signature = errors.join('\n')
     if (signature !== lastErrors) {
@@ -74,5 +78,6 @@ export function createPluginRuntime(options: PluginRuntimeOptions): PluginRuntim
       const status = current.find(entry => entry.id === id)
       return status?.status === 'enabled' ? dirs.get(id) ?? null : null
     },
+    watchDirs: () => standaloneDirs,
   }
 }

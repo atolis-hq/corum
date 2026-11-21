@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { startWebServer, type WebServerHandle } from '../src/web/server.js'
+import { startGraphFileWatcher, startWebServer, type WebServerHandle } from '../src/web/server.js'
 import { loadGraph } from '../src/loader/index.js'
 import { FileGraphSource } from '../src/source/file-source.js'
 import { LoadError, type Graph } from '../src/schema/index.js'
@@ -328,6 +328,36 @@ describe('web server', () => {
     })
   })
 
+  describe('plugin asset hardening', () => {
+    it('never serves /builtin/* through static handling', async () => {
+      for (const p of ['/builtin/graph/plugin.yaml', '/builtin/graph/index.js', '/builtin/']) {
+        const res = await fetch(`http://localhost:${handle.port}${p}`)
+        assert.equal(res.status, 404, p)
+      }
+    })
+
+    it('sets nosniff on plugin and vendor responses', async () => {
+      const plugin = await fetch(`http://localhost:${handle.port}/plugins/graph/index.js`)
+      assert.equal(plugin.status, 200)
+      assert.equal(plugin.headers.get('x-content-type-options'), 'nosniff')
+      for (const p of ['/vendor/react.umd.js', '/vendor/shims/react.js']) {
+        const res = await fetch(`http://localhost:${handle.port}${p}`)
+        assert.equal(res.headers.get('x-content-type-options'), 'nosniff', p)
+      }
+    })
+
+    it('returns JSON 400 without stack traces for malformed percent-escapes', async () => {
+      for (const p of ['/plugins/graph/%', '/vendor/%', '/api/overlay/%']) {
+        const res = await fetch(`http://localhost:${handle.port}${p}`)
+        assert.equal(res.status, 400, p)
+        assert.match(res.headers.get('content-type') ?? '', /application\/json/, p)
+        const text = await res.text()
+        assert.ok(!/node_modules|at\s|[A-Za-z]:\|\/Users\//.test(text), `${p}: ${text}`)
+        assert.ok(typeof (JSON.parse(text) as { error: unknown }).error === 'string')
+      }
+    })
+  })
+
   describe('multi-branch API', () => {
     let sourceHandle: WebServerHandle
 
@@ -513,6 +543,32 @@ describe('web server', () => {
         fetch(`http://localhost:${sourceHandle.port}/api/templates?ref=${encodeURIComponent(defaultRef)}`).then(r => r.json()) as Promise<Array<{ name: string }>>,
       ])
       assert.deepEqual(withRef.map(t => t.name).sort(), noRef.map(t => t.name).sort())
+    })
+
+    it('reports the owning root for child nodes in /api/cluster and /api/nodes', async () => {
+      const fieldId = 'orders.DomainModel.order.schemas.order.fields.customerId'
+      const cluster = await fetch(`http://localhost:${sourceHandle.port}/api/cluster?nodeId=${encodeURIComponent(fieldId)}`)
+      assert.equal(cluster.status, 200)
+      const body = await cluster.json() as { owner?: { id: string; template: string } }
+      assert.deepEqual(body.owner, { id: 'orders.DomainModel.order', template: 'DomainModel' })
+      const rootCluster = await fetch(`http://localhost:${sourceHandle.port}/api/cluster?nodeId=orders.DomainModel.order`)
+      assert.equal(((await rootCluster.json()) as { owner?: unknown }).owner, undefined)
+
+      const nodes = await (await fetch(`http://localhost:${sourceHandle.port}/api/nodes?includeCore=true`)).json() as Array<{ id: string; rootId?: string; rootTemplate?: string }>
+      const field = nodes.find(n => n.id === fieldId)
+      assert.equal(field?.rootId, 'orders.DomainModel.order')
+      assert.equal(field?.rootTemplate, 'DomainModel')
+      assert.equal(nodes.find(n => n.id === 'orders.DomainModel.order')?.rootId, undefined)
+    })
+
+    it('includes owning root metadata for external owned nodes in /api/cluster', async () => {
+      const response = await fetch(`http://localhost:${sourceHandle.port}/api/cluster?nodeId=payments.APIEndpoint.complete-payment&includeEdges=calls`)
+      assert.equal(response.status, 200)
+      const body = await response.json() as { includedNodes: Array<{ id: string; rootId?: string; rootTemplate?: string }> }
+      const operation = body.includedNodes.find(node => node.id === 'payments.DomainModel.payment.operations.capture')
+      assert.ok(operation)
+      assert.equal(operation.rootId, 'payments.DomainModel.payment')
+      assert.equal(operation.rootTemplate, 'DomainModel')
     })
 
     it('GET /api/cluster returns overlay: null when overlayRefs not provided', async () => {
@@ -1038,19 +1094,26 @@ describe('web server', () => {
     let savedEnv: string | undefined
     let base: string
 
-    function writePlugin(id: string, templates: string[] = []): void {
+    function writePlugin(id: string, templates: string[] = [], contributes = ''): void {
       const dir = path.join(tmp, 'builtin', id)
       fs.mkdirSync(dir, { recursive: true })
       fs.writeFileSync(
         path.join(dir, 'plugin.yaml'),
-        `id: ${id}\nversion: 1.0.0\nengines: { corum: "*" }\nrequires: { templates: [${templates.join(', ')}] }\nmain: ./index.js\n`,
+        `id: ${id}\nversion: 1.0.0\nengines: { corum: "*" }\nrequires: { templates: [${templates.join(', ')}] }\nmain: ./index.js\n${contributes}`,
       )
       fs.writeFileSync(path.join(dir, 'index.js'), `export const id = '${id}'\n`)
     }
 
     before(async () => {
       tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-web-plugins-'))
-      writePlugin('on')
+      writePlugin('on', [], [
+        'contributes:',
+        '  pages:',
+        '    - { id: view, title: View, mount: mount }',
+        '  nodeActions:',
+        '    - { id: quick-one, label: Quick one, appliesTo: ["*"], page: view, icon: diagram-project, param: focus, menu: false, quick: [header, relations] }',
+        '',
+      ].join('\n'))
       writePlugin('off')
       writePlugin('needs-missing', ['NoSuchTemplate'])
       const graphDir = path.join(tmp, 'graph')
@@ -1080,6 +1143,10 @@ describe('web server', () => {
       assert.equal(byId.get('needs-missing')?.status, 'unavailable')
       assert.match(byId.get('needs-missing')?.reason ?? '', /NoSuchTemplate/)
       assert.equal(byId.get('on')?.manifest.id, 'on')
+      const manifest = byId.get('on')?.manifest as unknown as { contributes: { nodeActions: unknown[] } }
+      assert.deepEqual(manifest.contributes.nodeActions, [{
+        id: 'quick-one', label: 'Quick one', appliesTo: ['*'], page: 'view', icon: 'diagram-project', param: 'focus', menu: false, quick: ['header', 'relations'],
+      }])
       assert.ok(!JSON.stringify(body).includes(path.basename(tmp)))
     })
 
@@ -1093,6 +1160,22 @@ describe('web server', () => {
       assert.ok(etag)
       const again = await fetch(`${base}/plugins/on/index.js`, { headers: { 'If-None-Match': etag } })
       assert.equal(again.status, 304)
+    })
+
+    it('honours weak and wildcard If-None-Match and ignores Range', async () => {
+      const first = await fetch(`${base}/plugins/on/index.js`)
+      const etag = first.headers.get('etag') ?? ''
+      assert.ok(etag)
+      for (const header of [`W/${etag}`, '*', `"nope", ${etag}`]) {
+        const res = await fetch(`${base}/plugins/on/index.js`, { headers: { 'If-None-Match': header } })
+        assert.equal(res.status, 304, header)
+      }
+      const other = await fetch(`${base}/plugins/on/index.js`, { headers: { 'If-None-Match': '"other"' } })
+      assert.equal(other.status, 200)
+      const ranged = await fetch(`${base}/plugins/on/index.js`, { headers: { Range: 'bytes=0-3' } })
+      assert.equal(ranged.status, 200)
+      assert.equal(ranged.headers.get('content-range'), null)
+      assert.match(await ranged.text(), /export const id/)
     })
 
     it('does not serve disabled, unavailable or unknown plugins', async () => {
@@ -1169,6 +1252,105 @@ describe('web server', () => {
         if (watchedHandle) await watchedHandle.close()
         fs.rmSync(tmp, { recursive: true, force: true })
       }
+    })
+
+    describe('plugin refresh scope', () => {
+      type ReloadInfo = { graphReloaded: boolean; pluginsChanged: boolean }
+
+      async function watchFixture(extra?: (root: string, graphPath: string) => string[]) {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-watch-'))
+        const fixture = writeWatcherFixture(tmp)
+        const pluginDirs = extra ? extra(tmp, fixture.graphPath) : []
+        const graph = await loadGraph({ graphPath: fixture.graphPath })
+        const calls: ReloadInfo[] = []
+        const stop = startGraphFileWatcher(graph, {
+          graphPath: fixture.graphPath,
+          debounceMs: 25,
+          logger: () => {},
+          pluginWatchDirs: () => pluginDirs,
+          onReload: info => calls.push(info as ReloadInfo),
+        })
+        return { tmp, calls, stop, ...fixture, pluginDirs }
+      }
+
+      async function settled(calls: ReloadInfo[], count: number): Promise<void> {
+        await eventually(async () => calls.length, length => length >= count)
+        await new Promise(resolve => setTimeout(resolve, 150))
+      }
+
+      it('does not refresh plugins when only a node file changes', async () => {
+        const w = await watchFixture()
+        try {
+          fs.appendFileSync(w.nodePath, '\n')
+          await settled(w.calls, 1)
+          assert.equal(w.calls.at(-1)?.graphReloaded, true)
+          assert.equal(w.calls.at(-1)?.pluginsChanged, false)
+        } finally {
+          w.stop()
+          fs.rmSync(w.tmp, { recursive: true, force: true })
+        }
+      })
+
+      it('refreshes plugins when graph.yaml changes', async () => {
+        const w = await watchFixture()
+        try {
+          fs.appendFileSync(path.join(w.graphPath, 'graph.yaml'), '\n')
+          await settled(w.calls, 1)
+          assert.equal(w.calls.at(-1)?.graphReloaded, true)
+          assert.equal(w.calls.at(-1)?.pluginsChanged, true)
+        } finally {
+          w.stop()
+          fs.rmSync(w.tmp, { recursive: true, force: true })
+        }
+      })
+
+      it('refreshes plugins when a pack file changes', async () => {
+        const w = await watchFixture()
+        try {
+          fs.appendFileSync(w.templatePath, '\n')
+          await settled(w.calls, 1)
+          assert.equal(w.calls.at(-1)?.graphReloaded, true)
+          assert.equal(w.calls.at(-1)?.pluginsChanged, true)
+        } finally {
+          w.stop()
+          fs.rmSync(w.tmp, { recursive: true, force: true })
+        }
+      })
+
+      it('refreshes plugins without reloading the graph when a standalone plugin manifest changes', async () => {
+        const w = await watchFixture((tmp) => {
+          const dir = path.join(tmp, 'plugins', 'demo')
+          fs.mkdirSync(dir, { recursive: true })
+          fs.writeFileSync(path.join(dir, 'plugin.yaml'), 'id: demo\n')
+          return [dir]
+        })
+        try {
+          fs.appendFileSync(path.join(w.pluginDirs[0], 'plugin.yaml'), '\n')
+          await settled(w.calls, 1)
+          assert.equal(w.calls.at(-1)?.graphReloaded, false)
+          assert.equal(w.calls.at(-1)?.pluginsChanged, true)
+        } finally {
+          w.stop()
+          fs.rmSync(w.tmp, { recursive: true, force: true })
+        }
+      })
+
+      it('ignores non-manifest files inside a standalone plugin directory', async () => {
+        const w = await watchFixture((tmp) => {
+          const dir = path.join(tmp, 'plugins', 'demo')
+          fs.mkdirSync(dir, { recursive: true })
+          fs.writeFileSync(path.join(dir, 'index.js'), '// v1\n')
+          return [dir]
+        })
+        try {
+          fs.appendFileSync(path.join(w.pluginDirs[0], 'index.js'), '// v2\n')
+          await new Promise(resolve => setTimeout(resolve, 400))
+          assert.equal(w.calls.length, 0)
+        } finally {
+          w.stop()
+          fs.rmSync(w.tmp, { recursive: true, force: true })
+        }
+      })
     })
 
     it('preserves sourceContent and edgeTypes on the served graph object after a reload', async () => {
@@ -1259,6 +1441,7 @@ describe('web server', () => {
     let statusCodes = { primitives: 0, app: 0, graph: 0, styles: 0 }
 
     before(async () => {
+      const graphFiles = ['index.js', 'constants.js', 'layout.js', 'levels.js', 'rf-builders.js', 'node-cards.js', 'toolbar.js', 'view.js']
       const sdkFiles = ['ui.js', 'properties.js', 'schema-model.js', 'schema-rows.js', 'schema-card.js']
       const [primitivesRes, appRes, graphRes, styleRes] = await Promise.all([
         Promise.all(sdkFiles.map(file => fetch(`http://localhost:${handle.port}/sdk/${file}`))).then(responses => ({
@@ -1266,7 +1449,10 @@ describe('web server', () => {
           text: async () => (await Promise.all(responses.map(r => r.text()))).join('\n'),
         })),
         fetch(`http://localhost:${handle.port}/app.jsx`),
-        fetch(`http://localhost:${handle.port}/graph.jsx`),
+        Promise.all(graphFiles.map(file => fetch(`http://localhost:${handle.port}/plugins/graph/${file}`))).then(responses => ({
+          status: responses.every(r => r.status === 200) ? 200 : 500,
+          text: async () => (await Promise.all(responses.map(r => r.text()))).join('\n'),
+        })),
         fetch(`http://localhost:${handle.port}/style.css`),
       ])
       statusCodes = { primitives: primitivesRes.status, app: appRes.status, graph: graphRes.status, styles: styleRes.status }
@@ -1321,7 +1507,9 @@ describe('web server', () => {
       assert.match(app, /new EventSource\('\/api\/events'\)/)
       assert.match(app, /const refreshBranchState = useCallback\(\(\) => \{/)
       assert.match(app, /const refreshAllData = useCallback\(\(\) => \{/)
-      assert.match(app, /eventSource\.addEventListener\('graph-reloaded', refreshAllData\)/)
+      assert.match(app, /eventSource\.addEventListener\('graph-reloaded', onGraphReloaded\)/)
+      assert.match(app, /refreshAllData\(\);\s*\};/)
+      assert.match(app, /pluginsChangedOnServer\(\)/)
       assert.match(app, /refreshToken/)
       assert.match(app, /fetch\(`\/api\/cluster\?nodeId=\$\{encodeURIComponent\(nodeId\)\}&includeEdges=maps-to,reads,uses-type,triggers,produces,calls,implements\$\{refParam\}\$\{overlayParam\}`\)/)
     })
@@ -1395,7 +1583,7 @@ describe('web server', () => {
     it('app: namespaces section navigation routes through /namespaces, with no /components route', () => {
       assert.match(app, /function handleSection\(section, pluginPage\) \{/)
       assert.match(app, /: `\/\$\{section\}`;\s*navigate\(buildRoute\(\{ pathname, params: \{\}, branch: viewingRef \}\)\);/)
-      assert.match(app, /const showTree = \(activeSection === 'namespaces' \|\| activeNodeId\) && activeSection !== 'graph';/)
+      assert.match(app, /const showTree = activeSection === 'namespaces' \|\| activeNodeId;/)
       assert.match(app, /} else if \(route\.pathname === '\/namespaces'\) \{\s*page = <NamespacesPage \/>;/)
       assert.doesNotMatch(app, /\/components/)
       assert.doesNotMatch(app, /ComponentsPage/)
@@ -1422,7 +1610,7 @@ describe('web server', () => {
     })
 
     it('graph: kind filter defaults to component and colours nodes by kind', () => {
-      assert.match(graph, /const kindFilter = resolveKindFilter\(requestedKind, graphData\?\.nodes \?\? \[\]\);/)
+      assert.match(graph, /const kindFilter = resolveKindFilter\(requestedKind, graphData\?\.nodes \?\? \[\]\)/)
       assert.match(graph, /filterByKind\(graphData\.nodes, graphData\.edges, kindFilter\)/)
       assert.match(graph, /aria-label="Kind filter"/)
       assert.match(graph, /\{ id: 'all', label: 'All' \}/)
@@ -1430,12 +1618,12 @@ describe('web server', () => {
     })
 
     it('graph: node cards render status beside stability in the footer, not in the header', () => {
-      assert.doesNotMatch(graph, /<div className="graph-node-card-header">\s*<TemplateBadge name=\{data\.templateLabel\} colour=\{colour\} \/>\s*<\/div>/)
-      assert.match(graph, /<div className="graph-node-card-footer">[\s\S]*<StabilityTag stability=\{data\.stability\} \/>[\s\S]*<StateTag state=\{data\.state\} \/>/)
+      assert.doesNotMatch(graph, /<div className="graph-node-card-header">\s*<\$\{TemplateBadge\} name=\$\{data\.templateLabel\} colour=\$\{colour\} \/>\s*<\/div>/)
+      assert.match(graph, /<div className="graph-node-card-footer">[\s\S]*<\$\{StabilityTag\} stability=\$\{data\.stability\} \/>[\s\S]*<\$\{StateTag\} state=\$\{data\.state\} \/>/)
     })
 
     it('graph: node card titles use a dedicated wrapped block instead of single-line truncation', () => {
-      assert.match(graph, /<div className="graph-node-card-body">\s*<div className="graph-node-card-text">\s*<div className="graph-node-card-name" title=\{data\.nodeId\}>\{data\.label\}<\/div>\s*<div className="graph-node-card-component" style=\{\{ color: data\.kindColour \}\}>\{data\.component\}<\/div>\s*<\/div>\s*<div className="graph-node-card-type">\s*<TemplateBadge name=\{data\.templateLabel\} colour=\{colour\} \/>\s*<\/div>\s*<\/div>/)
+      assert.match(graph, /<div className="graph-node-card-body">\s*<div className="graph-node-card-text">\s*<div className="graph-node-card-name" title=\$\{data\.nodeId\}>\$\{data\.label\}<\/div>\s*<div className="graph-node-card-component" style=\$\{\{ color: data\.kindColour \}\}>\$\{data\.component\}<\/div>\s*<\/div>\s*<div className="graph-node-card-type">\s*<\$\{TemplateBadge\} name=\$\{data\.templateLabel\} colour=\$\{colour\} \/>\s*<\/div>\s*<\/div>/)
       assert.match(styles, /\.graph-node-card-text\s*\{[^}]*min-height:\s*calc\(\(1\.25em \* 2\) \+ 12px\);/s)
       assert.match(styles, /\.graph-node-card-name\s*\{[^}]*white-space:\s*normal;[^}]*overflow:\s*visible;[^}]*text-overflow:\s*clip;[^}]*line-height:\s*1\.25;/s)
       assert.match(styles, /\.graph-node-card-type\s*\{[^}]*margin-top:\s*6px;/)
@@ -1445,45 +1633,51 @@ describe('web server', () => {
     })
 
     it('graph: depth control allows level 1 as the minimum step', () => {
-      assert.match(graph, /const DEPTH_STEPS = \[1, 2, 3, 4, 5, Infinity\];/)
+      assert.match(graph, /export const DEPTH_STEPS = \[1, 2, 3, 4, 5, Infinity\]/)
     })
 
     it('graph: node cards keep parent labels even when the parent node is outside the visible focus depth', () => {
-      assert.match(graph, /const parentLabel = n\.parentId \? getDisplayName\(n\.parentId\) : null;/)
+      assert.match(graph, /const parentLabel = n\.parentId \? getDisplayName\(n\.parentId\) : null/)
     })
 
-    it('graph: focus view fetches lineage data instead of using buildFocusGraph', () => {
+    it('graph: focus view fetches lineage data through ctx.api instead of using buildFocusGraph', () => {
       assert.doesNotMatch(graph, /buildFocusGraph/)
-      assert.match(graph, /const \[focusData, setFocusData\] = useState\(null\);/)
-      assert.match(graph, /const debounceTimerRef = useRef\(null\);/)
-      assert.match(graph, /fetch\(`\/api\/lineage\?\$\{params\}`\)/)
+      assert.match(graph, /const \[focusData, setFocusData\] = useState\(null\)/)
+      assert.match(graph, /const debounceTimerRef = useRef\(null\)/)
+      assert.match(graph, /ctx\.api\.get\('\/api\/lineage', \[/)
+      assert.doesNotMatch(graph, /\bfetch\(/)
     })
 
     it('graph: edge controls are derived from graph response types and new types default visible', () => {
-      assert.match(graph, /const availableEdgeTypes = useMemo\(\(\) => collectEdgeTypes\(graphData\?\.edges \?\? \[\], focusData\?\.edges \?\? \[\]\), \[graphData, focusData\]\);/)
+      assert.match(graph, /const availableEdgeTypes = useMemo\(\(\) => collectEdgeTypes\(graphData\?\.edges \?\? \[\], focusData\?\.edges \?\? \[\]\), \[graphData, focusData\]\)/)
       assert.match(graph, /function loadHiddenEdgeTypes\(\) \{[\s\S]*hiddenTypes/)
       assert.match(graph, /new Set\(availableEdgeTypes\.filter\(type => !hiddenEdgeTypes\.has\(type\)\)\)/)
-      assert.match(graph, /<GraphToolbar[\s\S]*edgeTypes=\{availableEdgeTypes\}/)
+      assert.match(graph, /<\$\{GraphToolbar\}[\s\S]*edgeTypes=\$\{availableEdgeTypes\}/)
       assert.doesNotMatch(graph, /ALL_EDGE_TYPES/)
     })
 
     it('graph: graph view keeps a single React Flow canvas instance and refits after node updates', () => {
-      assert.match(graph, /const \[reactFlowInstance, setReactFlowInstance\] = useState\(null\);/)
-      assert.match(graph, /const pendingViewportRef = useRef\(null\);/)
-      assert.match(graph, /const lastFocusedNodeIdRef = useRef\(null\);/)
-      assert.match(graph, /pendingViewportRef\.current = \{ type: 'full' \};/)
-      assert.match(graph, /const focalChanged = lastFocusedNodeIdRef\.current !== focalNodeId;/)
-      assert.match(graph, /if \(focalChanged\) \{[\s\S]*pendingViewportRef\.current = \{ type: 'focus', nodeId: focalNodeId \};/)
-      assert.match(graph, /const measuredId = pending\.type === 'focus' \? pending\.nodeId : rfNodes\[0\]\?\.id;/)
-      assert.match(graph, /const measuredNode = measuredId \? reactFlowInstance\.getNode\(measuredId\) : null;/)
+      assert.match(graph, /const \[reactFlowInstance, setReactFlowInstance\] = useState\(null\)/)
+      assert.match(graph, /const pendingViewportRef = useRef\(null\)/)
+      assert.match(graph, /const lastFocusedNodeIdRef = useRef\(null\)/)
+      assert.match(graph, /pendingViewportRef\.current = \{ type: 'full' \}/)
+      assert.match(graph, /const focalChanged = lastFocusedNodeIdRef\.current !== focalNodeId/)
+      assert.match(graph, /if \(focalChanged\) \{[\s\S]*pendingViewportRef\.current = \{ type: 'focus', nodeId: focalNodeId \}/)
+      assert.match(graph, /const measuredId = pending\.type === 'focus' \? pending\.nodeId : rfNodes\[0\]\?\.id/)
+      assert.match(graph, /const measuredNode = measuredId \? reactFlowInstance\.getNode\(measuredId\) : null/)
       assert.match(graph, /if \(!measuredNode\?\.width \|\| !measuredNode\?\.height\) \{/)
       assert.match(graph, /requestAnimationFrame\(fitPendingViewport\)/)
       assert.match(graph, /pending\.type === 'focus'/)
-      assert.match(graph, /reactFlowInstance\.fitView\(\{\s*duration: 0,\s*padding: 0\.2,\s*\}\);/)
+      assert.match(graph, /reactFlowInstance\.fitView\(\{\s*duration: 0,\s*padding: 0\.2,\s*\}\)/)
       assert.doesNotMatch(graph, /nodes:\s*\[\{\s*id:\s*pending\.nodeId\s*\}\]/)
-      assert.match(graph, /pendingViewportRef\.current = null;/)
-      assert.match(graph, /onInit=\{setReactFlowInstance\}/)
+      assert.match(graph, /pendingViewportRef\.current = null/)
+      assert.match(graph, /onInit=\$\{setReactFlowInstance\}/)
       assert.doesNotMatch(graph, /key=\{canvasInstanceKey\}/)
+    })
+
+    it('graph: plugin ports reach the host only through the import map and corum:ui', () => {
+      assert.doesNotMatch(graph, /window\.CorumHost|window\.CorumRouter|window\.ReactFlow|window\.ELK/)
+      assert.match(graph, /export const mountGraph = mountReact\(GraphView\)/)
     })
 
     it('app: initial route state is derived from window.location.hash', () => {

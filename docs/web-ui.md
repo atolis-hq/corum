@@ -43,6 +43,32 @@ The left rail switches between three views:
 A search box at the top finds nodes by ID. A debug toggle shows fully qualified
 node names instead of display names.
 
+## Plugins
+
+The Graph view is a built-in plugin. Plugins can add pages to the navigation
+rail and actions to **Open in** menus on node pages and connection rows, with
+optional icon shortcuts beside node titles and connections. Menu membership
+(`menu`, default `true`) and icon placement (`quick`) are independent settings.
+Connection actions target the linked node and preserve the viewed branch.
+Dashboard and Models currently remain in the host UI.
+
+For filesystem sources, configure plugins in the graph's `graph.yaml`:
+
+```yaml
+plugins:
+  - path: ../plugins/node-list  # relative to graph.yaml's directory
+  - id: graph
+    enabled: false
+```
+
+Plugins are enabled by default. Disabling one removes its pages and actions;
+direct links show an unavailable page. Git sources currently load built-in
+plugins only and do not apply these registrations or overrides.
+
+See [UI plugins](plugins.md) for installation, configuration, an end-to-end
+authoring example, the manifest and SDK contract, and troubleshooting. Plugins
+run with the page's full privileges, so only install ones you trust.
+
 ## Branches and comparing proposals
 
 A branch bar lets you switch which branch you are viewing. With a Git source

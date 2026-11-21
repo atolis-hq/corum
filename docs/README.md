@@ -19,6 +19,7 @@ for you, and every change lands in Git.
 
 - [MCP tools](mcp-tools.md) - every tool, client configuration, output options.
 - [Web UI](web-ui.md) - views, branch comparison, refreshing, running alongside MCP.
+- [UI plugins](plugins.md) - configure plugins, create a page, use the SDK and bundle with packs.
 - [CLI](cli.md) - every command, including `lint` and the web UI.
 - [Configuration](configuration.md) - `.corum/config.yaml`, environment variables, file vs Git source.
 

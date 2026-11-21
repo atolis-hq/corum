@@ -32,7 +32,7 @@ import { getPropertySchemasFromTemplate } from '../loader/template-props.js'
 import type { EdgeType, Graph, MultiGraph, Node, Template } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
 import { registerVendorRoutes } from './vendor.js'
-import { resolvePluginAsset } from './plugins/assets.js'
+import { ifNoneMatchSatisfied, resolvePluginAsset } from './plugins/assets.js'
 import { createPluginRuntime, type PluginRuntime } from './plugins/runtime.js'
 import { createGraphRuntimeConfig } from '../source/config.js'
 import { FileGraphSource } from '../source/file-source.js'
@@ -68,7 +68,13 @@ export type GraphFileWatcherOptions = {
   graphPath: string
   debounceMs?: number
   logger?: (message: string) => void
-  onReload?: () => void
+  /** Standalone plugin directories to watch; only their `plugin.yaml` changes matter. */
+  pluginWatchDirs?: () => string[]
+  /**
+   * Called after a debounced batch of changes. `graphReloaded` is false when only plugin
+   * manifests changed; `pluginsChanged` is false when only graph data (node files) changed.
+   */
+  onReload?: (info: { graphReloaded: boolean; pluginsChanged: boolean }) => void
 }
 
 type ReloadEvents = {
@@ -125,6 +131,21 @@ function getNavigationOwnership(graph: Graph, node: Node): { parentId: string; o
     endIdx -= 2
   }
   return undefined
+}
+
+/** Walk materialized parentId links to the cluster root; undefined for roots. */
+function getOwningRoot(graph: Graph, node: Node, firstParentId?: string): Node | undefined {
+  let current: Node = node
+  let parentId = current.parentId ?? firstParentId
+  const seen = new Set<string>([current.id])
+  while (parentId !== undefined && !seen.has(parentId)) {
+    const parent = graph.nodesById.get(parentId)
+    if (!parent) break
+    seen.add(parent.id)
+    current = parent
+    parentId = current.parentId
+  }
+  return current === node ? undefined : current
 }
 
 function summarizeNodeForNavigation(graph: Graph, node: Node): Node & { parentId?: string; ownedSection?: string } {
@@ -312,21 +333,58 @@ export function startGraphFileWatcher(
     watchers = []
   }
 
+  let packDirs: string[] = []
+  let pluginDirs: string[] = []
+  let needGraphReload = false
+  let needPluginRefresh = false
+
   function refreshWatchers(): void {
     closeWatchers()
-    const roots = [...new Set([path.resolve(graphPath), ...resolvePackDirs(graphPath)])]
-    watchers = roots.flatMap(root => watchRoot(root, scheduleReload))
+    packDirs = resolvePackDirs(graphPath)
+    pluginDirs = (options.pluginWatchDirs?.() ?? []).map(dir => path.resolve(dir))
+    const graphRoot = path.resolve(graphPath)
+    watchers = [...new Set([graphRoot, ...packDirs, ...pluginDirs])]
+      .flatMap(root => watchRoot(root, filename => scheduleReload(root, filename)))
+  }
+
+  function isInside(file: string, dir: string): boolean {
+    const relative = path.relative(dir, file)
+    return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative)
+  }
+
+  /** What a change to this file affects: the graph data, the plugin list, or both. */
+  function classify(root: string, filename: string): { graph: boolean; plugins: boolean } | null {
+    const file = path.resolve(root, filename)
+    if (file === path.join(path.resolve(graphPath), 'graph.yaml')) return { graph: true, plugins: true }
+    if (packDirs.some(dir => isInside(file, dir))) return { graph: true, plugins: true }
+    if (pluginDirs.some(dir => isInside(file, dir))) {
+      return path.basename(file) === 'plugin.yaml' ? { graph: false, plugins: true } : null
+    }
+    return { graph: true, plugins: false }
   }
 
   async function reload(): Promise<void> {
-    if (reloading) return
+    if (reloading) {
+      // A change arrived mid-reload: try again once it finishes instead of dropping it.
+      timer = setTimeout(() => {
+        timer = undefined
+        void reload()
+      }, debounceMs)
+      return
+    }
     reloading = true
+    const graphReloaded = needGraphReload
+    const pluginsChanged = needPluginRefresh
+    needGraphReload = false
+    needPluginRefresh = false
     try {
-      const nextGraph = await loadGraph({ graphPath, strict: true })
-      replaceGraph(graph, nextGraph)
+      if (graphReloaded) {
+        const nextGraph = await loadGraph({ graphPath, strict: true })
+        replaceGraph(graph, nextGraph)
+      }
       refreshWatchers()
-      onReload?.()
-      logger(`[corum] graph reloaded after file change`)
+      onReload?.({ graphReloaded, pluginsChanged })
+      logger(graphReloaded ? `[corum] graph reloaded after file change` : `[corum] plugins refreshed after file change`)
     } catch (err) {
       logger(`[corum] graph reload failed: ${err}`)
     } finally {
@@ -334,8 +392,12 @@ export function startGraphFileWatcher(
     }
   }
 
-  function scheduleReload(filename?: string | Buffer | null): void {
+  function scheduleReload(root: string, filename?: string | Buffer | null): void {
     if (!isRelevantWatchEvent(filename)) return
+    const effect = filename ? classify(root, String(filename)) : { graph: true, plugins: true }
+    if (!effect) return
+    needGraphReload ||= effect.graph
+    needPluginRefresh ||= effect.plugins
     if (timer) clearTimeout(timer)
     timer = setTimeout(() => {
       timer = undefined
@@ -436,6 +498,10 @@ export function createApp(
           stability: ownership.stability,
           parentId: ownership.parentId,
           ownedSection: ownership.ownedSection,
+          ...(() => {
+            const owner = getOwningRoot(targetGraph, node, ownership.parentId)
+            return owner ? { rootId: owner.id, rootTemplate: owner.template } : {}
+          })(),
         }
       })
     res.json(nodes)
@@ -634,10 +700,19 @@ export function createApp(
       }
       const includedNodes = expandExternalNodes(targetGraph, externalIds)
 
+      const owner = getOwningRoot(targetGraph, cluster.root)
       res.json({
         root: summarizeNodeForNavigation(targetGraph, annotateNode(targetGraph, cluster.root)),
+        ...(owner ? { owner: { id: owner.id, template: owner.template } } : {}),
         descendants: cluster.descendants.map(child => summarizeNodeForNavigation(targetGraph, annotateNode(targetGraph, child))),
-        includedNodes: includedNodes.map(node => summarizeNodeForNavigation(targetGraph, annotateNode(targetGraph, node))),
+        includedNodes: includedNodes.map(node => {
+          const summary = summarizeNodeForNavigation(targetGraph, annotateNode(targetGraph, node))
+          const owningRoot = getOwningRoot(targetGraph, node, summary.parentId)
+          return {
+            ...summary,
+            ...(owningRoot ? { rootId: owningRoot.id, rootTemplate: owningRoot.template } : {}),
+          }
+        }),
         edges: cluster.edges,
         overlay,
       })
@@ -666,12 +741,11 @@ export function createApp(
     res.setHeader('ETag', asset.etag)
     res.setHeader('Content-Type', asset.contentType)
     res.setHeader('X-Content-Type-Options', 'nosniff')
-    const ifNoneMatch = req.headers['if-none-match']
-    if (typeof ifNoneMatch === 'string' && ifNoneMatch.split(',').some(tag => tag.trim() === asset.etag)) {
+    if (ifNoneMatchSatisfied(req.headers['if-none-match'], asset.etag)) {
       res.status(304).end()
       return
     }
-    res.sendFile(asset.file, { etag: false, lastModified: false, cacheControl: false, dotfiles: 'allow' }, err => {
+    res.sendFile(asset.file, { etag: false, lastModified: false, cacheControl: false, acceptRanges: false, dotfiles: 'allow' }, err => {
       if (err && !res.headersSent) res.status(404).json({ error: 'Not found' })
     })
   })
@@ -742,7 +816,17 @@ export function createApp(
     res.type('html').send(indexHtml)
   })
 
+  app.use(['/plugins', '/vendor'], (_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    next()
+  })
+
   registerVendorRoutes(app)
+
+  // Built-in plugin sources are reachable only through /plugins/:id/* (which enforces enabled state and extension rules).
+  app.use('/builtin', (_req, res) => {
+    res.status(404).json({ error: 'Not found' })
+  })
 
   app.use(express.static(WEB_DIR, {
     setHeaders(res, filePath) {
@@ -751,6 +835,19 @@ export function createApp(
       }
     },
   }))
+
+  // Final error handler: never leak stack traces or filesystem paths.
+  app.use((err: unknown, _req: express.Request, res: Response, next: express.NextFunction) => {
+    if (res.headersSent) {
+      next(err)
+      return
+    }
+    const status = typeof err === 'object' && err !== null && typeof (err as { status?: unknown }).status === 'number'
+      ? (err as { status: number }).status
+      : 500
+    const clientError = status >= 400 && status < 500
+    res.status(clientError ? status : 500).json({ error: clientError ? (status === 400 ? 'Bad request' : 'Request failed') : 'Internal server error' })
+  })
 
   return app
 }
@@ -810,9 +907,11 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
         graphPath,
         debounceMs: options.fileWatcherDebounceMs,
         logger,
-        onReload: () => {
-          multiCache?.invalidate()
-          pluginRuntime.refresh()
+        pluginWatchDirs: () => pluginRuntime.watchDirs(),
+        onReload: ({ graphReloaded, pluginsChanged }) => {
+          // Node-data changes do not re-resolve plugins; plugin/pack/graph.yaml changes do.
+          if (graphReloaded) multiCache?.invalidate()
+          if (pluginsChanged) pluginRuntime.refresh()
           options.onReload?.()
           reloadEvents.notify()
         },

@@ -81,6 +81,11 @@ web UI. For private repositories set `CORUM_GIT_TOKEN` (and optionally
 
 ## Hosting the web UI
 
+UI plugin registrations and enable/disable overrides belong in the graph's
+`graph.yaml`, separate from the runtime configuration above. Custom plugins
+and overrides currently require a filesystem source; Git sources load built-in
+plugins only. See [Configure plugins](plugins.md#configure-plugins).
+
 The web UI is currently a read-only browser view of the graph. Because all state is in
 Git, hosting it needs only a Node process pointed at the repository:
 

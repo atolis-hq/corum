@@ -7,10 +7,10 @@ const sdkDir = path.join(process.cwd(), 'web', 'sdk')
 const load = (file: string) => import(pathToFileURL(path.join(sdkDir, file)).href)
 
 type Page = { id: string; title: string; icon?: string; order?: number; mount: string; opens?: string[] }
-type Action = { id: string; label: string; appliesTo: string[]; page: string }
+type Action = { id: string; label: string; appliesTo: string[]; page: string; icon?: string; param?: string; menu?: boolean; quick?: string[] }
 
 const { createRegistry } = await load('registry.js')
-const { resolveNodeTarget, hrefForNode } = await load('resolve-node.js')
+const { resolveNodeTarget, hrefForNode, hrefForAction } = await load('resolve-node.js')
 
 function plugin(
   id: string,
@@ -78,6 +78,43 @@ describe('registry', () => {
     const actions = reg.nodeActionsFor(['Journey'])
     assert.deepEqual(actions.map((a: Action) => a.id), ['open'])
     assert.equal(actions[0].pluginId, 'j')
+  })
+
+  it('nodeActionsFor includes * actions and carries icon, param and quick', () => {
+    const reg = createRegistry()
+    reg.registerPlugin(plugin('g', [{ id: 'view', title: 'Graph', mount: 'm' }], {
+      actions: [
+        { id: 'all', label: 'All', appliesTo: ['*'], page: 'view', icon: 'diagram-project', param: 'focus', quick: ['header'] },
+        { id: 'plain', label: 'Plain', appliesTo: ['Order'], page: 'view' },
+      ],
+    }))
+    const actions = reg.nodeActionsFor(['Journey'])
+    assert.deepEqual(actions.map((a: Action) => a.id), ['all'])
+    assert.equal(actions[0].icon, 'diagram-project')
+    assert.equal(actions[0].param, 'focus')
+    assert.deepEqual(actions[0].quick, ['header'])
+    const plain = reg.nodeActionsFor(['Order']).find((a: Action) => a.id === 'plain')
+    assert.equal(plain.icon, null)
+    assert.equal(plain.param, 'id')
+    assert.deepEqual(plain.quick, [])
+    assert.deepEqual(reg.nodeActionsFor([]).map((a: Action) => a.id), ['all'])
+  })
+
+  it('menu membership defaults on and is independent of quick placement', () => {
+    const reg = createRegistry()
+    reg.registerPlugin(plugin('j', [{ id: 'map', title: 'Map', mount: 'm' }], {
+      actions: [
+        { id: 'menu', label: 'Menu', appliesTo: ['*'], page: 'map', menu: true },
+        { id: 'shortcut', label: 'Shortcut', appliesTo: ['*'], page: 'map', menu: false, quick: ['header', 'relations'] },
+        { id: 'default', label: 'Default', appliesTo: ['*'], page: 'map', quick: ['header'] },
+      ],
+    }))
+    const actions = reg.nodeActionsFor(['Journey'])
+    assert.deepEqual(actions.map((action: Action) => [action.id, action.menu]), [
+      ['menu', true], ['shortcut', false], ['default', true],
+    ])
+    assert.deepEqual(actions[1].quick, ['header', 'relations'])
+    assert.deepEqual(actions[2].quick, ['header'])
   })
 
   it('page mount lazily loads the module and calls the named export', async () => {
@@ -156,6 +193,19 @@ describe('resolveNodeTarget / hrefForNode', () => {
     assert.deepEqual(resolveNodeTarget(reg, ['Journey'], { via: 'off' }), { kind: 'generic' })
   })
 
+  it('via links directly to the plugin page without requiring opens', () => {
+    const reg = createRegistry()
+    reg.registerPlugin(plugin('viewer', [page('late', []), page('early', [])].map((p, i) => ({ ...p, order: i === 0 ? 50 : 10 }))))
+    reg.registerPlugin(plugin('off', [page('x', [])], { status: 'disabled' }))
+    // first page by order, no opens needed, node type irrelevant
+    assert.deepEqual(resolveNodeTarget(reg, ['Anything'], { via: 'viewer' }), { kind: 'page', pluginId: 'viewer', pageId: 'early' })
+    assert.deepEqual(resolveNodeTarget(reg, ['Anything'], { via: 'viewer', page: 'late' }), { kind: 'page', pluginId: 'viewer', pageId: 'late' })
+    assert.deepEqual(resolveNodeTarget(reg, ['Anything'], { via: 'viewer', page: 'nope' }), { kind: 'generic' })
+    assert.deepEqual(resolveNodeTarget(reg, ['Anything'], { via: 'off' }), { kind: 'generic' })
+    assert.equal(hrefForNode(reg, 'a.b', ['Anything'], { via: 'viewer', page: 'late' }), '#/p/viewer/late?id=a.b')
+    assert.equal(hrefForNode(reg, 'a.b', [], { via: 'viewer' }), '#/p/viewer/early?id=a.b')
+  })
+
   it('hrefForNode builds generic, page and branch hrefs', () => {
     const reg = createRegistry()
     assert.equal(hrefForNode(reg, 'a.b', ['Journey'], {}), '#/node?id=a.b')
@@ -171,5 +221,48 @@ describe('resolveNodeTarget / hrefForNode', () => {
     reg.registerPlugin(plugin('a', [page('one', ['Journey'])]))
     reg.registerPlugin(plugin('b', [page('two', ['Journey'])]))
     assert.equal(hrefForNode(reg, 'a.b', ['Journey'], {}), '#/node?id=a.b')
+  })
+})
+
+describe('hrefForAction', () => {
+  const action = { pluginId: 'graph', page: 'view', param: 'focus' }
+
+  it('builds the plugin page link with the action param', () => {
+    assert.equal(hrefForAction(action, 'a.b'), '#/p/graph/view?focus=a.b')
+  })
+
+  it('defaults the param to id and prefixes the branch', () => {
+    assert.equal(hrefForAction({ pluginId: 'j', page: 'map' }, 'a.b'), '#/p/j/map?id=a.b')
+    assert.equal(hrefForAction(action, 'a.b', { branch: 'feat/x' }), '#/feat%2Fx/p/graph/view?focus=a.b')
+  })
+})
+
+describe('owningRoot', () => {
+  const nodes = new Map([
+    ['r', { id: 'r', template: 'DomainModel' }],
+    ['r.schemas.s', { id: 'r.schemas.s', template: 'Schema', parentId: 'r' }],
+    ['r.schemas.s.fields.f', { id: 'r.schemas.s.fields.f', template: 'Field', parentId: 'r.schemas.s' }],
+    ['x.fields.f', { id: 'x.fields.f', template: 'Field', rootId: 'x', rootTemplate: 'Schema' }],
+  ])
+
+  it('walks parentId to the root and prefers server-supplied rootTemplate', async () => {
+    const { owningRoot } = await load('resolve-node.js')
+    assert.deepEqual(owningRoot('r', nodes), { id: 'r', template: 'DomainModel' })
+    assert.deepEqual(owningRoot('r.schemas.s.fields.f', nodes), { id: 'r', template: 'DomainModel' })
+    assert.deepEqual(owningRoot('x.fields.f', nodes), { id: 'x', template: 'Schema' })
+    assert.equal(owningRoot('missing', nodes), null)
+  })
+})
+
+describe('isPageAvailable', () => {
+  it('is true only for pages of enabled plugins', async () => {
+    const { isPageAvailable } = await load('resolve-node.js')
+    const reg = createRegistry()
+    reg.registerPlugin(plugin('graph', [{ id: 'view', title: 'Graph', mount: 'm' }]))
+    reg.registerPlugin(plugin('off', [{ id: 'view', title: 'Off', mount: 'm' }], { status: 'disabled' }))
+    assert.equal(isPageAvailable(reg, 'graph', 'view'), true)
+    assert.equal(isPageAvailable(reg, 'graph', 'nope'), false)
+    assert.equal(isPageAvailable(reg, 'off', 'view'), false)
+    assert.equal(isPageAvailable(reg, 'missing', 'view'), false)
   })
 })

@@ -7,4 +7,4 @@ contributes:
   pages:
     - { id: home, title: "OK Plugin", icon: puzzle-piece, order: 10, mount: mount, opens: [] }
   nodeActions:
-    - { id: view-in-ok, label: "View in OK", appliesTo: [DomainModel], page: home }
+    - { id: view-in-ok, label: "View in OK", icon: star, appliesTo: [DomainModel], page: home, menu: true, quick: [header, relations] }

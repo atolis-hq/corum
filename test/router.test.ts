@@ -137,3 +137,19 @@ describe('buildRoute', () => {
     assert.equal(rebuilt, original)
   })
 })
+
+describe('parseRoute graph routes', () => {
+  it('Graph is a plugin page, not a host path', () => {
+    const r = parseRoute('#/p/graph/view?focus=orders.DomainModel.order')
+    assert.equal(r.plugin?.id, 'graph')
+    assert.equal(r.plugin?.page, 'view')
+    assert.equal(r.pathname, '/p/graph/view')
+    assert.equal(r.params.get('focus'), 'orders.DomainModel.order')
+  })
+
+  it('the old /graph host path is gone (it now reads as a branch named graph)', () => {
+    const r = parseRoute('#/graph?component=orders')
+    assert.equal(r.branch, 'graph')
+    assert.equal(r.plugin, null)
+  })
+})

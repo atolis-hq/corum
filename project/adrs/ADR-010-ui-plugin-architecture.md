@@ -1,7 +1,7 @@
 # ADR 010 — UI Plugin Architecture
 
 **Date:** 2026-11-20
-**Status:** Proposed
+**Status:** Accepted
 **Supersedes:** the "Plugin extensibility" section of ADR-007 (the `window.CorumPlugins` registry). ADR-007's no-build-step decision still stands; its use of Babel-in-the-browser for JSX does not (see section 3).
 
 ## Decision
@@ -68,7 +68,7 @@ contributes:
   pages:
     - { id: map, title: Journeys, icon: route, mount: mountJourneyMap, opens: [Journey, JourneyStep] }
   nodeActions:
-    - { id: view-in-journey, label: View in journey, appliesTo: [DomainModel], page: map }
+    - { id: view-in-journey, label: View in journey, icon: route, appliesTo: [DomainModel], page: map, param: focus, quick: [header] }
 ```
 
 | Field | Meaning |
@@ -84,7 +84,13 @@ contributes:
 
 Contribution types for v1:
 - **pages**: a route plus a nav entry (title and icon yield the nav item; there is no separate nav-item contribution). Optional `order`. Optional `opens`: templates or roles for which this page is a destination when a node is opened (section 5a).
-- **nodeActions**: a link the host shows on node pages for nodes matching `appliesTo` (template names or roles, resolved through the extends chain per `src/graph/roles.ts`). It is a generated direct link to the named `page` for that node (`hrefForNode(id, { via })`); there is no custom action code. This is the "View in journey" mechanism.
+- **nodeActions**: a link the host shows on node pages for nodes matching `appliesTo` (template names or roles, resolved through the extends chain per `src/graph/roles.ts`; `"*"` matches every node). It is a generated direct link to the named `page` for that node, `#/<branch?>/p/<plugin>/<page>?<param>=<nodeId>` (built by the SDK's `hrefForAction`); there is no custom action code. This is the "View in journey" mechanism. Optional fields:
+  - `icon`: a Font Awesome icon name used when the action is shown as a quick link.
+  - `param`: the query parameter that carries the node id on the target page. Default `id`.
+  - `menu`: whether the action appears in "Open in" menus. Default `true`; `false` permits shortcut-only actions. Independent of `quick`.
+  - `quick`: surfaces where the host also shows the action as an icon-only link, a list drawn from `header` (the node page title row) and `relations` (each connection row, targeting the linked node, so `appliesTo` is matched against that node). Default none. Unknown surfaces are a manifest error.
+
+  Node headers and connection rows have an "Open in" menu listing matching page claims and applicable actions whose `menu` is true. Connection-row matching uses the linked node's owning root, while links retain the original linked node ID and viewed branch. Empty menus are hidden. Menu membership and icon placement are independent: `quick` alone does not add or remove a menu entry. One action can appear in both places without a second declaration. The host names no plugin: the Graph plugin's "View in graph" link is a `"*"` action with `menu: true` and `quick: [header, relations]`, so disabling the plugin removes every Graph link.
 
 Deliberately not in v1: custom node-page renderers (a plugin that wants to render a node opens a page), plugin-defined extension points (other plugins contributing into a plugin's slots), and shadow-DOM isolation. Each can be added later without breaking manifests.
 
@@ -101,7 +107,25 @@ export function mountJourneyMap(el, ctx) {
 }
 ```
 
-`ctx` provides: current branch, the data client, `navigate`, `openNode`/`hrefForNode`, route params (including the focused node id), and for node-scoped contributions the node and its template. The SDK ships a React adapter (`corum:ui/react`: `mountReact(Component)`) that wraps a component in this contract. Built-in plugins use the adapter.
+`ctx` is one object per page mount, kept live by the host. Its fields:
+
+| Field | Meaning |
+|---|---|
+| `route`, `params` | The parsed current route and its query parameters (`URLSearchParams`), including the focused node `id`. |
+| `branch` | The branch segment of the URL, if any. |
+| `viewingRef` | The branch ref being viewed (`null` for file sources). |
+| `templates` | The loaded templates for the viewed graph. |
+| `api.get(path, params)` | Branch-aware GET over the `/api/*` endpoints (`path` is `/api/graph` or just `graph`; `params` is an object, `URLSearchParams` or list of pairs). It adds the `ref` query parameter from `viewingRef`, returns parsed JSON and throws on non-2xx. |
+| `navigate(hash)` | Set the location hash. |
+| `hrefForNode(id, { via })`, `openNode(id, { via })` | Node link resolution from section 5a, as an href or as a navigation. |
+| `nodeLinks(id)` | The entries behind the quick links and the "Open in" menu for a node: `{ quick: { header, relations }, menu: { defaultHref, destinations, actions } }`, each link `{ key, pluginId, id, label, icon, href }`, resolved through the node's owning root with the node action and claim rules of section 5a. |
+| `hrefForPage(params, { page })` | Href for this plugin's own page (default: the current one) with the given query parameters and the viewed branch. |
+| `subscribe(listener)` | Calls `listener` when `route`/`params`, `viewingRef` or `templates` change; returns an unsubscribe function. |
+| `onError(error)` | Report an asynchronous failure so the host shows its error panel for this mount. |
+
+The host remounts a page only when the plugin, page or viewed branch changes. A change to query parameters alone (a graph focusing a node, a table changing sort order) does not remount: the page reads the new values through `subscribe`. Framework-neutral handlers should re-render from `ctx` inside their listener; the plugin owns its state across such changes.
+
+The SDK ships a React adapter (`corum:ui/react`: `mountReact(Component)`) that wraps a component in this contract. The component receives `ctx` as a prop, and a `useCtx()` hook returns the same value anywhere beneath it; both re-render whenever `subscribe` fires, so `ctx.params` and friends are plain values in render code. Built-in plugins use the adapter. `corum:ui/react` also exports `CtxProvider` (supplies a ctx to `useCtx()`; the host wraps its own pages in one backed by a host-level ctx) and the node link components `NodeLinks`, `QuickLinks` and `OpenInMenu`, which render `ctx.nodeLinks` and are used by the host's node page and connection rows as well as by plugin pages.
 
 The SDK (`corum:ui`) also exports the shared components currently in `web/primitives.jsx` (`SchemaCard`, `StateTag`, `StabilityTag`, `TemplateBadge`, `PropertiesTable`, `Icon`, ...). Plugins always obtain shared components from the SDK, never by file path or globals. This keeps future host-controlled overrides of shared components (for example replacing how a template renders in a card) possible without touching plugins. Such overrides are not part of v1.
 
@@ -176,7 +200,7 @@ Plugins share one page, so isolation is by convention, not sandbox:
 
 ### 8. Trust
 
-A plugin is arbitrary JavaScript running with the full privileges of the page, and plugins can arrive through a graph repo. This is accepted, with the same trust level as installing a package. There is no sandbox. Docs must say so, and plugin installation should be as explicit as pack installation.
+A plugin is arbitrary JavaScript running with the full privileges of the page, and plugins can arrive through a graph repo. This is accepted, with the same trust level as installing a package. There is no sandbox. Docs must say so, and plugin installation should be as explicit as pack installation. Standalone `plugins: - path:` entries in `graph.yaml` may point at any directory containing a `plugin.yaml`, under the same trust model as installing a package: the path is an explicit act of installation by whoever controls the graph configuration.
 
 ### 9. Versioning and updates
 
@@ -216,7 +240,6 @@ After the first third-party plugin works: `corum plugin init <id>` (scaffold), `
 
 ## Open items (builder decisions)
 
-- The exact SDK and `ctx` shape, and which shared components are exported.
 - Whether the host shell's own code (Dashboard, node page) stays JSX compiled in the page or moves to plain ES modules too; it only needs to consume the SDK as an ES module.
 - Whether reactflow and elk have ESM builds that can be vendored or need generated shim modules.
 - Whether standalone plugin installation goes through the pack registry or a new registry entry type.

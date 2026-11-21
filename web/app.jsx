@@ -1,5 +1,16 @@
 /* Main app: router, nav shell, data loading, and node pages. */
 
+if (!window.CorumHost) {
+  // boot.js or an import-map module failed to load: say so instead of leaving a blank page.
+  const box = document.getElementById('root');
+  const message = document.createElement('div');
+  message.setAttribute('data-testid', 'boot-error');
+  message.style.cssText = 'padding:24px;font:14px/1.5 system-ui,sans-serif;color:#7f1d1d';
+  message.textContent = 'Corum failed to start: the UI modules could not be loaded. Check the browser console and the server, then reload the page.';
+  box.appendChild(message);
+  throw new Error('window.CorumHost is not available (boot.js failed to load)');
+}
+
 const { useState, useEffect, useCallback, useMemo } = React;
 const {
   navigate,
@@ -13,8 +24,12 @@ const {
   matchKeysFor,
   resolveNodeTarget,
   hrefForNode,
+  hrefForAction,
+  owningRoot,
 } = window.CorumHost.sdk;
+const { CtxProvider, NodeLinks } = window.CorumHost.sdkReact;
 const hostRegistry = window.CorumHost.registry;
+
 const { buildNavTree, buildOverlayIndicatorIds, groupNamespacesByKind, namespaceEdges } = window.CorumNav;
 const { parseRoute, buildRoute } = window.CorumRouter;
 const { kindColour } = window.CorumGraphUtils;
@@ -105,7 +120,6 @@ function NavRail({ activeSection, onSection, pluginPages = [], debugMode, onDebu
   const items = [
     { id: 'dashboard', icon: 'grip', label: 'Dashboard' },
     { id: 'namespaces', icon: 'circle-nodes', label: 'Models' },
-    { id: 'graph', icon: 'diagram-project', label: 'Graph' },
     ...pluginPages.map(page => ({
       id: pluginSectionId(page),
       icon: page.icon ?? 'puzzle-piece',
@@ -871,7 +885,7 @@ function NamespacePage({ namespace, nodes, templates, kinds, onNavigate, viewing
   );
 }
 
-function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate, viewingRef }) {
+function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate }) {
   const { useState: useLocalState } = React;
   const [open, setOpen] = useLocalState(() => {
     try { return localStorage.getItem('corum:edgePanelOpen') === 'true'; } catch { return false; }
@@ -897,29 +911,25 @@ function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate, viewing
     const name = linkedNodeId.split('.').pop();
     return (
       <div
+        data-testid="edge-row"
         onClick={() => onNavigate(linkedNodeId)}
         title={linkedNodeId}
-        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', cursor: 'pointer' }}
+        style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, padding: '5px 0', cursor: 'pointer' }}
       >
         <span className="tag" style={EDGE_TYPE_STYLES[edge.type] ?? {}}>{edge.type}</span>
         <TemplateBadge name={tmpl?.ui?.displayName ?? node?.template ?? '?'} colour={colour} />
-        <span style={{ fontWeight: 500, fontSize: 13 }}>{name}</span>
+        <span style={{ fontWeight: 500, fontSize: 13, minWidth: 0, overflowWrap: 'anywhere' }}>{name}</span>
         {node && <StateTag state={node.state} />}
         {node && <StabilityTag stability={node.stability} />}
-        <button
-          className="graph-nav-link"
-          title="View in graph"
-          onClick={e => { e.stopPropagation(); navigate(buildRoute({ pathname: '/graph', params: { focus: linkedNodeId }, branch: viewingRef })); }}
-          style={{ marginLeft: 'auto' }}
-        >
-          <Icon name="diagram-project" size={11} />
-        </button>
+        <div style={{ marginLeft: 'auto' }}>
+          <NodeLinks nodeId={linkedNodeId} surface="relations" />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="card" style={{ marginBottom: 16 }}>
+    <div className="card connections-card" style={{ marginBottom: 16 }}>
       <div
         className="card-head"
         onClick={toggle}
@@ -976,14 +986,24 @@ class PluginErrorBoundary extends React.Component {
   }
 }
 
-function PluginMount({ page, ctx }) {
+function PluginMount({ page, hostState }) {
   const ref = React.useRef(null);
+  const handleRef = React.useRef(null);
   const [error, setError] = useState(null);
   if (error) throw error;
+  if (!handleRef.current) {
+    handleRef.current = window.CorumHost.createContext(
+      { pluginId: page.pluginId, pageId: page.id },
+      hostState,
+      setError,
+    );
+  }
+  // Route, param, branch and template changes reach the mounted page through ctx.subscribe; no remount.
+  useEffect(() => { handleRef.current.update(hostState); });
   useEffect(() => {
-    const dispose = page.mount(ref.current, { ...ctx, onError: setError });
+    const dispose = page.mount(ref.current, handleRef.current.ctx);
     return () => { if (typeof dispose === 'function') dispose(); };
-  }, [page.pluginId, page.id, ctx.routeKey]);
+  }, []);
   return <div ref={ref} className="plugin-host" data-plugin={page.pluginId} data-page={page.id} />;
 }
 
@@ -1003,7 +1023,7 @@ function PluginUnavailablePage({ pluginId, reason, nodeId, viewingRef }) {
   );
 }
 
-function PluginPage({ route, templates, viewingRef }) {
+function PluginPage({ route, templates, templatesByName, nodes, viewingRef }) {
   const { id: pluginId, page: pageId } = route.plugin;
   const page = hostRegistry.findPage(pluginId, pageId);
   if (!page) {
@@ -1016,33 +1036,13 @@ function PluginPage({ route, templates, viewingRef }) {
       <PluginUnavailablePage pluginId={pluginId} reason={reason} nodeId={route.params.get('id')} viewingRef={viewingRef} />
     );
   }
-  const routeKey = `${route.branch ?? ''}${route.pathname}?${route.params.toString()}`;
-  const ctx = { route, params: route.params, branch: route.branch, viewingRef, templates, routeKey };
+  // Remount only when the plugin, page or viewed branch changes, never for query-param changes.
+  const mountKey = `${pluginId}/${pageId}@${viewingRef ?? ''}`;
+  const hostState = { route, viewingRef, templates, nodes, templatesByName };
   return (
-    <PluginErrorBoundary key={routeKey} pluginId={pluginId}>
-      <PluginMount page={page} ctx={ctx} />
+    <PluginErrorBoundary key={mountKey} pluginId={pluginId}>
+      <PluginMount page={page} hostState={hostState} />
     </PluginErrorBoundary>
-  );
-}
-
-function OpenInBar({ nodeId, claimants, actions, keys, viewingRef }) {
-  return (
-    <div className="open-in-bar" data-testid="open-in" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
-      {claimants.length > 0 && <span className="label-xs">Open in…</span>}
-      {claimants.map(claim => (
-        <a key={`${claim.pluginId}/${claim.id}`} href={hrefForNode(hostRegistry, nodeId, keys, { branch: viewingRef, via: claim.pluginId })}>
-          {claim.title}
-        </a>
-      ))}
-      {claimants.length > 0 && (
-        <a href={buildRoute({ pathname: '/node', params: { id: nodeId }, branch: viewingRef })}>Generic view</a>
-      )}
-      {actions.map(action => (
-        <a key={`${action.pluginId}/${action.id}`} href={buildRoute({ pathname: `/p/${action.pluginId}/${action.page}`, params: { id: nodeId }, branch: viewingRef })}>
-          {action.label}
-        </a>
-      ))}
-    </div>
   );
 }
 
@@ -1066,8 +1066,9 @@ function NodePage({ nodeId, templates, templatesByName, onNavigate, refreshToken
 
   const rootNode = cluster?.root ?? null;
   const matchKeys = useMemo(
-    () => (rootNode && !rootNode.parentId ? matchKeysFor(rootNode.template, templatesByName) : []),
-    [rootNode, templatesByName],
+    // Child nodes resolve through their owning cluster root (cluster.owner), like roots do.
+    () => (rootNode ? matchKeysFor(cluster.owner?.template ?? rootNode.template, templatesByName) : []),
+    [rootNode, cluster, templatesByName],
   );
   const target = useMemo(
     () => (matchKeys.length > 0 ? resolveNodeTarget(hostRegistry, matchKeys) : { kind: 'generic' }),
@@ -1086,9 +1087,6 @@ function NodePage({ nodeId, templates, templatesByName, onNavigate, refreshToken
   if (!nodeId) return <div className="content"><p className="label-sm">No node selected.</p></div>;
   if (error) return <div className="content"><p style={{ color: 'var(--warn)' }}>Error loading node: {error}</p></div>;
   if (!cluster || target.kind === 'page') return <div className="content"><p className="label-sm">Loading...</p></div>;
-
-  const claimants = target.kind === 'chooser' ? target.claimants : [];
-  const nodeActions = matchKeys.length > 0 ? hostRegistry.nodeActionsFor(matchKeys) : [];
 
   const { root, descendants, includedNodes, edges } = cluster;
   const clusterIds = new Set([root.id, ...descendants.map(d => d.id)]);
@@ -1130,23 +1128,13 @@ function NodePage({ nodeId, templates, templatesByName, onNavigate, refreshToken
 
   return (
     <div className="content">
-      {(claimants.length > 0 || nodeActions.length > 0) && (
-        <OpenInBar nodeId={root.id} claimants={claimants} actions={nodeActions} keys={matchKeys} viewingRef={viewingRef} />
-      )}
       <div id={anchorIdForNode(root.id)} style={{ marginBottom: 18 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
+        <div data-testid="node-title-row" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
           <h1 style={{ margin: 0 }}>{displayName(root.id)}</h1>
           <TemplateBadge name={templateDisplayName(template)} colour={colour} />
           <StateTag state={root.state} />
           <StabilityTag stability={root.stability} />
-          <button
-            className="graph-nav-link"
-            onClick={() => navigate(buildRoute({ pathname: '/graph', params: { focus: root.id }, branch: viewingRef }))}
-            title="View in graph"
-          >
-            <Icon name="diagram-project" size={11} />
-            <span>Graph</span>
-          </button>
+          <NodeLinks nodeId={root.id} surface="header" />
         </div>
         <div className="label-sm mono">{root.id}</div>
       </div>
@@ -1157,7 +1145,6 @@ function NodePage({ nodeId, templates, templatesByName, onNavigate, refreshToken
         allNodes={[root, ...descendants, ...includedNodes]}
         templates={templates}
         onNavigate={onNavigate}
-        viewingRef={viewingRef}
       />
 
       <div className="meta-strip">
@@ -1272,7 +1259,22 @@ function App() {
     window.CorumHost.ready.then(() => setHostReady(true));
   }, []);
 
+  const nodesById = useMemo(() => new Map(nodes.map(node => [node.id, node])), [nodes]);
   const templatesByName = useMemo(() => new Map(allTemplates.map(template => [template.name, template])), [allTemplates]);
+
+  // One live host-level ctx (pluginId "host") so SDK components in host pages (node title row, connection rows) read the same state as plugin pages.
+  const hostCtxHandle = React.useRef(null);
+  const hostState = { route, viewingRef, templates, nodes, templatesByName };
+  if (!hostCtxHandle.current) {
+    hostCtxHandle.current = window.CorumHost.createContext({ pluginId: 'host', pageId: 'home' }, hostState, error => console.error('Host context error', error));
+  } else {
+    hostCtxHandle.current.update(hostState);
+  }
+  const hostCtx = useMemo(
+    () => ({ ...hostCtxHandle.current.ctx }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [route, viewingRef, templates, nodes, templatesByName, hostReady],
+  );
 
   function handleDebugMode() {
     setDebugMode(prev => {
@@ -1334,9 +1336,16 @@ function App() {
   useEffect(() => {
     if (!window.EventSource) return;
     const eventSource = new EventSource('/api/events');
-    eventSource.addEventListener('graph-reloaded', refreshAllData);
+    // The plugin registry is built once at boot, so a changed plugin list needs a full page reload.
+    const onGraphReloaded = () => {
+      window.CorumHost.pluginsChangedOnServer().then(changed => {
+        if (changed) location.reload();
+      });
+      refreshAllData();
+    };
+    eventSource.addEventListener('graph-reloaded', onGraphReloaded);
     return () => {
-      eventSource.removeEventListener('graph-reloaded', refreshAllData);
+      eventSource.removeEventListener('graph-reloaded', onGraphReloaded);
       eventSource.close();
     };
   }, [refreshAllData]);
@@ -1408,7 +1417,7 @@ function App() {
   const pluginPages = hostReady ? hostRegistry.pages() : [];
   const navTree = useMemo(() => buildNavTree(nodes, templates), [nodes, templates]);
   const kindSections = useMemo(() => groupNamespacesByKind(nodes, kinds), [nodes, kinds]);
-  const showTree = (activeSection === 'namespaces' || activeNodeId) && activeSection !== 'graph';
+  const showTree = activeSection === 'namespaces' || activeNodeId;
   useEffect(() => {
     if (!mobile || !showTree) return;
     const pane = detailOpen ? detailPane.current : listPane.current;
@@ -1473,7 +1482,8 @@ function App() {
   }
 
   function handleSearchNode(nodeId, templateName) {
-    navigate(hrefForNode(hostRegistry, nodeId, matchKeysFor(templateName, templatesByName), { branch: viewingRef }));
+    const root = owningRoot(nodeId, nodesById);
+    navigate(hrefForNode(hostRegistry, nodeId, matchKeysFor(root?.template ?? templateName, templatesByName), { branch: viewingRef }));
   }
 
   let page;
@@ -1522,21 +1532,13 @@ function App() {
       />
     );
   } else if (route.plugin) {
-    page = <PluginPage route={route} templates={templates} viewingRef={viewingRef} />;
-  } else if (route.pathname === '/graph') {
-    page = (
-      <window.CorumGraph.GraphView
-        route={route}
-        viewingRef={viewingRef}
-        templates={templates}
-      />
-    );
+    page = <PluginPage route={route} templates={templates} templatesByName={templatesByName} nodes={nodes} viewingRef={viewingRef} />;
   } else {
     page = <div className="content"><p className="label-sm">Page not found.</p></div>;
   }
 
   return (
-    <>
+    <CtxProvider ctx={hostCtx}>
       {searchOpen && (
         <SearchModal
           nodes={nodes}
@@ -1546,6 +1548,15 @@ function App() {
         />
       )}
       <TopBar onSearchOpen={() => setSearchOpen(true)} />
+      {hostReady && window.CorumHost.pluginsFailed && (
+        <div
+          data-testid="plugins-failed"
+          role="status"
+          style={{ position: 'fixed', right: 12, bottom: 12, zIndex: 50, padding: '8px 12px', background: 'var(--paper-3)', border: '1px solid var(--rule-2)', borderRadius: 6, fontSize: 12, color: 'var(--warn)' }}
+        >
+          Plugins failed to load. Reload the page to retry.
+        </div>
+      )}
       {gitMode && (
         <BranchBar
           branches={branches}
@@ -1599,7 +1610,7 @@ function App() {
           {page}
         </div>
       </div>
-    </>
+    </CtxProvider>
   );
 }
 
