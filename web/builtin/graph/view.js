@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import ReactFlowCanvas, { MiniMap, Background, useNodesState, useEdgesState, ReactFlowProvider } from 'reactflow'
 import { html } from 'corum:ui'
+import { useApi } from 'corum:ui/react'
 import {
   NODE_W, NODE_H, COMP_W, COMP_H,
   loadHiddenEdgeTypes, saveHiddenEdgeTypes, loadLayoutMode, saveLayoutMode,
@@ -15,8 +16,9 @@ import { GraphBreadcrumb, GraphToolbar } from './toolbar.js'
 
 export function GraphView({ ctx }) {
   const { params, templates } = ctx
-  const [graphData, setGraphData] = useState(null)
-  const [error, setError] = useState(null)
+  const { data: graphData, error: graphError } = useApi('/api/graph')
+  const [lineageError, setLineageError] = useState(null)
+  const error = graphError?.message ?? lineageError
   const [hiddenEdgeTypes, setHiddenEdgeTypes] = useState(loadHiddenEdgeTypes)
   const [showMinimap, setShowMinimap] = useState(false)
   const [depth, setDepth] = useState(2)
@@ -39,18 +41,13 @@ export function GraphView({ ctx }) {
   const requestedKind = params.get('kind')
   const kindFilter = resolveKindFilter(requestedKind, graphData?.nodes ?? [])
   const kindParams = requestedKind ? { kind: requestedKind } : {}
-  const [kindRegistry, setKindRegistry] = useState([])
+  const { data: kindsData } = useApi('/api/kinds')
+  const kindRegistry = useMemo(() => kindsData?.kinds ?? [], [kindsData])
 
   const goTo = useCallback(
     nextParams => ctx.navigate(ctx.hrefForPage(nextParams)),
     [ctx.navigate, ctx.hrefForPage],
   )
-
-  useEffect(() => {
-    ctx.api.get('/api/kinds')
-      .then(data => setKindRegistry(data.kinds ?? []))
-      .catch(() => setKindRegistry([]))
-  }, [ctx.viewingRef])
 
   const navToKind = useCallback(kind => {
     goTo(kind === 'component' ? {} : { kind })
@@ -73,17 +70,8 @@ export function GraphView({ ctx }) {
   }, [goTo, selectedComponent])
 
   useEffect(() => {
-    setGraphData(null)
-    setFocusData(null)
-    setError(null)
-    ctx.api.get('/api/graph')
-      .then(setGraphData)
-      .catch(err => setError(err.message))
-  }, [ctx.viewingRef])
-
-  useEffect(() => {
-    if (!focalNodeId) { setFocusData(null); return }
-    setFocusData(null)
+    if (!focalNodeId) { setFocusData(null); setLineageError(null); return }
+    setLineageError(null)
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
     debounceTimerRef.current = setTimeout(() => {
       ctx.api.get('/api/lineage', [
@@ -93,10 +81,10 @@ export function GraphView({ ctx }) {
         ['reads_outbound_only', 'false'],
       ])
         .then(data => { setFocusData(data) })
-        .catch(err => setError(err.message))
+        .catch(err => setLineageError(err.message))
     }, 150)
     return () => { if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current) }
-  }, [focalNodeId, depth, ctx.viewingRef])
+  }, [focalNodeId, depth, ctx.viewingRef, ctx.revision])
 
   const templateMap = useMemo(() => new Map((templates ?? []).map(t => [t.name, t])), [templates])
   const availableEdgeTypes = useMemo(() => collectEdgeTypes(graphData?.edges ?? [], focusData?.edges ?? []), [graphData, focusData])

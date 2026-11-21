@@ -8,9 +8,10 @@ function toSearchParams(params) {
 
 /*
  * env:   { registry, owningRoot, hrefForNode, hrefForAction, matchKeysFor, navigate, buildRoute, fetchImpl?, pluginId, pageId }
- * state: { route, viewingRef, templates, nodes, templatesByName }  (nodes/templatesByName stay host-side)
+ * state: { route, viewingRef, templates, revision, nodes, templatesByName }  (nodes/templatesByName stay host-side;
+ *        revision is the host's data revision, bumped on every graph reload)
  * Returns { ctx, update(nextState) }. ctx fields are getters over the latest state, so the same object
- * stays valid for the life of a mount; subscribe() reports changes to route, viewingRef and templates.
+ * stays valid for the life of a mount; subscribe() reports changes to route, viewingRef, templates and revision.
  */
 export function createPluginContext(env, initialState, onError) {
   let state = initialState
@@ -81,6 +82,7 @@ export function createPluginContext(env, initialState, onError) {
     get branch() { return state.route.branch },
     get viewingRef() { return state.viewingRef },
     get templates() { return state.templates },
+    get revision() { return state.revision ?? 0 },
     api: { get },
     navigate: hash => env.navigate(hash),
     hrefForNode,
@@ -99,7 +101,7 @@ export function createPluginContext(env, initialState, onError) {
   }
 
   function update(next) {
-    const changed = next.route !== state.route || next.viewingRef !== state.viewingRef || next.templates !== state.templates
+    const changed = next.route !== state.route || next.viewingRef !== state.viewingRef || next.templates !== state.templates || (next.revision ?? 0) !== (state.revision ?? 0)
     state = next
     if (!changed) return
     for (const listener of [...listeners]) {

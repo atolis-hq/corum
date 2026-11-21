@@ -1023,7 +1023,7 @@ function PluginUnavailablePage({ pluginId, reason, nodeId, viewingRef }) {
   );
 }
 
-function PluginPage({ route, templates, templatesByName, nodes, viewingRef }) {
+function PluginPage({ route, templates, templatesByName, nodes, viewingRef, revision }) {
   const { id: pluginId, page: pageId } = route.plugin;
   const page = hostRegistry.findPage(pluginId, pageId);
   if (!page) {
@@ -1038,7 +1038,7 @@ function PluginPage({ route, templates, templatesByName, nodes, viewingRef }) {
   }
   // Remount only when the plugin, page or viewed branch changes, never for query-param changes.
   const mountKey = `${pluginId}/${pageId}@${viewingRef ?? ''}`;
-  const hostState = { route, viewingRef, templates, nodes, templatesByName };
+  const hostState = { route, viewingRef, templates, revision, nodes, templatesByName };
   return (
     <PluginErrorBoundary key={mountKey} pluginId={pluginId}>
       <PluginMount page={page} hostState={hostState} />
@@ -1240,7 +1240,9 @@ function App() {
   const retainedNode = React.useRef(null);
   const listPane = React.useRef(null);
   const detailPane = React.useRef(null);
-  const [refreshToken, setRefreshToken] = useState(0);
+  // Data revision: bumped after every graph reload; plugin pages see it as ctx.revision, host pages as refreshToken.
+  const [revision, setRevision] = useState(0);
+  const refreshToken = revision;
   const [gitMode, setGitMode] = useState(false);
   const [branches, setBranches] = useState([]);
   const [branchResults, setBranchResults] = useState([]);
@@ -1264,7 +1266,7 @@ function App() {
 
   // One live host-level ctx (pluginId "host") so SDK components in host pages (node title row, connection rows) read the same state as plugin pages.
   const hostCtxHandle = React.useRef(null);
-  const hostState = { route, viewingRef, templates, nodes, templatesByName };
+  const hostState = { route, viewingRef, templates, revision, nodes, templatesByName };
   if (!hostCtxHandle.current) {
     hostCtxHandle.current = window.CorumHost.createContext({ pluginId: 'host', pageId: 'home' }, hostState, error => console.error('Host context error', error));
   } else {
@@ -1273,7 +1275,7 @@ function App() {
   const hostCtx = useMemo(
     () => ({ ...hostCtxHandle.current.ctx }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [route, viewingRef, templates, nodes, templatesByName, hostReady],
+    [route, viewingRef, templates, revision, nodes, templatesByName, hostReady],
   );
 
   function handleDebugMode() {
@@ -1298,7 +1300,6 @@ function App() {
         setAllTemplates(allTemplateData);
         setNodes(nodeData);
         setKinds(kindData.kinds ?? []);
-        setRefreshToken(token => token + 1);
         setLoading(false);
       })
       .catch(err => {
@@ -1330,7 +1331,8 @@ function App() {
 
   const refreshAllData = useCallback(() => {
     return refreshBranchState()
-      .then(result => refreshGraphData(result?.nextViewingRef ?? viewingRef));
+      .then(result => refreshGraphData(result?.nextViewingRef ?? viewingRef))
+      .then(() => setRevision(current => current + 1));
   }, [refreshBranchState, refreshGraphData, viewingRef]);
 
   useEffect(() => {
@@ -1532,7 +1534,7 @@ function App() {
       />
     );
   } else if (route.plugin) {
-    page = <PluginPage route={route} templates={templates} templatesByName={templatesByName} nodes={nodes} viewingRef={viewingRef} />;
+    page = <PluginPage route={route} templates={templates} templatesByName={templatesByName} nodes={nodes} viewingRef={viewingRef} revision={revision} />;
   } else {
     page = <div className="content"><p className="label-sm">Page not found.</p></div>;
   }
