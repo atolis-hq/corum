@@ -1449,13 +1449,15 @@ describe('web server', () => {
     let primitives = ''
     let app = ''
     let graph = ''
+    let explorer = ''
     let styles = ''
-    let statusCodes = { primitives: 0, app: 0, graph: 0, styles: 0 }
+    let statusCodes = { primitives: 0, app: 0, graph: 0, explorer: 0, styles: 0 }
 
     before(async () => {
       const graphFiles = ['index.js', 'constants.js', 'layout.js', 'levels.js', 'rf-builders.js', 'node-cards.js', 'toolbar.js', 'view.js']
+      const explorerFiles = ['index.js', 'nav.js', 'tree.js', 'namespace-page.js']
       const sdkFiles = ['ui.js', 'properties.js', 'schema-model.js', 'schema-rows.js', 'schema-card.js']
-      const [primitivesRes, appRes, graphRes, styleRes] = await Promise.all([
+      const [primitivesRes, appRes, graphRes, explorerRes, styleRes] = await Promise.all([
         Promise.all(sdkFiles.map(file => fetch(`http://localhost:${handle.port}/sdk/${file}`))).then(responses => ({
           status: responses.every(r => r.status === 200) ? 200 : 500,
           text: async () => (await Promise.all(responses.map(r => r.text()))).join('\n'),
@@ -1465,12 +1467,17 @@ describe('web server', () => {
           status: responses.every(r => r.status === 200) ? 200 : 500,
           text: async () => (await Promise.all(responses.map(r => r.text()))).join('\n'),
         })),
+        Promise.all(explorerFiles.map(file => fetch(`http://localhost:${handle.port}/plugins/explorer/${file}`))).then(responses => ({
+          status: responses.every(r => r.status === 200) ? 200 : 500,
+          text: async () => (await Promise.all(responses.map(r => r.text()))).join('\n'),
+        })),
         fetch(`http://localhost:${handle.port}/style.css`),
       ])
-      statusCodes = { primitives: primitivesRes.status, app: appRes.status, graph: graphRes.status, styles: styleRes.status }
+      statusCodes = { primitives: primitivesRes.status, app: appRes.status, graph: graphRes.status, explorer: explorerRes.status, styles: styleRes.status }
       primitives = await primitivesRes.text()
       app = await appRes.text()
       graph = await graphRes.text()
+      explorer = await explorerRes.text()
       styles = await styleRes.text()
     })
 
@@ -1478,6 +1485,7 @@ describe('web server', () => {
       assert.equal(statusCodes.primitives, 200)
       assert.equal(statusCodes.app, 200)
       assert.equal(statusCodes.graph, 200)
+      assert.equal(statusCodes.explorer, 200)
       assert.equal(statusCodes.styles, 200)
     })
 
@@ -1506,7 +1514,8 @@ describe('web server', () => {
     it('app: templateDisplayName resolves ui.displayName and is used for labels', () => {
       assert.match(app, /function templateDisplayName\(template\) \{\s*return template\?\.ui\?\.displayName \?\? template\?\.name \?\? '';\s*\}/)
       assert.match(app, /<TemplateBadge name=\{templateDisplayName\(template\)\} colour=\{colour\} \/>/)
-      assert.match(app, /<span>\{templateDisplayName\(template\)\}<\/span>/)
+      assert.match(explorer, /const templateLabel = template => template\?\.ui\?\.displayName \?\? template\?\.name \?\? ''/)
+      assert.match(explorer, /<span>\$\{templateLabel\(template\)\}<\/span>/)
     })
 
     it('app: cluster data destructures descendants and includedNodes', () => {
@@ -1562,11 +1571,11 @@ describe('web server', () => {
     })
 
     it('app: component nav behaves as a single-open accordion', () => {
-      assert.match(app, /const sortedComponents = \[\.\.\.navTree\.keys\(\)\]\.sort\(\(a, b\) => a\.localeCompare\(b\)\);/)
-      assert.match(app, /const \[openComponent, setOpenComponent\] = useState\(\);/)
-      assert.match(app, /if \(openComponent === undefined\) \{ openComponentWithEntries\(autoOpen\); return; \}/)
-      assert.match(app, /function toggleComponent\(component, kind\) \{[\s\S]*openComponentWithEntries/)
-      assert.doesNotMatch(app, /for \(const component of navTree\.keys\(\)\) initial\[component\] = true;/)
+      assert.match(explorer, /const sortedComponents = \[\.\.\.navTree\.keys\(\)\]\.sort\(\(a, b\) => a\.localeCompare\(b\)\)/)
+      assert.match(explorer, /const \[openComponent, setOpenComponent\] = useState\(\)/)
+      assert.match(explorer, /if \(openComponent === undefined\) \{ openComponentWithEntries\(autoOpen\); return \}/)
+      assert.match(explorer, /function toggleComponent\(component, kind\) \{[\s\S]*openComponentWithEntries/)
+      assert.doesNotMatch(explorer, /for \(const component of navTree\.keys\(\)\) initial\[component\] = true/)
     })
 
     it('style: nested property row depth indentation via CSS variable', () => {
@@ -1587,38 +1596,42 @@ describe('web server', () => {
     })
 
     it('app: primary nav and page heading say Explorer; dashboard card stays Namespaces', () => {
-      assert.match(app, /\{ id: 'namespaces', icon: 'sitemap', label: 'Explorer' \}/)
-      assert.match(app, /<h1>Explorer<\/h1>/)
+      const manifest = fs.readFileSync(path.join(repoRoot, 'web/builtin/explorer/plugin.yaml'), 'utf8')
+      assert.match(manifest, /title: Explorer, icon: sitemap/)
+      assert.match(explorer, /<h1>Explorer<\/h1>/)
       assert.match(app, /label="Namespaces" \/>/)
+      assert.doesNotMatch(app, /label: 'Explorer'/)
     })
 
-    it('app: namespaces section navigation routes through /namespaces, with no /components route', () => {
+    it('app: the Explorer is a plugin; the host reads its sidebar declaration and keeps legacy routes as redirects', () => {
       assert.match(app, /function handleSection\(section, pluginPage\) \{/)
       assert.match(app, /: `\/\$\{section\}`;\s*navigate\(buildRoute\(\{ pathname, params: \{\}, branch: viewingRef \}\)\);/)
-      assert.match(app, /const showTree = activeSection === 'namespaces' \|\| activeNodeId;/)
-      assert.match(app, /} else if \(route\.pathname === '\/namespaces'\) \{\s*page = <NamespacesPage \/>;/)
+      assert.match(app, /const showTree = Boolean\(sidebarPage\);/)
+      assert.match(app, /hostRegistry\.findLegacyPage\(route\.pathname\)/)
+      assert.match(app, /location\.replace\(legacyHash\)/)
+      assert.doesNotMatch(app, /NamespacesPage|NamespacePage|NavTree/)
       assert.doesNotMatch(app, /\/components/)
       assert.doesNotMatch(app, /ComponentsPage/)
     })
 
-    it('app: navigation is grouped into one section per kind and non-default kinds open the generic page', () => {
-      assert.match(app, /groupNamespacesByKind\(nodes, kinds\)/)
-      assert.match(app, /kindSections\.map\(section =>/)
-      assert.match(app, /<div className="nav-kind-head">\{section\.label\}<\/div>/)
-      assert.match(app, /if \(kind !== 'component'\) onNamespace\(component\);/)
-      assert.match(app, /fetch\(`\/api\/kinds\$\{refParam\}`\)/)
+    it('explorer: navigation is grouped into one section per kind and non-default kinds open the generic page', () => {
+      assert.match(explorer, /groupNamespacesByKind\(nodes \?\? \[\], kindsData\?\.kinds \?\? \[\]\)/)
+      assert.match(explorer, /kindSections\.map\(section =>/)
+      assert.match(explorer, /<div className="nav-kind-head">\$\{section\.label\}<\/div>/)
+      assert.match(explorer, /if \(kind !== 'component'\) onNamespace\(component\)/)
+      assert.match(explorer, /useApi\('\/api\/kinds'\)/)
     })
 
-    it('app: generic namespace page lists owned nodes plus inbound and outbound edges with links', () => {
-      assert.match(app, /route\.pathname === '\/namespace'/)
-      assert.match(app, /function NamespacePage\(/)
-      assert.match(app, /<EdgeList title="Inbound" edges=\{inbound\} endpoint="from" \/>/)
-      assert.match(app, /<EdgeList title="Outbound" edges=\{outbound\} endpoint="to" \/>/)
-      assert.match(app, /<div className="card-head">Owned nodes<\/div>/)
-      assert.match(app, /onClick=\{\(\) => onNavigate\(id\)\}/)
+    it('explorer: generic namespace page lists owned nodes plus inbound and outbound edges with links', () => {
+      assert.match(explorer, /export function NamespacePage\(/)
+      assert.match(explorer, /<\$\{EdgeList\} title="Inbound" edges=\$\{inbound\} endpoint="from"/)
+      assert.match(explorer, /<\$\{EdgeList\} title="Outbound" edges=\$\{outbound\} endpoint="to"/)
+      assert.match(explorer, /<div className="card-head">Owned nodes<\/div>/)
+      assert.match(explorer, /onClick=\$\{\(\) => onOpen\(id\)\}/)
       // Core UI has no kind-specific code: only the default kind is named.
       assert.doesNotMatch(app, /journey/i)
       assert.doesNotMatch(graph, /journey/i)
+      assert.doesNotMatch(explorer, /journey/i)
     })
 
     it('graph: kind filter defaults to component and colours nodes by kind', () => {
@@ -1701,9 +1714,9 @@ describe('web server', () => {
     })
 
     it('app: overlay nav dots are derived from diff-aware indicator ids', () => {
-      assert.match(app, /const \{ buildNavTree, buildOverlayIndicatorIds, groupNamespacesByKind, namespaceEdges \} = window\.CorumNav;/)
-      assert.match(app, /setOverlayIndicatorIds\(buildOverlayIndicatorIds\(nodes, templates, data\.nodes \|\| \[\], activeOverlayRefs\)\);/)
-      assert.doesNotMatch(app, /\.filter\(node => activeOverlayRefs\.some\(ref => node\.branches\.includes\(ref\)\)\)\s*\.map\(node => node\.id\)/)
+      assert.doesNotMatch(app, /CorumNav/)
+      assert.match(explorer, /setOverlayIds\(buildOverlayIndicatorIds\(nodes, templates, data\.nodes \|\| \[\], overlayRefs\)\)/)
+      assert.doesNotMatch(explorer, /\.filter\(node => overlayRefs\.some\(ref => node\.branches\.includes\(ref\)\)\)\s*\.map\(node => node\.id\)/)
     })
 
     it('app: branch picker renders failed branches and their load errors', () => {

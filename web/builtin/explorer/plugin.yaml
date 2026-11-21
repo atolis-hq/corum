@@ -1,0 +1,11 @@
+id: explorer
+version: 0.1.0
+engines: { corum: ">=0.1.0" }
+main: ./index.js
+contributes:
+  pages:
+    # The Explorer landing page; its sidebar is the namespace / node-type / node tree, which also
+    # accompanies the host's node page. #/namespaces is the pre-plugin address of this page.
+    - { id: namespaces, title: Explorer, icon: sitemap, order: 10, mount: mountExplorerHome, sidebar: mountExplorerTree, nodeSidebar: true, legacyPaths: ["/namespaces"] }
+    # Namespace overview: the detail view beside the tree. Reached by links, not the navigation rail.
+    - { id: namespace, title: Namespace, order: 11, nav: false, mount: mountNamespace, sidebar: mountExplorerTree, detail: true, legacyPaths: ["/namespace"] }

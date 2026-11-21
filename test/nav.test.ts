@@ -8,9 +8,10 @@ import { fileURLToPath } from 'node:url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 function loadNavModule(): { buildNavTree: Function; buildOverlayIndicatorIds: Function; groupNamespacesByKind: Function; namespaceEdges: Function } {
-  const navJs = readFileSync(join(__dirname, '../../web/nav.js'), 'utf8')
+  // The module is a private ES module of the Explorer plugin; evaluate it as a script by dropping `export`.
+  const navJs = readFileSync(join(__dirname, '../../web/builtin/explorer/nav.js'), 'utf8').replace(/^export /gm, '')
   const context = vm.createContext({ window: {} as Record<string, unknown> })
-  vm.runInContext(navJs, context)
+  vm.runInContext(`${navJs}\nwindow.CorumNav = { buildNavTree, buildOverlayIndicatorIds, groupNamespacesByKind, namespaceEdges }`, context)
   return (context.window as Record<string, unknown>).CorumNav as any
 }
 

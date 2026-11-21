@@ -45,12 +45,17 @@ node names instead of display names.
 
 ## Plugins
 
-The Graph view is a built-in plugin. Plugins can add pages to the navigation
+The Explorer and Graph views are built-in plugins (`explorer` and `graph`).
+The Explorer lives at `#/p/explorer/namespaces` and namespace overviews at
+`#/p/explorer/namespace?name=<namespace>`; the older `#/namespaces` and
+`#/namespace?name=…` URLs redirect there while the Explorer is enabled.
+Plugins can add pages to the navigation
 rail and actions to **Open in** menus on node pages and connection rows, with
 optional icon shortcuts beside node titles and connections. Menu membership
 (`menu`, default `true`) and icon placement (`quick`) are independent settings.
 Connection actions target the linked node and preserve the viewed branch.
-Dashboard and Explorer currently remain in the host UI.
+The Dashboard and the generic node page remain in the host UI; with the
+Explorer disabled they still work, without the namespace tree.
 
 For filesystem sources, configure plugins in the graph's `graph.yaml`:
 

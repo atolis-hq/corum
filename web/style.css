@@ -1837,6 +1837,18 @@ button {
   min-height: 0;
 }
 
+/* A plugin's navigation panel lives in the list pane: its wrapper must not take part in layout. */
+.plugin-sidebar {
+  display: contents;
+}
+
+/* Edge-type tags of the Explorer namespace page (the colours were inline styles in the host). */
+.edge-type-tag[data-edge-type="triggers"] { background: #fef3c7; color: #b45309; }
+.edge-type-tag[data-edge-type="produces"] { background: #ccfbf1; color: #0f766e; }
+.edge-type-tag[data-edge-type="calls"] { background: #ede9fe; color: #6d28d9; }
+.edge-type-tag[data-edge-type="implements"] { background: #f1f5f9; color: #475569; }
+.edge-type-tag[data-edge-type="reads"] { background: #dbeafe; color: #1d4ed8; }
+
 /* Node header and connection-row "Open in" menus (plugin destinations and node actions) */
 .connections-card {
   overflow: visible;

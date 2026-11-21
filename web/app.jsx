@@ -32,7 +32,6 @@ const {
 const { CtxProvider, NodeLinks } = window.CorumHost.sdkReact;
 const hostRegistry = window.CorumHost.registry;
 
-const { buildNavTree, buildOverlayIndicatorIds, groupNamespacesByKind, namespaceEdges } = window.CorumNav;
 const { parseRoute, buildRoute } = window.CorumRouter;
 const { SearchModal } = window.CorumSearch;
 
@@ -120,8 +119,7 @@ function pluginSectionId(page) {
 function NavRail({ activeSection, onSection, pluginPages = [], debugMode, onDebugMode }) {
   const items = [
     { id: 'dashboard', icon: 'grip', label: 'Dashboard' },
-    { id: 'namespaces', icon: 'sitemap', label: 'Explorer' },
-    ...pluginPages.map(page => ({
+    ...pluginPages.filter(page => page.nav).map(page => ({
       id: pluginSectionId(page),
       icon: page.icon ?? 'puzzle-piece',
       label: page.title,
@@ -156,248 +154,6 @@ function NavRail({ activeSection, onSection, pluginPages = [], debugMode, onDebu
         <Icon name="code" size={16} />
         <span>Debug</span>
       </button>
-    </div>
-  );
-}
-
-function entryKey(entry) {
-  return entry.kind === 'group' ? entry.groupTemplateName : entry.templateName;
-}
-
-function NavTree({ navTree, kindSections, templates, activeNodeId, onNode, onNamespace, overlayIndicatorIds }) {
-  const sortedComponents = [...navTree.keys()].sort((a, b) => a.localeCompare(b));
-  const [openComponent, setOpenComponent] = useState();
-  const [openEntryKeys, setOpenEntryKeys] = useState(new Set());
-  const [openGroupKeys, setOpenGroupKeys] = useState(new Set());
-  const templateMap = new Map(templates.map(template => [template.name, template]));
-
-  function openComponentWithEntries(component) {
-    setOpenComponent(component);
-    if (!component) { setOpenEntryKeys(new Set()); return; }
-    const entries = navTree.get(component) ?? [];
-    setOpenEntryKeys(entries.length === 1 ? new Set([entryKey(entries[0])]) : new Set());
-  }
-
-  // Initialise / recover openComponent when the tree first loads or the open component disappears.
-  useEffect(() => {
-    const autoOpen = sortedComponents.length === 1 ? sortedComponents[0] : null;
-    if (openComponent === undefined) { openComponentWithEntries(autoOpen); return; }
-    if (openComponent !== null && !navTree.has(openComponent)) { openComponentWithEntries(autoOpen); }
-  }, [navTree, openComponent, sortedComponents]);
-
-  // When navigating directly to a node (e.g. via link), open its component and entry.
-  useEffect(() => {
-    if (!activeNodeId || !navTree.size) return;
-    for (const [component, entries] of navTree.entries()) {
-      for (const entry of entries) {
-        const eKey = entryKey(entry);
-        let found = false;
-        if (entry.kind === 'group') {
-          found = entry.children.some(child => child.nodes.some(n => n.id === activeNodeId));
-        } else {
-          found = entry.nodes.some(n => n.id === activeNodeId) ||
-            entry.nodes.some(n => (n.navChildren ?? []).some(g => g.nodes.some(c => c.id === activeNodeId)));
-        }
-        if (found) {
-          setOpenComponent(component);
-          setOpenEntryKeys(new Set([eKey]));
-          return;
-        }
-      }
-    }
-  }, [activeNodeId, navTree]);
-
-  // Auto-expand groups for the active node; collapse all others.
-  useEffect(() => {
-    if (!activeNodeId || !navTree.size) return;
-    for (const entries of navTree.values()) {
-      for (const entry of entries) {
-        if (entry.kind === 'group') continue;
-        for (const node of entry.nodes) {
-          const isOwner =
-            node.id === activeNodeId ||
-            (node.navChildren ?? []).some(g => g.nodes.some(c => c.id === activeNodeId));
-          if (isOwner) {
-            setOpenGroupKeys(new Set((node.navChildren ?? []).map(g => `${node.id}:${g.label}`)));
-            return;
-          }
-        }
-      }
-    }
-    setOpenGroupKeys(new Set());
-  }, [activeNodeId, navTree]);
-
-  function toggleComponent(component, kind) {
-    if (openComponent === component) { openComponentWithEntries(null); }
-    else { openComponentWithEntries(component); }
-    // Kinds other than the default have no dedicated view: open the generic namespace page.
-    if (kind !== 'component') onNamespace(component);
-  }
-
-  function toggleEntry(key) {
-    setOpenEntryKeys(prev => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
-      return next;
-    });
-  }
-
-  if (navTree.size === 0) {
-    return <div className="nav-tree"><div className="empty-state">No graph nodes loaded.</div></div>;
-  }
-
-  return (
-    <div className="nav-tree" onKeyDown={event => {
-      if ((event.key === 'Enter' || event.key === ' ') && event.target.getAttribute('role') === 'button') {
-        event.preventDefault();
-        event.target.click();
-      }
-    }}>
-      {kindSections.map(section => (
-        <div key={section.kind} className="nav-kind-section" data-kind={section.kind}>
-        {kindSections.length > 1 && <div className="nav-kind-head">{section.label}</div>}
-      {section.namespaces.map(component => {
-        const entries = navTree.get(component) ?? [];
-        return (
-          <div key={component}>
-            <div className="nav-section-head" role="button" tabIndex={0} aria-expanded={openComponent === component} onClick={() => toggleComponent(component, section.kind)}>
-              <span>{component}</span>
-              <Icon name={openComponent === component ? 'chevron-down' : 'chevron-right'} size={12} />
-            </div>
-            {openComponent === component && entries.map(entry => {
-              if (entry.kind === 'group') {
-                const gKey = entryKey(entry);
-                const gOpen = openEntryKeys.has(gKey);
-                return (
-                  <div key={entry.groupTemplateName}>
-                    <div className="nav-template-head" role="button" tabIndex={0} aria-expanded={gOpen} onClick={() => toggleEntry(gKey)} style={{ cursor: 'pointer' }}>
-                      {entry.icon && (
-                        <i
-                          className={`fa-solid fa-${entry.icon}`}
-                          style={{ fontSize: 12, width: 14, textAlign: 'center', flexShrink: 0 }}
-                        />
-                      )}
-                      <span>{entry.label}</span>
-                      <Icon name={gOpen ? 'chevron-down' : 'chevron-right'} size={10} />
-                    </div>
-                    {gOpen && entry.children.map(child => (
-                      <div key={child.templateName}>
-                        <div className="nav-subtype-head">
-                          {child.icon && (
-                            <i
-                              className={`fa-solid fa-${child.icon}`}
-                              style={{ fontSize: 11, width: 14, textAlign: 'center', flexShrink: 0 }}
-                            />
-                          )}
-                          <span>{child.label}</span>
-                        </div>
-                        {child.nodes.map(node => {
-                          const isActive = node.id === activeNodeId;
-                          return (
-                            <div
-                              key={node.id}
-                              className={`nav-node-item${isActive ? ' active' : ''}`}
-                          role="button" tabIndex={0} aria-current={isActive ? 'true' : undefined}
-                              onClick={() => onNode(node.id)}
-                              title={node.id}
-                              style={isActive ? { '--nav-node-active-bg': child.colour } : undefined}
-                            >
-                              {displayName(node.id)}
-                              {overlayIndicatorIds && overlayIndicatorIds.has(node.id) && (
-                                <span className="signal-dots">
-                                  <span className="signal-dot signal-dot-0" />
-                                </span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ))}
-                  </div>
-                );
-              }
-
-              const template = templateMap.get(entry.templateName);
-              const colour = template?.ui?.colour ?? 'var(--ink-4)';
-              const tKey = entryKey(entry);
-              const tOpen = openEntryKeys.has(tKey);
-              return (
-                <div key={entry.templateName}>
-                  <div className="nav-template-head" role="button" tabIndex={0} aria-expanded={tOpen} onClick={() => toggleEntry(tKey)} style={{ cursor: 'pointer' }}>
-                    <i
-                      className={`fa-solid fa-${template?.ui?.icon ?? 'circle'}`}
-                      style={{ fontSize: 12, width: 14, textAlign: 'center', flexShrink: 0 }}
-                    />
-                    <span>{templateDisplayName(template)}</span>
-                    <Icon name={tOpen ? 'chevron-down' : 'chevron-right'} size={10} />
-                  </div>
-                  {tOpen && entry.nodes.map(node => {
-                    const isActive = node.id === activeNodeId;
-                    return (
-                      <div key={node.id}>
-                        <div
-                          className={`nav-node-item${isActive ? ' active' : ''}`}
-                              role="button" tabIndex={0} aria-current={isActive ? 'true' : undefined}
-                          onClick={() => onNode(node.id)}
-                          title={node.id}
-                          style={isActive ? { '--nav-node-active-bg': colour } : undefined}
-                        >
-                          {displayName(node.id)}
-                        </div>
-                        {(node.navChildren ?? []).map(group => {
-                          const groupKey = `${node.id}:${group.label}`;
-                          const groupOpen = openGroupKeys.has(groupKey);
-                          return (
-                            <div className="nav-child-group" key={group.label}>
-                              <div
-                                className="nav-child-head"
-                                role="button" tabIndex={0} aria-expanded={groupOpen}
-                                style={{ cursor: 'pointer' }}
-                                onClick={() => setOpenGroupKeys(prev => {
-                                  const next = new Set(prev);
-                                  next.has(groupKey) ? next.delete(groupKey) : next.add(groupKey);
-                                  return next;
-                                })}
-                              >
-                                {group.label}
-                                <Icon name={groupOpen ? 'chevron-down' : 'chevron-right'} size={10} />
-                              </div>
-                              {groupOpen && group.nodes.map(child => {
-                                const childTemplate = templateMap.get(child.template);
-                                const childColour = childTemplate?.ui?.colour ?? colour;
-                                const childIsActive = child.id === activeNodeId;
-                                return (
-                                  <div
-                                    key={child.id}
-                                    className={`nav-node-item nav-node-child${childIsActive ? ' active' : ''}`}
-                                    role="button" tabIndex={0} aria-current={childIsActive ? 'true' : undefined}
-                                    onClick={() => onNode(child.id)}
-                                    title={child.id}
-                                    style={childIsActive ? { '--nav-node-active-bg': childColour } : undefined}
-                                  >
-                                    {displayName(child.id)}
-                                    {overlayIndicatorIds && overlayIndicatorIds.has(child.id) && (
-                                      <span className="signal-dots">
-                                        <span className="signal-dot signal-dot-0" />
-                                      </span>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </div>
-        );
-      })}
-        </div>
-      ))}
     </div>
   );
 }
@@ -784,108 +540,6 @@ function DashboardPage({ nodes, templates, kinds, gitMode, viewingRef, branches,
   );
 }
 
-function NamespacesPage() {
-  return <div className="content"><h1>Explorer</h1></div>;
-}
-
-// Generic fallback view for any namespace: owned nodes plus inbound and outbound edges.
-// Contains no knowledge of specific kinds; richer views are a separate plugin mechanism.
-function NamespacePage({ namespace, nodes, templates, kinds, onNavigate, viewingRef }) {
-  const [graph, setGraph] = useState(null);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    setGraph(null);
-    setError(null);
-    const refParam = viewingRef ? `?ref=${encodeURIComponent(viewingRef)}` : '';
-    fetch(`/api/graph${refParam}`)
-      .then(res => res.ok ? res.json() : Promise.reject(res.status))
-      .then(setGraph)
-      .catch(err => setError(String(err)));
-  }, [namespace, viewingRef]);
-
-  const owned = nodes.filter(node => node.namespace === namespace);
-  if (owned.length === 0) {
-    return <div className="content"><p className="label-sm">Namespace not found: {namespace}</p></div>;
-  }
-  const kind = owned[0].kind ?? 'component';
-  const kindLabel = (kinds ?? []).find(k => k.id === kind)?.label ?? kind;
-  const templateMap = new Map(templates.map(t => [t.name, t]));
-
-  const byTemplate = new Map();
-  for (const node of owned) {
-    if (!byTemplate.has(node.template)) byTemplate.set(node.template, []);
-    byTemplate.get(node.template).push(node);
-  }
-
-  const nodeMap = new Map((graph?.nodes ?? []).map(n => [n.id, n]));
-  const { inbound, outbound } = namespaceEdges(graph?.edges ?? [], namespace);
-
-  function NodeLink({ id }) {
-    const node = nodeMap.get(id);
-    const tmpl = node ? templateMap.get(node.template) : null;
-    return (
-      <span
-        role="link" tabIndex={0}
-        style={{ cursor: 'pointer' }}
-        title={id}
-        onClick={() => onNavigate(id)}
-        onKeyDown={event => { if (event.key === 'Enter') onNavigate(id); }}
-      >
-        <span style={{ fontWeight: 500 }}>{displayName(id)}</span>
-        {tmpl && <span className="label-sm"> · {templateDisplayName(tmpl)}</span>}
-        <span className="label-sm mono"> {id}</span>
-      </span>
-    );
-  }
-
-  function EdgeList({ title, edges, endpoint }) {
-    return (
-      <div className="card" style={{ marginBottom: 16 }} data-testid={`namespace-${title.toLowerCase()}`}>
-        <div className="card-head">{title} ({edges.length})</div>
-        <div className="card-body" style={{ padding: '12px 16px' }}>
-          {graph === null && !error && <div className="label-sm">Loading…</div>}
-          {error && <div style={{ color: 'var(--warn)' }}>Error loading edges: {error}</div>}
-          {graph !== null && edges.length === 0 && <div className="label-sm">None.</div>}
-          {edges.map(edge => (
-            <div key={edge.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0' }}>
-              <span className="tag" style={EDGE_TYPE_STYLES[edge.type] ?? {}}>{edge.type}</span>
-              <NodeLink id={edge[endpoint]} />
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="content">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
-        <h1 style={{ margin: 0 }}>{namespace}</h1>
-        <span className="ns-kind-pill" style={{ background: kindColour(kind) }}>{kindLabel}</span>
-      </div>
-      <div className="label-sm" style={{ marginBottom: 16 }}>Namespace · {owned.length} {owned.length === 1 ? 'node' : 'nodes'}</div>
-
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div className="card-head">Owned nodes</div>
-        <div className="card-body" style={{ padding: '12px 16px' }}>
-          {[...byTemplate.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([templateName, list]) => (
-            <div key={templateName} style={{ marginBottom: 10 }}>
-              <div className="label-xs" style={{ marginBottom: 4 }}>{templateDisplayName(templateMap.get(templateName)) || templateName}</div>
-              {list.sort((a, b) => a.id.localeCompare(b.id)).map(node => (
-                <div key={node.id} style={{ padding: '3px 0' }}><NodeLink id={node.id} /></div>
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <EdgeList title="Inbound" edges={inbound} endpoint="from" />
-      <EdgeList title="Outbound" edges={outbound} endpoint="to" />
-    </div>
-  );
-}
-
 function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate }) {
   const { useState: useLocalState } = React;
   const [open, setOpen] = useLocalState(() => {
@@ -987,7 +641,7 @@ class PluginErrorBoundary extends React.Component {
   }
 }
 
-function PluginMount({ page, hostState }) {
+function PluginMount({ page, hostState, sidebar = false }) {
   const ref = React.useRef(null);
   const handleRef = React.useRef(null);
   const [error, setError] = useState(null);
@@ -1002,10 +656,24 @@ function PluginMount({ page, hostState }) {
   // Route, param, branch and template changes reach the mounted page through ctx.subscribe; no remount.
   useEffect(() => { handleRef.current.update(hostState); });
   useEffect(() => {
-    const dispose = page.mount(ref.current, handleRef.current.ctx);
+    const dispose = sidebar
+      ? page.mountSidebar(ref.current, handleRef.current.ctx)
+      : page.mount(ref.current, handleRef.current.ctx);
     return () => { if (typeof dispose === 'function') dispose(); };
   }, []);
-  return <div ref={ref} className="plugin-host" data-plugin={page.pluginId} data-page={page.id} />;
+  return sidebar
+    ? <div ref={ref} className="plugin-sidebar" data-plugin={page.pluginId} data-sidebar={page.id} />
+    : <div ref={ref} className="plugin-host" data-plugin={page.pluginId} data-page={page.id} />;
+}
+
+// A plugin's navigation panel, shown in the list pane. It stays mounted while the user moves between the
+// plugin's pages and the host node page, so its own state (open branches, scroll) survives navigation.
+function PluginSidebar({ page, hostState }) {
+  return (
+    <PluginErrorBoundary key={`${page.pluginId}/sidebar@${hostState.viewingRef ?? ''}`} pluginId={page.pluginId}>
+      <PluginMount page={page} hostState={hostState} sidebar />
+    </PluginErrorBoundary>
+  );
 }
 
 function PluginUnavailablePage({ pluginId, reason, nodeId, viewingRef }) {
@@ -1024,22 +692,43 @@ function PluginUnavailablePage({ pluginId, reason, nodeId, viewingRef }) {
   );
 }
 
-function PluginPage({ route, templates, templatesByName, nodes, viewingRef, revision }) {
+function pluginUnavailableReason(pluginId, pageId) {
+  const entry = hostRegistry.plugins().find(plugin => plugin.id === pluginId);
+  if (!entry) return `Plugin "${pluginId}" is not installed.`;
+  if (entry.status !== 'enabled') return `Plugin "${pluginId}" is ${entry.status}${entry.reason ? `: ${entry.reason}` : '.'}`;
+  return `Plugin "${pluginId}" has no page "${pageId}".`;
+}
+
+// Master-detail routes. A plugin page can declare a sidebar; the host only reads that declaration.
+function sidebarPageFor(route) {
+  if (route.pathname === '/node') return hostRegistry.nodeSidebarPage();
+  if (!route.plugin) return null;
+  const page = hostRegistry.findPage(route.plugin.id, route.plugin.page);
+  return page?.sidebar ? page : null;
+}
+
+function isDetailRoute(route) {
+  const page = sidebarPageFor(route);
+  return Boolean(page) && (route.pathname === '/node' || page.detail);
+}
+
+// Where "back" lands on mobile: the page that owns the node sidebar.
+function listRouteHash(branch) {
+  const page = hostRegistry.nodeSidebarPage();
+  return page ? buildRoute({ pathname: `/p/${page.pluginId}/${page.id}`, branch }) : null;
+}
+
+function PluginPage({ route, templates, templatesByName, nodes, viewingRef, revision, overlayRefs }) {
   const { id: pluginId, page: pageId } = route.plugin;
   const page = hostRegistry.findPage(pluginId, pageId);
   if (!page) {
-    const entry = hostRegistry.plugins().find(plugin => plugin.id === pluginId);
-    let reason;
-    if (!entry) reason = `Plugin "${pluginId}" is not installed.`;
-    else if (entry.status !== 'enabled') reason = `Plugin "${pluginId}" is ${entry.status}${entry.reason ? `: ${entry.reason}` : '.'}`;
-    else reason = `Plugin "${pluginId}" has no page "${pageId}".`;
     return (
-      <PluginUnavailablePage pluginId={pluginId} reason={reason} nodeId={route.params.get('id')} viewingRef={viewingRef} />
+      <PluginUnavailablePage pluginId={pluginId} reason={pluginUnavailableReason(pluginId, pageId)} nodeId={route.params.get('id')} viewingRef={viewingRef} />
     );
   }
   // Remount only when the plugin, page or viewed branch changes, never for query-param changes.
   const mountKey = `${pluginId}/${pageId}@${viewingRef ?? ''}`;
-  const hostState = { route, viewingRef, templates, revision, nodes, templatesByName };
+  const hostState = { route, viewingRef, templates, revision, overlayRefs, nodes, templatesByName };
   return (
     <PluginErrorBoundary key={mountKey} pluginId={pluginId}>
       <PluginMount page={page} hostState={hostState} />
@@ -1241,7 +930,6 @@ function App() {
   const [error, setError] = useState(null);
   const [route, setRoute] = useState(() => parseRoute(window.location.hash));
   const [mobile, setMobile] = useState(() => matchMedia('(max-width: 780px)').matches);
-  const retainedNode = React.useRef(null);
   const listPane = React.useRef(null);
   const detailPane = React.useRef(null);
   // Data revision: bumped after every graph reload; plugin pages see it as ctx.revision, host pages as refreshToken.
@@ -1254,7 +942,6 @@ function App() {
   const [viewingRef, setViewingRef] = useState(null);
   const [overlayRefs, setOverlayRefs] = useState([]);
   const [overlayMode, setOverlayMode] = useState('single');
-  const [overlayIndicatorIds, setOverlayIndicatorIds] = useState(new Set());
   const [debugMode, setDebugMode] = useState(() => {
     try { return localStorage.getItem('corum:debugMode') === 'true'; } catch { return false; }
   });
@@ -1271,7 +958,14 @@ function App() {
 
   // One live host-level ctx (pluginId "host") so SDK components in host pages (node title row, connection rows) read the same state as plugin pages.
   const hostCtxHandle = React.useRef(null);
-  const hostState = { route, viewingRef, templates, revision, nodes, templatesByName };
+  // The branches whose changes are overlaid on the view; plugins read them as ctx.overlayRefs.
+  const activeOverlayRefs = useMemo(() =>
+    overlayMode === 'single' ? [] :
+    overlayMode === 'consolidated' ? branches.filter(branch => branch.ref !== viewingRef).map(branch => branch.ref) :
+    overlayRefs,
+  [overlayMode, branches, viewingRef, overlayRefs]);
+
+  const hostState = { route, viewingRef, templates, revision, overlayRefs: activeOverlayRefs, nodes, templatesByName };
   if (!hostCtxHandle.current) {
     hostCtxHandle.current = window.CorumHost.createContext({ pluginId: 'host', pageId: 'home' }, hostState, error => console.error('Host context error', error));
   } else {
@@ -1280,7 +974,7 @@ function App() {
   const hostCtx = useMemo(
     () => ({ ...hostCtxHandle.current.ctx }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [route, viewingRef, templates, revision, nodes, templatesByName, hostReady],
+    [route, viewingRef, templates, revision, activeOverlayRefs, nodes, templatesByName, hostReady],
   );
 
   function handleDebugMode() {
@@ -1370,31 +1064,12 @@ function App() {
   }, [branchReady, viewingRef, gitMode, refreshGraphData]);
 
   useEffect(() => {
-    let previous = parseRoute(window.location.hash);
-    function syncHistory(next) {
-      if (matchMedia('(max-width: 780px)').matches && (next.pathname === '/node' || next.pathname === '/namespace') && !history.state?.corumDetail) {
-        // Seed a list entry behind direct links and nodes opened from other sections.
-        const hash = location.hash;
-        history.replaceState(null, '', buildRoute({ pathname: '/namespaces', branch: next.branch }));
-        history.pushState({ corumDetail: true }, '', hash);
-      }
-    }
-    syncHistory(previous);
     const handler = () => {
       const next = parseRoute(location.hash);
-      if ((next.pathname === '/node' || next.pathname === '/namespace') && previous.pathname === '/namespaces') {
-        history.replaceState({ corumDetail: true }, '');
-      } else {
-        syncHistory(next);
-      }
-      previous = next;
       setRoute(next);
     };
     const query = matchMedia('(max-width: 780px)');
-    const resize = () => {
-      setMobile(query.matches);
-      syncHistory(parseRoute(location.hash));
-    };
+    const resize = () => setMobile(query.matches);
     query.addEventListener('change', resize);
     window.addEventListener('hashchange', handler);
     return () => {
@@ -1402,6 +1077,50 @@ function App() {
       query.removeEventListener('change', resize);
     };
   }, []);
+
+  // Mobile master-detail history. Which routes are lists and details comes from the plugin registry, so it
+  // starts once the plugins are known.
+  useEffect(() => {
+    if (!hostReady) return undefined;
+    let previous = parseRoute(window.location.hash);
+    function syncHistory(next) {
+      const listHash = listRouteHash(next.branch);
+      if (listHash && matchMedia('(max-width: 780px)').matches && isDetailRoute(next) && !history.state?.corumDetail) {
+        // Seed a list entry behind direct links and nodes opened from other sections.
+        const hash = location.hash;
+        history.replaceState(null, '', listHash);
+        history.pushState({ corumDetail: true }, '', hash);
+      }
+    }
+    syncHistory(previous);
+    const handler = () => {
+      const next = parseRoute(location.hash);
+      if (isDetailRoute(next) && sidebarPageFor(previous) && !isDetailRoute(previous)) {
+        history.replaceState({ corumDetail: true }, '');
+      } else {
+        syncHistory(next);
+      }
+      previous = next;
+    };
+    const query = matchMedia('(max-width: 780px)');
+    const resize = () => syncHistory(parseRoute(location.hash));
+    query.addEventListener('change', resize);
+    window.addEventListener('hashchange', handler);
+    return () => {
+      window.removeEventListener('hashchange', handler);
+      query.removeEventListener('change', resize);
+    };
+  }, [hostReady]);
+
+  // Host routes that predate their plugin (#/namespaces, #/namespace?name=…) redirect to the plugin page
+  // that declares them; with that plugin unavailable they show the plugin-unavailable page instead.
+  const legacy = hostReady ? hostRegistry.findLegacyPage(route.pathname) : null;
+  const legacyHash = legacy && legacy.entry.status === 'enabled'
+    ? buildRoute({ pathname: `/p/${legacy.page.pluginId}/${legacy.page.id}`, params: route.params, branch: route.branch })
+    : null;
+  useEffect(() => {
+    if (legacyHash) location.replace(legacyHash);
+  }, [legacyHash]);
 
   useEffect(() => {
     function handleKeyDown(e) {
@@ -1415,18 +1134,20 @@ function App() {
   }, []);
 
   const activeNodeId = route.pathname === '/node' ? route.params.get('id') : null;
-  if (activeNodeId) retainedNode.current = activeNodeId;
-  const detailOpen = route.pathname === '/node' || route.pathname === '/namespace';
-  const activeNamespace = route.pathname === '/namespace' ? route.params.get('name') : null;
-  const activeSection = activeNodeId || activeNamespace
-    ? 'namespaces'
+  // Master-detail layout: a plugin page may declare a sidebar (a navigation tree) that sits in the list pane,
+  // and may also accompany the host node page. Without such a plugin the node page has no sidebar.
+  const sidebarPage = hostReady ? sidebarPageFor(route) : null;
+  const showTree = Boolean(sidebarPage);
+  const detailOpen = route.pathname === '/node' || Boolean(sidebarPage?.detail);
+  const pluginPages = hostReady ? hostRegistry.pages() : [];
+  // A sidebar's detail pages (not in the rail) highlight the rail entry of their plugin's list page.
+  const sectionPage = !sidebarPage ? null
+    : pluginPages.find(page => page.pluginId === sidebarPage.pluginId && page.nav && page.sidebar && !page.detail) ?? sidebarPage;
+  const activeSection = sectionPage && (activeNodeId || sidebarPage.detail)
+    ? pluginSectionId(sectionPage)
     : route.plugin
       ? `plugin:${route.plugin.id}/${route.plugin.page}`
       : (route.pathname.slice(1) || 'dashboard');
-  const pluginPages = hostReady ? hostRegistry.pages() : [];
-  const navTree = useMemo(() => buildNavTree(nodes, templates), [nodes, templates]);
-  const kindSections = useMemo(() => groupNamespacesByKind(nodes, kinds), [nodes, kinds]);
-  const showTree = activeSection === 'namespaces' || activeNodeId;
   useEffect(() => {
     if (!mobile || !showTree) return;
     const pane = detailOpen ? detailPane.current : listPane.current;
@@ -1454,39 +1175,16 @@ function App() {
     };
   }, [mobile, detailOpen, activeNodeId, showTree]);
 
-  const activeOverlayRefs = useMemo(() =>
-    overlayMode === 'single' ? [] :
-    overlayMode === 'consolidated' ? branches.filter(branch => branch.ref !== viewingRef).map(branch => branch.ref) :
-    overlayRefs,
-  [overlayMode, branches, viewingRef, overlayRefs]);
-
   useEffect(() => {
     setOverlayRefs(prev => prev.filter(ref => ref !== viewingRef && branches.some(branch => branch.ref === ref)));
   }, [viewingRef, branches]);
-
-  useEffect(() => {
-    if (!viewingRef || activeOverlayRefs.length === 0) {
-      setOverlayIndicatorIds(new Set());
-      return;
-    }
-    fetch(`/api/overlay/${encodeURIComponent(viewingRef)}`)
-      .then(res => res.ok ? res.json() : Promise.reject(res.status))
-      .then(data => {
-        setOverlayIndicatorIds(buildOverlayIndicatorIds(nodes, templates, data.nodes || [], activeOverlayRefs));
-      })
-      .catch(() => setOverlayIndicatorIds(new Set()));
-  }, [viewingRef, overlayMode, overlayRefs, branches, nodes, templates]);
 
   function handleSection(section, pluginPage) {
     const pathname = pluginPage ? `/p/${pluginPage.pluginId}/${pluginPage.id}` : `/${section}`;
     navigate(buildRoute({ pathname, params: {}, branch: viewingRef }));
   }
 
-  function handleNamespace(name) {
-    navigate(buildRoute({ pathname: '/namespace', params: { name }, branch: viewingRef }));
-  }
-
-  // Navigation that starts inside the Explorer (tree, connections, schema references, namespace lists) stays in the Explorer view.
+  // Navigation that starts inside the Explorer view of a node (connections, schema references) stays in that view.
   function handleNode(nodeId) {
     navigate(hrefForExplorerView(nodeId, { branch: viewingRef }));
   }
@@ -1513,20 +1211,10 @@ function App() {
         branchResults={branchResults}
       />
     );
-  } else if (route.pathname === '/namespaces') {
-    page = <NamespacesPage />;
-  } else if (route.pathname === '/namespace') {
-    page = (
-      <NamespacePage
-        key={activeNamespace}
-        namespace={activeNamespace}
-        nodes={nodes}
-        templates={templates}
-        kinds={kinds}
-        onNavigate={handleNode}
-        viewingRef={viewingRef}
-      />
-    );
+  } else if (legacy) {
+    page = legacyHash
+      ? <div className="content"><p className="label-sm">Redirecting…</p></div>
+      : <PluginUnavailablePage pluginId={legacy.entry.id} reason={pluginUnavailableReason(legacy.entry.id, legacy.page.id)} viewingRef={viewingRef} />;
   } else if (route.pathname === '/node') {
     page = (
       <CtxProvider ctx={route.params.get('view') === 'explorer'
@@ -1547,7 +1235,7 @@ function App() {
       </CtxProvider>
     );
   } else if (route.plugin) {
-    page = <PluginPage route={route} templates={templates} templatesByName={templatesByName} nodes={nodes} viewingRef={viewingRef} revision={revision} />;
+    page = <PluginPage route={route} templates={templates} templatesByName={templatesByName} nodes={nodes} viewingRef={viewingRef} revision={revision} overlayRefs={activeOverlayRefs} />;
   } else {
     page = <div className="content"><p className="label-sm">Page not found.</p></div>;
   }
@@ -1601,15 +1289,7 @@ function App() {
           <NavRail activeSection={activeSection} onSection={handleSection} pluginPages={pluginPages} debugMode={debugMode} onDebugMode={handleDebugMode} />
           {mobile && showTree && !detailOpen && (loading || error) && page}
           {showTree && !loading && !error && (
-            <NavTree
-              navTree={navTree}
-              kindSections={kindSections}
-              templates={templates}
-              activeNodeId={activeNodeId || retainedNode.current}
-              onNode={handleNode}
-              onNamespace={handleNamespace}
-              overlayIndicatorIds={overlayIndicatorIds}
-            />
+            <PluginSidebar page={sidebarPage} hostState={hostState} />
           )}
         </div>
         <div

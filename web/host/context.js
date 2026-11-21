@@ -83,6 +83,7 @@ export function createPluginContext(env, initialState, onError) {
     get viewingRef() { return state.viewingRef },
     get templates() { return state.templates },
     get revision() { return state.revision ?? 0 },
+    get overlayRefs() { return state.overlayRefs ?? [] },
     api: { get },
     navigate: hash => env.navigate(hash),
     hrefForNode,
@@ -101,7 +102,7 @@ export function createPluginContext(env, initialState, onError) {
   }
 
   function update(next) {
-    const changed = next.route !== state.route || next.viewingRef !== state.viewingRef || next.templates !== state.templates || (next.revision ?? 0) !== (state.revision ?? 0)
+    const changed = next.route !== state.route || next.viewingRef !== state.viewingRef || next.templates !== state.templates || (next.revision ?? 0) !== (state.revision ?? 0) || next.overlayRefs !== state.overlayRefs
     state = next
     if (!changed) return
     for (const listener of [...listeners]) {

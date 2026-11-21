@@ -381,7 +381,7 @@ test.describe('explorer view bypass (view=explorer)', () => {
   const EVENT_NAME = 'order-placed';
 
   test('clicking a claimed event in the Explorer tree stays on the Explorer node page', async ({ page }) => {
-    await page.goto('/#/namespaces');
+    await page.goto('/#/p/explorer/namespaces');
     const item = page.locator(`.nav-node-item[title="${EVENT}"]`);
     const orders = page.locator('.nav-section-head', { hasText: /^orders$/i });
     await expect(orders).toBeVisible();

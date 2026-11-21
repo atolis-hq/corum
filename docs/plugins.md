@@ -43,8 +43,19 @@ one again. Enabling does not bypass version or template requirements.
 Configuration applies to everyone using this graph, with no per-user toggle.
 
 The built-in Graph page has ID `graph`. Disabling it removes its navigation
-entry and its "View in graph" node actions. Dashboard and Explorer are currently
-host features and cannot be disabled through plugin configuration.
+entry and its "View in graph" node actions. The built-in Explorer has ID
+`explorer`. Disabling it removes its navigation entry and the namespace tree
+beside node pages; the Dashboard and the generic node pages (`#/node?id=…`)
+keep working. The Dashboard is a host feature and cannot be disabled through
+plugin configuration.
+
+The Explorer's canonical URLs are `#/p/explorer/namespaces` (the landing page
+with the tree) and `#/p/explorer/namespace?name=<namespace>` (a namespace
+overview); both accept a leading branch segment like any plugin route. The
+older `#/namespaces` and `#/namespace?name=<namespace>` URLs still work as
+redirects to those pages while the Explorer is enabled, keeping the branch and
+`name`. With the Explorer disabled they show the host's "Plugin unavailable"
+page. `#/node?id=…` and `view=explorer` are unchanged.
 
 Plugin IDs must be unique. Discovery visits built-ins, pack plugins, then
 standalone plugins; a duplicate is logged and the first discovered plugin is
@@ -233,6 +244,23 @@ Awesome solid icon name without `fa-`; optional numeric `order` defaults to
 100. Navigation sorts pages by ascending order, then title, after the host
 items. Use simple URL-safe page IDs such as `home` or `map`.
 
+Optional page fields for master-detail screens such as the Explorer:
+
+- `nav: false` keeps the page out of the navigation rail (it is reached by
+  links). Default `true`.
+- `sidebar` names an export that mounts a navigation panel in the host's list
+  pane beside the page. The panel stays mounted while the user moves between
+  the plugin's pages and node pages, and is mounted with the same `ctx`.
+- `nodeSidebar: true` (with `sidebar`) also shows the panel beside the host's
+  node page; the first such enabled page, by `order`, wins. The page's rail
+  entry is highlighted while a node is open.
+- `detail: true` (with `sidebar`) marks the page as the detail half of the
+  layout: on narrow screens it replaces the panel, with a Back button.
+- `legacyPaths` lists host routes (for example `["/namespaces"]`) that redirect
+  to this page, keeping the branch and query parameters, while the plugin is
+  enabled. If the plugin is unavailable the host shows its "Plugin unavailable"
+  page for those routes.
+
 An optional `opens` list claims templates or roles that the page can display:
 
 ```yaml
@@ -309,13 +337,14 @@ navigation does not remount; subscribe to changes and read the live context.
 | `ctx.viewingRef` | Viewed branch ref; `null` for filesystem sources |
 | `ctx.templates` | Loaded template metadata |
 | `ctx.revision` | Data revision, a number the host increments each time the graph reloads (file watcher, git poll, manual reload) |
+| `ctx.overlayRefs` | Branch refs whose changes the user is overlaying on the viewed branch (empty when none) |
 | `ctx.api.get(path, params)` | Fetch parsed JSON from an API endpoint; throws on non-2xx responses |
 | `ctx.navigate(hash)` | Navigate to a hash URL |
 | `ctx.hrefForNode(id, options)` | Resolve a node destination; optional `{ via: 'plugin-id', page: 'page-id' }` selects a plugin page |
 | `ctx.nodeLinks(id)` | Quick-link and **Open in** entries for a node, as `{ quick: { header, relations }, menu: { explorerHref, destinations, actions } }`. Each link is `{ key, pluginId, id, label, icon, href }`; `explorerHref` (the Explorer view, `#/node?id=…&view=explorer`, which never redirects to a plugin) is non-null only when a plugin page claims the node. A child node resolves through its owning root and keeps its own ID in every href. |
 | `ctx.openNode(id, options)` | Navigate using the same resolution as `hrefForNode` |
 | `ctx.hrefForPage(params, options)` | Build a URL for this plugin, preserving the viewed branch; optional `{ page: 'map' }`, otherwise the current page |
-| `ctx.subscribe(listener)` | Listen for route/query, viewed-ref, template or `revision` changes; returns an unsubscribe function |
+| `ctx.subscribe(listener)` | Listen for route/query, viewed-ref, template, `overlayRefs` or `revision` changes; returns an unsubscribe function |
 | `ctx.onError(error)` | Report an asynchronous failure to the host's error panel for this mount |
 
 Use `ctx.api.get('nodes', { template: 'DomainModel' })` or

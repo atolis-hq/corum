@@ -10,7 +10,7 @@ export { QuickLinks, OpenInMenu, NodeLinks } from './node-links.js'
 // ctx fields are getters over the host's live state; a spread freezes them into a plain snapshot.
 const snapshotOf = ctx => ({ ...ctx })
 
-const sameView = (a, b) => a.route === b.route && a.viewingRef === b.viewingRef && a.templates === b.templates && a.revision === b.revision
+const sameView = (a, b) => a.route === b.route && a.viewingRef === b.viewingRef && a.templates === b.templates && a.revision === b.revision && a.overlayRefs === b.overlayRefs
 
 function CtxHost({ ctx, Component }) {
   const [snapshot, setSnapshot] = React.useState(() => snapshotOf(ctx))
