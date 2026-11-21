@@ -14,6 +14,12 @@ test('dashboard has no horizontal overflow at mobile width', async ({ page }) =>
     clientWidth: document.documentElement.clientWidth,
   }));
   expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth);
+  // The app scrolls inside .content, so the document width alone is not enough.
+  const content = await page.locator('.content').evaluate(el => ({
+    scrollWidth: el.scrollWidth,
+    clientWidth: el.clientWidth,
+  }));
+  expect(content.scrollWidth).toBeLessThanOrEqual(content.clientWidth);
   const cards = page.locator('.hero-card');
   for (let i = 0; i < 4; i++) {
     await expect(cards.nth(i)).toBeVisible();
