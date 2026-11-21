@@ -57,6 +57,11 @@ export function isVisibleEdgeType(graph: Graph, type: string): boolean {
   return def.category !== 'structural' && def.hidden !== true
 }
 
+/** True when the edge type declares `traversal: outbound-only` (not followed from its target). */
+export function isOutboundOnly(graph: Graph, type: string): boolean {
+  return getEdgeTypeDef(graph, type)?.traversal === 'outbound-only'
+}
+
 /** Soft-removed edges (state 'removed') are kept for history but not followed by default traversals. */
 export function isLiveEdge(edge: Edge): boolean {
   return edge.state !== 'removed'
@@ -233,9 +238,9 @@ export function getClusterView(
 
   const clusterIds = new Set([cluster.root.id, ...cluster.children.map(node => node.id)])
   const requestedTypes = new Set(includeEdgeTypes)
-  // reads and uses-type edges are directional (consumer → type); only follow outbound so
+  // outbound-only edge types (e.g. reads, uses-type: consumer → type) are not followed inbound so
   // viewing a shared Schema doesn't pull in every endpoint that references it
-  const inboundTypes = new Set([...requestedTypes].filter(t => t !== 'reads' && t !== 'uses-type') as EdgeType[])
+  const inboundTypes = new Set([...requestedTypes].filter(t => !isOutboundOnly(graph, t)) as EdgeType[])
   // Consumers reading a non-shared root (e.g. a DomainModel) are shown; shared data types keep
   // the outbound-only rule to avoid fan-out.
   if (options.includeInboundReads && requestedTypes.has('reads') && !isDataNodeTemplate(graph, cluster.root.template)) {
@@ -619,7 +624,7 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
   // reads and uses-type are directional (consumer → type); readsOutboundOnly (default true)
   // excludes both from inbound traversal so a shared type doesn't pull in every consumer
   const inboundTypeSet = new Set(
-    [...edgeTypeSet].filter(type => !(readsOutboundOnly && (type === 'reads' || type === 'uses-type'))),
+    [...edgeTypeSet].filter(type => !(readsOutboundOnly && isOutboundOnly(graph, type))),
   )
 
   const useAllowlist = (options.nodeTypes?.length ?? 0) > 0

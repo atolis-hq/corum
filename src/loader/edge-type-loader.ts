@@ -59,6 +59,19 @@ export function loadEdgeTypes(
         continue
       }
 
+      let traversal: EdgeTypeDef['traversal']
+      if (def.traversal !== undefined) {
+        if (def.traversal === 'bidirectional' || def.traversal === 'outbound-only') {
+          traversal = def.traversal
+        } else {
+          diagnostics.push({
+            severity: 'error',
+            file: key,
+            message: `edge type '${name}' has invalid traversal '${String(def.traversal)}': expected bidirectional or outbound-only`,
+          })
+        }
+      }
+
       const existing = edgeTypes.get(name)
       if (existing) {
         diagnostics.push({
@@ -77,6 +90,7 @@ export function loadEdgeTypes(
           properties: def.properties as Record<string, unknown>,
         }),
         ...(def.hidden === true && { hidden: true }),
+        ...(traversal !== undefined && { traversal }),
       })
     }
   }

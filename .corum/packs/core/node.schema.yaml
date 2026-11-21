@@ -102,8 +102,8 @@ properties:
         $ref: "#/$defs/Stability"
       lastModifiedAt:
         type: string
-        format: date
-        description: ISO 8601 date of last change (YYYY-MM-DD).
+        pattern: '^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2}))?$'
+        description: ISO 8601 date (YYYY-MM-DD) or UTC date-time of last change.
       extractedFrom:
         type: string
         description: |
