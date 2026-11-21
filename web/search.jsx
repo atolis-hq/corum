@@ -21,11 +21,13 @@ function SearchModal({ nodes, templates, onNavigate, onClose }) {
       return;
     }
 
-    const url = `/api/search?q=${encodeURIComponent(q)}&limit=10`;
-    fetch(url)
+    const url = `/api/search?q=${encodeURIComponent(q)}&include_owned=true&limit=50`;
+    const controller = new AbortController();
+    fetch(url, { signal: controller.signal })
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
       .then(data => setResults(Array.isArray(data) ? data : []))
-      .catch(() => setResults([]));
+      .catch(error => { if (error.name !== 'AbortError') setResults([]); });
+    return () => controller.abort();
   }, [query]);
 
   useEffect(() => {
@@ -40,7 +42,7 @@ function SearchModal({ nodes, templates, onNavigate, onClose }) {
         if (results.length > 0) setSelectedIndex(i => (i - 1 + results.length) % results.length);
       }
       if (e.key === 'Enter' && results[selectedIndex]) {
-        onNavigate(results[selectedIndex].node.id, results[selectedIndex].node.template);
+        onNavigate(results[selectedIndex].node.id, results[selectedIndex].node.template, results[selectedIndex].owner);
         onClose();
       }
     }
@@ -77,12 +79,12 @@ function SearchModal({ nodes, templates, onNavigate, onClose }) {
                 <div
                   key={node.id}
                   className={`search-result-row${index === selectedIndex ? ' selected' : ''}`}
-                  onClick={() => { onNavigate(node.id, node.template); onClose(); }}
-                  title={node.id}
+                  onClick={() => { onNavigate(node.id, node.template, result.owner); onClose(); }}
+                  title={result.owner ? `${node.id} — ${result.owner.id}` : node.id}
                 >
                   <TemplateBadge name={tplName} colour={colour} />
                   <span className="search-result-name">{name}</span>
-                  <span className="search-result-component">{node.namespace}</span>
+                  <span className="search-result-component">{result.owner?.id ?? node.namespace}</span>
                 </div>
               );
             })}

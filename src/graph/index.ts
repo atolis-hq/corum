@@ -504,6 +504,88 @@ export function searchNodes(graph: Graph, queries: string[], options: SearchNode
   return results.slice(offset, offset + limit)
 }
 
+/** Overall cap on ranked search results (web UI search). */
+export const RANKED_SEARCH_MAX_RESULTS = 50
+/** Per-template cap on ranked search results, so numerous types (fields, enum values) cannot flood the list. */
+export const RANKED_SEARCH_MAX_PER_TEMPLATE = 8
+
+export type RankedSearchMatch = 'exact' | 'prefix' | 'substring' | 'id'
+
+export type RankedSearchResult = {
+  node: Node
+  match: RankedSearchMatch
+  /** Owning cluster root; absent for root nodes. */
+  owner?: { id: string; template: string }
+}
+
+const MATCH_RANK: Record<RankedSearchMatch, number> = { exact: 0, prefix: 1, substring: 2, id: 3 }
+
+function displayNameOf(id: string): string {
+  return id.slice(id.lastIndexOf('.') + 1)
+}
+
+function rankMatch(query: string, node: Node): RankedSearchMatch | null {
+  const q = query.toLowerCase()
+  const name = displayNameOf(node.id).toLowerCase()
+  if (name === q) return 'exact'
+  if (name.startsWith(q)) return 'prefix'
+  if (name.includes(q)) return 'substring'
+  return fuzzyScore(query, node.id) !== null ? 'id' : null
+}
+
+function owningRootOf(graph: Graph, node: Node): Node | undefined {
+  let current = node
+  const seen = new Set<string>([node.id])
+  while (current.parentId !== undefined) {
+    const parent = graph.nodesById.get(current.parentId)
+    if (!parent || seen.has(parent.id)) break
+    seen.add(parent.id)
+    current = parent
+  }
+  return current === node ? undefined : current
+}
+
+/**
+ * Search every node (roots and owned nodes) by display name, then id.
+ * Order: exact name > name prefix > name substring > id-only; ties: roots before
+ * owned nodes, then by id. Capped per template and overall. Used by the web UI;
+ * `searchNodes` (MCP/CLI) stays root-only.
+ */
+export function searchNodesRanked(
+  graph: Graph,
+  query: string,
+  options: { limit?: number } = {},
+): RankedSearchResult[] {
+  const term = query.trim()
+  if (!term) return []
+  const limit = Math.min(options.limit ?? RANKED_SEARCH_MAX_RESULTS, RANKED_SEARCH_MAX_RESULTS)
+  const perTemplate = RANKED_SEARCH_MAX_PER_TEMPLATE
+
+  const matched: RankedSearchResult[] = []
+  for (const node of graph.nodesById.values()) {
+    const match = rankMatch(term, node)
+    if (match === null) continue
+    const root = owningRootOf(graph, node)
+    matched.push({ node, match, ...(root ? { owner: { id: root.id, template: root.template } } : {}) })
+  }
+
+  matched.sort((a, b) =>
+    MATCH_RANK[a.match] - MATCH_RANK[b.match]
+    || Number(a.owner !== undefined) - Number(b.owner !== undefined)
+    || (a.node.id < b.node.id ? -1 : a.node.id > b.node.id ? 1 : 0))
+
+  const counts = new Map<string, number>()
+  const results: RankedSearchResult[] = []
+  for (const result of matched) {
+    if (results.length >= limit) break
+    const count = counts.get(result.node.template) ?? 0
+    if (count >= perTemplate) continue
+    counts.set(result.node.template, count + 1)
+    results.push(result)
+  }
+  return results
+}
+
 export function getLineage(graph: Graph, startNodeIds: string[], options: GetLineageOptions = {}): LineageResult {
   const {
     depth = 2,

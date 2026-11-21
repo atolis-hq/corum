@@ -21,6 +21,7 @@ import {
   isVisibleEdgeType,
   listNodes,
   searchNodes,
+  searchNodesRanked,
   type GetLineageOptions,
   type LineageDirection,
   type ListNodesFilter,
@@ -596,6 +597,11 @@ export function createApp(
       }
 
       const q = typeof req.query.q === 'string' ? req.query.q : ''
+      if (req.query.include_owned === 'true') {
+        // Opt-in web UI mode: all nodes, ranked and capped; default stays root-only.
+        res.json(searchNodesRanked(targetGraph, q))
+        return
+      }
       const queries = q.split(',').map(part => part.trim()).filter(Boolean)
       const templates = Array.isArray(req.query.templates)
         ? req.query.templates.filter((template): template is string => typeof template === 'string')

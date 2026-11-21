@@ -508,3 +508,5 @@ A thrown mount error or a failure reported through `ctx.onError` shows an error
 panel for that mount; other pages remain usable. Before sharing a plugin,
 check direct navigation, query-only navigation, leaving and reopening the
 page, its node actions, and disabling it through `graph.yaml`.
+
+Search is a host feature. The host modal requests `/api/search?include_owned=true` for ranked name and ID matching across all nodes (50 results overall, 8 per template). Without this opt-in, the API retains root-only search, as do MCP and CLI search. Owned results include an `owner` with the cluster root ID and template. Search opens through normal node link resolution using that owner’s template and carries the selected child ID in the href. On plugin pages, focusing or scrolling to that child is the plugin’s responsibility; no additional plugin contract is required.
