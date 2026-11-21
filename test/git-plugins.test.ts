@@ -162,7 +162,7 @@ it('keeps built-ins working and shares state per commit when the default branch 
     for (let index = 0; index < 5; index++) assert.equal(await state.current(), first)
     assert.equal(snapshots, 1)
     assert.equal(first.statuses.find(entry => entry.id === 'core')?.status, 'enabled')
-    await state.refresh()
+    state.install(await state.prepare())
     assert.equal(snapshots, 2)
     assert.notEqual(await state.current(), first)
     assert.equal(snapshots, 2)
@@ -194,8 +194,8 @@ it('logs plugin errors once per commit and falls back to built-ins when the sour
     const logs: string[] = []
     const state = createGitPluginState(source, path.join(dir, 'builtins'), '0.1.0', message => logs.push(message))
     await state.current()
-    await state.refresh()
-    await state.refresh()
+    state.install(await state.prepare())
+    state.install(await state.prepare())
     assert.equal(logs.filter(message => message.includes('bad')).length, 1, logs.join('\n'))
     const broken = new GitGraphSource({ localPath: path.join(dir, 'nowhere'), graphDir: 'graph', defaultBranch: 'main' })
     const fallbackLogs: string[] = []
@@ -203,6 +203,63 @@ it('logs plugin errors once per commit and falls back to built-ins when the sour
     assert.equal(fallback.statuses.find(entry => entry.id === 'core')?.status, 'enabled')
     assert.ok(fallbackLogs.some(message => message.includes('built-ins only')))
   } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+it('recovers from a failed first build and retries a failed poll reload without a new commit', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-git-plugins-retry-'))
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim()
+  const write = (file: string, text: string) => {
+    fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true })
+    fs.writeFileSync(path.join(dir, file), text)
+  }
+  const manifest = (id: string) => JSON.stringify({
+    id, version: '1.0.0', engines: { corum: '*' }, main: './index.js',
+    requires: { templates: [] }, contributes: { pages: [], nodeActions: [] },
+  })
+  let server: WebServerHandle | undefined
+  try {
+    git('init', '-b', 'main')
+    git('config', 'user.name', 'Fixture')
+    git('config', 'user.email', 'fixture@example.com')
+    write('graph/graph.yaml', JSON.stringify({ plugins: [{ path: '../one' }] }))
+    write('one/plugin.yaml', manifest('one'))
+    write('one/index.js', 'one')
+    git('add', '-A')
+    git('commit', '-qm', 'one')
+    const source = new GitGraphSource({ localPath: dir, graphDir: 'graph', defaultBranch: 'main' })
+    const original = source.pluginSnapshot.bind(source)
+
+    // A failed first build serves built-ins, then recovers on a later call.
+    let failures = 1
+    source.pluginSnapshot = async () => { if (failures-- > 0) throw new Error('remote down'); return original() }
+    const state = createGitPluginState(source, path.join(dir, 'no-builtins'), '0.1.0', () => {}, 0)
+    assert.equal((await state.current()).statuses.some(entry => entry.id === 'one'), false)
+    assert.equal((await state.current()).statuses.find(entry => entry.id === 'one')?.status, 'enabled')
+    await assert.rejects((async () => { failures = 1; await state.prepare() })())
+
+    // A plugin refresh failing during a poll reload fails that reload; the poller retries.
+    failures = 0
+    const messages: string[] = []
+    server = await startWebServer(await loadGraph({ source }), {
+      port: 0, host: '127.0.0.1', source, gitPollSeconds: 0.02, logger: message => messages.push(message),
+    })
+    const base = `http://127.0.0.1:${server.port}`
+    const ids = async () => (await (await fetch(base + '/api/plugins')).json() as PluginStatus[]).map(entry => entry.id)
+    assert.ok((await ids()).includes('one'))
+    write('two/plugin.yaml', manifest('two'))
+    write('two/index.js', 'two')
+    write('graph/graph.yaml', JSON.stringify({ plugins: [{ path: '../one' }, { path: '../two' }] }))
+    failures = 1
+    git('add', '-A')
+    git('commit', '-qm', 'two')
+    const deadline = Date.now() + 5000
+    while (!(await ids()).includes('two') && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 30))
+    assert.ok((await ids()).includes('two'), messages.join('\n'))
+    assert.equal((await fetch(base + '/plugins/two/index.js')).status, 200)
+  } finally {
+    await server?.close()
     fs.rmSync(dir, { recursive: true, force: true })
   }
 })

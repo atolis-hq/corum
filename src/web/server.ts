@@ -916,11 +916,13 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
       const nextGraph = options.source
         ? await loadGraph({ source: options.source, strict: true })
         : await loadGraph({ graphPath, strict: true })
+      // Resolve the default-branch commit once per reload, before anything is
+      // swapped: a failure fails the reload so the poller retries it.
+      const nextPlugins = await gitPlugins?.prepare()
       replaceGraph(graph, nextGraph)
       multiCache?.invalidate()
       pluginRuntime.refresh()
-      // Resolve the default-branch commit once per reload, not once per request.
-      await gitPlugins?.refresh()
+      if (nextPlugins) gitPlugins?.install(nextPlugins)
       options.onReload?.()
       reloadEvents.notify()
       logger(`[corum] graph reloaded after ${reason}`)

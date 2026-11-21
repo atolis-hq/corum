@@ -20,30 +20,56 @@ export async function gitPluginRequest(source: GraphSource, builtinDir: string, 
 }
 
 export type GitPluginState = {
-  /** Re-resolve the default-branch commit; called from the reload flow only. */
-  refresh(): Promise<void>
-  /** Current pinned state; never contacts the source once a state exists. */
+  /**
+   * Resolve the default-branch commit and compute its plugin state without
+   * publishing it. Rejects on failure so the caller can fail the whole reload.
+   */
+  prepare(): Promise<PluginRequest>
+  /** Publish a prepared state (swapped in together with the graph). */
+  install(next: PluginRequest): void
+  /** Current pinned state; never contacts the source once a full state exists. */
   current(): Promise<PluginRequest>
 }
 
 /**
- * Holds the plugin state for the commit the last (re)load resolved. Requests
+ * Holds the plugin state for the commit the last reload resolved. Requests
  * read it without any git work, so one request sees exactly one commit.
+ * If no state could be built at startup, built-ins are served and the build is
+ * retried (at most once per `retryMs`) until it succeeds.
  */
 export function createGitPluginState(
-  source: GraphSource, builtinDir: string, corumVersion: string, logger: (message: string) => void = () => {},
+  source: GraphSource, builtinDir: string, corumVersion: string,
+  logger: (message: string) => void = () => {}, retryMs = 5000,
 ): GitPluginState {
-  let state: Promise<PluginRequest> | null = null
+  let state: PluginRequest | null = null
+  let fallback = false
+  let nextRetryAt = 0
+  let building: Promise<PluginRequest> | null = null
   let lastRef: string | undefined
 
-  async function build(): Promise<PluginRequest> {
-    const snapshot = await source.pluginSnapshot!()
-    const next = await computePluginRequest(snapshot, builtinDir, corumVersion)
-    if (snapshot.ref !== lastRef) {
-      lastRef = snapshot.ref
+  async function prepare(): Promise<PluginRequest> {
+    return computePluginRequest(await source.pluginSnapshot!(), builtinDir, corumVersion)
+  }
+  function install(next: PluginRequest) {
+    state = next
+    fallback = false
+    if (next.ref !== lastRef) {
+      lastRef = next.ref
       for (const error of next.errors) logger(`[corum] plugin: ${error}`)
     }
-    return next
+  }
+  async function build(): Promise<PluginRequest> {
+    try {
+      const next = await prepare()
+      install(next)
+      return next
+    } catch (error) {
+      nextRetryAt = Date.now() + retryMs
+      if (state) return state
+      state = await builtinsOnly(error)
+      fallback = true
+      return state
+    }
   }
   /** Built-ins only, used when the source is unreachable and no state exists yet. */
   async function builtinsOnly(error: unknown): Promise<PluginRequest> {
@@ -56,21 +82,12 @@ export function createGitPluginState(
   }
 
   return {
-    async refresh() {
-      try {
-        const next = build()
-        await next
-        state = next
-      } catch (error) {
-        // Keep serving the previous commit's state if the remote is unreachable.
-        if (!state) state = builtinsOnly(error)
-      }
-    },
-    current() {
-      if (!state) {
-        state = build().catch(builtinsOnly)
-      }
-      return state
+    prepare,
+    install,
+    async current() {
+      if (state && !(fallback && Date.now() >= nextRetryAt)) return state
+      building ??= build().finally(() => { building = null })
+      return building
     },
   }
 }
@@ -147,7 +164,7 @@ async function computePluginRequest(snapshot: PluginSnapshot, builtinDir: string
     overrides: readPluginOverrides(graphYaml),
   }), ...missing]
   return {
-    statuses, errors,
+    ref: snapshot.ref, statuses, errors,
     enabledPlugin(id: string): DiscoveredPlugin | null {
       return statuses.find(status => status.id === id)?.status === 'enabled'
         ? plugins.find(plugin => plugin.manifest.id === id) ?? null : null

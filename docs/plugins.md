@@ -71,7 +71,7 @@ the entry uses its real manifest ID. Because the declared path is not a manifest
 ID, `/api/plugins` can list an unavailable entry and a different, valid plugin
 under the same `id`; the valid plugin is the one that is served. If the
 default-branch graph fails to load, built-in and template-free plugins keep
-working. The default-branch commit is resolved once per reload (not per request), so plugin requests do no git work and one request always sees one commit; plugin errors are logged once per commit. For local plugin development, use
+working. The default-branch commit is resolved once per reload (not per request), so plugin requests do no git work and one request always sees one commit. A reload whose plugin state cannot be built fails as a whole and is retried on the next poll, so the graph and plugins never point at different commits. If no state could be built at startup, built-ins are served and the build is retried on later requests (at most every few seconds); plugin errors are logged once per commit. For local plugin development, use
 `source: file` (see [Configuration](configuration.md)).
 
 There is no `corum plugin init`, `corum plugin validate`, `corum plugin update`
