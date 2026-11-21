@@ -1,5 +1,5 @@
 // @ts-check
-import { html, StateTag } from 'corum:ui'
+import { html, StateTag, ErrorPanel, LoadingPanel, EmptyState } from 'corum:ui'
 import { mountReact, useApi, useCtx } from 'corum:ui/react'
 
 /** @type {import('corum:ui').PluginManifest} */
@@ -13,7 +13,10 @@ export const manifest = {
 
 function Page() {
   const ctx = useCtx()
-  const { data, loading } = useApi('nodes', { template: 'DomainModel' })
+  const { data, loading, error } = useApi('nodes', { template: 'DomainModel' })
+  if (error) return html`<${ErrorPanel} title="Failed" message=${error.message} testId="err" />`
+  if (loading) return html`<${LoadingPanel} message="Loading nodes" />`
+  if (!data) return html`<${EmptyState}>Nothing here</${EmptyState}>`
   const id = ctx.params.get('id') ?? 'none'
   return html`<section><p>${id} ${loading ? '…' : String(data)}</p><a href=${ctx.hrefForNode(id)}>open</a><${StateTag} state="proposed" /></section>`
 }

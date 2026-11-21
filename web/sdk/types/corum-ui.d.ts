@@ -126,6 +126,11 @@ declare module 'corum:ui' {
   export const StabilityTag: Component<{ stability: string }>
   export const Chip: Component<{ children?: unknown; title?: string }>
   export const TemplateBadge: Component<{ name: string; colour?: string }>
+  /** Inline style object accepted by the shared panels. */
+  type PanelStyle = Record<string, string | number>
+  export const ErrorPanel: Component<{ message?: unknown; title?: string; testId?: string; className?: string; style?: PanelStyle }>
+  export const LoadingPanel: Component<{ message?: string; className?: string; style?: PanelStyle; innerStyle?: PanelStyle }>
+  export const EmptyState: Component<{ className?: string; children?: unknown }>
   export const PropertyValue: Component<{ value: unknown; onNavigate?: (id: string) => void }>
   export const PropertiesTable: Component<{
     properties: Record<string, unknown>
