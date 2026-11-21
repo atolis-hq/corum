@@ -30,6 +30,24 @@ const VENDOR_FILES: Record<string, { specifier: string, contentType: string }> =
   'babel.min.js': { specifier: '@babel/standalone/babel.min.js', contentType: 'text/javascript; charset=utf-8' },
 }
 
+// Checked-in font assets share the vendor allowlist; no directory is exposed.
+const FONT_FILES = new Map([
+  'fonts.css', 'fontawesome.css', 'solid.css', 'fa-solid-900.woff2',
+  'text-0.woff2',
+  'text-1.woff2',
+  'text-2.woff2',
+  'text-3.woff2',
+  'text-4.woff2',
+  'text-5.woff2',
+  'text-6.woff2',
+  'text-7.woff2',
+  'text-8.woff2',
+  'text-9.woff2',
+  'text-10.woff2',
+  'text-11.woff2',
+  'text-12.woff2',
+].map(name => [name, path.resolve(HERE, '../../../web/vendor', name)]))
+
 // Named exports the reactflow shim offers (the UMD global is not enumerable at generation time).
 const REACTFLOW_EXPORTS = [
   'ReactFlow', 'ReactFlowProvider', 'MiniMap', 'Background', 'BackgroundVariant', 'Controls', 'ControlButton',
@@ -99,6 +117,12 @@ export function registerVendorRoutes(app: express.Express): void {
   })
 
   app.get('/vendor/:name', (req, res, next) => {
+    const fontFile = FONT_FILES.get(req.params.name)
+    if (fontFile) {
+      res.setHeader('Cache-Control', 'no-cache')
+      res.type(req.params.name.endsWith('.woff2') ? 'font/woff2' : 'text/css; charset=utf-8').sendFile(fontFile)
+      return
+    }
     const entry = Object.hasOwn(VENDOR_FILES, req.params.name) ? VENDOR_FILES[req.params.name] : undefined
     if (!entry) {
       next()
