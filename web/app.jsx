@@ -16,6 +16,8 @@ const {
   navigate,
   BrandMark,
   Icon,
+  ErrorPanel,
+  LoadingPanel,
   StateTag,
   StabilityTag,
   TemplateBadge,
@@ -629,12 +631,11 @@ class PluginErrorBoundary extends React.Component {
   render() {
     if (this.state.error) {
       return (
-        <div className="content" data-testid="plugin-error">
-          <h1>Plugin error</h1>
-          <p style={{ color: 'var(--warn)' }}>
-            Plugin "{this.props.pluginId}" failed: {this.state.error.message ?? String(this.state.error)}
-          </p>
-        </div>
+        <ErrorPanel
+          title="Plugin error"
+          testId="plugin-error"
+          message={`Plugin "${this.props.pluginId}" failed: ${this.state.error.message ?? String(this.state.error)}`}
+        />
       );
     }
     return this.props.children;
@@ -778,8 +779,8 @@ function NodePage({ nodeId, explorerView = false, templates, templatesByName, on
   }, [target, rootNode, viewingRef]);
 
   if (!nodeId) return <div className="content"><p className="label-sm">No node selected.</p></div>;
-  if (error) return <div className="content"><p style={{ color: 'var(--warn)' }}>Error loading node: {error}</p></div>;
-  if (!cluster || target.kind === 'page') return <div className="content"><p className="label-sm">Loading...</p></div>;
+  if (error) return <ErrorPanel message={`Error loading node: ${error}`} />;
+  if (!cluster || target.kind === 'page') return <LoadingPanel message="Loading..." />;
 
   const { root, descendants, includedNodes, edges } = cluster;
   const clusterIds = new Set([root.id, ...descendants.map(d => d.id)]);
@@ -1198,9 +1199,9 @@ function App() {
 
   let page;
   if (loading || !hostReady) {
-    page = <div className="content"><p className="label-sm">Loading graph...</p></div>;
+    page = <LoadingPanel message="Loading graph..." />;
   } else if (error) {
-    page = <div className="content"><p style={{ color: 'var(--warn)' }}>Error loading graph: {error}</p></div>;
+    page = <ErrorPanel message={`Error loading graph: ${error}`} />;
   } else if (route.pathname === '/dashboard' || route.pathname === '/') {
     page = (
       <DashboardPage

@@ -1,7 +1,7 @@
 /* Graph view: interactive three-level canvas using React Flow + ELK.js. */
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import ReactFlowCanvas, { MiniMap, Background, useNodesState, useEdgesState, ReactFlowProvider } from 'reactflow'
-import { html } from 'corum:ui'
+import { html, ErrorPanel, LoadingPanel } from 'corum:ui'
 import { useApi } from 'corum:ui/react'
 import {
   NODE_W, NODE_H, COMP_W, COMP_H,
@@ -217,8 +217,8 @@ export function GraphView({ ctx }) {
     })
   }
 
-  if (!graphData && !error) return html`<div className="graph-section"><p className="label-sm" style=${{ padding: 24 }}>Loading graph...</p></div>`
-  if (error) return html`<div className="graph-section"><p style=${{ color: 'var(--warn)', padding: 24 }}>Error loading graph: ${error}</p></div>`
+  if (!graphData && !error) return html`<${LoadingPanel} className="graph-section" message="Loading graph..." innerStyle=${{ padding: 24 }} />`
+  if (error) return html`<div className="graph-section"><${ErrorPanel} className="" style=${{ padding: 24 }} message=${'Error loading graph: ' + error} /></div>`
 
   return html`
     <div className="graph-section">

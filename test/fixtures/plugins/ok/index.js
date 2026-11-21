@@ -1,4 +1,4 @@
-import { html, SchemaCard, PropertiesTable } from 'corum:ui'
+import { html, SchemaCard, PropertiesTable, ErrorPanel, LoadingPanel, EmptyState } from 'corum:ui'
 import { mountReact, useCtx, useApi, NodeLinks } from 'corum:ui/react'
 
 const anchorIdForNode = nodeId => `ok-anchor-${encodeURIComponent(nodeId)}`
@@ -31,6 +31,16 @@ function NodeDemo({ nodeId }) {
   `
 }
 
+function States() {
+  return html`
+    <div data-testid="ok-states">
+      <div data-testid="ok-loading"><${LoadingPanel} message="Fixture loading" /></div>
+      <${ErrorPanel} title="Fixture error" message="Fixture failure" testId="ok-error" />
+      <div data-testid="ok-empty"><${EmptyState}>Fixture empty<//></div>
+    </div>
+  `
+}
+
 function Page() {
   const ctx = useCtx()
   const id = ctx.params.get('id')
@@ -41,6 +51,7 @@ function Page() {
       ${id
         ? html`<${NodeDemo} nodeId=${id} />`
         : html`<p className="label-sm" data-testid="plugin-ok-hint">Open this page with an id query parameter to see node links and a schema card.</p>`}
+      ${!id && html`<${States} />`}
     </div>
   `
 }
