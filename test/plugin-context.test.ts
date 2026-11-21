@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url'
 const load = (dir: string, file: string) => import(pathToFileURL(path.join(process.cwd(), 'web', dir, file)).href)
 const { createPluginContext } = await load('host', 'context.js')
 const { createRegistry } = await load('sdk', 'registry.js')
-const { hrefForNode, owningRoot } = await load('sdk', 'resolve-node.js')
+const { hrefForNode, hrefForAction, owningRoot } = await load('sdk', 'resolve-node.js')
 const { matchKeysFor } = await load('sdk', 'match-keys.js')
 
 function route(search = '', branch: string | null = null) {
@@ -19,6 +19,7 @@ function setup(overrides: Record<string, unknown> = {}) {
   const env = {
     registry,
     hrefForNode,
+    hrefForAction,
     owningRoot,
     matchKeysFor,
     navigate: (hash: string) => { calls.navigated.push(hash) },
@@ -113,5 +114,69 @@ describe('createPluginContext', () => {
     assert.equal(ctx.hrefForPage({ focus: 'x' }), '#/p/demo/home?focus=x')
     update({ ...state, viewingRef: 'main' })
     assert.equal(ctx.hrefForPage({}), '#/main/p/demo/home')
+  })
+})
+
+describe('ctx.nodeLinks', () => {
+  const claimer = (id: string, opens: string[], extra: Record<string, unknown> = {}, actions: unknown[] = []) => ({
+    id, status: 'enabled', load: async () => ({}),
+    manifest: { contributes: { pages: [{ id: 'home', title: `Page ${id}`, icon: 'star', mount: 'm', opens }], nodeActions: actions, ...extra } },
+  })
+  const action = (over: Record<string, unknown>) => ({ id: 'act', label: 'Act', appliesTo: ['DomainModel'], page: 'home', ...over })
+
+  it('is empty when nothing claims or acts on the node', () => {
+    const { ctx } = setup()
+    assert.deepEqual(ctx.nodeLinks('orders.DomainModel.order'), {
+      quick: { header: [], relations: [] },
+      menu: { defaultHref: null, destinations: [], actions: [] },
+    })
+    assert.deepEqual(ctx.nodeLinks('unknown.node').menu.actions, [])
+  })
+
+  it('lists claimant destinations with a default view, and actions in menu and quick surfaces', () => {
+    const { ctx, registry, update, state } = setup()
+    registry.registerPlugin(claimer('a', ['DomainModel'], {}, [action({ id: 'view', label: 'View', icon: 'eye', quick: ['header'] })]))
+    const links = ctx.nodeLinks('orders.DomainModel.order')
+    assert.equal(links.menu.defaultHref, '#/node?id=orders.DomainModel.order')
+    assert.deepEqual(links.menu.destinations, [
+      { key: 'a/home', pluginId: 'a', id: 'home', label: 'Page a', icon: 'star', href: '#/p/a/home?id=orders.DomainModel.order' },
+    ])
+    const expected = { key: 'a/view', pluginId: 'a', id: 'view', label: 'View', icon: 'eye', href: '#/p/a/home?id=orders.DomainModel.order' }
+    assert.deepEqual(links.menu.actions, [expected])
+    assert.deepEqual(links.quick, { header: [expected], relations: [] })
+    update({ ...state, viewingRef: 'feat/x' })
+    const branched = ctx.nodeLinks('orders.DomainModel.order')
+    assert.equal(branched.menu.defaultHref, '#/feat/x/node?id=orders.DomainModel.order')
+    assert.equal(branched.menu.actions[0].href, '#/feat%2Fx/p/a/home?id=orders.DomainModel.order')
+  })
+
+  it('supports the * wildcard, a custom param and icon null', () => {
+    const { ctx, registry } = setup()
+    registry.registerPlugin(claimer('w', [], {}, [action({ appliesTo: ['*'], param: 'focus', quick: ['relations'] })]))
+    const links = ctx.nodeLinks('orders.DomainModel.order')
+    assert.equal(links.menu.defaultHref, null)
+    assert.deepEqual(links.menu.destinations, [])
+    assert.equal(links.menu.actions[0].href, '#/p/w/home?focus=orders.DomainModel.order')
+    assert.equal(links.menu.actions[0].icon, null)
+    assert.equal(links.quick.relations.length, 1)
+    assert.equal(links.quick.header.length, 0)
+  })
+
+  it('resolves a child through its owning root but keeps the child id in hrefs', () => {
+    const { ctx, registry } = setup()
+    registry.registerPlugin(claimer('a', ['DomainModel'], {}, [action({ quick: ['header'] })]))
+    const child = 'orders.DomainModel.order.fields.id'
+    const links = ctx.nodeLinks(child)
+    assert.equal(links.menu.defaultHref, `#/node?id=${child}`)
+    assert.equal(links.menu.destinations[0].href, `#/p/a/home?id=${child}`)
+    assert.equal(links.quick.header[0].href, `#/p/a/home?id=${child}`)
+  })
+
+  it('keeps menu:false actions in quick but out of the menu', () => {
+    const { ctx, registry } = setup()
+    registry.registerPlugin(claimer('a', [], {}, [action({ menu: false, quick: ['header'] }), action({ id: 'other', label: 'Other' })]))
+    const links = ctx.nodeLinks('orders.DomainModel.order')
+    assert.deepEqual(links.quick.header.map((link: { id: string }) => link.id), ['act'])
+    assert.deepEqual(links.menu.actions.map((link: { id: string }) => link.id), ['other'])
   })
 })

@@ -7,7 +7,7 @@ function toSearchParams(params) {
 }
 
 /*
- * env:   { registry, owningRoot, hrefForNode, matchKeysFor, navigate, buildRoute, fetchImpl?, pluginId, pageId }
+ * env:   { registry, owningRoot, hrefForNode, hrefForAction, matchKeysFor, navigate, buildRoute, fetchImpl?, pluginId, pageId }
  * state: { route, viewingRef, templates, nodes, templatesByName }  (nodes/templatesByName stay host-side)
  * Returns { ctx, update(nextState) }. ctx fields are getters over the latest state, so the same object
  * stays valid for the life of a mount; subscribe() reports changes to route, viewingRef and templates.
@@ -47,6 +47,34 @@ export function createPluginContext(env, initialState, onError) {
     return env.hrefForNode(env.registry, id, keys, { branch: state.viewingRef, via: opts.via, page: opts.page })
   }
 
+  const linkOf = (key, entry, href, icon) => ({ key, pluginId: entry.pluginId, id: entry.id, label: entry.label ?? entry.title, icon, href })
+
+  /* Quick-link and "Open in" menu entries for a node; a child node resolves through its owning root. */
+  function nodeLinks(id) {
+    const root = env.owningRoot(id, lookupNodes())
+    const keys = root ? env.matchKeysFor(root.template, state.templatesByName ?? new Map()) : []
+    const branch = state.viewingRef
+    const claimants = env.registry.claimants(keys)
+    const actions = env.registry.nodeActionsFor(keys)
+    const actionLink = action => linkOf(`${action.pluginId}/${action.id}`, action, env.hrefForAction(action, id, { branch }), action.icon ?? null)
+    return {
+      quick: {
+        header: actions.filter(action => action.quick.includes('header')).map(actionLink),
+        relations: actions.filter(action => action.quick.includes('relations')).map(actionLink),
+      },
+      menu: {
+        defaultHref: claimants.length > 0 ? env.buildRoute({ pathname: '/node', params: { id }, branch }) : null,
+        destinations: claimants.map(claim => linkOf(
+          `${claim.pluginId}/${claim.id}`,
+          claim,
+          env.hrefForNode(env.registry, id, keys, { branch, via: claim.pluginId, page: claim.id }),
+          claim.icon ?? null,
+        )),
+        actions: actions.filter(action => action.menu).map(actionLink),
+      },
+    }
+  }
+
   const ctx = {
     get route() { return state.route },
     get params() { return state.route.params },
@@ -56,6 +84,7 @@ export function createPluginContext(env, initialState, onError) {
     api: { get },
     navigate: hash => env.navigate(hash),
     hrefForNode,
+    nodeLinks,
     openNode: (id, opts) => env.navigate(hrefForNode(id, opts)),
     hrefForPage: (params, opts = {}) => env.buildRoute({
       pathname: `/p/${env.pluginId}/${opts.page ?? env.pageId}`,
