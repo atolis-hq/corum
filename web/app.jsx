@@ -1615,7 +1615,7 @@ function App() {
         >
           {showTree && (
             <button type="button" className="mobile-back" onClick={() => history.back()}>
-              <span aria-hidden="true">←</span> Broken navigation
+              <span aria-hidden="true">←</span> Back to models
             </button>
           )}
           {page}
