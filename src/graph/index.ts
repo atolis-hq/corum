@@ -210,7 +210,17 @@ function isDataNodeTemplate(graph: Graph, templateName: string): boolean {
   return getDataTemplates(graph.templates).has(templateName)
 }
 
-export function getClusterView(graph: Graph, nodeId: string, includeEdgeTypes: EdgeType[] = []): ClusterViewResult {
+export interface ClusterViewOptions {
+  /** Also collect inbound `reads` edges for roots that are not shared data types. */
+  includeInboundReads?: boolean
+}
+
+export function getClusterView(
+  graph: Graph,
+  nodeId: string,
+  includeEdgeTypes: EdgeType[] = [],
+  options: ClusterViewOptions = {},
+): ClusterViewResult {
   const cluster = getCluster(graph, nodeId)
   if (includeEdgeTypes.length === 0) {
     return {
@@ -226,6 +236,11 @@ export function getClusterView(graph: Graph, nodeId: string, includeEdgeTypes: E
   // reads and uses-type edges are directional (consumer → type); only follow outbound so
   // viewing a shared Schema doesn't pull in every endpoint that references it
   const inboundTypes = new Set([...requestedTypes].filter(t => t !== 'reads' && t !== 'uses-type') as EdgeType[])
+  // Consumers reading a non-shared root (e.g. a DomainModel) are shown; shared data types keep
+  // the outbound-only rule to avoid fan-out.
+  if (options.includeInboundReads && requestedTypes.has('reads') && !isDataNodeTemplate(graph, cluster.root.template)) {
+    inboundTypes.add('reads')
+  }
   const edges = [...cluster.edges]
   const seen = new Set(cluster.edges.map(edge => edge.id))
 
