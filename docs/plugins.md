@@ -515,14 +515,13 @@ type checking and completion from documentation comments with no build step:
 - `web/sdk/types/corum-ui.d.ts` declares `corum:ui`
 - `web/sdk/types/corum-ui-react.d.ts` declares `corum:ui/react`
 
-In the installed package they live at `node_modules/corum/web/sdk/types/` (use
-the package's actual install path). Include them from your plugin's
+In the installed package they live at `node_modules/@atolis-hq/corum/web/sdk/types/`. Include them from your plugin's
 `jsconfig.json` (or `tsconfig.json`), then add `// @ts-check` to each file:
 
 ```json
 {
   "compilerOptions": { "checkJs": true, "noEmit": true, "strict": true, "moduleResolution": "Bundler", "module": "ES2022", "target": "ES2022" },
-  "files": ["node_modules/corum/web/sdk/types/corum-ui.d.ts", "node_modules/corum/web/sdk/types/corum-ui-react.d.ts"],
+  "files": ["node_modules/@atolis-hq/corum/web/sdk/types/corum-ui.d.ts", "node_modules/@atolis-hq/corum/web/sdk/types/corum-ui-react.d.ts"],
   "include": ["*.js"]
 }
 ```
