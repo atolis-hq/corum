@@ -1,7 +1,7 @@
 /* Host plugin loader: registers server-reported plugins and lazily imports their entry module. */
 
-function assetUrl(id, main) {
-  return `/plugins/${encodeURIComponent(id)}/${String(main).replace(/^(\.\/)+/, '')}`
+function assetUrl(base, id, main) {
+  return `${base}${encodeURIComponent(id)}/${String(main).replace(/^(\.\/)+/, '')}`
 }
 
 function messageOf(error) {
@@ -24,7 +24,7 @@ export function pluginsChanged(previous, next) {
 }
 
 /** Registers the server-reported plugins; resolves to the status list, or null if it could not be loaded. */
-export async function loadPlugins({ fetchPlugins, importModule, registry }) {
+export async function loadPlugins({ fetchPlugins, importModule, registry, base = '/plugins/' }) {
   let statuses
   try {
     statuses = await fetchPlugins()
@@ -41,7 +41,7 @@ export async function loadPlugins({ fetchPlugins, importModule, registry }) {
       load() {
         if (!promise) {
           promise = Promise.resolve()
-            .then(() => importModule(assetUrl(status.id, status.manifest.main)))
+            .then(() => importModule(assetUrl(base, status.id, status.manifest.main)))
             .catch(error => {
               entry.status = 'unavailable'
               entry.reason = `Failed to load: ${messageOf(error)}`

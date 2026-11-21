@@ -448,6 +448,21 @@ export function createApp(
   gitPluginsOption?: GitPluginState,
 ): express.Application {
   const app = express()
+
+  // Versioned asset prefix: /v/<version>/<path> serves the same handlers as /<path>. A different
+  // version is a 404 so a stale page fails loudly instead of receiving new bytes under old URLs.
+  const assetPrefix = `/v/${encodeURIComponent(version)}`
+  app.use((req, res, next) => {
+    const match = /^\/v\/([^/?]+)(\/[^?]*)?(\?.*)?$/.exec(req.url)
+    if (!match) { next(); return }
+    const rest = match[2] ?? '/'
+    if (match[1] !== encodeURIComponent(version) || /^\/(api|v)(\/|$)/.test(rest)) {
+      res.status(404).json({ error: 'Not found' })
+      return
+    }
+    req.url = rest + (match[3] ?? '')
+    next()
+  })
   const gitPlugins = gitPluginsOption ?? (source?.pluginSnapshot ? createGitPluginState(source, BUILTIN_PLUGIN_DIR, version) : undefined)
 
   app.get('/health', (_req, res) => {
@@ -857,9 +872,12 @@ export function createApp(
     }
   })
 
+  const versionAsset = (url: string) => /^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i.test(url)
+    ? url
+    : `${assetPrefix}/${url.replace(/^\//, '')}`
   const indexHtml = readFileSync(path.join(WEB_DIR, 'index.html'), 'utf8')
-    .replace('href="style.css"', `href="style.css?v=${encodeURIComponent(version)}"`)
-    .replace('src="app.jsx"', `src="app.jsx?v=${encodeURIComponent(version)}"`)
+    .replace(/\b(href|src)="([^"]+)"/g, (_m, attr: string, url: string) => `${attr}="${versionAsset(url)}"`)
+    .replace(/("[^"\n]+":\s*)"(\/[^"]+)"/g, (_m, key: string, url: string) => `${key}"${versionAsset(url)}"`)
 
   app.get(['/', '/index.html'], (_req, res) => {
     res.setHeader('Cache-Control', 'no-cache')

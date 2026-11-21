@@ -1575,25 +1575,28 @@ describe('web server', () => {
 
   describe('web assets', () => {
     for (const entryPath of ['/', '/index.html']) {
-      it(`${entryPath} revalidates HTML and versions local entry assets`, async () => {
+      it(`${entryPath} revalidates HTML and versions every first-party asset`, async () => {
         const { version } = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'))
         const response = await fetch(`http://localhost:${handle.port}${entryPath}`)
         assert.equal(response.status, 200)
         assert.equal(response.headers.get('cache-control'), 'no-cache')
         assert.match(response.headers.get('content-type') ?? '', /text\/html/)
         const html = await response.text()
-        const original = fs.readFileSync(path.join(repoRoot, 'web/index.html'), 'utf8')
-        assert.equal(html, original
-          .replace('href="style.css"', `href="style.css?v=${encodeURIComponent(version)}"`)
-          .replace('src="app.jsx"', `src="app.jsx?v=${encodeURIComponent(version)}"`))
+        const prefix = `/v/${encodeURIComponent(version)}`
+        const urls = [...html.matchAll(/\b(?:href|src)="([^"]+)"/g)].map(m => m[1])
+        const importMap = JSON.parse(/<script type="importmap">([\s\S]*?)<\/script>/.exec(html)![1]).imports as Record<string, string>
+        urls.push(...Object.values(importMap))
+        assert.ok(urls.length > 10)
+        for (const url of urls) assert.ok(url.startsWith(`${prefix}/`), `unversioned asset URL: ${url}`)
 
-        for (const asset of ['style.css', 'app.jsx']) {
-          const assetUrl = `${asset}?v=${encodeURIComponent(version)}`
-          assert.ok(html.includes(`"${assetUrl}"`))
-          const assetResponse = await fetch(`http://localhost:${handle.port}/${assetUrl}`)
-          assert.equal(assetResponse.status, 200)
-          assert.equal(await assetResponse.text(), fs.readFileSync(path.join(repoRoot, 'web', asset), 'utf8'))
+        for (const url of ['/style.css', '/app.jsx', '/host/boot.js', '/sdk/index.js', '/plugins/graph/index.js', '/vendor/shims/react.js']) {
+          const versioned = await fetch(`http://localhost:${handle.port}${prefix}${url}`)
+          assert.equal(versioned.status, 200, url)
+          const legacy = await fetch(`http://localhost:${handle.port}${url}`)
+          assert.equal(legacy.status, 200, `legacy ${url}`)
         }
+        assert.equal((await fetch(`http://localhost:${handle.port}/v/0.0.0-other/sdk/index.js`)).status, 404)
+        assert.equal((await fetch(`http://localhost:${handle.port}${prefix}/v/x/sdk/index.js`)).status, 404)
       })
     }
 
