@@ -578,6 +578,12 @@ element names with your plugin ID. A plugin can attach a stylesheet using
 rel="stylesheet">` element, and remove the link during cleanup. CSS imports
 that require a bundler are not handled automatically.
 
+The UI loads assets under a version prefix, `/v/<corum-version>/plugins/<id>/...`,
+so relative imports inherit it and an upgrade never mixes old and new files. The
+unversioned `/plugins/<id>/...` URLs keep working. Import the SDK only through the
+`corum:ui` and `corum:ui/react` specifiers; importing `/sdk/*` by URL would create a
+second SDK instance.
+
 Assets are served under `/plugins/<id>/...` only while the plugin is enabled
 and available. Allowed extensions are `.js`, `.mjs`, `.css`, `.json`, `.svg`,
 `.png` and `.wasm`. YAML, including `plugin.yaml`, is never served. Files must

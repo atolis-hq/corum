@@ -15,6 +15,8 @@ const ready = loadPlugins({
   fetchPlugins,
   importModule: url => import(url),
   registry,
+  /* Derived from this module's own URL so plugins load under the same version prefix as the page. */
+  base: new URL('../plugins/', import.meta.url).pathname,
 }).then(statuses => {
   loadedStatuses = statuses
   host.pluginsFailed = statuses === null

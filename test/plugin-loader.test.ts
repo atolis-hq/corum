@@ -56,6 +56,19 @@ describe('loadPlugins', () => {
     assert.deepEqual(imported, ['/plugins/a/dist/main.js'])
   })
 
+  it('builds plugin URLs from a versioned base', async () => {
+    const registry = createRegistry()
+    const imported: string[] = []
+    await loadPlugins({
+      fetchPlugins: async () => [status('a', './index.js')],
+      importModule: async (url: string) => { imported.push(url); return {} },
+      registry,
+      base: '/v/1.2.3/plugins/',
+    })
+    await registry.plugins()[0].load()
+    assert.deepEqual(imported, ['/v/1.2.3/plugins/a/index.js'])
+  })
+
   it('a rejected import marks that entry unavailable and rethrows; others are unaffected', async () => {
     const registry = createRegistry()
     await loadPlugins({
