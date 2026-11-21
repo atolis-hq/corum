@@ -1,9 +1,13 @@
 import { isOwnedDescendant } from '../graph/index.js'
 import type { Diagnostic, Edge, Graph } from '../schema/index.js'
 
-/** Timestamp convention for mutated nodes (matches adapter mappers: date-only ISO). */
+/**
+ * Timestamp convention for mutated nodes: full UTC ISO 8601 date-time.
+ * Adapter mappers deliberately stay date-only so re-imports remain idempotent
+ * (reconcile compares whole nodes).
+ */
 export function mutationTimestamp(): string {
-  return new Date().toISOString().split('T')[0]
+  return new Date().toISOString()
 }
 
 export function mutationDiagnostic(

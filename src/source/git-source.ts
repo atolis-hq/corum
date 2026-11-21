@@ -335,8 +335,11 @@ export class GitGraphSource implements GraphSource {
 
       const newCommitOid = await this.writeCommitObject(dir, changes, parentSha, message, options)
 
-      // Compare-and-swap: if the ref moved while we built the commit, rebuild
+      // Best-effort compare-and-swap: if the ref moved while we built the commit, rebuild
       // on the new parent instead of silently discarding the other write.
+      // NOTE: this is NOT atomic. isomorphic-git's writeRef has no compare-and-swap, so an
+      // external writer can still move the ref between this re-read and writeRef below; the
+      // window is narrowed, not closed. The in-process lock only covers same-process writers.
       let currentSha: string | undefined
       try {
         currentSha = await this.resolveBranchOid(branch)

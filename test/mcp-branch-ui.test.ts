@@ -54,6 +54,21 @@ describe('MCP handlers - list_templates', () => {
   })
 })
 
+describe('MCP handlers - get_template branch', () => {
+  const handlers = createMcpHandlers(makeMinimalGraph())
+
+  it('accepts branch and falls back to the default graph without a source', async () => {
+    const result = await handlers.get_template({ name: 'Widget', branch: 'main' })
+    assert.equal(result.isError, undefined)
+    assert.match(result.content[0].text, /Widget/)
+  })
+
+  it('still works without branch', async () => {
+    const result = await handlers.get_template({ name: 'Widget' })
+    assert.equal(result.isError, undefined)
+  })
+})
+
 describe('MCP handlers - get_cluster overlay_refs', () => {
   const handlers = createMcpHandlers(makeMinimalGraph())
 

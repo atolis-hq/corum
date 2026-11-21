@@ -97,8 +97,9 @@ export async function runImport(
     entryResults.push({ adapterId: entry.adapter, specPath, nodes, edges: result.edges })
   }
 
-  if (config.deduplication?.length) {
-    const { results: deduped, diagnostics } = deduplicateResults(entryResults, config.deduplication)
+  // x-aka is transient: always stripped after import, even with no dedup rules.
+  {
+    const { results: deduped, diagnostics } = deduplicateResults(entryResults, config.deduplication ?? [])
     allDiagnostics.push(...diagnostics)
     entryResults.splice(0, entryResults.length, ...deduped)
   }

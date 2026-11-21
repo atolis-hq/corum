@@ -334,13 +334,21 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
     },
 
     get_template(args) {
-      try {
+      const run = (targetGraph: Graph): ToolResult => {
         const name = String(args.name)
-        const template = readGraph().templates.get(name)
+        const template = targetGraph.templates.get(name)
         if (!template) {
           throw new QueryError(`Template not found: ${name}`)
         }
         return formatResult(template, args.format, getCompactKeys(args))
+      }
+
+      if (hasBranch(args) && source) {
+        return withBranchGraph(source, String(args.branch), branch => run(branch.graph), cache)
+      }
+
+      try {
+        return run(readGraph())
       } catch (err) {
         return errorResult(err)
       }
@@ -1013,6 +1021,7 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
         required: ['name'],
         properties: {
           name: { type: 'string', description: 'Template name.' },
+          branch: BRANCH_READ_PARAM,
           ...IO_PARAMS,
         },
       },

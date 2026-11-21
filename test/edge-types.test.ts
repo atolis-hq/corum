@@ -198,6 +198,23 @@ describe('core edge type definitions', () => {
   })
 
   it('declares uses-type as a core semantic edge type', () => {
-    assert.deepEqual(CORE_EDGE_TYPES['uses-type'], { name: 'uses-type', category: 'semantic' })
+    assert.deepEqual(CORE_EDGE_TYPES['uses-type'], { name: 'uses-type', category: 'semantic', traversal: 'outbound-only' })
+  })
+
+  it('declares reads and uses-type as outbound-only', () => {
+    assert.equal(CORE_EDGE_TYPES['reads'].traversal, 'outbound-only')
+    assert.equal(CORE_EDGE_TYPES['uses-type'].traversal, 'outbound-only')
+  })
+
+  it('loads pack-declared traversal and rejects invalid values', () => {
+    const diagnostics: Diagnostic[] = []
+    const content: ContentMap = new Map([[
+      'p/edge-types.yaml',
+      'edge-types:\n  feeds:\n    category: semantic\n    traversal: outbound-only\n  bad:\n    category: semantic\n    traversal: sideways\n',
+    ]])
+    const edgeTypes = loadEdgeTypes(content, diagnostics)
+    assert.equal(edgeTypes.get('feeds')?.traversal, 'outbound-only')
+    assert.equal(edgeTypes.get('bad')?.traversal, undefined)
+    assert.ok(diagnostics.some(d => d.severity === 'error' && /sideways/.test(d.message)))
   })
 })

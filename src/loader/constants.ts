@@ -23,8 +23,8 @@ export const VALID_STABILITIES = [
 export const CORE_EDGE_TYPES: Record<string, EdgeTypeDef> = {
   'triggers': { name: 'triggers', category: 'semantic' },
   'produces': { name: 'produces', category: 'semantic' },
-  'reads': { name: 'reads', category: 'semantic' },
-  'uses-type': { name: 'uses-type', category: 'semantic' },
+  'reads': { name: 'reads', category: 'semantic', traversal: 'outbound-only' },
+  'uses-type': { name: 'uses-type', category: 'semantic', traversal: 'outbound-only' },
   'calls': { name: 'calls', category: 'semantic' },
   'implements': { name: 'implements', category: 'semantic' },
   'maps-to': { name: 'maps-to', category: 'lineage' },
