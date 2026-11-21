@@ -11,6 +11,8 @@ export type PluginStatus = {
   version: string
   status: PluginStatusValue
   reason?: string
+  /** Development plugins only: changes whenever a file in the plugin directory changes. */
+  revision?: string
   manifest: PluginManifest
 }
 
@@ -25,6 +27,8 @@ function evaluate(plugin: DiscoveredPlugin, ctx: StatusContext): { status: Plugi
   if (ctx.overrides.some(override => override.id === manifest.id && !override.enabled)) {
     return { status: 'disabled' }
   }
+
+  if (plugin.unavailableReason !== undefined) return { status: 'unavailable', reason: plugin.unavailableReason }
 
   const range = manifest.engines.corum
   if (semver.validRange(range) === null) {
@@ -53,6 +57,7 @@ export function resolvePluginStatuses(plugins: DiscoveredPlugin[], ctx: StatusCo
       manifest: plugin.manifest,
     }
     if (reason !== undefined) result.reason = reason
+    if (plugin.revision !== undefined) result.revision = plugin.revision
     return result
   })
 }

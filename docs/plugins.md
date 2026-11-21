@@ -85,10 +85,42 @@ default-branch graph fails to load, built-in and template-free plugins keep
 working. The default-branch commit is resolved once per reload (not per request), so plugin requests do no git work and one request always sees one commit. A reload whose plugin state cannot be built fails as a whole and is retried on the next poll, so the graph and plugins never point at different commits. If no state could be built at startup, built-ins are served and the build is retried on later requests (at most every few seconds); plugin errors are logged once per commit. For local plugin development, use
 `source: file` (see [Configuration](configuration.md)).
 
-There is no `corum plugin init`, `corum plugin validate`, `corum plugin update`
-or `corum web --plugin-dir` command yet. Create and register directories as
-described here. SDK type declarations are shipped; see
+There is no `corum plugin init`, `corum plugin validate` or
+`corum plugin update` command yet. Create and register directories as
+described here, or use development mode below. Development plugins
+(`corum web --plugin-dir`) load from local disk for any graph source;
+registered custom plugins on Git sources are covered by #168. SDK type declarations are shipped; see
 [Type checking and editor support](#type-checking-and-editor-support).
+
+## Development mode
+
+Run a plugin from an unpacked directory without registering it:
+
+```bash
+corum web --plugin-dir ./my-plugin
+```
+
+The option is repeatable. Each directory must contain a `plugin.yaml`; a missing
+one stops startup. The plugin is listed in `/api/plugins` with origin `dev`, and
+its pages and actions work like any other plugin's. Nothing is written to
+`graph.yaml`, and there are no new graph configuration options.
+
+- **Live reload:** changing any file in a `--plugin-dir` directory refreshes the
+  plugin list and reloads the browser page. This watcher runs whenever the
+  option is set; it does not need `CORUM_FILE_WATCHER`. A manifest that becomes
+  invalid is logged and the server keeps running; fix it and the plugin returns.
+- **Same ID as an installed plugin:** a development plugin replaces a registered
+  or pack plugin with the same ID for that run. The replaced plugin is listed as
+  unavailable ("shadowed by development plugin at ...") and a startup warning
+  names both directories. It cannot replace a built-in plugin, and with two
+  `--plugin-dir` plugins of the same ID the first wins and the second is listed
+  as unavailable.
+- **Overrides:** a `graph.yaml` `enabled: false` override still disables a
+  development plugin by ID.
+- **Sources:** works with filesystem and Git sources; the directory is always
+  read from local disk.
+- **Security:** the same serving rules apply (allowed asset types only, never
+  YAML, no traversal or symlink escape).
 
 ## Create a working plugin
 

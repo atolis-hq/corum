@@ -54,6 +54,8 @@ export type WebServerOptions = {
   graphPath?: string
   source?: GraphSource
   fileWatcher?: boolean
+  /** Unpacked development plugin directories (`--plugin-dir`); watched regardless of `fileWatcher`. */
+  pluginDirs?: string[]
   fileWatcherDebounceMs?: number
   gitPollSeconds?: number
   logger?: (message: string) => void
@@ -72,6 +74,10 @@ export type GraphFileWatcherOptions = {
   logger?: (message: string) => void
   /** Standalone plugin directories to watch; only their `plugin.yaml` changes matter. */
   pluginWatchDirs?: () => string[]
+  /** Development plugin directories: any file change inside them reloads the plugin list. */
+  devPluginWatchDirs?: () => string[]
+  /** Watch the graph, packs and standalone plugins. False watches only development plugin directories. */
+  watchGraph?: boolean
   /**
    * Called after a debounced batch of changes. `graphReloaded` is false when only plugin
    * manifests changed; `pluginsChanged` is false when only graph data (node files) changed.
@@ -337,15 +343,18 @@ export function startGraphFileWatcher(
 
   let packDirs: string[] = []
   let pluginDirs: string[] = []
+  let devDirs: string[] = []
+  const watchGraph = options.watchGraph ?? true
   let needGraphReload = false
   let needPluginRefresh = false
 
   function refreshWatchers(): void {
     closeWatchers()
-    packDirs = resolvePackDirs(graphPath)
-    pluginDirs = (options.pluginWatchDirs?.() ?? []).map(dir => path.resolve(dir))
-    const graphRoot = path.resolve(graphPath)
-    watchers = [...new Set([graphRoot, ...packDirs, ...pluginDirs])]
+    packDirs = watchGraph ? resolvePackDirs(graphPath) : []
+    pluginDirs = watchGraph ? (options.pluginWatchDirs?.() ?? []).map(dir => path.resolve(dir)) : []
+    devDirs = (options.devPluginWatchDirs?.() ?? []).map(dir => path.resolve(dir))
+    const graphRoots = watchGraph ? [path.resolve(graphPath)] : []
+    watchers = [...new Set([...graphRoots, ...packDirs, ...pluginDirs, ...devDirs])]
       .flatMap(root => watchRoot(root, filename => scheduleReload(root, filename)))
   }
 
@@ -357,6 +366,7 @@ export function startGraphFileWatcher(
   /** What a change to this file affects: the graph data, the plugin list, or both. */
   function classify(root: string, filename: string): { graph: boolean; plugins: boolean } | null {
     const file = path.resolve(root, filename)
+    if (devDirs.some(dir => isInside(file, dir))) return { graph: false, plugins: true }
     if (file === path.join(path.resolve(graphPath), 'graph.yaml')) return { graph: true, plugins: true }
     if (packDirs.some(dir => isInside(file, dir))) return { graph: true, plugins: true }
     if (pluginDirs.some(dir => isInside(file, dir))) {
@@ -395,9 +405,16 @@ export function startGraphFileWatcher(
   }
 
   function scheduleReload(root: string, filename?: string | Buffer | null): void {
-    if (!isRelevantWatchEvent(filename)) return
-    const effect = filename ? classify(root, String(filename)) : { graph: true, plugins: true }
-    if (!effect) return
+    // Development plugin directories react to any file; everything else only to YAML.
+    if (!devDirs.includes(root) && !isRelevantWatchEvent(filename)) return
+    // An event without a filename from a development directory can only mean plugin files changed.
+    const found = filename
+      ? classify(root, String(filename))
+      : devDirs.includes(root) ? { graph: false, plugins: true } : { graph: true, plugins: true }
+    if (!found) return
+    // Without graph watching (development directories only) the graph is never reloaded from disk.
+    const effect = watchGraph ? found : { graph: false, plugins: found.plugins }
+    if (!effect.graph && !effect.plugins) return
     needGraphReload ||= effect.graph
     needPluginRefresh ||= effect.plugins
     if (timer) clearTimeout(timer)
@@ -751,7 +768,8 @@ export function createApp(
     try {
       const request = gitPlugins ? await gitPlugins.current() : null
       const plugin = request?.enabledPlugin(req.params.id)
-      if (request && plugin?.origin !== 'builtin') {
+      // Built-in and development plugins live on local disk; everything else is read from the pinned commit.
+      if (request && plugin?.origin !== 'builtin' && plugin?.origin !== 'dev') {
         const asset = plugin ? await request.asset(plugin, (req.params as Record<string, string>)[0] ?? '') : null
         if (!asset) { res.status(404).json({ error: 'Not found' }); return }
         res.setHeader('Cache-Control', 'no-cache')
@@ -909,12 +927,15 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
     graphDir: pluginGraphDir,
     builtinDir: BUILTIN_PLUGIN_DIR,
     corumVersion: version,
+    // Git sources resolve development plugins inside their own pinned plugin state.
+    devPluginDirs: pluginGraphDir === null ? undefined : options.pluginDirs,
     logger,
   })
 
   const gitPlugins = options.source?.pluginSnapshot
-    ? createGitPluginState(options.source, BUILTIN_PLUGIN_DIR, version, logger)
+    ? createGitPluginState(options.source, BUILTIN_PLUGIN_DIR, version, logger, undefined, options.pluginDirs)
     : undefined
+  const devPluginWatchDirs = (options.pluginDirs ?? []).map(dir => path.resolve(dir))
 
   async function reloadState(reason: string): Promise<void> {
     if (reloadInFlight) return reloadInFlight
@@ -942,16 +963,22 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
   }
 
   const app = createApp(graph, reloadEvents, options.source, multiCache, () => reloadState('manual reload'), pluginRuntime, gitPlugins)
-  const stopWatcher = isFileWatcherEnabled(options)
+  const watchGraphFiles = isFileWatcherEnabled(options)
+  const stopWatcher = watchGraphFiles || devPluginWatchDirs.length > 0
     ? startGraphFileWatcher(graph, {
         graphPath,
+        watchGraph: watchGraphFiles,
+        devPluginWatchDirs: () => devPluginWatchDirs,
         debounceMs: options.fileWatcherDebounceMs,
         logger,
         pluginWatchDirs: () => pluginRuntime.watchDirs(),
         onReload: ({ graphReloaded, pluginsChanged }) => {
           // Node-data changes do not re-resolve plugins; plugin/pack/graph.yaml changes do.
           if (graphReloaded) multiCache?.invalidate()
-          if (pluginsChanged) pluginRuntime.refresh()
+          if (pluginsChanged) {
+            pluginRuntime.refresh()
+            gitPlugins?.refreshDev()
+          }
           options.onReload?.()
           reloadEvents.notify()
         },

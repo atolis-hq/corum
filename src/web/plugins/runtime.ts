@@ -11,6 +11,8 @@ export type PluginRuntimeOptions = {
   graphDir: string | null
   builtinDir: string
   corumVersion: string
+  /** Unpacked development plugin directories (`--plugin-dir`). Runtime only; never persisted. */
+  devPluginDirs?: string[]
   logger?: (message: string) => void
 }
 
@@ -51,6 +53,7 @@ export function createPluginRuntime(options: PluginRuntimeOptions): PluginRuntim
       graphDir: options.graphDir,
       graphYaml,
       packPluginDirs,
+      devPluginDirs: options.devPluginDirs,
     })
     errors.push(...discovered.errors)
 
@@ -59,8 +62,9 @@ export function createPluginRuntime(options: PluginRuntimeOptions): PluginRuntim
       corumVersion: options.corumVersion,
       overrides: options.graphDir === null ? [] : readPluginOverrides(graphYaml),
     })
-    dirs = new Map(discovered.plugins.map(plugin => [plugin.manifest.id, plugin.dir]))
-    standaloneDirs = discovered.plugins.filter(plugin => plugin.origin === 'standalone').map(plugin => plugin.dir)
+    const usable = discovered.plugins.filter(plugin => plugin.unavailableReason === undefined)
+    dirs = new Map(usable.map(plugin => [plugin.manifest.id, plugin.dir]))
+    standaloneDirs = usable.filter(plugin => plugin.origin === 'standalone').map(plugin => plugin.dir)
 
     const signature = errors.join('\n')
     if (signature !== lastErrors) {
@@ -75,7 +79,8 @@ export function createPluginRuntime(options: PluginRuntimeOptions): PluginRuntim
     refresh,
     statuses: () => current,
     enabledDir(id) {
-      const status = current.find(entry => entry.id === id)
+      const status = current.find(entry => entry.id === id && entry.status !== 'unavailable')
+        ?? current.find(entry => entry.id === id)
       return status?.status === 'enabled' ? dirs.get(id) ?? null : null
     },
     watchDirs: () => standaloneDirs,

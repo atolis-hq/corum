@@ -45,8 +45,21 @@ program
   .description('Start the web UI')
   .option('--port <n>', 'Port to listen on', parseInt)
   .option('--graph <path>', 'Override graph path')
+  .option(
+    '--plugin-dir <path>',
+    'Load an unpacked plugin for development, with live reload (repeatable)',
+    (value: string, previous: string[]) => [...previous, path.resolve(value)],
+    [] as string[],
+  )
   .action(async (opts) => {
     if (opts.graph) process.env.CORUM_GRAPH_PATH = path.resolve(opts.graph)
+    const pluginDirs: string[] = opts.pluginDir
+    for (const dir of pluginDirs) {
+      if (!existsSync(path.join(dir, 'plugin.yaml'))) {
+        process.stderr.write(`[ERROR] --plugin-dir ${dir}: no plugin.yaml found\n`)
+        process.exit(2)
+      }
+    }
     const config = createGraphRuntimeConfig()
     let graph
     try {
@@ -60,6 +73,7 @@ program
       graphPath: config.graphPath,
       source: config.source,
       port: opts.port,
+      pluginDirs: pluginDirs.length > 0 ? pluginDirs : undefined,
     })
   })
 
