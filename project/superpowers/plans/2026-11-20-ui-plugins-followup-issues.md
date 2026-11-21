@@ -8,7 +8,8 @@ Status: none filed yet.
 
 ---
 
-## 1. Port Models/Explorer to a built-in plugin
+## 1. Port Models/Explorer to a built-in plugin (optional, low priority)
+- **Note:** Graph already proves the plugin mechanism, and the Explorer has no swap-out need. Port it only for consistency or if a second large screen is wanted to exercise the mechanism. Plugging into search results (without changing the core search) is a separate, later idea.
 - **Problem:** The Models/Explorer (`NavTree`, `NamespacePage`, `NamespacesPage`, node tree in `web/app.jsx`) is still hardcoded host code; only Graph proves the plugin path.
 - **Intended outcome:** Models/Explorer is a built-in plugin (`web/builtin/explorer/`) using the same manifest/loader/SDK as Graph. The host keeps only the Dashboard, generic node page, shell and search. Deep links to namespaces and nodes keep working.
 - **Acceptance:** `npm test`, `npm run test:web`; `#/p/explorer/…` routes work; `#/node?id=…` generic page unchanged; existing mobile-navigation and table-scroll specs pass.
@@ -85,7 +86,7 @@ Status: none filed yet.
 ## 12. Local verification gaps to re-run once the machine is clean
 - The final menu and quick-link changes (commits after `2d761c5`) passed unit tests but their Playwright specs could not be re-run locally on 2026-11-21 because of the socket exhaustion above. CI runs `npm test` only (no browser specs). Re-run `npx playwright test` locally after a reboot and fix anything that surfaces.
 
-## 13. Plugins must not read host globals: share generic helpers, keep the rest private
+## 13. Plugins must not read host globals: share generic helpers, keep the rest private (in progress: PR 4)
 - **Problem:** The Graph plugin reads the host global `window.CorumGraphUtils` (`web/builtin/graph/constants.js`). A plugin depending on an undocumented host global breaks the rule that plugins use SDK specifiers only, and third-party plugins cannot do the same.
 - **Intended outcome:** Generic helpers a plugin author could plausibly want (`getDisplayName(id)`, `kindColour(kind)`) are exported from `corum:ui` and documented. Graph-specific helpers (connected components, thread and owner scope filters, edge-type filtering, namespace map) move into `web/builtin/graph/` and are no longer shared globals. No built-in plugin reads a `window.Corum*` global.
 - **Acceptance:** `grep -rn "window.Corum" web/builtin` finds nothing; `node web/graph-utils.test.js` (updated for the new locations) and the Graph Playwright spec pass; the SDK exports are listed in `docs/plugins.md`.
@@ -101,7 +102,8 @@ Status: none filed yet.
 - **Constraints:** Keep the `plugin-error` test id and wording stable. Low priority.
 - **Depends on:** core Stage 3.
 
-## 15. Data-change signal for plugins and a `useApi` hook
+## 15. Data-change signal for plugins and a `useApi` hook (in progress: PR 4)
+- **Principle (decided):** plugin pages and host screens refresh through the same mechanism, so plugin pages behave exactly like host pages and bind to data changes by default.
 - **Problem:** Plugins call `ctx.api.get` in effects and hand-roll loading and error state. Mounted plugin pages also never learn about a graph reload: the host handles the `graph-reloaded` event only for its own data (`refreshAllData`), and `ctx.subscribe` fires on route, viewed-ref and template changes only. The Graph page fetches `/api/graph`, `/api/kinds` and lineage keyed on `ctx.viewingRef` alone, so after a reload it keeps showing stale data until remounted or the branch changes. (A page that depends on the whole `ctx` object, such as the `ok` fixture, refetches only incidentally, because a reload produces a new `templates` array.) Host screens update but plugin screens go stale.
 - **Intended outcome:** The context exposes a "graph data changed" signal (for example a revision counter included in the `subscribe` change check) usable by non-React plugins, and `useApi(path, params)` in `corum:ui/react` returns `{ data, error, loading, refresh }`, refetching when its inputs, the viewed ref or the data revision change. The Graph plugin uses it. This is a notification that data changed, not a streaming API.
 - **Acceptance:** Unit test for the hook logic; Playwright spec: trigger a reload (`POST /api/reload` or a graph file change with the watcher on) while the Graph or fixture page is open and assert the page shows the new data without navigation.
@@ -109,21 +111,16 @@ Status: none filed yet.
 - **Approach (non-binding):** The host bumps a revision on `graph-reloaded`.
 - **Depends on:** core Stage 3.
 
-## 16. Design system: tokens, standard markup, themes, layouts and a style guide
-- **Problem:** Theming is only partly in place. Light and dark exist through `body[data-theme]` and 29 CSS custom properties (about 264 uses in `web/style.css`), but about 28 hard-coded hex colours remain in the stylesheet and about 44 in JavaScript (`web/builtin/graph/constants.js` 24, `web/app.jsx` 12, `web/sdk/schema-rows.js` 5, plus toolbar and builders). Edge-type styling is also duplicated (`EDGE_TYPE_STYLES` in `web/app.jsx`, `EDGE_STYLES`/`EDGE_PILL_STYLES` in the Graph constants) and cannot be themed. Plugins rely on global host classes (`card`, `card-head`, `label-xs`, `meta-strip`, `quick-links`, `open-in*`) by convention only. Users will later pick themes and alternative layouts, which needs this to be a deliberate contract.
-- **Intended outcome:** (1) Documented, versioned semantic design tokens (surfaces, text, accent, state, edge-type and kind colours, radius, spacing) are the supported styling contract; no raw colours in plugin or host JS. (2) A standard DOM structure and class names, so the global stylesheet drives plugin styling without plugins changing; SDK components (`Card`, `PageHeader`, `MetaStrip`, etc.) are an optional convenience that emits that markup, and plugins are not forced to use them. (3) Themes are replacement token sets; alternative layouts are selected on the shell. (4) A living style guide page that renders every token, panel, tag, table, menu and state in the current theme, usable as documentation for plugin authors and as a visual-regression target. (5) `edgeTypeStyle(type)` and kind colour come from tokens and are defined once.
-- **Prerequisite:** Write ADR-011 first, deciding token naming, where themes live (a plugin manifest contribution type or pack content), how layouts are selected, and whether a theme is per user or per graph.
-- **Acceptance:** No hard-coded hex colours in `web/*.jsx` or `web/sdk`/`web/builtin` JS; a test fails if a documented token is removed or renamed; the style guide page renders in light and dark; Graph and the `ok` fixture pages are themed correctly in both.
-- **Constraints:** Do not rename existing classes or variables without a migration note; template-supplied colours (`ui.colour`) must work in every theme.
-- **Approach (non-binding):** Style guide as a built-in plugin page (dogfoods the mechanism) or a host route; token audit first.
-- **Depends on:** core Stage 3 and ADR-011.
+## 16. Theming and styling epic (handover notes, not started)
+- **See:** `project/superpowers/plans/2026-11-21-theming-and-styling-epic-notes.md` for intent, known findings (tokens, hard-coded colours, duplicated edge styles, no theme switcher), the fixes that are needed, and open questions. Pack-defined edge-type, kind and template colours are intended and stay; hard-coded colours move into tokens. Needs ADR-011 first. A theme switcher in the UI is part of this epic.
+- **Depends on:** core Stage 3.
 
 ## 17. Connections panel (EdgePanel) as an SDK component (optional)
 - **Problem:** The Connections panel (`EdgePanel` and its rows in `web/app.jsx`) can only be rendered by the host node page.
-- **Intended outcome:** `EdgePanel` is exported from `corum:ui/react` and usable by plugin pages, built on `NodeLinks` and the shared edge-type styling from issue 16. Only do this when a plugin needs it.
+- **Intended outcome:** `EdgePanel` is exported from `corum:ui/react` and usable by plugin pages, built on `NodeLinks` and the shared edge-type styling from the theming epic (issue 16). Only do this when a plugin needs it.
 - **Acceptance:** Existing connection-row Playwright specs pass unchanged; a plugin page can render the panel; documented.
 - **Constraints:** Keep the `edge-row` test id and the `corum:edgePanelOpen` persistence.
 - **Depends on:** issue 16.
 
 ## 18. Later / not yet issues (decide when needed)
-- Custom node renderers, plugin-defined extension points, shadow-DOM isolation, pinned default openers for ambiguous nodes, server-side extension hooks, a mock-host test harness, `corum plugin update`, per-user plugin overrides, standalone plugin install via the pack registry, a node search/picker component only if a plugin demonstrates a need (search is a host feature).
+- Plugging into search results without changing the core search (for example a search-provider contribution type), custom node renderers, plugin-defined extension points, shadow-DOM isolation, pinned default openers for ambiguous nodes, server-side extension hooks, a mock-host test harness, `corum plugin update`, per-user plugin overrides, standalone plugin install via the pack registry, a node search/picker component only if a plugin demonstrates a need (search is a host feature).
