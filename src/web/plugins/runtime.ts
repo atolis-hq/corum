@@ -7,7 +7,7 @@ import { resolvePluginStatuses, type PluginStatus } from './status.js'
 
 export type PluginRuntimeOptions = {
   graph: Graph
-  /** Graph directory for file sources; null for git sources (built-ins only). */
+  /** Graph directory for file sources; null when requests use source snapshots. */
   graphDir: string | null
   builtinDir: string
   corumVersion: string

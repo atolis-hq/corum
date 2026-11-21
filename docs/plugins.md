@@ -57,10 +57,22 @@ restart.
 
 ### Current source and tooling limits
 
-Custom plugins and `graph.yaml` overrides currently work only with filesystem
-sources. Git sources load built-in plugins only, even when the repository
-contains plugin registrations or overrides. To develop a plugin in a local
-checkout, run with `source: file` (see [Configuration](configuration.md)).
+Custom plugins and `graph.yaml` overrides work with filesystem and Git sources.
+Git sources discover pack-bundled and standalone plugins from the default branch.
+Each plugin list or asset request pins one commit, including template compatibility
+checks. Branch and overlay views use that same default-branch plugin set. New
+default-branch commits are picked up by reloads; asset ETags track content changes.
+Only allowed asset types are served, never YAML, and Git symlinks are rejected.
+
+If a declared plugin directory or `plugin.yaml` is missing at that commit, its
+unavailable entry uses the exact declared path as both ID and displayed name.
+The reason includes that path and the short commit SHA. Once the manifest exists,
+the entry uses its real manifest ID. Because the declared path is not a manifest
+ID, `/api/plugins` can list an unavailable entry and a different, valid plugin
+under the same `id`; the valid plugin is the one that is served. If the
+default-branch graph fails to load, built-in and template-free plugins keep
+working. The default-branch commit is resolved once per reload (not per request), so plugin requests do no git work and one request always sees one commit. A reload whose plugin state cannot be built fails as a whole and is retried on the next poll, so the graph and plugins never point at different commits. If no state could be built at startup, built-ins are served and the build is retried on later requests (at most every few seconds); plugin errors are logged once per commit. For local plugin development, use
+`source: file` (see [Configuration](configuration.md)).
 
 There is no `corum plugin init`, `corum plugin validate`, `corum plugin update`
 or `corum web --plugin-dir` command yet. Create and register directories as

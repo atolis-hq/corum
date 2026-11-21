@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import * as git from 'isomorphic-git'
 import { parse as parseYaml } from 'yaml'
-import type { CommitOptions, ContentMap, GraphSource } from './index.js'
+import type { CommitOptions, ContentMap, GraphSource, PluginSnapshot } from './index.js'
 import { SourceError } from './index.js'
 import { GitCacheManager } from './git-cache.js'
 
@@ -136,10 +136,12 @@ export class GitGraphSource implements GraphSource {
   }
 
   async loadPackContent(_ref: string): Promise<ContentMap> {
-    const defaultRef = await this.defaultBranch()
+    return this.loadPackContentAtCommit(await this.head(await this.defaultBranch()))
+  }
+
+  private async loadPackContentAtCommit(commitSha: string): Promise<ContentMap> {
     const dir = await this.dir()
     const map: ContentMap = new Map()
-    const commitSha = await this.resolveBranchOid(defaultRef)
     const graphYamlRepoPath = `${this.graphDir}/graph.yaml`
 
     let graphYamlContent: string
@@ -173,6 +175,43 @@ export class GitGraphSource implements GraphSource {
     }
 
     return map
+  }
+
+  async pluginSnapshot(): Promise<PluginSnapshot> {
+    const ref = await this.head(await this.defaultBranch())
+    const dir = await this.dir()
+    return {
+      ref,
+      graphDir: this.graphDir,
+      source: {
+        defaultBranch: async () => ref,
+        listBranches: async () => [ref],
+        loadPackContent: () => this.loadPackContentAtCommit(ref),
+        loadGraphContent: () => this.loadGraphContent(ref),
+        head: async () => ref,
+        log: async () => [],
+        commit: async () => { throw new SourceError('plugin snapshot is read-only') },
+      },
+      readFile: async file => {
+        if (file.includes('\\') || file.includes('\0') || path.posix.isAbsolute(file)) return null
+        const parts = file.split('/')
+        if (parts.some(part => part === '..' || part === '' || part === '.')) return null
+        // Inspect every tree entry: readBlob alone would expose symlink bytes.
+        let oid = (await git.readCommit({ fs, dir, oid: ref })).commit.tree
+        for (let index = 0; index < parts.length; index++) {
+          const { tree } = await git.readTree({ fs, dir, oid })
+          const entry = tree.find(item => item.path === parts[index])
+          if (!entry) return null
+          if (index === parts.length - 1) {
+            if (entry.mode !== '100644' && entry.mode !== '100755') return null
+            return Buffer.from((await git.readBlob({ fs, dir, oid: entry.oid })).blob)
+          }
+          if (entry.type !== 'tree') return null
+          oid = entry.oid
+        }
+        return null
+      },
+    }
   }
 
   async loadGraphContent(ref: string): Promise<ContentMap> {

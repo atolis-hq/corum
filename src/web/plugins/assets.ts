@@ -19,19 +19,10 @@ const CONTENT_TYPES: Record<string, string> = {
  * never served) or anything that is not a regular file.
  */
 export function resolvePluginAsset(pluginDir: string, requestPath: string): PluginAsset | null {
-  let decoded: string
-  try {
-    decoded = decodeURIComponent(requestPath)
-  } catch {
-    return null
-  }
-  if (decoded === '' || decoded.includes('\0') || decoded.includes('\\')) return null
-  if (decoded.startsWith('/')) return null
+  const request = parsePluginAssetPath(requestPath)
+  if (!request) return null
+  const { decoded, contentType } = request
   const segments = decoded.split('/')
-  if (segments.some(segment => segment === '..' || segment === '')) return null
-
-  const contentType = CONTENT_TYPES[path.extname(decoded).toLowerCase()]
-  if (!contentType) return null
 
   try {
     const root = realpathSync(pluginDir)
@@ -59,4 +50,23 @@ export function ifNoneMatchSatisfied(header: string | undefined, etag: string): 
     const trimmed = tag.trim()
     return trimmed === '*' || strip(trimmed) === strip(etag)
   })
+}
+
+/** Shared URL path and extension policy for filesystem and Git assets. */
+export function parsePluginAssetPath(requestPath: string): { decoded: string; contentType: string } | null {
+  let decoded: string
+  try {
+    decoded = decodeURIComponent(requestPath)
+  } catch {
+    return null
+  }
+  if (decoded === '' || decoded.includes('\0') || decoded.includes('\\')) return null
+  if (decoded.startsWith('/')) return null
+  const segments = decoded.split('/')
+  if (segments.some(segment => segment === '..' || segment === '')) return null
+
+  const contentType = CONTENT_TYPES[path.extname(decoded).toLowerCase()]
+  if (!contentType) return null
+
+  return { decoded, contentType }
 }

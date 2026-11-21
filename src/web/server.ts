@@ -32,6 +32,7 @@ import { getPropertySchemasFromTemplate } from '../loader/template-props.js'
 import type { EdgeType, Graph, MultiGraph, Node, Template } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
 import { registerVendorRoutes } from './vendor.js'
+import { createGitPluginState, type GitPluginState } from './plugins/git-runtime.js'
 import { ifNoneMatchSatisfied, resolvePluginAsset } from './plugins/assets.js'
 import { createPluginRuntime, type PluginRuntime } from './plugins/runtime.js'
 import { createGraphRuntimeConfig } from '../source/config.js'
@@ -426,8 +427,10 @@ export function createApp(
     builtinDir: BUILTIN_PLUGIN_DIR,
     corumVersion: version,
   }),
+  gitPluginsOption?: GitPluginState,
 ): express.Application {
   const app = express()
+  const gitPlugins = gitPluginsOption ?? (source?.pluginSnapshot ? createGitPluginState(source, BUILTIN_PLUGIN_DIR, version) : undefined)
 
   app.get('/health', (_req, res) => {
     res.json({ ok: true })
@@ -725,29 +728,52 @@ export function createApp(
     }
   })
 
-  app.get('/api/plugins', (_req, res) => {
-    res.setHeader('Cache-Control', 'no-cache')
-    res.json(pluginRuntime.statuses())
+  app.get('/api/plugins', async (_req, res, next) => {
+    try {
+      if (gitPlugins) {
+        const request = await gitPlugins.current()
+        res.setHeader('Cache-Control', 'no-cache')
+        res.json(request.statuses)
+        return
+      }
+      res.setHeader('Cache-Control', 'no-cache')
+      res.json(pluginRuntime.statuses())
+    } catch (error) { next(error) }
   })
 
-  app.get('/plugins/:id/*', (req, res) => {
-    const dir = pluginRuntime.enabledDir(req.params.id)
-    const asset = dir ? resolvePluginAsset(dir, (req.params as Record<string, string>)[0] ?? '') : null
-    if (!asset) {
-      res.status(404).json({ error: 'Not found' })
-      return
-    }
-    res.setHeader('Cache-Control', 'no-cache')
-    res.setHeader('ETag', asset.etag)
-    res.setHeader('Content-Type', asset.contentType)
-    res.setHeader('X-Content-Type-Options', 'nosniff')
-    if (ifNoneMatchSatisfied(req.headers['if-none-match'], asset.etag)) {
-      res.status(304).end()
-      return
-    }
-    res.sendFile(asset.file, { etag: false, lastModified: false, cacheControl: false, acceptRanges: false, dotfiles: 'allow' }, err => {
-      if (err && !res.headersSent) res.status(404).json({ error: 'Not found' })
-    })
+  app.get('/plugins/:id/*', async (req, res, next) => {
+    try {
+      const request = gitPlugins ? await gitPlugins.current() : null
+      const plugin = request?.enabledPlugin(req.params.id)
+      if (request && plugin?.origin !== 'builtin') {
+        const asset = plugin ? await request.asset(plugin, (req.params as Record<string, string>)[0] ?? '') : null
+        if (!asset) { res.status(404).json({ error: 'Not found' }); return }
+        res.setHeader('Cache-Control', 'no-cache')
+        res.setHeader('ETag', asset.etag)
+        res.setHeader('Content-Type', asset.contentType)
+        res.setHeader('X-Content-Type-Options', 'nosniff')
+        if (ifNoneMatchSatisfied(req.headers['if-none-match'], asset.etag)) res.status(304).end()
+        else res.send(asset.bytes)
+        return
+      }
+      const dir = request ? plugin?.dir ?? null : pluginRuntime.enabledDir(req.params.id)
+      const asset = dir ? resolvePluginAsset(dir, (req.params as Record<string, string>)[0] ?? '') : null
+      if (!asset) {
+        res.status(404).json({ error: 'Not found' })
+        return
+      }
+      res.setHeader('Cache-Control', 'no-cache')
+      res.setHeader('ETag', asset.etag)
+      res.setHeader('Content-Type', asset.contentType)
+      res.setHeader('X-Content-Type-Options', 'nosniff')
+      if (ifNoneMatchSatisfied(req.headers['if-none-match'], asset.etag)) {
+        res.status(304).end()
+        return
+      }
+      res.sendFile(asset.file, { etag: false, lastModified: false, cacheControl: false, acceptRanges: false, dotfiles: 'allow' }, err => {
+        if (err && !res.headersSent) res.status(404).json({ error: 'Not found' })
+      })
+    } catch (error) { next(error) }
   })
 
   app.get('/api/branches', async (_req, res) => {
@@ -870,7 +896,7 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
   const reloadEvents = createReloadEvents()
   const multiCache = options.source ? createMultiGraphCache(options.source) : undefined
   let reloadInFlight: Promise<void> | null = null
-  // Git sources get built-in plugins only; standalone/pack plugin files are read from disk.
+  // File runtime retains watcher behavior; Git plugin requests resolve their own pinned snapshot.
   const pluginGraphDir = options.source && !(options.source instanceof FileGraphSource) ? null : graphPath
   const pluginRuntime = createPluginRuntime({
     graph,
@@ -880,15 +906,23 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
     logger,
   })
 
+  const gitPlugins = options.source?.pluginSnapshot
+    ? createGitPluginState(options.source, BUILTIN_PLUGIN_DIR, version, logger)
+    : undefined
+
   async function reloadState(reason: string): Promise<void> {
     if (reloadInFlight) return reloadInFlight
     reloadInFlight = (async () => {
       const nextGraph = options.source
         ? await loadGraph({ source: options.source, strict: true })
         : await loadGraph({ graphPath, strict: true })
+      // Resolve the default-branch commit once per reload, before anything is
+      // swapped: a failure fails the reload so the poller retries it.
+      const nextPlugins = await gitPlugins?.prepare()
       replaceGraph(graph, nextGraph)
       multiCache?.invalidate()
       pluginRuntime.refresh()
+      if (nextPlugins) gitPlugins?.install(nextPlugins)
       options.onReload?.()
       reloadEvents.notify()
       logger(`[corum] graph reloaded after ${reason}`)
@@ -901,7 +935,7 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
     }
   }
 
-  const app = createApp(graph, reloadEvents, options.source, multiCache, () => reloadState('manual reload'), pluginRuntime)
+  const app = createApp(graph, reloadEvents, options.source, multiCache, () => reloadState('manual reload'), pluginRuntime, gitPlugins)
   const stopWatcher = isFileWatcherEnabled(options)
     ? startGraphFileWatcher(graph, {
         graphPath,
