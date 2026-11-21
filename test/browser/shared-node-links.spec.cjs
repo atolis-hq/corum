@@ -36,7 +36,7 @@ async function branches(page) {
 
 for (const overlay of [false, true]) {
   for (const explorer of [false, true]) {
-    test(`schema references preserve the branch and ${explorer ? 'Explorer' : 'normal'} resolution${overlay ? ' with overlays' : ''}`, async ({ page }) => {
+    test(`schema references on host node pages stay in the Explorer and keep the branch${explorer ? ' (explicit view)' : ''}${overlay ? ' with overlays' : ''}`, async ({ page }) => {
       await branches(page);
       await page.goto(`/#/feature%2Flinks/node?id=${MODEL}${explorer ? '&view=explorer' : ''}`);
       if (overlay) {
@@ -45,12 +45,12 @@ for (const overlay of [false, true]) {
         await loaded;
       }
       const link = page.locator('.schema-card a.node-ref-link').filter({ hasText: 'order-placed' }).first();
-      const destination = `#/feature%2Flinks/${explorer ? 'node' : 'p/claim-solo/home'}?id=${TARGET}${explorer ? '&view=explorer' : ''}`;
+      const destination = `#/feature%2Flinks/node?id=${TARGET}&view=explorer`;
       await expect(link).toHaveAttribute('href', destination);
       await link.click();
       await expect.poll(() => new URL(page.url()).hash).toBe(destination);
-      if (explorer) await expect(page.locator('.detail-pane h1')).toHaveText('order-placed');
-      else await expect(page.getByTestId('plugin-claim-solo')).toBeVisible();
+      await expect(page.locator('.detail-pane h1')).toHaveText('order-placed');
+      await expect(page.getByTestId('plugin-claim-solo')).toHaveCount(0);
     });
   }
 }
@@ -74,17 +74,36 @@ test('property references preserve Explorer routing and the viewed branch', asyn
   await expect(page).toHaveURL(/#\/feature%2Flinks\/node\?id=orders.DomainEvent.order-placed&view=explorer/);
 });
 
-for (const plugin of [false, true]) {
-  test(`property references use normal resolution in ${plugin ? 'plugin' : 'host'} pages`, async ({ page }) => {
-    await branches(page);
-    await page.goto(`/#/feature%2Flinks/${plugin ? 'p/ok/home' : 'node'}?id=${MODEL}`);
-    const link = page.getByRole('link', { name: 'Feature event', exact: true });
-    await expect(link).toHaveAttribute('href', `#/feature%2Flinks/p/claim-solo/home?id=${TARGET}`);
-    await link.click();
-    await expect(page.getByTestId('plugin-claim-solo')).toBeVisible();
-    await expect(page).toHaveURL(/#\/feature%2Flinks\/p\/claim-solo\/home/);
-  });
-}
+test('property references on plain host node pages stay in the Explorer', async ({ page }) => {
+  await branches(page);
+  await page.goto(`/#/feature%2Flinks/node?id=${MODEL}`);
+  const link = page.getByRole('link', { name: 'Feature event', exact: true });
+  await expect(link).toHaveAttribute('href', `#/feature%2Flinks/node?id=${TARGET}&view=explorer`);
+  await link.click();
+  await expect(page).toHaveURL(/#\/feature%2Flinks\/node\?id=orders.DomainEvent.order-placed&view=explorer/);
+  await expect(page.getByTestId('plugin-claim-solo')).toHaveCount(0);
+});
+
+test('property references use normal resolution in plugin pages', async ({ page }) => {
+  await branches(page);
+  await page.goto(`/#/feature%2Flinks/p/ok/home?id=${MODEL}`);
+  const link = page.getByRole('link', { name: 'Feature event', exact: true });
+  await expect(link).toHaveAttribute('href', `#/feature%2Flinks/p/claim-solo/home?id=${TARGET}`);
+  await link.click();
+  await expect(page.getByTestId('plugin-claim-solo')).toBeVisible();
+  await expect(page).toHaveURL(/#\/feature%2Flinks\/p\/claim-solo\/home/);
+});
+
+test('connection rows on plain host node pages stay in the Explorer', async ({ page }) => {
+  await branches(page);
+  await page.goto(`/#/feature%2Flinks/node?id=${MODEL}`);
+  const rows = page.getByTestId('edge-row');
+  if (await rows.count() === 0) await page.locator('.connections-card .card-head').click();
+  await expect(rows.first()).toBeVisible();
+  await rows.first().click();
+  await expect(page).toHaveURL(/#\/feature%2Flinks\/node\?id=.*&view=explorer/);
+  await expect(page.getByTestId('plugin-claim-solo')).toHaveCount(0);
+});
 
 test('host property callbacks still scroll to an already displayed schema', async ({ page }) => {
   await branches(page);
