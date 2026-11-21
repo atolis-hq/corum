@@ -311,6 +311,18 @@ describe('web server', () => {
       assert.match(res.headers.get('content-type') ?? '', /text\/javascript/)
     })
 
+    it('serves local font assets with their MIME types', async () => {
+      for (const [name, type] of [
+        ['fonts.css', 'text/css'], ['fontawesome.css', 'text/css'], ['solid.css', 'text/css'],
+        ['fa-solid-900.woff2', 'font/woff2'], ['text-0.woff2', 'font/woff2'],
+      ]) {
+        const res = await fetch(`http://localhost:${handle.port}/vendor/${name}`)
+        assert.equal(res.status, 200, name)
+        assert.ok(res.headers.get('content-type')?.startsWith(type), name)
+        assert.equal(res.headers.get('cache-control'), 'no-cache')
+      }
+    })
+
     it('serves generated shims with explicit named exports', async () => {
       const react = await fetch(`http://localhost:${handle.port}/vendor/shims/react.js`)
       assert.equal(react.status, 200)
@@ -321,7 +333,7 @@ describe('web server', () => {
     })
 
     it('rejects traversal and names outside the allowlist', async () => {
-      for (const p of ['/vendor/nope.js', '/vendor/..%2fpackage.json', '/vendor/shims/nope.js', '/vendor/shims/..%2f..%2fpackage.json']) {
+      for (const p of ['/vendor/LICENSE-inter.txt', '/vendor/README.md', '/vendor/text-13.woff2', '/vendor/nope.js', '/vendor/..%2fpackage.json', '/vendor/shims/nope.js', '/vendor/shims/..%2f..%2fpackage.json']) {
         const res = await fetch(`http://localhost:${handle.port}${p}`)
         assert.equal(res.status, 404, p)
       }
