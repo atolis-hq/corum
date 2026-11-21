@@ -1,7 +1,7 @@
 /* Search modal: fuzzy match utilities and SearchModal component. */
 
 const { useState, useEffect, useRef } = React;
-const { TemplateBadge, Icon } = window.CorumPrimitives;
+const { TemplateBadge, Icon } = window.CorumHost.sdk;
 
 function SearchModal({ nodes, templates, onNavigate, onClose }) {
   const [query, setQuery] = useState('');

@@ -3,6 +3,21 @@
 <head>
   <meta charset="utf-8" />
   <title>Corum</title>
+  <script type="importmap">
+    {
+      "imports": {
+        "corum:ui": "/sdk/index.js",
+        "corum:ui/react": "/sdk/react.js",
+        "htm": "/vendor/htm.module.js",
+        "react": "/vendor/shims/react.js",
+        "react-dom": "/vendor/shims/react-dom.js",
+        "react-dom/client": "/vendor/shims/react-dom-client.js",
+        "react/jsx-runtime": "/vendor/shims/react-jsx-runtime.js",
+        "reactflow": "/vendor/shims/reactflow.js",
+        "elkjs": "/vendor/shims/elkjs.js"
+      }
+    }
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -10,38 +25,22 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" />
-  <link rel="stylesheet" href="https://unpkg.com/reactflow@11.11.4/dist/style.css" crossorigin="anonymous" />
-  <script>
-    window.CorumPlugins = {};
-  </script>
+  <link rel="stylesheet" href="/vendor/reactflow.css" />
 </head>
 <body>
   <div id="root"></div>
 
-  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
-  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
-  <script src="https://unpkg.com/elkjs@0.9.3/lib/elk.bundled.js" crossorigin="anonymous"></script>
-  <script src="https://unpkg.com/reactflow@11.11.4/dist/umd/index.js" crossorigin="anonymous"></script>
-  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+  <script src="/vendor/react.umd.js"></script>
+  <script src="/vendor/react-dom.umd.js"></script>
+  <script src="/vendor/elk.bundled.js"></script>
+  <script src="/vendor/reactflow.umd.js"></script>
+  <script src="/vendor/babel.min.js"></script>
   <script src="nav.js"></script>
   <script src="router.js"></script>
   <script src="graph-utils.js"></script>
-  <script type="text/babel" src="primitives.jsx"></script>
+  <script type="module" src="host/boot.js"></script>
   <script type="text/babel" src="search.jsx"></script>
   <script type="text/babel" src="graph.jsx"></script>
-  <script type="text/babel">
-    fetch('/api/plugins')
-      .then(response => response.ok ? response.json() : [])
-      .then(files => {
-        for (const file of files) {
-          const script = document.createElement('script');
-          script.type = 'text/babel';
-          script.src = `/plugins/${file}`;
-          document.body.appendChild(script);
-        }
-      })
-      .catch(() => {});
-  </script>
   <script type="text/babel" src="app.jsx"></script>
 </body>
 </html>
