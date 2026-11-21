@@ -14,7 +14,7 @@ Status: none filed yet.
 - **Acceptance:** `npm test`, `npm run test:web`; `#/p/explorer/…` routes work; `#/node?id=…` generic page unchanged; existing mobile-navigation and table-scroll specs pass.
 - **Constraints:** Do not change `/api/*` contracts or the manifest schema; ADR-010 section 5a resolution rules unchanged.
 - **Approach (non-binding):** Mechanical JSX → htm port as done for Graph; move `nav.js` helpers under the plugin.
-- **Depends on:** core Stage 3; issue 14 (the plugin needs the nav helpers `buildNavTree`, `buildOverlayIndicatorIds`, `groupNamespacesByKind`, `namespaceEdges` as SDK exports instead of `window.CorumNav`).
+- **Depends on:** core Stage 3. The nav helpers (`buildNavTree`, `buildOverlayIndicatorIds`, `groupNamespacesByKind`, `namespaceEdges`) move into the Explorer plugin as private modules instead of staying on `window.CorumNav`; they are not SDK exports (decided: navigation and search are host features plugins plug into).
 
 ## 2. Git-source plugin assets (pack-bundled and standalone)
 - **Problem:** For git sources, discovery returns built-ins only; pack-bundled and standalone plugins from the repo are not served.
@@ -85,61 +85,45 @@ Status: none filed yet.
 ## 12. Local verification gaps to re-run once the machine is clean
 - The final menu and quick-link changes (commits after `2d761c5`) passed unit tests but their Playwright specs could not be re-run locally on 2026-11-21 because of the socket exhaustion above. CI runs `npm test` only (no browser specs). Re-run `npx playwright test` locally after a reboot and fix anything that surfaces.
 
-## 13. Export graph-utils from the SDK (plugins must not read host globals)
-- **Problem:** The Graph plugin reads the host global `window.CorumGraphUtils` (`web/builtin/graph/constants.js`: `kindColour`, `getDisplayName`, namespace map and filter helpers). A plugin depending on a host global breaks the rule that plugins use SDK specifiers only, and third-party plugins cannot do the same.
-- **Intended outcome:** `web/graph-utils.js` helpers used by plugins are exported from `corum:ui`; the Graph plugin imports them from there and no built-in plugin reads a `window.Corum*` global.
-- **Acceptance:** `grep -rn "window.Corum" web/builtin` finds nothing; `node web/graph-utils.test.js` and the Graph Playwright spec pass; the SDK exports are listed in `docs/plugins.md`.
-- **Constraints:** No behaviour change in the Graph; host code keeps working against the same functions.
-- **Approach (non-binding):** Make graph-utils an ES module under `web/sdk/` and have the classic-script host load it through `window.CorumHost.sdk`.
+## 13. Plugins must not read host globals: share generic helpers, keep the rest private
+- **Problem:** The Graph plugin reads the host global `window.CorumGraphUtils` (`web/builtin/graph/constants.js`). A plugin depending on an undocumented host global breaks the rule that plugins use SDK specifiers only, and third-party plugins cannot do the same.
+- **Intended outcome:** Generic helpers a plugin author could plausibly want (`getDisplayName(id)`, `kindColour(kind)`) are exported from `corum:ui` and documented. Graph-specific helpers (connected components, thread and owner scope filters, edge-type filtering, namespace map) move into `web/builtin/graph/` and are no longer shared globals. No built-in plugin reads a `window.Corum*` global.
+- **Acceptance:** `grep -rn "window.Corum" web/builtin` finds nothing; `node web/graph-utils.test.js` (updated for the new locations) and the Graph Playwright spec pass; the SDK exports are listed in `docs/plugins.md`.
+- **Constraints:** No behaviour change in Graph or the host. The SDK stays small: only things plugins need to call or reuse, each a compatibility promise covered by `engines.corum`.
+- **Approach (non-binding):** ES modules under `web/sdk/` for the generic helpers; the host classic scripts read them from `window.CorumHost.sdk`.
 - **Depends on:** core Stage 3.
+- **Not in scope (decided):** Navigation tree helpers (`window.CorumNav`) and the search modal (`window.CorumSearch`) are host features that plugins plug into rather than extend; they do not go in the SDK. The nav helpers become private to the Explorer plugin when it is ported (issue 1).
 
-## 14. Export nav helpers and a node search/picker from the SDK
-- **Problem:** `window.CorumNav` (`buildNavTree` and related helpers) and `window.CorumSearch.SearchModal` are host-only. A plugin that needs a node picker or a namespace tree must reimplement them; the Explorer port (issue 1) needs the nav helpers.
-- **Intended outcome:** The SDK exports a node search/picker component (and a hook returning matches for a query) and the nav-tree helpers, built on the same search utilities as the host search modal. The host search modal uses the SDK version.
-- **Acceptance:** A plugin page can render a node picker via the SDK and navigate with `ctx.openNode`; `web/search-utils.test.js` and the search Playwright coverage pass; documented in `docs/plugins.md`.
-- **Constraints:** Search stays a host feature in v1 (ADR-010 5a): plugins consume the component, they do not contribute results.
-- **Approach (non-binding):** Move `search.jsx` logic to a plain-JS `htm` component and re-export; expose nav helpers from `corum:ui`.
-- **Depends on:** core Stage 3; blocks issue 1.
-
-## 15. Export ErrorPanel, LoadingPanel and EmptyState from the SDK
-- **Problem:** `PluginErrorBoundary`, the loading text and the empty-state panels live in `web/app.jsx`, so each plugin invents its own.
+## 14. Error, loading and empty-state panels in the SDK
+- **Problem:** `PluginErrorBoundary`, the loading text and the empty-state panels live in `web/app.jsx`, so each plugin invents its own and error handling looks different per plugin.
 - **Intended outcome:** The SDK exports `ErrorPanel`, `LoadingPanel` and `EmptyState` with the host's current markup and `data-testid`s; the host and the Graph plugin use them.
-- **Acceptance:** Existing `plugin-error` assertions still pass; a plugin page can show all three states using only SDK imports; documented.
-- **Constraints:** Keep the `plugin-error` test id and wording stable.
-- **Approach (non-binding):** Extract the markup into `web/sdk/panels.js`.
+- **Acceptance:** Existing `plugin-error` assertions pass; a plugin page can show all three states using only SDK imports; documented.
+- **Constraints:** Keep the `plugin-error` test id and wording stable. Low priority.
 - **Depends on:** core Stage 3.
 
-## 16. SDK data hook `useApi(path, params)` with refresh on graph reload
-- **Problem:** Plugins call `ctx.api.get` in effects and hand-roll loading and error state. Mounted plugin pages also never learn about a graph reload: the host handles the `graph-reloaded` event only for its own data (`refreshAllData`), and `ctx.subscribe` fires on route, viewed-ref and template changes only. The Graph page fetches `/api/graph`, `/api/kinds` and lineage keyed on `ctx.viewingRef` alone, so after a reload it keeps showing stale data until it is remounted or the branch changes. (A page that depends on the whole `ctx` object, such as the `ok` fixture, refetches only incidentally, because a reload produces a new `templates` array.)
-- **Intended outcome:** `useApi(path, params)` (in `corum:ui/react`) returns `{ data, error, loading, refresh }`, refetches when `path`, `params` or the viewed ref change, and refetches after a graph reload. The ctx exposes a reload signal (for example a revision counter included in the `subscribe` change check) so non-React plugins can react too. The Graph plugin uses it.
-- **Acceptance:** Unit test for the hook logic; Playwright spec: trigger a reload (`POST /api/reload` or a graph file change) with the Graph or fixture page open and assert the page shows the new data without navigation.
-- **Constraints:** No change to `/api/*`; the reload signal must not remount pages (ADR-010 remount rule).
-- **Approach (non-binding):** Have the host bump a revision on `graph-reloaded` and include it in the `subscribe` change check.
+## 15. Data-change signal for plugins and a `useApi` hook
+- **Problem:** Plugins call `ctx.api.get` in effects and hand-roll loading and error state. Mounted plugin pages also never learn about a graph reload: the host handles the `graph-reloaded` event only for its own data (`refreshAllData`), and `ctx.subscribe` fires on route, viewed-ref and template changes only. The Graph page fetches `/api/graph`, `/api/kinds` and lineage keyed on `ctx.viewingRef` alone, so after a reload it keeps showing stale data until remounted or the branch changes. (A page that depends on the whole `ctx` object, such as the `ok` fixture, refetches only incidentally, because a reload produces a new `templates` array.) Host screens update but plugin screens go stale.
+- **Intended outcome:** The context exposes a "graph data changed" signal (for example a revision counter included in the `subscribe` change check) usable by non-React plugins, and `useApi(path, params)` in `corum:ui/react` returns `{ data, error, loading, refresh }`, refetching when its inputs, the viewed ref or the data revision change. The Graph plugin uses it. This is a notification that data changed, not a streaming API.
+- **Acceptance:** Unit test for the hook logic; Playwright spec: trigger a reload (`POST /api/reload` or a graph file change with the watcher on) while the Graph or fixture page is open and assert the page shows the new data without navigation.
+- **Constraints:** No change to `/api/*`; the signal must not remount pages (ADR-010 remount rule). Plugin discovery stays unaffected: node-data changes do not re-resolve plugins.
+- **Approach (non-binding):** The host bumps a revision on `graph-reloaded`.
 - **Depends on:** core Stage 3.
 
-## 17. Layout components and a documented styling contract
-- **Problem:** Plugins rely on global host CSS classes (`card`, `card-head`, `label-xs`, `meta-strip`, ...) by convention; nothing in the SDK exports or documents them, so a host CSS refactor silently breaks plugins.
-- **Intended outcome:** The SDK exports `Card`, `PageHeader` and `MetaStrip`, and `docs/plugins.md` documents the CSS custom properties (colours, radius, spacing) as the supported styling contract, alongside the node link classes (`quick-links`, `quick-link`, `open-in*`).
-- **Acceptance:** Graph and fixture pages use the components; the documented variables match `web/style.css`; a test fails if a documented variable is removed.
-- **Constraints:** Do not rename existing classes or variables.
-- **Approach (non-binding):** Wrap the existing markup; keep class names as the rendered output.
-- **Depends on:** core Stage 3.
+## 16. Design system: tokens, standard markup, themes, layouts and a style guide
+- **Problem:** Theming is only partly in place. Light and dark exist through `body[data-theme]` and 29 CSS custom properties (about 264 uses in `web/style.css`), but about 28 hard-coded hex colours remain in the stylesheet and about 44 in JavaScript (`web/builtin/graph/constants.js` 24, `web/app.jsx` 12, `web/sdk/schema-rows.js` 5, plus toolbar and builders). Edge-type styling is also duplicated (`EDGE_TYPE_STYLES` in `web/app.jsx`, `EDGE_STYLES`/`EDGE_PILL_STYLES` in the Graph constants) and cannot be themed. Plugins rely on global host classes (`card`, `card-head`, `label-xs`, `meta-strip`, `quick-links`, `open-in*`) by convention only. Users will later pick themes and alternative layouts, which needs this to be a deliberate contract.
+- **Intended outcome:** (1) Documented, versioned semantic design tokens (surfaces, text, accent, state, edge-type and kind colours, radius, spacing) are the supported styling contract; no raw colours in plugin or host JS. (2) A standard DOM structure and class names, so the global stylesheet drives plugin styling without plugins changing; SDK components (`Card`, `PageHeader`, `MetaStrip`, etc.) are an optional convenience that emits that markup, and plugins are not forced to use them. (3) Themes are replacement token sets; alternative layouts are selected on the shell. (4) A living style guide page that renders every token, panel, tag, table, menu and state in the current theme, usable as documentation for plugin authors and as a visual-regression target. (5) `edgeTypeStyle(type)` and kind colour come from tokens and are defined once.
+- **Prerequisite:** Write ADR-011 first, deciding token naming, where themes live (a plugin manifest contribution type or pack content), how layouts are selected, and whether a theme is per user or per graph.
+- **Acceptance:** No hard-coded hex colours in `web/*.jsx` or `web/sdk`/`web/builtin` JS; a test fails if a documented token is removed or renamed; the style guide page renders in light and dark; Graph and the `ok` fixture pages are themed correctly in both.
+- **Constraints:** Do not rename existing classes or variables without a migration note; template-supplied colours (`ui.colour`) must work in every theme.
+- **Approach (non-binding):** Style guide as a built-in plugin page (dogfoods the mechanism) or a host route; token audit first.
+- **Depends on:** core Stage 3 and ADR-011.
 
-## 18. Export edge and kind styling from the SDK
-- **Problem:** Edge and kind styling is duplicated: `EDGE_TYPE_STYLES` in `web/app.jsx`, `EDGE_STYLES`/`EDGE_PILL_STYLES` in `web/builtin/graph/constants.js`, plus `kindColour` from the graph-utils global.
-- **Intended outcome:** The SDK exports `edgeTypeStyle(type)` (pill and line styles, with a fallback for pack-defined types) and `kindColour(kind)`; the host connection rows and the Graph plugin use them and the duplicates are deleted.
-- **Acceptance:** One definition of each style table remains; Connections pills and Graph edges look unchanged; a unit test covers known, pack-defined and unknown types.
-- **Constraints:** Respect the edge `category` (structural, semantic, lineage) from pack edge-type definitions.
-- **Approach (non-binding):** Move the tables to `web/sdk/styles.js`.
-- **Depends on:** issue 13.
-
-## 19. Export the Connections panel (EdgePanel) from the SDK
-- **Problem:** The Connections panel (`EdgePanel` and its rows in `web/app.jsx`) lists inbound and outbound edges with quick links and the Open in menu, but only the host node page can render it.
-- **Intended outcome:** `EdgePanel` is exported from `corum:ui/react`, takes `{ inbound, outbound, onNavigate }` (or a node id and fetches through ctx), and is used by the host node page and available to plugin pages.
+## 17. Connections panel (EdgePanel) as an SDK component (optional)
+- **Problem:** The Connections panel (`EdgePanel` and its rows in `web/app.jsx`) can only be rendered by the host node page.
+- **Intended outcome:** `EdgePanel` is exported from `corum:ui/react` and usable by plugin pages, built on `NodeLinks` and the shared edge-type styling from issue 16. Only do this when a plugin needs it.
 - **Acceptance:** Existing connection-row Playwright specs pass unchanged; a plugin page can render the panel; documented.
 - **Constraints:** Keep the `edge-row` test id and the `corum:edgePanelOpen` persistence.
-- **Approach (non-binding):** Move the component to `web/sdk/` using `NodeLinks` and `edgeTypeStyle` (issue 18).
-- **Depends on:** issue 18.
+- **Depends on:** issue 16.
 
-## 20. Later / not yet issues (decide when needed)
-- Custom node renderers, plugin-defined extension points, shadow-DOM isolation, pinned default openers for ambiguous nodes, server-side extension hooks, a mock-host test harness, `corum plugin update`, per-user plugin overrides, standalone plugin install via the pack registry.
+## 18. Later / not yet issues (decide when needed)
+- Custom node renderers, plugin-defined extension points, shadow-DOM isolation, pinned default openers for ambiguous nodes, server-side extension hooks, a mock-host test harness, `corum plugin update`, per-user plugin overrides, standalone plugin install via the pack registry, a node search/picker component only if a plugin demonstrates a need (search is a host feature).
