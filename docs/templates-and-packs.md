@@ -81,6 +81,12 @@ files:
 Packs are loaded in dependency order, and templates are sorted by inheritance
 before any graph content is parsed.
 
+Packs can also bundle web UI plugins using `plugins` in `pack.yaml`. See
+[Bundle a plugin with a pack](plugins.md#bundle-a-plugin-with-a-pack) for the
+directory layout, required `files` entries and current source limits. Bundled
+plugins execute JavaScript in the browser, so review them as part of deciding
+whether to trust a pack.
+
 ### Official packs
 
 | Pack | Provides | Import adapter |

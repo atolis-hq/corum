@@ -94,6 +94,7 @@ corum web
 - [Getting started](docs/getting-started.md) - install, initialise, connect an agent
 - [Concepts](docs/concepts.md) - nodes, edges, clusters, IDs, lineage, branches
 - [Templates and packs](docs/templates-and-packs.md) - defining and extending node types
+- [UI plugins](docs/plugins.md) - configuring and creating web UI plugins
 - [Importing](docs/importing.md) - OpenAPI, AsyncAPI and extractor output
 - [Working with agents](docs/working-with-agents.md) - reading and changing the graph
 - [MCP tools](docs/mcp-tools.md), [CLI](docs/cli.md), [Configuration](docs/configuration.md) - reference
