@@ -717,7 +717,9 @@ export function createApp(
         targetGraph = await getGraphForRef(req.query.ref, multiCache, graph)
       }
 
-      const cluster = getClusterView(targetGraph, nodeId, parseIncludeEdges(req.query.includeEdges, targetGraph))
+      const cluster = getClusterView(targetGraph, nodeId, parseIncludeEdges(req.query.includeEdges, targetGraph), {
+        includeInboundReads: true,
+      })
       const rawOverlayRefs = req.query.overlayRefs
       const overlayRefs = Array.isArray(rawOverlayRefs)
         ? rawOverlayRefs.filter((r): r is string => typeof r === 'string' && r.length > 0)

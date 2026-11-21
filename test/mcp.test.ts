@@ -381,6 +381,13 @@ describe('MCP handlers', () => {
       assert.ok(!('edges' in cluster), 'edges should be absent by default')
     })
 
+    it('does not return inbound reads edges', async () => {
+      const handlers = createMcpHandlers(graph)
+      const result = await handlers.get_cluster({ node_id: 'orders.DomainModel.order', format: 'json', include_edges: true, edge_types: ['reads'] })
+      const cluster = JSON.parse(result.content[0].text)
+      assert.ok(!cluster.edges.some((e: { type: string; to: string }) => e.type === 'reads' && e.to === 'orders.DomainModel.order'))
+    })
+
     it('includes edges when include_edges: true', async () => {
       const handlers = createMcpHandlers(graph)
       const result = await handlers.get_cluster({ node_id: 'orders.DomainModel.order', format: 'json', include_edges: true })

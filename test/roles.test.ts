@@ -184,3 +184,59 @@ describe('role-driven engine behaviour for pack templates', () => {
     )
   })
 })
+
+describe('getClusterView inbound reads', () => {
+  const PIPELINE = 'data.Pipeline.orders-feed'
+  const SCHEMA = `${PIPELINE}.payloads.order-record`
+  const CONSUMER = 'data.Consumer.thing'
+
+  async function withReads(target: string) {
+    const { graph } = await loadCustomPackGraph()
+    const edge = {
+      id: `${CONSUMER}__reads__${target}`,
+      from: CONSUMER,
+      to: target,
+      type: 'reads' as const,
+      state: 'proposed' as const,
+      stability: 'unstable' as const,
+    }
+    graph.edgesByFrom.set(CONSUMER, [edge])
+    graph.edgesByTo.set(target, [...(graph.edgesByTo.get(target) ?? []), edge])
+    return { graph, edge }
+  }
+
+  it('includes inbound reads for non-shared roots only when requested', async () => {
+    const { graph, edge } = await withReads(PIPELINE)
+    const on = getClusterView(graph, PIPELINE, ['reads'], { includeInboundReads: true })
+    assert.ok(on.edges.some(e => e.id === edge.id))
+    const off = getClusterView(graph, PIPELINE, ['reads'])
+    assert.ok(!off.edges.some(e => e.id === edge.id))
+  })
+
+  it('includes inbound reads aimed at an owned descendant of the root', async () => {
+    const { graph, edge } = await withReads(SCHEMA)
+    const view = getClusterView(graph, PIPELINE, ['reads'], { includeInboundReads: true })
+    assert.ok(view.edges.some(e => e.id === edge.id))
+  })
+
+  it('keeps inbound uses-type excluded when includeInboundReads is set', async () => {
+    const { graph } = await loadCustomPackGraph()
+    const edge = {
+      id: `${CONSUMER}__uses-type__${PIPELINE}`,
+      from: CONSUMER,
+      to: PIPELINE,
+      type: 'uses-type' as const,
+      state: 'proposed' as const,
+      stability: 'unstable' as const,
+    }
+    graph.edgesByTo.set(PIPELINE, [edge])
+    const view = getClusterView(graph, PIPELINE, ['reads', 'uses-type'], { includeInboundReads: true })
+    assert.ok(!view.edges.some(e => e.id === edge.id))
+  })
+
+  it('still excludes inbound reads for shared data-type roots', async () => {
+    const { graph, edge } = await withReads(SCHEMA)
+    const view = getClusterView(graph, SCHEMA, ['reads'], { includeInboundReads: true })
+    assert.ok(!view.edges.some(e => e.id === edge.id))
+  })
+})
