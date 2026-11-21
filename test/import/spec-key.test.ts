@@ -102,7 +102,7 @@ describe('import runner — stable extractedFrom', () => {
       // An absolute spec in the config yields an absolute extractedFrom, like a legacy graph.
       await runIn(cwd, makeConfig(abs), graphDir)
       const legacy = await loadGraph({ graphPath: graphDir })
-      assert.equal(legacy.nodesById.get('orders.APIEndpoint.createOrder')?.extractedFrom, abs)
+      assert.equal(legacy.nodesById.get('orders.APIEndpoint.createOrder')?.extractedFrom, specKey(abs))
       const count = legacy.nodesById.size
 
       fs.writeFileSync(abs, spec({ '/orders/create': op('createOrder') }))
@@ -113,7 +113,7 @@ describe('import runner — stable extractedFrom', () => {
       assert.equal(after.nodesById.get('orders.APIEndpoint.createOrder')?.extractedFrom, 'orders.json')
       const dropped = after.nodesById.get('orders.APIEndpoint.refundOrder')
       assert.ok(dropped)
-      assert.equal(dropped.extractedFrom, abs)
+      assert.equal(dropped.extractedFrom, specKey(abs))
       assert.notEqual(dropped.state, 'removed')
     } finally {
       fs.rmSync(graphDir, { recursive: true, force: true })
