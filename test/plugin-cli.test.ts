@@ -95,6 +95,26 @@ describe('corum plugin init', () => {
     }
   })
 
+  it('scaffolds ids that YAML would read as another type', () => {
+    for (const id of ['2024', '1e5', 'true', 'null']) {
+      const tmp = tmpDir()
+      try {
+        const init = corum(['plugin', 'init', id, '--dir', path.join(tmp, 'p')])
+        assert.equal(init.code, 0, `${id}: ${init.err}`)
+        assert.equal(validate(path.join(tmp, 'p')).code, 0, id)
+      } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
+    }
+  })
+
+  it('refuses a built-in plugin id and writes nothing', () => {
+    const tmp = tmpDir()
+    try {
+      const result = corum(['plugin', 'init', 'graph'], tmp)
+      assert.notEqual(result.code, 0)
+      assert.deepEqual(fs.readdirSync(tmp), [])
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
+  })
+
   it('refuses a non-empty target and writes nothing', () => {
     const tmp = tmpDir()
     try {
@@ -147,15 +167,39 @@ describe('corum plugin validate', () => {
     })
   }
 
-  it('reports duplicate page ids using the server message', () => {
-    const yaml = GOOD + 'contributes:\n  pages:\n    - { id: a, title: A, mount: m }\n    - { id: a, title: B, mount: m }\n'
-    withManifest(yaml, dir => {
-      const expected = parsePluginManifest(yaml).errors
-      assert.ok(expected.length > 0)
+  const PAGE = '    - { id: a, title: A, mount: m }\n'
+  const manifestCases: [string, string][] = [
+    ['duplicate page ids', GOOD + 'contributes:\n  pages:\n' + PAGE + PAGE],
+    ['action pointing at an undeclared page', GOOD + 'contributes:\n  pages:\n' + PAGE + '  nodeActions:\n    - { id: x, label: X, appliesTo: ["*"], page: nope }\n'],
+    ['illegal legacyPaths', GOOD + 'contributes:\n  pages:\n    - { id: a, title: A, mount: m, legacyPaths: ["/node"] }\n'],
+    ['non-boolean nav', GOOD + 'contributes:\n  pages:\n    - { id: a, title: A, mount: m, nav: "yes" }\n'],
+    ['non-boolean nodeSidebar', GOOD + 'contributes:\n  pages:\n    - { id: a, title: A, mount: m, nodeSidebar: 1 }\n'],
+    ['non-boolean detail', GOOD + 'contributes:\n  pages:\n    - { id: a, title: A, mount: m, detail: "no" }\n'],
+  ]
+  for (const [name, yaml] of manifestCases) {
+    it(`reports the server's manifest error: ${name}`, () => {
+      withManifest(yaml, dir => {
+        const expected = parsePluginManifest(yaml).errors
+        assert.ok(expected.length > 0)
+        const result = validate(dir)
+        assert.equal(result.code, 1)
+        for (const message of expected) assert.ok(result.err.includes(message), `${message} not in ${result.err}`)
+      })
+    })
+  }
+
+  it('rejects a plugin id that a built-in plugin owns, as the server does', () => {
+    withManifest(GOOD.replace('id: demo', 'id: graph'), dir => {
       const result = validate(dir)
       assert.equal(result.code, 1)
-      for (const message of expected) assert.ok(result.err.includes(message))
+      assert.ok(result.err.includes('cannot replace the built-in plugin "graph"'), result.err)
     })
+  })
+
+  it('says the directory was not found when it does not exist', () => {
+    const result = validate(path.join(os.tmpdir(), 'corum-no-such-plugin-dir'))
+    assert.equal(result.code, 2)
+    assert.ok(result.err.includes('directory not found'))
   })
 
   it('reports an unsatisfied engine range with the server reason', () => {

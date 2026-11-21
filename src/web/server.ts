@@ -35,6 +35,7 @@ import { QueryError } from '../schema/index.js'
 import { registerVendorRoutes } from './vendor.js'
 import { createGitPluginState, type GitPluginState } from './plugins/git-runtime.js'
 import { ifNoneMatchSatisfied, resolvePluginAsset } from './plugins/assets.js'
+import { BUILTIN_PLUGIN_DIR } from './plugins/builtin-dir.js'
 import { createPluginRuntime, type PluginRuntime } from './plugins/runtime.js'
 import { createGraphRuntimeConfig } from '../source/config.js'
 import { FileGraphSource } from '../source/file-source.js'
@@ -43,7 +44,6 @@ import type { GraphSource } from '../source/index.js'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const WEB_DIR = path.join(__dirname, '..', '..', '..', 'web')
-const BUILTIN_PLUGIN_DIR = path.join(WEB_DIR, 'builtin')
 const require = createRequire(import.meta.url)
 const { version } = require('../../../package.json') as { version: string }
 

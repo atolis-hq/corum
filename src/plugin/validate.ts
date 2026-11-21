@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
+import { BUILTIN_PLUGIN_DIR } from '../web/plugins/builtin-dir.js'
 import { discoverPlugins } from '../web/plugins/discover.js'
 import { parsePluginManifest } from '../web/plugins/manifest.js'
 import { resolvePluginStatuses } from '../web/plugins/status.js'
@@ -29,12 +30,12 @@ export function validatePluginDir(dir: string, graphTemplates: Set<string>, coru
 
   const errors: string[] = []
   const warnings: string[] = []
-  const { plugins, errors: discoverErrors } = discoverPlugins({
-    builtinDir: path.join(root, '.no-builtin'), graphDir: null, graphYaml: null, packPluginDirs: [], devPluginDirs: [root],
+  // Same discovery as `corum web --plugin-dir`, including the built-ins a development plugin cannot replace.
+  const { plugins } = discoverPlugins({
+    builtinDir: BUILTIN_PLUGIN_DIR, graphDir: null, graphYaml: null, packPluginDirs: [], devPluginDirs: [root],
   })
-  errors.push(...discoverErrors.filter(message => !message.startsWith('warning:')).map(message => `${root}: ${message}`))
   for (const status of resolvePluginStatuses(plugins, { graphTemplates, corumVersion, overrides: [] })) {
-    if (status.status === 'unavailable') errors.push(`${root}: ${status.reason ?? 'unavailable'}`)
+    if (status.origin === 'dev' && status.status === 'unavailable') errors.push(`${root}: ${status.reason ?? 'unavailable'}`)
   }
 
   if (!existsSync(path.join(root, ...parsed.manifest.main.split('/')))) {

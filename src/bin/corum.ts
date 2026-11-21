@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { NODE_ROOT_DIR } from '../source/graph-paths.js'
 import { Command } from 'commander'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { readFile as fsReadFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import path from 'node:path'
@@ -338,8 +338,13 @@ pluginCmd
   .option('--graph <path>', 'Override graph path')
   .action(async (dir: string | undefined, opts) => {
     const target = dir ?? '.'
-    if (!existsSync(path.join(path.resolve(target), 'plugin.yaml'))) {
-      process.stderr.write(`[ERROR] ${path.resolve(target)}: no plugin.yaml found\n`)
+    const root = path.resolve(target)
+    if (!existsSync(root) || !statSync(root).isDirectory()) {
+      process.stderr.write(`[ERROR] ${root}: directory not found\n`)
+      process.exit(2)
+    }
+    if (!existsSync(path.join(root, 'plugin.yaml'))) {
+      process.stderr.write(`[ERROR] ${root}: no plugin.yaml found\n`)
       process.exit(2)
     }
     let templates: Set<string>

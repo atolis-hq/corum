@@ -1,5 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import { BUILTIN_PLUGIN_DIR } from '../web/plugins/builtin-dir.js'
+import { discoverPlugins } from '../web/plugins/discover.js'
 import { parsePluginManifest } from '../web/plugins/manifest.js'
 
 export type ScaffoldResult = { ok: true; dir: string; files: string[] } | { ok: false; errors: string[] }
@@ -12,7 +14,7 @@ export function enginesRangeFor(corumVersion: string): string {
 }
 
 export function manifestTemplate(id: string, corumVersion: string): string {
-  return `id: ${id}
+  return `id: ${JSON.stringify(id)}
 version: "0.1.0"
 engines:
   corum: "${enginesRangeFor(corumVersion)}"
@@ -20,13 +22,13 @@ main: ./index.js
 contributes:
   pages:
     - id: home
-      title: ${id}
+      title: ${JSON.stringify(id)}
       icon: list
       order: 30
       mount: mountHome
   nodeActions:
     - id: open-home
-      label: Open ${id}
+      label: ${JSON.stringify(`Open ${id}`)}
       appliesTo: ["*"]
       page: home
 `
@@ -85,6 +87,12 @@ export function scaffoldPlugin(id: string, dir: string, corumVersion: string): S
   const { errors } = parsePluginManifest(manifest)
   if (errors.length > 0 || !/^[a-z0-9-]+$/.test(id)) {
     return { ok: false, errors: errors.length > 0 ? errors : [`id "${id}" must match ^[a-z0-9-]+$`] }
+  }
+  const builtin = discoverPlugins({
+    builtinDir: BUILTIN_PLUGIN_DIR, graphDir: null, graphYaml: null, packPluginDirs: [],
+  }).plugins.some(plugin => plugin.manifest.id === id)
+  if (builtin) {
+    return { ok: false, errors: [`id "${id}" belongs to a built-in plugin and cannot be replaced`] }
   }
   const target = path.resolve(dir)
   if (existsSync(target) && readdirSync(target).length > 0) {
