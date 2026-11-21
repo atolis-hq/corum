@@ -42,7 +42,7 @@ Status: none filed yet.
 - **Acceptance:** CLI tests: scaffold loads in the dev server; validate catches each manifest error class used by `parsePluginManifest`.
 - **Depends on:** issues 3 and 4 recommended first.
 
-## 6. Plugin documentation and ADR housekeeping
+## 6. Plugin documentation and ADR housekeeping (done in PRs 3-4: `docs/plugins.md`, ADR-010 Accepted, AGENTS.md note; keep only for later doc updates)
 - **Intended outcome:** `docs/web-ui.md` documents the plugin contract (manifest, `ctx`, SDK modules, routing, enablement in `graph.yaml`, trust model, authoring a plugin end to end). `AGENTS.md` mentions the plugin system in the architecture section. ADR-010 status is Accepted and its open items are resolved or re-listed.
 - **Acceptance:** A reader can create a working plugin from the docs alone (checked by following them once).
 - **Depends on:** issues 1-3.
@@ -83,8 +83,8 @@ Status: none filed yet.
 - **Approach (non-binding):** Serve a subset of Font Awesome free-solid and the two font families from `node_modules` or vendored files via the existing `/vendor` allowlist.
 - **Labels:** `enhancement`.
 
-## 12. Local verification gaps to re-run once the machine is clean
-- The final menu and quick-link changes (commits after `2d761c5`) passed unit tests but their Playwright specs could not be re-run locally on 2026-11-21 because of the socket exhaustion above. CI runs `npm test` only (no browser specs). Re-run `npx playwright test` locally after a reboot and fix anything that surfaces.
+## 12. Local verification gaps (done)
+- Resolved 2026-11-21: after a reboot the full Playwright suite was re-run (39/39 on the PR 4 branch). Remaining caveat: CI runs `npm test` only, not the browser specs; consider adding them to CI.
 
 ## 13. Plugins must not read host globals: share generic helpers, keep the rest private (done in PR 4)
 - **Problem:** The Graph plugin reads the host global `window.CorumGraphUtils` (`web/builtin/graph/constants.js`). A plugin depending on an undocumented host global breaks the rule that plugins use SDK specifiers only, and third-party plugins cannot do the same.
@@ -129,5 +129,13 @@ Status: none filed yet.
 - **Constraints:** Core packs (`core`, `domain`, `rest`, `messaging`) stay lean: templates only, no plugin code. Generic UIs (Graph, Explorer, Dashboard) stay built-in; pack-specific UIs ship inside their pack.
 - **Depends on:** core Stage 3.
 
-## 19. Later / not yet issues (decide when needed)
+## 19. Small items (one line each; expand when picked up)
+- **Plugin/pack manifest read cost:** discovery re-reads and parses `graph.yaml` and each `pack.yaml` on every refresh (about 8 ms on the sample graph; the pack scan is most of it). Cache by file mtime if reloads become frequent.
+- **React warning check:** confirm `mountReact` unmounting (web/sdk/react.js) does not trigger React's "synchronously unmount a root while rendering" warning, using a development React build (only the production build is served today).
+- **Keyboard accessibility of the Open in menu:** arrow-key navigation, focus on open and return of focus to the trigger on close (it has `role="menu"` and Escape/outside-click dismissal only).
+- **Pre-existing Windows test failure:** `test/import/spec-key.test.ts` ("updates legacy absolute extractedFrom in place") fails on Windows because of path separators; unrelated to the plugin work.
+- **Browser specs in CI:** run `npm run test:web` in CI (needs Playwright browsers), since only unit tests run there today.
+- **Theme switcher in the UI:** covered by the theming epic (issue 16).
+
+## 20. Later / not yet issues (decide when needed)
 - Rendering the claimant plugin in place at the stable `#/node?id=X` URL instead of redirecting (a nice-to-have; with no new configuration it only differs from the redirect for single-claimant nodes), pinned default views per template, a `pack.yaml` field that switches built-in plugins on or off (`requires.templates` and the `plugins:` overrides cover current needs), plugging into search results without changing the core search (for example a search-provider contribution type), custom node renderers, plugin-defined extension points, shadow-DOM isolation, pinned default openers for ambiguous nodes, server-side extension hooks, a mock-host test harness, `corum plugin update`, per-user plugin overrides, standalone plugin install via the pack registry, a node search/picker component only if a plugin demonstrates a need (search is a host feature).
