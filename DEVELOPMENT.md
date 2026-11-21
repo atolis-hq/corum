@@ -124,9 +124,18 @@ CORUM_GRAPH_PATH=fixtures/sample-graph CORUM_WEB_PORT=0 npm run web   # UI check
 Use a Docker sandbox only when a change needs isolation, such as importing untrusted specs or
 write-session tests against a throwaway git repo.
 
-## Browser navigation tests
+## Browser tests
 
-Install Chromium and its OS dependencies once with `npx playwright install --with-deps chromium`, then run `npm run test:web`. This builds the project, starts a local server against the sample graph, and checks mobile master-detail navigation, history, focus, reduced motion, resizing, and the dashboard/graph layouts in Chromium. Like the web UI, these tests require access to the external scripts in `web/index.html`.
+Install Chromium and its OS dependencies once, then run the same browser suite used by pull request CI:
+
+```bash
+npx playwright install --with-deps chromium
+npm run test:web
+```
+
+This builds the project and starts a local server on port 3002 against the sample graph and fixture plugins. The specs cover mobile navigation, history, focus, reduced motion, resizing, dashboard/graph layouts, plugins, and table scrolling. Set `CORUM_E2E_PORT` to use another port.
+
+Failures retain screenshots and traces in `test-results/`. Open a trace with `npx playwright show-trace <path-to-trace.zip>`. CI also generates an HTML report and uploads it with the failure diagnostics as `browser-failure-diagnostics`, retained for seven days. Download and extract the artifact, then run `npx playwright show-report <path-to-playwright-report>` to inspect the report.
 
 ## Namespace metadata
 

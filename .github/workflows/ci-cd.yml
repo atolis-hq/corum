@@ -19,6 +19,31 @@ jobs:
       - run: npm test
       - run: npm run mcp:write-smoke
 
+  browser:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium and system dependencies
+        run: npx playwright install --with-deps chromium
+      - name: Run browser specs
+        run: npm run test:web
+      - name: Upload browser failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-failure-diagnostics
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
   tag:
     needs: test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
