@@ -585,6 +585,13 @@ describe('web server', () => {
       assert.deepEqual(names, ['DomainModel', 'DomainOperation', 'Field', 'Schema'])
     })
 
+    it('exposes info.role so the UI can resolve match keys', async () => {
+      const res = await fetch(`http://localhost:${handle.port}/api/templates?includeCore=true`)
+      const body = await res.json() as Array<{ name: string; role?: string }>
+      const withRole = body.filter(t => t.role !== undefined)
+      assert.ok(withRole.length > 0, 'at least one fixture template declares a role')
+    })
+
     it('includes ui config in response', async () => {
       const res = await fetch(`http://localhost:${handle.port}/api/templates`)
       const body = await res.json() as Array<{ name: string; ui?: { colour?: string; displayName?: string; nav?: { nestOwned?: unknown[] } } }>
@@ -1025,12 +1032,81 @@ describe('web server', () => {
     })
   })
 
-  describe('GET /api/plugins', () => {
-    it('returns an array (empty when no plugins exist)', async () => {
-      const res = await fetch(`http://localhost:${handle.port}/api/plugins`)
+  describe('plugins', () => {
+    let tmp: string
+    let pluginHandle: WebServerHandle
+    let savedEnv: string | undefined
+    let base: string
+
+    function writePlugin(id: string, templates: string[] = []): void {
+      const dir = path.join(tmp, 'builtin', id)
+      fs.mkdirSync(dir, { recursive: true })
+      fs.writeFileSync(
+        path.join(dir, 'plugin.yaml'),
+        `id: ${id}\nversion: 1.0.0\nengines: { corum: "*" }\nrequires: { templates: [${templates.join(', ')}] }\nmain: ./index.js\n`,
+      )
+      fs.writeFileSync(path.join(dir, 'index.js'), `export const id = '${id}'\n`)
+    }
+
+    before(async () => {
+      tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-web-plugins-'))
+      writePlugin('on')
+      writePlugin('off')
+      writePlugin('needs-missing', ['NoSuchTemplate'])
+      const graphDir = path.join(tmp, 'graph')
+      fs.mkdirSync(graphDir)
+      fs.writeFileSync(path.join(graphDir, 'graph.yaml'), 'plugins:\n  - id: off\n    enabled: false\n')
+      savedEnv = process.env.CORUM_BUILTIN_PLUGIN_DIRS
+      process.env.CORUM_BUILTIN_PLUGIN_DIRS = path.join(tmp, 'builtin')
+      pluginHandle = await startWebServer(makeTestGraph(), { port: 0, graphPath: graphDir })
+      base = `http://localhost:${pluginHandle.port}`
+    })
+
+    after(async () => {
+      await pluginHandle.close()
+      if (savedEnv === undefined) delete process.env.CORUM_BUILTIN_PLUGIN_DIRS
+      else process.env.CORUM_BUILTIN_PLUGIN_DIRS = savedEnv
+      fs.rmSync(tmp, { recursive: true, force: true })
+    })
+
+    it('GET /api/plugins returns statuses without filesystem paths', async () => {
+      const res = await fetch(`${base}/api/plugins`)
       assert.equal(res.status, 200)
-      const body = await res.json() as unknown
-      assert.ok(Array.isArray(body))
+      const body = await res.json() as Array<{ id: string; status: string; origin: string; reason?: string; manifest: { id: string } }>
+      const byId = new Map(body.map(p => [p.id, p]))
+      assert.equal(byId.get('on')?.status, 'enabled')
+      assert.equal(byId.get('on')?.origin, 'builtin')
+      assert.equal(byId.get('off')?.status, 'disabled')
+      assert.equal(byId.get('needs-missing')?.status, 'unavailable')
+      assert.match(byId.get('needs-missing')?.reason ?? '', /NoSuchTemplate/)
+      assert.equal(byId.get('on')?.manifest.id, 'on')
+      assert.ok(!JSON.stringify(body).includes(path.basename(tmp)))
+    })
+
+    it('GET /plugins/:id/* serves enabled plugin assets with caching headers', async () => {
+      const res = await fetch(`${base}/plugins/on/index.js`)
+      assert.equal(res.status, 200)
+      assert.match(res.headers.get('content-type') ?? '', /^text\/javascript/)
+      assert.equal(res.headers.get('cache-control'), 'no-cache')
+      assert.match(await res.text(), /export const id/)
+      const etag = res.headers.get('etag')
+      assert.ok(etag)
+      const again = await fetch(`${base}/plugins/on/index.js`, { headers: { 'If-None-Match': etag } })
+      assert.equal(again.status, 304)
+    })
+
+    it('does not serve disabled, unavailable or unknown plugins', async () => {
+      for (const id of ['off', 'needs-missing', 'nope']) {
+        const res = await fetch(`${base}/plugins/${id}/index.js`)
+        assert.equal(res.status, 404, id)
+      }
+    })
+
+    it('never serves plugin.yaml or traversal paths', async () => {
+      for (const p of ['plugin.yaml', '..%2foff%2findex.js', '%2e%2e/off/index.js', '../off/index.js']) {
+        const res = await fetch(`${base}/plugins/on/${p}`)
+        assert.equal(res.status, 404, p)
+      }
     })
   })
 
@@ -1183,7 +1259,7 @@ describe('web server', () => {
     let statusCodes = { primitives: 0, app: 0, graph: 0, styles: 0 }
 
     before(async () => {
-      const sdkFiles = ['ui.js', 'properties.js', 'schema-model.js', 'schema-card.js']
+      const sdkFiles = ['ui.js', 'properties.js', 'schema-model.js', 'schema-rows.js', 'schema-card.js']
       const [primitivesRes, appRes, graphRes, styleRes] = await Promise.all([
         Promise.all(sdkFiles.map(file => fetch(`http://localhost:${handle.port}/sdk/${file}`))).then(responses => ({
           status: responses.every(r => r.status === 200) ? 200 : 500,
@@ -1209,9 +1285,9 @@ describe('web server', () => {
 
     it('primitives: buildPropertyRows uses depth for nested row indentation', () => {
       assert.match(primitives, /function buildPropertyRows\(entries, onNavigate, depth = 0/)
-      assert.match(primitives, /const rows = buildPropertyRows\(entries, onNavigate, 0, '', propertyHints\);/)
-      assert.match(primitives, /className: `prop-row\$\{row\.depth > 0 \? ' nested' : ''\}`/)
-      assert.match(primitives, /className: "mono prop-key-cell"/)
+      assert.match(primitives, /const rows = buildPropertyRows\(entries, onNavigate, 0, '', propertyHints\)/)
+      assert.ok(primitives.includes("className=${`prop-row${row.depth > 0 ? ' nested' : ''}`}"))
+      assert.match(primitives, /className="mono prop-key-cell"/)
       assert.match(primitives, /'--prop-depth': row\.depth/)
     })
 
@@ -1226,7 +1302,7 @@ describe('web server', () => {
 
     it('primitives: edge links rendered with separators between multiple links', () => {
       assert.match(primitives, /links\.map\(\(edge, index\) => \{/)
-      assert.match(primitives, /index > 0 && React\.createElement\("span", \{\s*key: `sep-\$\{edge\.id\}`\s*\}, ' '\)/)
+      assert.ok(primitives.includes("${index > 0 && html`<span key=${`sep-${edge.id}`}>${' '}</span>`}"))
     })
 
     it('app: templateDisplayName resolves ui.displayName and is used for labels', () => {
@@ -1258,12 +1334,12 @@ describe('web server', () => {
       assert.match(primitives, /function SchemaFieldRows\(\{\s*schemaNodeId,\s*model,\s*prefix = '',\s*depth = 0,\s*visited = new Set\(\),\s*edges = \[\],\s*overlayFields,\s*overlayRefs,\s*compact = false\s*\}\)/)
       assert.match(primitives, /const childSchemaNode = !canExpandMapping/)
       assert.match(primitives, /const childGhostFields = childSchemaNode \? overlayFieldsForSchema\(overlayFields, childSchemaNode\.id\) : \[\];/)
-      assert.match(primitives, /React\.createElement\(SchemaFieldRows, \{[\s\S]*overlayFields: overlayFields,\s*overlayRefs: overlayRefs/)
-      assert.match(primitives, /childGhostFields\.length > 0 && React\.createElement\(GhostFieldRows, \{\s*fields: childGhostFields,\s*overlayRefs: overlayRefs,\s*prefix: childPrefix,\s*depth: depth \+ 1,\s*compact: compact\s*\}\)/)
+      assert.match(primitives, /<\$\{SchemaFieldRows\}[\s\S]*overlayFields=\$\{overlayFields\}\s*overlayRefs=\$\{overlayRefs\}/)
+      assert.match(primitives, /childGhostFields\.length > 0 && html`<\$\{GhostFieldRows\} fields=\$\{childGhostFields\} overlayRefs=\$\{overlayRefs\} prefix=\$\{childPrefix\} depth=\$\{depth \+ 1\} compact=\$\{compact\} \/>`/)
       assert.match(primitives, /function GhostFieldRows\(\{\s*fields,\s*overlayRefs,\s*prefix = '',\s*depth = 0,\s*compact = false\s*\}\)/)
       assert.match(primitives, /const name = compact \? fieldLocalName\(field\.id\) : prefix \+ fieldLocalName\(field\.id\);/)
-      assert.match(primitives, /className: `field-row overlay-ghost \$\{stripeClass\}\$\{depth > 0 \? ' nested' : ''\}`/)
-      assert.match(primitives, /'--field-depth': depth/)
+      assert.ok(primitives.includes("className=${`field-row overlay-ghost ${stripeClass}${depth > 0 ? ' nested' : ''}`}"))
+      assert.ok(primitives.includes("'--field-depth': depth"))
     })
 
     it('primitives: fieldSchemaName resolves fields from standalone Schema nodes', () => {
@@ -1317,8 +1393,8 @@ describe('web server', () => {
     })
 
     it('app: namespaces section navigation routes through /namespaces, with no /components route', () => {
-      assert.match(app, /function handleSection\(section\) \{/)
-      assert.match(app, /navigate\(buildRoute\(\{ pathname: `\/\$\{section\}`, params: \{\}, branch: viewingRef \}\)\);/)
+      assert.match(app, /function handleSection\(section, pluginPage\) \{/)
+      assert.match(app, /: `\/\$\{section\}`;\s*navigate\(buildRoute\(\{ pathname, params: \{\}, branch: viewingRef \}\)\);/)
       assert.match(app, /const showTree = \(activeSection === 'namespaces' \|\| activeNodeId\) && activeSection !== 'graph';/)
       assert.match(app, /} else if \(route\.pathname === '\/namespaces'\) \{\s*page = <NamespacesPage \/>;/)
       assert.doesNotMatch(app, /\/components/)

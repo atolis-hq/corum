@@ -1,0 +1,8 @@
+id: claim-a
+version: 1.0.0
+engines: { corum: ">=0.1.0" }
+requires: { templates: [] }
+main: ./index.js
+contributes:
+  pages:
+    - { id: home, title: "Claim A", icon: puzzle-piece, order: 50, mount: mount, opens: [DomainModel] }

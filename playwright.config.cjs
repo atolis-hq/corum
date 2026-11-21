@@ -5,7 +5,7 @@ module.exports = defineConfig({
   use: { baseURL: 'http://127.0.0.1:3002', viewport: { width: 375, height: 812 } },
   webServer: {
     command: 'npm run web',
-    env: { CORUM_GRAPH_PATH: 'fixtures/sample-graph', CORUM_WEB_PORT: '3002' },
+    env: { CORUM_GRAPH_PATH: 'fixtures/sample-graph', CORUM_WEB_PORT: '3002', CORUM_BUILTIN_PLUGIN_DIRS: 'test/fixtures/plugins' },
     url: 'http://127.0.0.1:3002',
   },
 });

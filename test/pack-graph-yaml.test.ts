@@ -52,4 +52,21 @@ describe('registerPackInGraph', () => {
       fs.rmSync(dir, { recursive: true })
     }
   })
+
+  it('preserves the plugins list when registering a pack', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-test-'))
+    try {
+      const graphPath = path.join(dir, 'graph.yaml')
+      fs.writeFileSync(graphPath, `${minimalGraph}plugins:
+  - path: ../plugins/journeys
+  - id: journeys
+    enabled: false
+`)
+      await registerPackInGraph(graphPath, 'core', '../packs/core')
+      const parsed = parse(fs.readFileSync(graphPath, 'utf8')) as { plugins: unknown[] }
+      assert.deepEqual(parsed.plugins, [{ path: '../plugins/journeys' }, { id: 'journeys', enabled: false }])
+    } finally {
+      fs.rmSync(dir, { recursive: true })
+    }
+  })
 })

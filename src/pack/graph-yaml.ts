@@ -5,6 +5,7 @@ interface GraphYaml {
   'schema-version'?: string
   name?: string
   templatePacks?: Array<{ name: string; path: string }>
+  plugins?: Array<{ path: string } | { id: string; enabled: boolean }>
   components?: unknown[]
 }
 

@@ -149,4 +149,42 @@ describe('installPackFiles', () => {
       fs.rmSync(dir, { recursive: true })
     }
   })
+
+  it('rejects plugins entries that traverse outside the pack directory', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-test-'))
+    try {
+      const baseUrl = 'https://raw.githubusercontent.com/a/b/v1/.corum/packs/ui'
+      const mockFetch = makeMockFetch({
+        [`${baseUrl}/pack.yaml`]: `name: ui
+version: "1.0.0"
+templates: []
+plugins:
+  - ../../evil
+`,
+      })
+      await assert.rejects(() => installPackFiles(baseUrl, path.join(dir, 'ui'), mockFetch), /invalid|escapes/)
+      assert.equal(fs.existsSync(path.join(dir, 'ui', 'pack.yaml')), false)
+    } finally {
+      fs.rmSync(dir, { recursive: true })
+    }
+  })
+
+  it('accepts a pack.yaml with plugins entries inside the pack', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-test-'))
+    try {
+      const baseUrl = 'https://raw.githubusercontent.com/a/b/v1/.corum/packs/ui'
+      const mockFetch = makeMockFetch({
+        [`${baseUrl}/pack.yaml`]: `name: ui
+version: "1.0.0"
+templates: []
+plugins:
+  - ui/journeys
+`,
+      })
+      await installPackFiles(baseUrl, path.join(dir, 'ui'), mockFetch)
+      assert.equal(fs.existsSync(path.join(dir, 'ui', 'pack.yaml')), true)
+    } finally {
+      fs.rmSync(dir, { recursive: true })
+    }
+  })
 })

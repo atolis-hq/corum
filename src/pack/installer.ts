@@ -6,6 +6,8 @@ import { resolveContentPath } from '../source/safe-path.js'
 interface PackMeta {
   templates: string[]
   files?: string[]
+  /** UI plugin directories bundled with the pack, relative to the pack root. */
+  plugins?: string[]
 }
 
 function validateTemplateName(name: string): void {
@@ -28,6 +30,10 @@ export async function installPackFiles(
   // Remote pack.yaml content is untrusted: validate every declared name/path
   // before any file is written so a malicious pack cannot escape destDir.
   for (const templateName of meta.templates) validateTemplateName(templateName)
+  for (const pluginPath of meta.plugins ?? []) {
+    if (typeof pluginPath !== 'string') throw new Error('invalid plugins entry in pack.yaml: expected a string')
+    resolveContentPath(destDir, pluginPath)
+  }
   const fileDests = new Map<string, string>()
   for (const filePath of meta.files ?? []) {
     fileDests.set(filePath, resolveContentPath(destDir, filePath))

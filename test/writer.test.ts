@@ -394,3 +394,48 @@ describe('graph writer', () => {
     }
   })
 })
+
+describe('graph writer: plugins key', () => {
+  const plugins = [{ path: 'plugins/journeys' }, { id: 'journeys', enabled: false }]
+
+  function makeGraphDir(parent: string, name: string): string {
+    const dir = path.join(parent, name)
+    fs.mkdirSync(dir, { recursive: true })
+    const corePack = path.join(repoRoot, '.corum/packs/core').split(path.sep).join('/')
+    fs.writeFileSync(
+      path.join(dir, 'graph.yaml'),
+      `templatePacks:\n  - name: core\n    path: ${corePack}\nplugins:\n  - path: plugins/journeys\n  - id: journeys\n    enabled: false\n`,
+    )
+    return dir
+  }
+
+  it('round-trips plugins unchanged', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-plugins-key-'))
+    try {
+      const dir = makeGraphDir(tmp, 'g')
+      const graph = await loadGraph({ graphPath: dir })
+      const verbatim = serializeGraph(graph).get('graph.yaml')
+      assert.deepEqual((parseYaml(verbatim ?? '') as { plugins: unknown }).plugins, plugins)
+      const inPlace = serializeGraph(graph, { sourceGraphPath: dir, outputGraphPath: dir }).get('graph.yaml')
+      assert.deepEqual((parseYaml(inPlace ?? '') as { plugins: unknown }).plugins, plugins)
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  it('rebases plugin paths and keeps overrides when saved to another folder', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-plugins-key-'))
+    try {
+      const dir = makeGraphDir(tmp, 'g')
+      const out = path.join(tmp, 'nested', 'out')
+      const graph = await loadGraph({ graphPath: dir })
+      const written = serializeGraph(graph, { sourceGraphPath: dir, outputGraphPath: out }).get('graph.yaml')
+      assert.deepEqual(
+        (parseYaml(written ?? '') as { plugins: unknown }).plugins,
+        [{ path: '../../g/plugins/journeys' }, { id: 'journeys', enabled: false }],
+      )
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+})

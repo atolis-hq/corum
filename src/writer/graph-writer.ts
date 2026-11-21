@@ -86,6 +86,14 @@ function buildGraphYaml(graph: Graph, options: SerializeGraphOptions): string {
       path: normalizeContentKey(path.relative(options.outputGraphPath!, absolutePackPath)),
     }
   })
+  if (Array.isArray(doc.plugins)) {
+    doc.plugins = doc.plugins.map(entry => {
+      const rec = asRecord(entry)
+      if (!rec || typeof rec.path !== 'string') return entry
+      const absolutePluginPath = path.resolve(options.sourceGraphPath!, rec.path)
+      return { ...rec, path: normalizeContentKey(path.relative(options.outputGraphPath!, absolutePluginPath)) }
+    })
+  }
   return stringifyGraphYaml(doc)
 }
 

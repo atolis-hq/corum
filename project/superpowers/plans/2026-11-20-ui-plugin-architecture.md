@@ -145,7 +145,19 @@
 
 ## STAGE 3 — Graph as the first built-in plugin (`ui-plugins/3-graph-port`)
 
-### Task 8: Port Graph
+### Task 8: Rewrite SDK primitives in htm
+
+**Files:** Modify `web/sdk/ui.js`, `properties.js`, `schema-model.js`, `schema-card.js` (rewrite markup only); Test: existing `test/web.test.ts` SDK assertions (update to match source), `npm run test:web`.
+
+**Interfaces:** Unchanged exports (same names and props as today's `corum:ui`). Task 3 committed Babel-compiled `React.createElement` output; this task replaces it with readable `html` tagged-template source so the SDK is the reference style for plugin authors and matches the Graph/Explorer ports.
+
+- [ ] **Step 1:** Port from the original JSX (`git show c05c4b0:web/primitives.jsx`) to `html` (htm bound to `React.createElement`): `className=${x}`, components as `<${Comp} prop=${v}/>` with `<//>` closers, no behaviour change. Keep modules focused (split if a file exceeds ~300 lines).
+- [ ] **Step 2:** `npm run build`, `node scripts/run-tests.mjs`, `npm run test:web`; manually check Dashboard, a DomainModel node page (SchemaCard, overlay ghost rows) and the Graph page render identically with no console errors.
+- [ ] **Step 3:** Commit `refactor(web): write SDK primitives in htm`.
+
+---
+
+### Task 9: Port Graph
 
 **Files:** Create `web/builtin/graph/plugin.yaml`, `web/builtin/graph/index.js` (+ split helpers `web/builtin/graph/*.js` as needed; keep files focused); Delete `web/graph.jsx` and its script tag; Modify `web/app.jsx` (remove the hardcoded Graph nav item and `/graph` route; route `#/graph…` redirect is not kept); Test: extend `test/browser/plugins.spec.cjs`; existing `web/graph-utils.test.js` stays.
 
@@ -160,5 +172,5 @@
 
 ## Self-review notes
 
-- Spec coverage: plugin unit/discovery (T4), manifest (T4), module contract + SDK (T3), data access via `ctx.api` (T8), serving/import map/security/caching (T2, T5), routing (T1, T7), resolution/chooser/direct links (T3, T7), enablement + status (T4, T5), libraries/isolation (T2, T3), error handling (T6, T7). Not in this plan, by design: git-source plugin assets, `--plugin-dir`, `.d.ts`, tooling, Explorer port, docs (see follow-ups file).
-- `ctx.api` shape is the least pinned decision; the Graph port (T8) defines it and the ADR open item is closed there.
+- Spec coverage: plugin unit/discovery (T4), manifest (T4), module contract + SDK (T3), data access via `ctx.api` (T9), serving/import map/security/caching (T2, T5), routing (T1, T7), resolution/chooser/direct links (T3, T7), enablement + status (T4, T5), libraries/isolation (T2, T3), error handling (T6, T7). Not in this plan, by design: git-source plugin assets, `--plugin-dir`, `.d.ts`, tooling, Explorer port, docs (see follow-ups file).
+- `ctx.api` shape is the least pinned decision; the Graph port (T9) defines it and the ADR open item is closed there.
