@@ -19,7 +19,8 @@ assignees: atolis-hq-agent
 ## Acceptance criteria
 
 <!-- How to verify the outcome was reached: commands to run (for example
-     `npm test`), behaviors that must be unchanged -->
+     `npm test`), behaviors that must be unchanged. For UI changes, add: before/after
+     screenshots embedded in the PR body (DEVELOPMENT.md "PR screenshots"). -->
 
 ## Constraints
 

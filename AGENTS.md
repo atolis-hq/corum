@@ -72,6 +72,7 @@ The styling contract is ADR-011 (`project/adrs/ADR-011-design-tokens-themes-and-
 - **Plugins style through the contract.** Built-in plugins use only documented tokens and classes (no inline hex, no host internals), so the style guide plugin proves the contract works for third parties.
 - **Accessibility is part of styling.** Keep text contrast adequate in every theme, visible focus (`--ring`), and keyboard operability for menus and popovers (follow the Open in menu pattern).
 - **Layouts are CSS-only.** Do not hide or reorder host regions from a layout; structure is controlled through `--nav-width`, `--content-max`, `--density` and `data-layout`.
+- **Screenshots.** A PR that changes how the UI looks embeds before/after screenshots in its body, stored on the `pr-assets` branch per `DEVELOPMENT.md` "PR screenshots". Never commit images to the PR branch. If you cannot produce them, say so in the PR.
 - **Update docs and the style guide** (`docs/styling.md`, style guide plugin) in the same change when you add or change a token, class or standard pattern.
 
 ## Raising Issues
