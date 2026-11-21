@@ -87,7 +87,8 @@ working. The default-branch commit is resolved once per reload (not per request)
 
 There is no `corum plugin init`, `corum plugin validate`, `corum plugin update`
 or `corum web --plugin-dir` command yet. Create and register directories as
-described here. SDK TypeScript declarations are not yet shipped.
+described here. SDK type declarations are shipped; see
+[Type checking and editor support](#type-checking-and-editor-support).
 
 ## Create a working plugin
 
@@ -519,6 +520,47 @@ and available. Allowed extensions are `.js`, `.mjs`, `.css`, `.json`, `.svg`,
 stay within the plugin directory, including through symlinks. Module and asset
 responses use `Cache-Control: no-cache` with ETags; no version query string is
 needed for relative imports.
+
+### Type checking and editor support
+
+The package ships hand-written declarations, so plain JavaScript plugins get
+type checking and completion from documentation comments with no build step:
+
+- `web/sdk/types/corum-ui.d.ts` declares `corum:ui`
+- `web/sdk/types/corum-ui-react.d.ts` declares `corum:ui/react`
+
+In the installed package they live at `node_modules/@atolis-hq/corum/web/sdk/types/`. Include them from your plugin's
+`jsconfig.json` (or `tsconfig.json`), then add `// @ts-check` to each file:
+
+```json
+{
+  "compilerOptions": { "checkJs": true, "noEmit": true, "strict": true, "moduleResolution": "Bundler", "module": "ES2022", "target": "ES2022" },
+  "files": ["node_modules/@atolis-hq/corum/web/sdk/types/corum-ui.d.ts", "node_modules/@atolis-hq/corum/web/sdk/types/corum-ui-react.d.ts"],
+  "include": ["*.js"]
+}
+```
+
+Run `npx tsc -p jsconfig.json` to check. The declarations do not depend on
+`@types/react`: components are typed as functions returning an opaque
+`Element`, and `html` returns `any`.
+
+`corum:ui` also exports types only (no runtime export): `PluginContext` (the
+`ctx` object), `PluginMount` (a page export), `PluginManifest`, `PluginPage`,
+`PluginNodeAction`, `PluginRoute`, `QuickSurface`, `ApiParams`,
+`NodeLinkOptions`, `NodeLink`, `NodeLinks`, `Component` and `Element`.
+`PluginManifest` describes the authored `plugin.yaml` (optional fields stay
+optional), not the host's normalised form. Use them in JSDoc:
+
+```js
+// @ts-check
+/** @type {import('corum:ui').PluginMount} */
+export function mountPage(el, ctx) {
+  return ctx.subscribe(() => { el.textContent = ctx.params.get('id') ?? '' })
+}
+```
+
+The declarations are pinned to the SDK export list and the `ctx` members by
+`test/architecture.test.ts`; changing one means changing the others and this page.
 
 ## Bundle a plugin with a pack
 
