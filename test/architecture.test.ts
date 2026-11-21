@@ -7,7 +7,9 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import semver from 'semver'
+import ts from 'typescript'
 import { parsePluginManifest } from '../src/web/plugins/manifest.js'
 
 const ROOT = process.cwd()
@@ -216,6 +218,102 @@ describe('architecture: manifests and SDK surface', () => {
     const docs = read(path.join(ROOT, 'docs', 'plugins.md'))
     const missing = [...SDK_UI_EXPORTS, ...SDK_REACT_EXPORTS].filter(name => !new RegExp(`\\b${name}\\b`).test(docs))
     assert.deepEqual(missing, [], `docs/plugins.md does not mention these SDK exports: ${missing.join(', ')}`)
+  })
+
+  describe('shipped type declarations', () => {
+  const TYPES = path.join(SDK, 'types')
+  const UI_DTS = path.join(TYPES, 'corum-ui.d.ts')
+  const REACT_DTS = path.join(TYPES, 'corum-ui-react.d.ts')
+  const FIXTURES = path.join(ROOT, 'test', 'fixtures', 'sdk-types')
+
+  type Declared = { values: string[]; types: string[]; members: Map<string, string[]> }
+
+  /** Parse an ambient `declare module '<specifier>'` block and list its exported values, types and interface members. */
+  function declared(file: string, specifier: string): Declared {
+    const source = ts.createSourceFile(file, read(file), ts.ScriptTarget.ES2022, true)
+    const block = source.statements.find((node): node is ts.ModuleDeclaration =>
+      ts.isModuleDeclaration(node) && ts.isStringLiteral(node.name) && node.name.text === specifier)
+    assert.ok(block?.body && ts.isModuleBlock(block.body), `${rel(file)} must declare module '${specifier}'`)
+    const out: Declared = { values: [], types: [], members: new Map() }
+    for (const node of block.body.statements) {
+      const exported = ts.canHaveModifiers(node) && ts.getModifiers(node)?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)
+      if (!exported) continue
+      if (ts.isFunctionDeclaration(node) && node.name) out.values.push(node.name.text)
+      else if (ts.isVariableStatement(node)) {
+        for (const decl of node.declarationList.declarations) if (ts.isIdentifier(decl.name)) out.values.push(decl.name.text)
+      } else if (ts.isInterfaceDeclaration(node)) {
+        out.types.push(node.name.text)
+        out.members.set(node.name.text, node.members.flatMap(m => (m.name && ts.isIdentifier(m.name) ? [m.name.text] : [])))
+      } else if (ts.isTypeAliasDeclaration(node)) out.types.push(node.name.text)
+    }
+    return { values: out.values.sort(), types: out.types.sort(), members: out.members }
+  }
+
+  const runtimeSurface = (file: string) => [...exportedNames(path.join(SDK, file))].sort()
+  const SNAPSHOT_HINT = 'Update web/sdk/types/*.d.ts, the snapshot above and docs/plugins.md together.'
+
+  it('declared corum:ui value exports match the runtime snapshot and source', () => {
+    assert.deepEqual(declared(UI_DTS, 'corum:ui').values, [...SDK_UI_EXPORTS].sort(), `corum:ui declarations drifted from the snapshot. ${SNAPSHOT_HINT}`)
+    assert.deepEqual(declared(UI_DTS, 'corum:ui').values, runtimeSurface('index.js'), `corum:ui declarations drifted from web/sdk/index.js. ${SNAPSHOT_HINT}`)
+  })
+
+  it('declared corum:ui/react value exports match the runtime snapshot and source', () => {
+    assert.deepEqual(declared(REACT_DTS, 'corum:ui/react').values, [...SDK_REACT_EXPORTS].sort(), `corum:ui/react declarations drifted from the snapshot. ${SNAPSHOT_HINT}`)
+    assert.deepEqual(declared(REACT_DTS, 'corum:ui/react').values, runtimeSurface('react.js'), `corum:ui/react declarations drifted from web/sdk/react.js. ${SNAPSHOT_HINT}`)
+  })
+
+  it('declared PluginContext members match the real ctx object', async () => {
+    const { createPluginContext } = await import(pathToFileURL(path.join(ROOT, 'web', 'host', 'context.js')).href)
+    const env = { registry: {}, owningRoot: () => null, hrefForNode: () => '', navigate: () => {}, buildRoute: () => '', pluginId: 'p', pageId: 'g' }
+    const { ctx } = createPluginContext(env, { route: { params: new URLSearchParams() }, viewingRef: null, templates: [] }, () => {})
+    const members = declared(UI_DTS, 'corum:ui').members.get('PluginContext') ?? []
+    assert.deepEqual([...members].sort(), Object.keys(ctx).sort(), `PluginContext drifted from createPluginContext (web/host/context.js). ${SNAPSHOT_HINT}`)
+    assert.deepEqual(Object.keys(ctx.api).sort(), ['get'])
+  })
+
+  it('declared manifest members cover the documented manifest fields', () => {
+    const members = declared(UI_DTS, 'corum:ui').members
+    assert.deepEqual([...(members.get('PluginManifest') ?? [])].sort(), ['contributes', 'engines', 'id', 'main', 'requires', 'version'])
+    const docs = read(path.join(ROOT, 'docs', 'plugins.md'))
+    const missing = [...(members.get('PluginPage') ?? []), ...(members.get('PluginNodeAction') ?? [])].filter(name => !docs.includes(name))
+    assert.deepEqual(missing, [], `docs/plugins.md does not mention manifest fields: ${missing.join(', ')}`)
+  })
+
+  it('every declared export, type and ctx member is documented in docs/plugins.md', () => {
+    const docs = read(path.join(ROOT, 'docs', 'plugins.md'))
+    const ui = declared(UI_DTS, 'corum:ui')
+    const react = declared(REACT_DTS, 'corum:ui/react')
+    const names = [...ui.values, ...ui.types, ...react.values, ...(ui.members.get('PluginContext') ?? []).map(member => `ctx.${member}`)]
+    const missing = names.filter(name => !new RegExp(`(?<![\\w.])${name.replace('.', '\\.')}\\b`).test(docs))
+    assert.deepEqual(missing, [], `docs/plugins.md does not mention: ${missing.join(', ')}`)
+  })
+
+  function typecheck(configName: string): readonly ts.Diagnostic[] {
+    const configPath = path.join(FIXTURES, configName)
+    const config = ts.readConfigFile(configPath, ts.sys.readFile)
+    const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, FIXTURES)
+    assert.ok(parsed.options.strict && parsed.options.skipLibCheck === false && parsed.options.noEmit, 'fixtures must check strictly without emitting')
+    const program = ts.createProgram(parsed.fileNames, parsed.options)
+    return ts.getPreEmitDiagnostics(program)
+  }
+
+  const format = (diagnostics: readonly ts.Diagnostic[]) => diagnostics.map(d => ts.flattenDiagnosticMessageText(d.messageText, '\n')).join('\n')
+
+  it('the sample plugin type-checks against the shipped declarations', () => {
+    assert.deepEqual(format(typecheck('tsconfig.json')), '')
+  })
+
+  it('the negative fixture fails the type check, so the check is not vacuous', () => {
+    const diagnostics = typecheck('tsconfig.bad.json')
+    assert.ok(diagnostics.length >= 2, 'expected the bad fixture to produce type errors')
+    assert.match(format(diagnostics), /notAMember/)
+  })
+
+  it('declarations are included in the published package', () => {
+    const files: string[] = JSON.parse(read(path.join(ROOT, 'package.json'))).files
+    assert.ok(files.some(entry => /^web\/?$/.test(entry)), 'package.json files must include web/')
+    assert.ok(fs.existsSync(UI_DTS) && fs.existsSync(REACT_DTS))
+  })
   })
 })
 
