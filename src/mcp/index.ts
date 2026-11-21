@@ -1097,7 +1097,7 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
           node_types: { type: 'array', items: { type: 'string' }, description: 'Template allowlist.' },
           exclude_node_types: { type: 'array', items: { type: 'string' }, description: 'Template denylist.' },
           include_dangling_edges: { type: 'boolean', description: 'Include dangling edges. Default false.' },
-          reads_outbound_only: { type: 'boolean', description: 'Skip inbound reads/uses-type in upstream traversal. Default true.' },
+          reads_outbound_only: { type: 'boolean', description: 'Skip inbound traversal of edge types declared outbound-only (e.g. reads, uses-type) in upstream traversal. Default true.' },
           lean: { type: 'boolean', description: 'Minimal node shape (ids + traversal annotations only). Default true.' },
           include_edges: { type: 'boolean', description: 'Include edges. Default false.' },
           include_edge_ids: EDGE_IDS_PARAM,

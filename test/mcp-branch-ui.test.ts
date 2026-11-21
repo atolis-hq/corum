@@ -55,17 +55,49 @@ describe('MCP handlers - list_templates', () => {
 })
 
 describe('MCP handlers - get_template branch', () => {
-  const handlers = createMcpHandlers(makeMinimalGraph())
+  function graphWithTemplateDescription(description: string): Graph {
+    const graph = makeMinimalGraph()
+    graph.templates.set('Widget', {
+      name: 'Widget',
+      info: { version: '1', core: false, description },
+      ui: { displayName: 'Widget' },
+    })
+    return graph
+  }
 
-  it('accepts branch and falls back to the default graph without a source', async () => {
-    const result = await handlers.get_template({ name: 'Widget', branch: 'main' })
+  const mainGraph = graphWithTemplateDescription('main-widget')
+  const featureGraph = graphWithTemplateDescription('feature-widget')
+  const main = { ref: 'main', graph: mainGraph, isDefault: true }
+  const feature = { ref: 'feature', graph: featureGraph, isDefault: false }
+  const multi: MultiGraph = {
+    default: main,
+    branches: [main, feature],
+    branchResults: [
+      { ref: 'main', status: 'loaded' as const },
+      { ref: 'feature', status: 'loaded' as const },
+    ],
+    overlay: () => { throw new Error('not used') },
+    diff: () => { throw new Error('not used') },
+  }
+  const cache: MultiGraphCache = { get: async () => multi, invalidate: () => {} }
+  const source = {} as GraphSource
+  const handlers = createMcpHandlers(mainGraph, source, cache)
+
+  it('reads the template from the requested branch', async () => {
+    const result = await handlers.get_template({ name: 'Widget', branch: 'feature' })
     assert.equal(result.isError, undefined)
-    assert.match(result.content[0].text, /Widget/)
+    assert.match(result.content[0].text, /feature-widget/)
   })
 
-  it('still works without branch', async () => {
+  it('reads the default graph without branch', async () => {
     const result = await handlers.get_template({ name: 'Widget' })
     assert.equal(result.isError, undefined)
+    assert.match(result.content[0].text, /main-widget/)
+  })
+
+  it('returns an error for an unknown branch', async () => {
+    const result = await handlers.get_template({ name: 'Widget', branch: 'nonexistent' })
+    assert.equal(result.isError, true)
   })
 })
 

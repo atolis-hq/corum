@@ -113,7 +113,9 @@ Installing downloads the pack into `.corum/packs/`, adds it to
 
 A pack can add edge types in `edge-types.yaml`. Each needs a `category`
 (`structural`, `semantic` or `lineage`) and may declare a `properties` schema
-for data carried on the edge. Core types cannot be overridden. The category
+for data carried on the edge. Set `traversal: outbound-only` to stop tools
+following the type backwards from its target (as core `reads` and `uses-type`
+do); the default is `bidirectional`. Core types cannot be overridden. The category
 decides how tools treat the type: summary counts, lineage defaults and
 collapse filtering.
 
