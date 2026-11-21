@@ -308,13 +308,14 @@ navigation does not remount; subscribe to changes and read the live context.
 | `ctx.branch` | Branch segment in the route, if present |
 | `ctx.viewingRef` | Viewed branch ref; `null` for filesystem sources |
 | `ctx.templates` | Loaded template metadata |
+| `ctx.revision` | Data revision, a number the host increments each time the graph reloads (file watcher, git poll, manual reload) |
 | `ctx.api.get(path, params)` | Fetch parsed JSON from an API endpoint; throws on non-2xx responses |
 | `ctx.navigate(hash)` | Navigate to a hash URL |
 | `ctx.hrefForNode(id, options)` | Resolve a node destination; optional `{ via: 'plugin-id', page: 'page-id' }` selects a plugin page |
 | `ctx.nodeLinks(id)` | Quick-link and **Open in** entries for a node, as `{ quick: { header, relations }, menu: { defaultHref, destinations, actions } }`. Each link is `{ key, pluginId, id, label, icon, href }`; `defaultHref` (the generic node page) is non-null only when a plugin page claims the node. A child node resolves through its owning root and keeps its own ID in every href. |
 | `ctx.openNode(id, options)` | Navigate using the same resolution as `hrefForNode` |
 | `ctx.hrefForPage(params, options)` | Build a URL for this plugin, preserving the viewed branch; optional `{ page: 'map' }`, otherwise the current page |
-| `ctx.subscribe(listener)` | Listen for route/query, viewed-ref or template changes; returns an unsubscribe function |
+| `ctx.subscribe(listener)` | Listen for route/query, viewed-ref, template or `revision` changes; returns an unsubscribe function |
 | `ctx.onError(error)` | Report an asynchronous failure to the host's error panel for this mount |
 
 Use `ctx.api.get('nodes', { template: 'DomainModel' })` or
@@ -324,6 +325,29 @@ unless explicitly provided. Other existing read endpoints include
 `/api/templates`, `/api/cluster`, `/api/search` and `/api/lineage`; plugins do
 not add server endpoints. Use the context API rather than building fetch URLs
 so requests retain the viewed branch.
+
+### Refreshing after a graph reload
+
+When the graph reloads, the host increments `ctx.revision` and notifies
+`ctx.subscribe` listeners. The page is not remounted: query-state, scroll and
+local state survive. Plugin pages refresh the same way host screens do. In
+React, `useApi(path, params)` from `corum:ui/react` fetches through `ctx.api.get`
+and refetches automatically when the path, params, viewed ref or revision
+changes. It returns `{ data, error, loading, refresh }`, ignores out-of-date
+responses, keeps the previous `data` while a refresh for the same request is
+in flight, and reports failures in `error` instead of throwing. Plain DOM
+plugins subscribe and refetch when `ctx.revision` changes.
+
+```js
+import { html } from 'corum:ui'
+import { useApi } from 'corum:ui/react'
+
+const Nodes = () => {
+  const { data, error, loading } = useApi('nodes', { template: 'DomainModel' })
+  if (error) return html`<p>${error.message}</p>`
+  return loading && !data ? html`<p>Loading</p>` : html`<p>${data.length} nodes</p>`
+}
+```
 
 ### Routing and opening nodes
 
@@ -370,7 +394,7 @@ This can replace the example's `index.js` without changing its manifest.
 the context changes. `html` is htm bound to React, so JSX is unnecessary.
 If you use JSX or TypeScript, compile it yourself to browser ES modules.
 
-`corum:ui/react` exports `mountReact`, `useCtx`, `CtxProvider` and the node link
+`corum:ui/react` exports `mountReact`, `useCtx`, `useApi`, `CtxProvider` and the node link
 components. `NodeLinks({ nodeId, surface })` renders the quick icons for
 `surface` (`'header'` or `'relations'`) followed by the **Open in** menu button,
 the same controls the host shows on node pages and connection rows.
@@ -392,9 +416,19 @@ these are the styling hooks. The `ok` test fixture plugin
 (`test/fixtures/plugins/ok`) demonstrates them together with `SchemaCard`.
 
 `corum:ui` exports `html` and shared components including `Icon`, `StateTag`,
-`StabilityTag`, `Chip`, `TemplateBadge`, `PropertyValue`, `PropertiesTable`
-and `SchemaCard`. Import from SDK specifiers rather than host file paths or
-globals. The static import map also provides `react`, `react-dom`,
+`StabilityTag`, `Chip`, `TemplateBadge`, `PropertyValue`, `PropertiesTable`,
+`SchemaCard` and `BrandMark`, plus the helpers `getDisplayName(id)` (the last
+segment of a node ID) and `kindColour(kind)` (a stable colour per node kind).
+The remaining exports, `navigate`, `createRegistry`, `matchKeysFor`,
+`owningRoot`, `resolveNodeTarget`, `hrefForNode`, `hrefForAction` and
+`isPageAvailable`, are routing and registry plumbing the host shell uses;
+plugins should prefer the equivalent `ctx` members. Adding or removing an SDK
+export is a compatibility promise, so the export list is pinned by
+`test/architecture.test.ts`.
+
+Plugins use SDK specifiers only: do not read host globals such as
+`window.CorumHost` or `window.CorumRouter`, and do not import host or other
+plugin files by path. Built-in plugins are held to this by architecture tests. The static import map also provides `react`, `react-dom`,
 `react-dom/client`, `react/jsx-runtime`, `htm`, `reactflow` and `elkjs`.
 Use the host's copies of these libraries, especially React. Plugins cannot
 extend the import map. Vendor other dependencies inside the plugin and import

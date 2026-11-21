@@ -86,7 +86,7 @@ Status: none filed yet.
 ## 12. Local verification gaps to re-run once the machine is clean
 - The final menu and quick-link changes (commits after `2d761c5`) passed unit tests but their Playwright specs could not be re-run locally on 2026-11-21 because of the socket exhaustion above. CI runs `npm test` only (no browser specs). Re-run `npx playwright test` locally after a reboot and fix anything that surfaces.
 
-## 13. Plugins must not read host globals: share generic helpers, keep the rest private (in progress: PR 4)
+## 13. Plugins must not read host globals: share generic helpers, keep the rest private (done in PR 4)
 - **Problem:** The Graph plugin reads the host global `window.CorumGraphUtils` (`web/builtin/graph/constants.js`). A plugin depending on an undocumented host global breaks the rule that plugins use SDK specifiers only, and third-party plugins cannot do the same.
 - **Intended outcome:** Generic helpers a plugin author could plausibly want (`getDisplayName(id)`, `kindColour(kind)`) are exported from `corum:ui` and documented. Graph-specific helpers (connected components, thread and owner scope filters, edge-type filtering, namespace map) move into `web/builtin/graph/` and are no longer shared globals. No built-in plugin reads a `window.Corum*` global.
 - **Acceptance:** `grep -rn "window.Corum" web/builtin` finds nothing; `node web/graph-utils.test.js` (updated for the new locations) and the Graph Playwright spec pass; the SDK exports are listed in `docs/plugins.md`.
@@ -102,7 +102,7 @@ Status: none filed yet.
 - **Constraints:** Keep the `plugin-error` test id and wording stable. Low priority.
 - **Depends on:** core Stage 3.
 
-## 15. Data-change signal for plugins and a `useApi` hook (in progress: PR 4)
+## 15. Data-change signal for plugins and a `useApi` hook (done in PR 4)
 - **Principle (decided):** plugin pages and host screens refresh through the same mechanism, so plugin pages behave exactly like host pages and bind to data changes by default.
 - **Problem:** Plugins call `ctx.api.get` in effects and hand-roll loading and error state. Mounted plugin pages also never learn about a graph reload: the host handles the `graph-reloaded` event only for its own data (`refreshAllData`), and `ctx.subscribe` fires on route, viewed-ref and template changes only. The Graph page fetches `/api/graph`, `/api/kinds` and lineage keyed on `ctx.viewingRef` alone, so after a reload it keeps showing stale data until remounted or the branch changes. (A page that depends on the whole `ctx` object, such as the `ok` fixture, refetches only incidentally, because a reload produces a new `templates` array.) Host screens update but plugin screens go stale.
 - **Intended outcome:** The context exposes a "graph data changed" signal (for example a revision counter included in the `subscribe` change check) usable by non-React plugins, and `useApi(path, params)` in `corum:ui/react` returns `{ data, error, loading, refresh }`, refetching when its inputs, the viewed ref or the data revision change. The Graph plugin uses it. This is a notification that data changed, not a streaming API.

@@ -34,6 +34,11 @@ node dist/src/bin/corum.js import --config <yaml> [-b <branch>]  # import specs;
 
 **Mutation engine** (`src/mutate/`): all graph mutations live here - rename cascade with `previousNames` + hidden `renamed-from` trail edges (alias map gives cross-branch/import resolution of retired IDs), soft/hard delete tiers gated by default-branch presence, and the working session (`session.ts`: validate-before-apply, journal, autosave WIP checkpoints, guarded squash at `commit_changes`).
 
+**UI plugin boundary** (`test/architecture.test.ts` enforces it):
+- Built-in plugins (`web/builtin/**`) import only their own files plus `corum:ui`, `corum:ui/react` and the vendored libraries; no `window.Corum*` globals, no direct `fetch` (use `ctx.api` / `useApi`).
+- Host code (`web/app.jsx`, `web/host`, `web/search.jsx`) never names a specific plugin; `web/sdk` never imports host or plugins, host never imports plugins.
+- SDK exports are a snapshot-pinned, documented compatibility promise; hex colour literals in `web/` scripts are a ratchet that may only go down.
+
 **Serialization** (`src/mcp/serializers.ts`): YAML (default), JSON, or TOON (compact token format). `compact_keys` shortens common keys (`id->i`, `template->t`, etc.) to reduce token usage. MCP omits node provenance by default; node-returning tools accept `include_provenance: true` when codebase/source bridging is needed. `get_lineage` is lean by default and omits `edges` unless `include_edges: true`.
 
 **Error handling**: Load errors are collected as diagnostics and bundled in `LoadError`; not thrown per-item unless `strict: true`. Query failures throw `QueryError` immediately.
