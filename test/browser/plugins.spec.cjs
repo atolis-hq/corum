@@ -324,3 +324,33 @@ test('mobile nav rail scrolls within itself and keeps buttons equal width', asyn
   expect(metrics.railScrolls).toBe(true);
   expect(new Set(metrics.widths).size).toBe(1);
 });
+
+test('a plugin page renders SDK node links and a SchemaCard for the node it is opened with', async ({ page }) => {
+  await page.goto(`/#/p/ok/home?id=${MODEL}`);
+  const heading = page.getByTestId('ok-node-heading');
+  await expect(heading).toBeVisible();
+  // Quick icons and the menu come from the SDK components, driven by the plugin's own ctx.
+  await expect(heading.locator('a.quick-link[title="View in graph"]')).toHaveAttribute('href', hrefTo('graph/view', 'focus', MODEL));
+  const okLink = heading.locator('a.quick-link[title="View in OK"]');
+  await expect(okLink).toHaveAttribute('href', hrefTo('ok/home', 'id', MODEL));
+  await expect(okLink.locator('i.fa-star')).toHaveCount(1);
+  const trigger = heading.getByRole('button', { name: 'Open in', exact: true });
+  await trigger.click();
+  const menu = heading.getByRole('menu');
+  for (const name of ['Default view', 'Claim A', 'Claim B', 'View in OK', 'View in graph']) {
+    await expect(menu.getByRole('menuitem', { name, exact: true })).toBeVisible();
+  }
+  await expect(menu.getByRole('separator')).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+  // The cluster is fetched through ctx.api and drawn with the SDK SchemaCard.
+  const schema = page.getByTestId('ok-schema');
+  await expect(schema).toContainText('customerId');
+  await expect(schema).toContainText('totalAmount');
+});
+
+test('the ok plugin page without an id shows a hint', async ({ page }) => {
+  await page.goto('/#/p/ok/home');
+  await expect(page.getByTestId('plugin-ok-hint')).toBeVisible();
+  await expect(page.getByTestId('ok-node-heading')).toHaveCount(0);
+});
