@@ -573,6 +573,20 @@ describe('web server', () => {
       assert.equal(nodes.find(n => n.id === 'orders.DomainModel.order')?.rootId, undefined)
     })
 
+    it('includes inbound reads edges and their consumers for a DomainModel in /api/cluster', async () => {
+      const response = await fetch(`http://localhost:${sourceHandle.port}/api/cluster?nodeId=orders.DomainModel.order&includeEdges=reads`)
+      assert.equal(response.status, 200)
+      const body = await response.json() as {
+        edges: Array<{ from: string; to: string; type: string }>
+        includedNodes: Array<{ id: string }>
+      }
+      assert.ok(
+        body.edges.some(e => e.type === 'reads' && e.from === 'orders.APIEndpoint.create-order' && e.to === 'orders.DomainModel.order'),
+        'expected inbound reads edge',
+      )
+      assert.ok(body.includedNodes.some(n => n.id === 'orders.APIEndpoint.create-order'), 'expected consumer in includedNodes')
+    })
+
     it('includes owning root metadata for external owned nodes in /api/cluster', async () => {
       const response = await fetch(`http://localhost:${sourceHandle.port}/api/cluster?nodeId=payments.APIEndpoint.complete-payment&includeEdges=calls`)
       assert.equal(response.status, 200)

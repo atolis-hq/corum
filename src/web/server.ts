@@ -718,8 +718,8 @@ export function createApp(
       }
 
       const cluster = getClusterView(targetGraph, nodeId, parseIncludeEdges(req.query.includeEdges, targetGraph), {
-          includeInboundReads: true,
-        })
+        includeInboundReads: true,
+      })
       const rawOverlayRefs = req.query.overlayRefs
       const overlayRefs = Array.isArray(rawOverlayRefs)
         ? rawOverlayRefs.filter((r): r is string => typeof r === 'string' && r.length > 0)
