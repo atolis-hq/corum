@@ -16,6 +16,8 @@ import { installPackFiles } from '../pack/installer.js'
 import { readManifest, upsertPack } from '../pack/manifest.js'
 import { fetchRegistry, findPack, resolveRef } from '../pack/registry.js'
 import { createGraphRuntimeConfig } from '../source/config.js'
+import { scaffoldPlugin } from '../plugin/scaffold.js'
+import { validatePluginDir } from '../plugin/validate.js'
 import { startWebServer } from '../web/server.js'
 
 const require = createRequire(import.meta.url)
@@ -310,6 +312,50 @@ packCmd
       process.stderr.write(`[ERROR] ${err instanceof Error ? err.message : String(err)}\n`)
       process.exit(1)
     }
+  })
+
+const pluginCmd = program.command('plugin').description('Create and check UI plugins')
+
+pluginCmd
+  .command('init <id>')
+  .description('Scaffold a working plugin (plugin.yaml, index.js)')
+  .option('--dir <path>', 'Target directory (default: ./<id>)')
+  .action((id: string, opts) => {
+    const dir = opts.dir ?? id
+    const result = scaffoldPlugin(id, dir, version)
+    if (!result.ok) {
+      for (const error of result.errors) process.stderr.write(`[ERROR] ${error}\n`)
+      process.exit(1)
+    }
+    process.stdout.write(`Created plugin "${id}" in ${result.dir} (${result.files.join(', ')})\n`)
+    process.stdout.write(`engines.corum targets Corum ${version}; adjust it before publishing.\n`)
+    process.stdout.write(`Next: corum plugin validate ${dir}\n      corum web --plugin-dir ${dir}\n      open http://localhost:3000/#/p/${id}/home\n`)
+  })
+
+pluginCmd
+  .command('validate [dir]')
+  .description('Validate a plugin directory against the manifest rules, Corum version and graph templates')
+  .option('--graph <path>', 'Override graph path')
+  .action(async (dir: string | undefined, opts) => {
+    const target = dir ?? '.'
+    if (!existsSync(path.join(path.resolve(target), 'plugin.yaml'))) {
+      process.stderr.write(`[ERROR] ${path.resolve(target)}: no plugin.yaml found\n`)
+      process.exit(2)
+    }
+    let templates: Set<string>
+    try {
+      const config = buildRuntimeConfig(opts.graph)
+      const graph = await loadGraph({ source: config.source, strict: false })
+      templates = new Set(graph.templates.keys())
+    } catch (err) {
+      process.stderr.write(`[ERROR] could not load the graph: ${err instanceof Error ? err.message : String(err)}\n`)
+      process.exit(2)
+    }
+    const result = validatePluginDir(target, templates, version)
+    for (const warning of result.warnings) process.stderr.write(`[WARN] ${warning}\n`)
+    for (const error of result.errors) process.stderr.write(`[ERROR] ${error}\n`)
+    process.stdout.write(result.exitCode === 0 ? 'Plugin is valid.\n' : `Plugin is invalid: ${result.errors.length} error(s).\n`)
+    if (result.exitCode !== 0) process.exit(result.exitCode)
   })
 
 function buildRuntimeConfig(graphOverride?: string) {

@@ -85,9 +85,10 @@ default-branch graph fails to load, built-in and template-free plugins keep
 working. The default-branch commit is resolved once per reload (not per request), so plugin requests do no git work and one request always sees one commit. A reload whose plugin state cannot be built fails as a whole and is retried on the next poll, so the graph and plugins never point at different commits. If no state could be built at startup, built-ins are served and the build is retried on later requests (at most every few seconds); plugin errors are logged once per commit. For local plugin development, use
 `source: file` (see [Configuration](configuration.md)).
 
-There is no `corum plugin init`, `corum plugin validate` or
-`corum plugin update` command yet. Create and register directories as
-described here, or use development mode below. Development plugins
+Use `corum plugin init` and `corum plugin validate` (see
+[Scaffold and validate](#scaffold-and-validate)) to create and check a plugin.
+There is no `corum plugin update` command yet. Create and register directories
+as described here, or use development mode below. Development plugins
 (`corum web --plugin-dir`) load from local disk for any graph source;
 registered custom plugins on Git sources are covered by #168. SDK type declarations are shipped; see
 [Type checking and editor support](#type-checking-and-editor-support).
@@ -122,7 +123,38 @@ its pages and actions work like any other plugin's. Nothing is written to
 - **Security:** the same serving rules apply (allowed asset types only, never
   YAML, no traversal or symlink escape).
 
+## Scaffold and validate
+
+```bash
+corum plugin init my-plugin            # writes ./my-plugin
+corum plugin validate ./my-plugin      # checks it
+corum web --plugin-dir ./my-plugin     # runs it
+```
+
+**`corum plugin init <id> [--dir <path>]`** writes `plugin.yaml` and `index.js`
+(one page and one node action, the same as the example below) into `./<id>`,
+or into `--dir`. It refuses an existing non-empty directory and an invalid ID
+(`^[a-z0-9-]+$`), and in both cases writes nothing and exits 1. `engines.corum`
+is set to the running Corum minor version; adjust it before publishing. The
+page is at `#/p/<id>/home`.
+
+**`corum plugin validate [dir] [--graph <path>]`** checks the directory
+(default: the current one) with the same rules the server applies: manifest
+structure, `engines.corum` against the running version, and `requires.templates`
+against the loaded graph. It prints one `[ERROR]` line per problem on stderr and
+a summary on stdout. A `main` file that does not exist is reported as a
+`[WARN]` and does not fail validation.
+
+| Exit code | Meaning |
+| --- | --- |
+| 0 | Valid |
+| 1 | The manifest, engine range or required templates are invalid |
+| 2 | Setup failure: directory or `plugin.yaml` missing, or the graph cannot be loaded |
+
 ## Create a working plugin
+
+`corum plugin init` is the faster path; this section explains what it
+generates.
 
 This example adds a **Node list** page and an **Open node list** action on
 node pages. It needs an existing, loadable filesystem graph, such as one
