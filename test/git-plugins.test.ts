@@ -114,3 +114,43 @@ it('serves Git plugins from a pinned default commit with secure assets and curre
     fs.rmSync(dir, { recursive: true, force: true })
   }
 })
+
+it('keeps missing declaration paths separate from manifest IDs', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-git-plugins-collide-'))
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim()
+  const write = (file: string, text: string) => {
+    fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true })
+    fs.writeFileSync(path.join(dir, file), text)
+  }
+  const manifest = (id: string) => JSON.stringify({
+    id, version: '1.0.0', engines: { corum: '*' }, main: './index.js',
+    requires: { templates: [] }, contributes: { pages: [], nodeActions: [] },
+  })
+  try {
+    git('init', '-b', 'main')
+    git('config', 'user.name', 'Fixture')
+    git('config', 'user.email', 'fixture@example.com')
+    // Pack declares missing "ui" while a standalone plugin has manifest ID "ui";
+    // a standalone plugin "real" precedes a missing declared path "real".
+    write('graph/graph.yaml', JSON.stringify({
+      templatePacks: [{ path: '../pack' }],
+      plugins: [{ path: '../standalone' }, { path: '../real-dir' }, { path: 'real' }],
+    }))
+    write('pack/pack.yaml', 'name: fixture\nversion: 1.0.0\nplugins: [ui]\n')
+    write('standalone/plugin.yaml', manifest('ui'))
+    write('standalone/index.js', 'ui')
+    write('real-dir/plugin.yaml', manifest('real'))
+    write('real-dir/index.js', 'real')
+    git('add', '-A')
+    git('commit', '-qm', 'fixture')
+    const source = new GitGraphSource({ localPath: dir, graphDir: 'graph', defaultBranch: 'main' })
+    const request = await gitPluginRequest(source, path.join(dir, 'no-builtins'), '0.1.0')
+    const byId = (id: string) => request.statuses.filter(entry => entry.id === id).map(entry => entry.status).sort()
+    assert.deepEqual(byId('ui'), ['enabled', 'unavailable'])
+    assert.deepEqual(byId('real'), ['enabled', 'unavailable'])
+    assert.ok(request.enabledPlugin('ui'))
+    assert.ok(request.enabledPlugin('real'))
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})

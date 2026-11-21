@@ -27,13 +27,15 @@ export async function gitPluginRequest(source: GraphSource, builtinDir: string, 
   const plugins = discovered.plugins
   const missing: PluginStatus[] = []
   const ids = new Set(plugins.map(plugin => plugin.manifest.id))
+  const missingPaths = new Set<string>()
 
   async function add(declared: string, base: string, origin: PluginOrigin) {
     const dir = path.posix.normalize(path.posix.join(base, declared))
     const bytes = await snapshot.readFile(path.posix.join(dir, 'plugin.yaml'))
     if (!bytes) {
-      if (ids.has(declared)) return
-      ids.add(declared)
+      // Missing declarations are keyed by path and never compete with manifest IDs.
+      if (missingPaths.has(declared)) return
+      missingPaths.add(declared)
       // A missing manifest has no ID; preserve the exact author-supplied path.
       const manifest: PluginManifest = {
         id: declared, version: '', engines: { corum: '*' }, requires: { templates: [] },
