@@ -12,22 +12,67 @@ function record(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {}
 }
 
-type PluginRequest = Awaited<ReturnType<typeof computePluginRequest>>
-const cache = new WeakMap<GraphSource, { key: string; value: Promise<PluginRequest> }>()
+export type PluginRequest = Awaited<ReturnType<typeof computePluginRequest>>
+
+/** Resolve the default-branch commit and compute plugin state for it (no caching). */
+export async function gitPluginRequest(source: GraphSource, builtinDir: string, corumVersion: string): Promise<PluginRequest> {
+  return computePluginRequest(await source.pluginSnapshot!(), builtinDir, corumVersion)
+}
+
+export type GitPluginState = {
+  /** Re-resolve the default-branch commit; called from the reload flow only. */
+  refresh(): Promise<void>
+  /** Current pinned state; never contacts the source once a state exists. */
+  current(): Promise<PluginRequest>
+}
 
 /**
- * One request, one default-branch commit, including compatibility and asset bytes.
- * Computed state is shared by every request at the same commit.
+ * Holds the plugin state for the commit the last (re)load resolved. Requests
+ * read it without any git work, so one request sees exactly one commit.
  */
-export async function gitPluginRequest(source: GraphSource, builtinDir: string, corumVersion: string): Promise<PluginRequest> {
-  const snapshot = await source.pluginSnapshot!()
-  const key = `${snapshot.ref}\0${builtinDir}\0${corumVersion}`
-  const hit = cache.get(source)
-  if (hit?.key === key) return hit.value
-  const value = computePluginRequest(snapshot, builtinDir, corumVersion)
-  cache.set(source, { key, value })
-  value.catch(() => { if (cache.get(source)?.value === value) cache.delete(source) })
-  return value
+export function createGitPluginState(
+  source: GraphSource, builtinDir: string, corumVersion: string, logger: (message: string) => void = () => {},
+): GitPluginState {
+  let state: Promise<PluginRequest> | null = null
+  let lastRef: string | undefined
+
+  async function build(): Promise<PluginRequest> {
+    const snapshot = await source.pluginSnapshot!()
+    const next = await computePluginRequest(snapshot, builtinDir, corumVersion)
+    if (snapshot.ref !== lastRef) {
+      lastRef = snapshot.ref
+      for (const error of next.errors) logger(`[corum] plugin: ${error}`)
+    }
+    return next
+  }
+  /** Built-ins only, used when the source is unreachable and no state exists yet. */
+  async function builtinsOnly(error: unknown): Promise<PluginRequest> {
+    logger(`[corum] plugin state unavailable, serving built-ins only: ${error instanceof Error ? error.message : String(error)}`)
+    const stub = {
+      ref: 'unavailable', graphDir: '', source: {} as PluginSnapshot['source'],
+      readFile: async () => null,
+    } as PluginSnapshot
+    return computePluginRequest(stub, builtinDir, corumVersion)
+  }
+
+  return {
+    async refresh() {
+      try {
+        const next = build()
+        await next
+        state = next
+      } catch (error) {
+        // Keep serving the previous commit's state if the remote is unreachable.
+        if (!state) state = builtinsOnly(error)
+      }
+    },
+    current() {
+      if (!state) {
+        state = build().catch(builtinsOnly)
+      }
+      return state
+    },
+  }
 }
 
 async function computePluginRequest(snapshot: PluginSnapshot, builtinDir: string, corumVersion: string) {

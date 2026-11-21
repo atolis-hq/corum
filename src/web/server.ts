@@ -32,7 +32,7 @@ import { getPropertySchemasFromTemplate } from '../loader/template-props.js'
 import type { EdgeType, Graph, MultiGraph, Node, Template } from '../schema/index.js'
 import { QueryError } from '../schema/index.js'
 import { registerVendorRoutes } from './vendor.js'
-import { gitPluginRequest } from './plugins/git-runtime.js'
+import { createGitPluginState, type GitPluginState } from './plugins/git-runtime.js'
 import { ifNoneMatchSatisfied, resolvePluginAsset } from './plugins/assets.js'
 import { createPluginRuntime, type PluginRuntime } from './plugins/runtime.js'
 import { createGraphRuntimeConfig } from '../source/config.js'
@@ -427,8 +427,10 @@ export function createApp(
     builtinDir: BUILTIN_PLUGIN_DIR,
     corumVersion: version,
   }),
+  gitPluginsOption?: GitPluginState,
 ): express.Application {
   const app = express()
+  const gitPlugins = gitPluginsOption ?? (source?.pluginSnapshot ? createGitPluginState(source, BUILTIN_PLUGIN_DIR, version) : undefined)
 
   app.get('/health', (_req, res) => {
     res.json({ ok: true })
@@ -728,8 +730,8 @@ export function createApp(
 
   app.get('/api/plugins', async (_req, res, next) => {
     try {
-      if (source?.pluginSnapshot) {
-        const request = await gitPluginRequest(source, BUILTIN_PLUGIN_DIR, version)
+      if (gitPlugins) {
+        const request = await gitPlugins.current()
         res.setHeader('Cache-Control', 'no-cache')
         res.json(request.statuses)
         return
@@ -741,7 +743,7 @@ export function createApp(
 
   app.get('/plugins/:id/*', async (req, res, next) => {
     try {
-      const request = source?.pluginSnapshot ? await gitPluginRequest(source, BUILTIN_PLUGIN_DIR, version) : null
+      const request = gitPlugins ? await gitPlugins.current() : null
       const plugin = request?.enabledPlugin(req.params.id)
       if (request && plugin?.origin !== 'builtin') {
         const asset = plugin ? await request.asset(plugin, (req.params as Record<string, string>)[0] ?? '') : null
@@ -904,6 +906,10 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
     logger,
   })
 
+  const gitPlugins = options.source?.pluginSnapshot
+    ? createGitPluginState(options.source, BUILTIN_PLUGIN_DIR, version, logger)
+    : undefined
+
   async function reloadState(reason: string): Promise<void> {
     if (reloadInFlight) return reloadInFlight
     reloadInFlight = (async () => {
@@ -913,6 +919,8 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
       replaceGraph(graph, nextGraph)
       multiCache?.invalidate()
       pluginRuntime.refresh()
+      // Resolve the default-branch commit once per reload, not once per request.
+      await gitPlugins?.refresh()
       options.onReload?.()
       reloadEvents.notify()
       logger(`[corum] graph reloaded after ${reason}`)
@@ -925,7 +933,7 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
     }
   }
 
-  const app = createApp(graph, reloadEvents, options.source, multiCache, () => reloadState('manual reload'), pluginRuntime)
+  const app = createApp(graph, reloadEvents, options.source, multiCache, () => reloadState('manual reload'), pluginRuntime, gitPlugins)
   const stopWatcher = isFileWatcherEnabled(options)
     ? startGraphFileWatcher(graph, {
         graphPath,
