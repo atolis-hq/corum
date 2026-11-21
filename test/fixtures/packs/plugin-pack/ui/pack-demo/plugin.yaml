@@ -1,0 +1,10 @@
+id: pack-demo
+version: 1.0.0
+engines: { corum: ">=0.1.0" }
+requires: { templates: [PackDemo] }
+main: ./index.js
+contributes:
+  pages:
+    - { id: home, title: Pack Demo, icon: star, mount: mount, opens: [] }
+  nodeActions:
+    - { id: inspect, label: Inspect in Pack Demo, appliesTo: [PackDemo], page: home, menu: true }

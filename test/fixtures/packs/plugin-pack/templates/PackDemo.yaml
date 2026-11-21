@@ -1,0 +1,8 @@
+name: PackDemo
+info:
+  version: "1.0.0"
+  abstract: false
+properties:
+  type: object
+  additionalProperties: false
+  properties: {}
