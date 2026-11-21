@@ -6,6 +6,7 @@ export type PluginStatusValue = 'enabled' | 'disabled' | 'unavailable'
 
 export type PluginStatus = {
   id: string
+  name?: string
   origin: PluginOrigin
   version: string
   status: PluginStatusValue

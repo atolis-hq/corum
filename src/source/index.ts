@@ -15,7 +15,16 @@ export interface CommitOptions {
   force?: boolean
 }
 
+export type PluginSnapshot = {
+  ref: string
+  graphDir: string
+  source: GraphSource
+  /** Repository-relative regular files only; symlinks are never followed. */
+  readFile(path: string): Promise<Buffer | null>
+}
+
 export interface GraphSource {
+  pluginSnapshot?(): Promise<PluginSnapshot>
   defaultBranch(): Promise<string>
   listBranches(): Promise<string[]>
   loadPackContent(ref: string): Promise<ContentMap>
