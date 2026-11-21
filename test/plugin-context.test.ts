@@ -74,6 +74,18 @@ describe('createPluginContext', () => {
     assert.equal(fired, 3)
   })
 
+  it('exposes the data revision live and notifies subscribers when it changes', () => {
+    const { ctx, update, state } = setup()
+    assert.equal(ctx.revision, 0)
+    let fired = 0
+    ctx.subscribe(() => { fired += 1 })
+    update({ ...state, revision: 1 })
+    assert.equal(ctx.revision, 1)
+    assert.equal(fired, 1)
+    update({ ...state, revision: 1 })
+    assert.equal(fired, 1)
+  })
+
   it('api.get applies the viewing ref, accepts object/array params and throws on non-2xx', async () => {
     const { ctx, update, state, calls } = setup()
     await ctx.api.get('/api/graph')

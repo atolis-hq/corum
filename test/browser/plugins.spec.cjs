@@ -354,3 +354,25 @@ test('the ok plugin page without an id shows a hint', async ({ page }) => {
   await expect(page.getByTestId('plugin-ok-hint')).toBeVisible();
   await expect(page.getByTestId('ok-node-heading')).toHaveCount(0);
 });
+
+test('plugin pages refetch after a graph reload without remounting', async ({ page }) => {
+  for (const [url, endpoint] of [[`/#/p/ok/home?id=${MODEL}`, '/api/cluster'], ['/#/p/graph/view', '/api/graph']]) {
+    const seen = [];
+    page.on('request', request => { if (new URL(request.url()).pathname === endpoint) seen.push(request.url()); });
+    await page.goto(url);
+    const host = page.locator('.plugin-host');
+    await expect(host).toBeVisible();
+    await expect.poll(() => seen.length).toBeGreaterThan(0);
+    await page.waitForTimeout(300);
+    const before = seen.length;
+    const hash = await page.evaluate(() => location.hash);
+    await host.evaluate(el => { el.dataset.mountMarker = 'kept'; });
+    const response = await page.request.post('/api/reload');
+    expect(response.ok()).toBe(true);
+    // The reload event reaches the open page, which refetches through the same revision as host screens.
+    await expect.poll(() => seen.length, { message: `${endpoint} refetched after reload` }).toBeGreaterThan(before);
+    await expect(host).toHaveAttribute('data-mount-marker', 'kept');
+    expect(await page.evaluate(() => location.hash)).toBe(hash);
+    page.removeAllListeners('request');
+  }
+});

@@ -1,27 +1,12 @@
-/* Pure graph utility functions — browser globals + Node require() compatible. */
-
-function getDisplayName(nodeId) {
-  return nodeId.split('.').pop();
-}
-
-const KIND_PALETTE = ['#2f6fb0', '#b0562f', '#4a8a3c', '#8a3c7a', '#b08a2f', '#2f8a8a', '#7a3c3c', '#5a5ab0'];
-
-// Stable colour per kind id. The default kind has a fixed slot; others hash into the rest.
-function kindColour(kind) {
-  const id = kind ?? 'component';
-  if (id === 'component') return KIND_PALETTE[0];
-  let hash = 0;
-  for (const ch of id) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-  return KIND_PALETTE[1 + (hash % (KIND_PALETTE.length - 1))];
-}
+/* Pure graph helpers for the Graph plugin (Node-importable: no browser APIs, relative imports only). */
 
 // Distinct kind ids present in a node list, sorted.
-function collectKinds(nodes) {
+export function collectKinds(nodes) {
   return [...new Set(nodes.map(n => n.kind ?? 'component'))].sort((a, b) => a.localeCompare(b));
 }
 
 // Keep only nodes of one kind (and edges between them). null/'all' keeps everything.
-function filterByKind(nodes, edges, kind) {
+export function filterByKind(nodes, edges, kind) {
   if (!kind || kind === 'all') return { nodes, edges };
   const kept = nodes.filter(n => (n.kind ?? 'component') === kind);
   const ids = new Set(kept.map(n => n.id));
@@ -30,12 +15,12 @@ function filterByKind(nodes, edges, kind) {
 
 // Kind filter in effect: an explicit choice wins; otherwise the default kind,
 // or 'all' when the graph has no namespaces of the default kind.
-function resolveKindFilter(requested, nodes) {
+export function resolveKindFilter(requested, nodes) {
   if (requested) return requested;
   return collectKinds(nodes).includes('component') ? 'component' : 'all';
 }
 
-function buildNamespaceMap(nodes, edges) {
+export function buildNamespaceMap(nodes, edges) {
   const counts = new Map();
   const kinds = new Map();
   for (const node of nodes) {
@@ -72,18 +57,18 @@ function buildNamespaceMap(nodes, edges) {
   return { nodes: componentNodes, edges: componentEdges };
 }
 
-function applyEdgeTypeFilter(edges, visibleTypes) {
+export function applyEdgeTypeFilter(edges, visibleTypes) {
   return edges.filter(e => visibleTypes.has(e.type));
 }
 
-function collectEdgeTypes(...edgeLists) {
+export function collectEdgeTypes(...edgeLists) {
   return [...new Set(edgeLists.flatMap(edges => edges.map(edge => edge.type)))].sort();
 }
 
 // Weakly connected components. Edges use {from, to}; extraLinks are additional
 // affinity pairs (e.g. group co-membership) that merge components without
 // being real edges. Returns arrays of node ids.
-function computeConnectedComponents(nodes, edges, extraLinks = []) {
+export function computeConnectedComponents(nodes, edges, extraLinks = []) {
   const adjacency = new Map(nodes.map(n => [n.id, []]));
   for (const link of [...edges, ...extraLinks]) {
     if (!adjacency.has(link.from) || !adjacency.has(link.to)) continue;
@@ -114,7 +99,7 @@ function computeConnectedComponents(nodes, edges, extraLinks = []) {
 // Scope threads (connected components) to those containing an interaction:
 // an edge of scope.edgeType whose endpoints match the optional
 // fromTemplate/toTemplate. Returns the node ids of matching threads.
-function filterThreadScope(nodes, edges, scope) {
+export function filterThreadScope(nodes, edges, scope) {
   const components = computeConnectedComponents(nodes, edges);
   const templateById = new Map(nodes.map(n => [n.id, n.template]));
   const matchingEdges = edges.filter(e =>
@@ -135,7 +120,7 @@ function filterThreadScope(nodes, edges, scope) {
 
 // Scope to one owner: the owner node itself, nodes owned by it, plus their
 // direct neighbours via the given edges.
-function filterOwnerScope(nodes, edges, parentId) {
+export function filterOwnerScope(nodes, edges, parentId) {
   const memberIds = new Set(nodes.filter(n => n.id === parentId || n.parentId === parentId).map(n => n.id));
   const nodeIds = new Set(memberIds);
   for (const e of edges) {
@@ -143,11 +128,4 @@ function filterOwnerScope(nodes, edges, parentId) {
     if (memberIds.has(e.to)) nodeIds.add(e.from);
   }
   return nodeIds;
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { buildNamespaceMap, kindColour, collectKinds, filterByKind, resolveKindFilter, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName, computeConnectedComponents, filterThreadScope, filterOwnerScope };
-}
-if (typeof window !== 'undefined') {
-  window.CorumGraphUtils = { buildNamespaceMap, kindColour, collectKinds, filterByKind, resolveKindFilter, applyEdgeTypeFilter, collectEdgeTypes, getDisplayName, computeConnectedComponents, filterThreadScope, filterOwnerScope };
 }

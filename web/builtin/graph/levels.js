@@ -1,8 +1,9 @@
 /* Pure builders for the three graph levels: component map, component interior, node focus. */
-import { EDGE_STYLES, GraphUtils } from './constants.js'
+import { getDisplayName, kindColour } from 'corum:ui'
+import { EDGE_STYLES } from './constants.js'
+import { buildNamespaceMap, filterByKind, applyEdgeTypeFilter, filterThreadScope, filterOwnerScope } from './graph-helpers.js'
 import { makeRFEdge, buildRFNodesForNodes, buildRFEdgesForEdges } from './rf-builders.js'
 
-const { buildNamespaceMap, filterByKind, kindColour, applyEdgeTypeFilter, getDisplayName, filterThreadScope, filterOwnerScope } = GraphUtils
 
 // Level 1: one card per component (namespace), edges aggregated between components.
 export function buildComponentLevel({ graphData, visibleEdgeTypes, kindFilter, navToComponent }) {

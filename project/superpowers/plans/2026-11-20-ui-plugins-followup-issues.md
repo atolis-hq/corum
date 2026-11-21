@@ -8,8 +8,8 @@ Status: none filed yet.
 
 ---
 
-## 1. Port Models/Explorer to a built-in plugin (optional, low priority)
-- **Note:** Graph already proves the plugin mechanism, and the Explorer has no swap-out need. Port it only for consistency or if a second large screen is wanted to exercise the mechanism. Plugging into search results (without changing the core search) is a separate, later idea.
+## 1. Port Models/Explorer to a built-in plugin (planned)
+- **Decision (product owner):** the Explorer becomes a built-in plugin. The Explorer is the Models section: the secondary navigation tree (namespaces grouped by kind, then node types, then nodes) and the namespace overview pages. The node detail page (`NodePage`) is the canonical page for any node and stays in the host. No routing change is needed for this port. Plugging into search results (without changing the core search) is a separate, later idea.
 - **Problem:** The Models/Explorer (`NavTree`, `NamespacePage`, `NamespacesPage`, node tree in `web/app.jsx`) is still hardcoded host code; only Graph proves the plugin path.
 - **Intended outcome:** Models/Explorer is a built-in plugin (`web/builtin/explorer/`) using the same manifest/loader/SDK as Graph. The host keeps only the Dashboard, generic node page, shell and search. Deep links to namespaces and nodes keep working.
 - **Acceptance:** `npm test`, `npm run test:web`; `#/p/explorer/…` routes work; `#/node?id=…` generic page unchanged; existing mobile-navigation and table-scroll specs pass.
@@ -42,7 +42,7 @@ Status: none filed yet.
 - **Acceptance:** CLI tests: scaffold loads in the dev server; validate catches each manifest error class used by `parsePluginManifest`.
 - **Depends on:** issues 3 and 4 recommended first.
 
-## 6. Plugin documentation and ADR housekeeping
+## 6. Plugin documentation and ADR housekeeping (done in PRs 3-4: `docs/plugins.md`, ADR-010 Accepted, AGENTS.md note; keep only for later doc updates)
 - **Intended outcome:** `docs/web-ui.md` documents the plugin contract (manifest, `ctx`, SDK modules, routing, enablement in `graph.yaml`, trust model, authoring a plugin end to end). `AGENTS.md` mentions the plugin system in the architecture section. ADR-010 status is Accepted and its open items are resolved or re-listed.
 - **Acceptance:** A reader can create a working plugin from the docs alone (checked by following them once).
 - **Depends on:** issues 1-3.
@@ -59,12 +59,12 @@ Status: none filed yet.
 - **Approach (non-binding):** Investigate whether focus is stolen by a later re-render; add a deterministic "app ready" marker (for example a `data-ready` attribute set once the first render completes) and wait on it. Re-check after the plugin core lands, since Babel is no longer the only startup cost.
 - **Labels:** `bug`. **Depends on:** none (can run any time; more useful after core Stage 3).
 
-## 9. Make the generic node page reachable for single-claimant nodes
-- **Problem:** With a single plugin claiming a template (`opens`), `#/node?id=…` always `location.replace`s to the plugin page (`web/app.jsx` NodePage), so the generic node page for that node cannot be reached or shared. ADR-010 section 5a calls the generic page the canonical address and fallback; a plugin page also has no way to link back to it.
-- **Intended outcome:** Every node has a reachable, shareable generic view regardless of plugin claims, and resolution still redirects by default so "open node" lands in the claimant plugin.
-- **Acceptance:** Playwright spec: a node claimed by one plugin can be opened on the generic page via an explicit generic link, the plugin page offers a "Generic view" link, and the default `hrefForNode` still resolves to the plugin page.
-- **Constraints:** Do not change the resolution order in ADR-010 5a for default links; no new manifest fields unless the ADR is amended.
-- **Approach (non-binding):** A `view=generic` route parameter that bypasses redirect (and `hrefForNode(id, { via: 'generic' })`); add the link to the plugin-unavailable page and the Open-in bar. Update ADR-010 5a accordingly.
+## 9. Make the default node page reachable for single-claimant nodes (minimal fix)
+- **Problem:** With a single plugin claiming a template (`opens`), `#/node?id=…` always `location.replace`s to the plugin page (`web/app.jsx` NodePage), so the default node page for that node cannot be reached or shared.
+- **Intended outcome:** Every node has a reachable, shareable default view regardless of plugin claims, with no new configuration. Default links still resolve to the claimant plugin as today.
+- **Acceptance:** Playwright spec: `#/node?id=X&view=default` shows the default node page for a node claimed by one plugin; the "Open in" menu offers a "Default view" link that uses it; the default `hrefForNode` still resolves to the plugin page.
+- **Constraints (decided):** No new `graph.yaml` options and no routing redesign; do not change the resolution order in ADR-010 5a for default links. Rendering a plugin in place instead of redirecting, and pinned default views, are explicitly deferred (see the "Later" list).
+- **Approach (non-binding):** A `view=default` query parameter that bypasses the redirect.
 - **Labels:** `bug`. **Depends on:** core Stage 2.
 
 ## 10. SDK primitives build node links without the branch
@@ -83,13 +83,13 @@ Status: none filed yet.
 - **Approach (non-binding):** Serve a subset of Font Awesome free-solid and the two font families from `node_modules` or vendored files via the existing `/vendor` allowlist.
 - **Labels:** `enhancement`.
 
-## 12. Local verification gaps to re-run once the machine is clean
-- The final menu and quick-link changes (commits after `2d761c5`) passed unit tests but their Playwright specs could not be re-run locally on 2026-11-21 because of the socket exhaustion above. CI runs `npm test` only (no browser specs). Re-run `npx playwright test` locally after a reboot and fix anything that surfaces.
+## 12. Local verification gaps (done)
+- Resolved 2026-11-21: after a reboot the full Playwright suite was re-run (39/39 on the PR 4 branch). Remaining caveat: CI runs `npm test` only, not the browser specs; consider adding them to CI.
 
-## 13. Plugins must not read host globals: share generic helpers, keep the rest private (in progress: PR 4)
+## 13. Plugins must not read host globals: share generic helpers, keep the rest private (done in PR 4)
 - **Problem:** The Graph plugin reads the host global `window.CorumGraphUtils` (`web/builtin/graph/constants.js`). A plugin depending on an undocumented host global breaks the rule that plugins use SDK specifiers only, and third-party plugins cannot do the same.
 - **Intended outcome:** Generic helpers a plugin author could plausibly want (`getDisplayName(id)`, `kindColour(kind)`) are exported from `corum:ui` and documented. Graph-specific helpers (connected components, thread and owner scope filters, edge-type filtering, namespace map) move into `web/builtin/graph/` and are no longer shared globals. No built-in plugin reads a `window.Corum*` global.
-- **Acceptance:** `grep -rn "window.Corum" web/builtin` finds nothing; `node web/graph-utils.test.js` (updated for the new locations) and the Graph Playwright spec pass; the SDK exports are listed in `docs/plugins.md`.
+- **Acceptance:** `grep -rn "window.Corum" web/builtin` finds nothing; `test/graph-helpers.test.ts` (the former `web/graph-utils.test.js`, moved) and the Graph Playwright spec pass; the SDK exports are listed in `docs/plugins.md`.
 - **Constraints:** No behaviour change in Graph or the host. The SDK stays small: only things plugins need to call or reuse, each a compatibility promise covered by `engines.corum`.
 - **Approach (non-binding):** ES modules under `web/sdk/` for the generic helpers; the host classic scripts read them from `window.CorumHost.sdk`.
 - **Depends on:** core Stage 3.
@@ -102,7 +102,7 @@ Status: none filed yet.
 - **Constraints:** Keep the `plugin-error` test id and wording stable. Low priority.
 - **Depends on:** core Stage 3.
 
-## 15. Data-change signal for plugins and a `useApi` hook (in progress: PR 4)
+## 15. Data-change signal for plugins and a `useApi` hook (done in PR 4)
 - **Principle (decided):** plugin pages and host screens refresh through the same mechanism, so plugin pages behave exactly like host pages and bind to data changes by default.
 - **Problem:** Plugins call `ctx.api.get` in effects and hand-roll loading and error state. Mounted plugin pages also never learn about a graph reload: the host handles the `graph-reloaded` event only for its own data (`refreshAllData`), and `ctx.subscribe` fires on route, viewed-ref and template changes only. The Graph page fetches `/api/graph`, `/api/kinds` and lineage keyed on `ctx.viewingRef` alone, so after a reload it keeps showing stale data until remounted or the branch changes. (A page that depends on the whole `ctx` object, such as the `ok` fixture, refetches only incidentally, because a reload produces a new `templates` array.) Host screens update but plugin screens go stale.
 - **Intended outcome:** The context exposes a "graph data changed" signal (for example a revision counter included in the `subscribe` change check) usable by non-React plugins, and `useApi(path, params)` in `corum:ui/react` returns `{ data, error, loading, refresh }`, refetching when its inputs, the viewed ref or the data revision change. The Graph plugin uses it. This is a notification that data changed, not a streaming API.
@@ -122,5 +122,20 @@ Status: none filed yet.
 - **Constraints:** Keep the `edge-row` test id and the `corum:edgePanelOpen` persistence.
 - **Depends on:** issue 16.
 
-## 18. Later / not yet issues (decide when needed)
-- Plugging into search results without changing the core search (for example a search-provider contribution type), custom node renderers, plugin-defined extension points, shadow-DOM isolation, pinned default openers for ambiguous nodes, server-side extension hooks, a mock-host test harness, `corum plugin update`, per-user plugin overrides, standalone plugin install via the pack registry, a node search/picker component only if a plugin demonstrates a need (search is a host feature).
+## 18. End-to-end test for a pack-bundled plugin
+- **Problem:** Pack-bundled plugins (`pack.yaml` `plugins:`) are covered only by discovery unit tests. The browser fixtures load through the built-in directory override and the docs example is standalone, so nothing proves a pack's plugin installs, loads and renders. Whether `corum pack install` copies the plugin files is also unverified end to end.
+- **Intended outcome:** A fixture pack that bundles a plugin is installed through the normal pack path, and the plugin appears in the UI and works.
+- **Acceptance:** A test installs the fixture pack into a temp graph, starts the server, and a Playwright spec asserts the plugin is listed as origin `pack`, its page renders, and a `graph.yaml` override disables it.
+- **Constraints:** Core packs (`core`, `domain`, `rest`, `messaging`) stay lean: templates only, no plugin code. Generic UIs (Graph, Explorer, Dashboard) stay built-in; pack-specific UIs ship inside their pack.
+- **Depends on:** core Stage 3.
+
+## 19. Small items (one line each; expand when picked up)
+- **Plugin/pack manifest read cost:** discovery re-reads and parses `graph.yaml` and each `pack.yaml` on every refresh (about 8 ms on the sample graph; the pack scan is most of it). Cache by file mtime if reloads become frequent.
+- **React warning check:** confirm `mountReact` unmounting (web/sdk/react.js) does not trigger React's "synchronously unmount a root while rendering" warning, using a development React build (only the production build is served today).
+- **Keyboard accessibility of the Open in menu:** arrow-key navigation, focus on open and return of focus to the trigger on close (it has `role="menu"` and Escape/outside-click dismissal only).
+- **Pre-existing Windows test failure:** `test/import/spec-key.test.ts` ("updates legacy absolute extractedFrom in place") fails on Windows because of path separators; unrelated to the plugin work.
+- **Browser specs in CI:** run `npm run test:web` in CI (needs Playwright browsers), since only unit tests run there today.
+- **Theme switcher in the UI:** covered by the theming epic (issue 16).
+
+## 20. Later / not yet issues (decide when needed)
+- Rendering the claimant plugin in place at the stable `#/node?id=X` URL instead of redirecting (a nice-to-have; with no new configuration it only differs from the redirect for single-claimant nodes), pinned default views per template, a `pack.yaml` field that switches built-in plugins on or off (`requires.templates` and the `plugins:` overrides cover current needs), plugging into search results without changing the core search (for example a search-provider contribution type), custom node renderers, plugin-defined extension points, shadow-DOM isolation, pinned default openers for ambiguous nodes, server-side extension hooks, a mock-host test harness, `corum plugin update`, per-user plugin overrides, standalone plugin install via the pack registry, a node search/picker component only if a plugin demonstrates a need (search is a host feature).

@@ -1,20 +1,10 @@
 import { html, SchemaCard } from 'corum:ui'
-import { mountReact, useCtx, NodeLinks } from 'corum:ui/react'
-import React from 'react'
+import { mountReact, useCtx, useApi, NodeLinks } from 'corum:ui/react'
 
 const anchorIdForNode = nodeId => `ok-anchor-${encodeURIComponent(nodeId)}`
 
 function NodeDemo({ nodeId }) {
-  const ctx = useCtx()
-  const [cluster, setCluster] = React.useState(null)
-  React.useEffect(() => {
-    let cancelled = false
-    setCluster(null)
-    ctx.api.get('cluster', { nodeId, includeEdges: 'uses-type' })
-      .then(data => { if (!cancelled) setCluster(data) })
-      .catch(() => { if (!cancelled) setCluster(null) })
-    return () => { cancelled = true }
-  }, [ctx, nodeId])
+  const { data: cluster } = useApi('cluster', { nodeId, includeEdges: 'uses-type' })
 
   const schemas = cluster ? [cluster.root, ...cluster.descendants].filter(node => node.template === 'Schema') : []
   const allNodes = cluster ? [cluster.root, ...cluster.descendants, ...cluster.includedNodes] : []

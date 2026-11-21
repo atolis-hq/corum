@@ -4,12 +4,13 @@ import { createRoot } from 'react-dom/client'
 import { CtxContext, useCtx, CtxProvider } from './ctx-context.js'
 
 export { useCtx, CtxProvider }
+export { useApi } from './use-api.js'
 export { QuickLinks, OpenInMenu, NodeLinks } from './node-links.js'
 
 // ctx fields are getters over the host's live state; a spread freezes them into a plain snapshot.
 const snapshotOf = ctx => ({ ...ctx })
 
-const sameView = (a, b) => a.route === b.route && a.viewingRef === b.viewingRef && a.templates === b.templates
+const sameView = (a, b) => a.route === b.route && a.viewingRef === b.viewingRef && a.templates === b.templates && a.revision === b.revision
 
 function CtxHost({ ctx, Component }) {
   const [snapshot, setSnapshot] = React.useState(() => snapshotOf(ctx))

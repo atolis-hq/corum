@@ -1,8 +1,5 @@
 /* Graph view constants and persisted UI preferences. */
 
-// graph-utils.js is a UMD classic script (also unit-tested under Node), so the plugin reads its global.
-export const GraphUtils = window.CorumGraphUtils
-
 export const EDGE_STYLES = {
   'triggers':     { stroke: '#b45309', strokeWidth: 1.5 },
   'produces':     { stroke: '#0f766e', strokeWidth: 1.5 },

@@ -1,8 +1,9 @@
 /* Build React Flow node and edge objects from graph API data. */
 import { MarkerType } from 'reactflow'
-import { EDGE_STYLES, GraphUtils } from './constants.js'
+import { getDisplayName, kindColour } from 'corum:ui'
+import { EDGE_STYLES } from './constants.js'
+import { applyEdgeTypeFilter } from './graph-helpers.js'
 
-const { kindColour, applyEdgeTypeFilter, getDisplayName } = GraphUtils
 
 export function makeRFEdge(edge, edgeStyles) {
   const style = edgeStyles[edge.type] || { stroke: '#a8acb5', strokeWidth: 1.5 }

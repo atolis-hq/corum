@@ -1,8 +1,9 @@
 /* ELK-based layout: flat and grouped modes, connected-component stacking, group box fitting. */
 import ELK from 'elkjs'
-import { GraphUtils, NODE_W, NODE_H } from './constants.js'
+import { getDisplayName } from 'corum:ui'
+import { NODE_W, NODE_H } from './constants.js'
+import { computeConnectedComponents } from './graph-helpers.js'
 
-const { getDisplayName, computeConnectedComponents } = GraphUtils
 
 const elk = new ELK()
 
