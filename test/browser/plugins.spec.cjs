@@ -501,6 +501,10 @@ for (const context of ['title', 'connection', 'plugin']) {
     }
     await trigger.click();
     await expect(entries.first()).toBeFocused();
+    // Pressing a non-entry part of the menu must not close it.
+    await menu.dispatchEvent('mousedown');
+    await menu.dispatchEvent('click');
+    await expect(menu).toHaveCount(1);
     await trigger.click();
     await expect(menu).toHaveCount(0);
     await trigger.click();

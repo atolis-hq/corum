@@ -89,10 +89,7 @@ function MenuButton({ menu }) {
     <a key=${key} className="open-in-item" role="menuitem" tabIndex=${-1} href=${href} onClick=${close}>${label}</a>
   `
   return html`
-    <div className="open-in" data-testid="open-in" ref=${wrapRef} onClick=${stop}
-      onBlur=${event => {
-        if (!event.currentTarget.contains(event.relatedTarget)) close()
-      }}>
+    <div className="open-in" data-testid="open-in" ref=${wrapRef} onClick=${stop}>
       <button
         type="button"
         className="open-in-trigger"
