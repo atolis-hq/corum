@@ -68,7 +68,13 @@ export type GraphFileWatcherOptions = {
   graphPath: string
   debounceMs?: number
   logger?: (message: string) => void
-  onReload?: () => void
+  /** Standalone plugin directories to watch; only their `plugin.yaml` changes matter. */
+  pluginWatchDirs?: () => string[]
+  /**
+   * Called after a debounced batch of changes. `graphReloaded` is false when only plugin
+   * manifests changed; `pluginsChanged` is false when only graph data (node files) changed.
+   */
+  onReload?: (info: { graphReloaded: boolean; pluginsChanged: boolean }) => void
 }
 
 type ReloadEvents = {
@@ -327,21 +333,58 @@ export function startGraphFileWatcher(
     watchers = []
   }
 
+  let packDirs: string[] = []
+  let pluginDirs: string[] = []
+  let needGraphReload = false
+  let needPluginRefresh = false
+
   function refreshWatchers(): void {
     closeWatchers()
-    const roots = [...new Set([path.resolve(graphPath), ...resolvePackDirs(graphPath)])]
-    watchers = roots.flatMap(root => watchRoot(root, scheduleReload))
+    packDirs = resolvePackDirs(graphPath)
+    pluginDirs = (options.pluginWatchDirs?.() ?? []).map(dir => path.resolve(dir))
+    const graphRoot = path.resolve(graphPath)
+    watchers = [...new Set([graphRoot, ...packDirs, ...pluginDirs])]
+      .flatMap(root => watchRoot(root, filename => scheduleReload(root, filename)))
+  }
+
+  function isInside(file: string, dir: string): boolean {
+    const relative = path.relative(dir, file)
+    return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative)
+  }
+
+  /** What a change to this file affects: the graph data, the plugin list, or both. */
+  function classify(root: string, filename: string): { graph: boolean; plugins: boolean } | null {
+    const file = path.resolve(root, filename)
+    if (file === path.join(path.resolve(graphPath), 'graph.yaml')) return { graph: true, plugins: true }
+    if (packDirs.some(dir => isInside(file, dir))) return { graph: true, plugins: true }
+    if (pluginDirs.some(dir => isInside(file, dir))) {
+      return path.basename(file) === 'plugin.yaml' ? { graph: false, plugins: true } : null
+    }
+    return { graph: true, plugins: false }
   }
 
   async function reload(): Promise<void> {
-    if (reloading) return
+    if (reloading) {
+      // A change arrived mid-reload: try again once it finishes instead of dropping it.
+      timer = setTimeout(() => {
+        timer = undefined
+        void reload()
+      }, debounceMs)
+      return
+    }
     reloading = true
+    const graphReloaded = needGraphReload
+    const pluginsChanged = needPluginRefresh
+    needGraphReload = false
+    needPluginRefresh = false
     try {
-      const nextGraph = await loadGraph({ graphPath, strict: true })
-      replaceGraph(graph, nextGraph)
+      if (graphReloaded) {
+        const nextGraph = await loadGraph({ graphPath, strict: true })
+        replaceGraph(graph, nextGraph)
+      }
       refreshWatchers()
-      onReload?.()
-      logger(`[corum] graph reloaded after file change`)
+      onReload?.({ graphReloaded, pluginsChanged })
+      logger(graphReloaded ? `[corum] graph reloaded after file change` : `[corum] plugins refreshed after file change`)
     } catch (err) {
       logger(`[corum] graph reload failed: ${err}`)
     } finally {
@@ -349,8 +392,12 @@ export function startGraphFileWatcher(
     }
   }
 
-  function scheduleReload(filename?: string | Buffer | null): void {
+  function scheduleReload(root: string, filename?: string | Buffer | null): void {
     if (!isRelevantWatchEvent(filename)) return
+    const effect = filename ? classify(root, String(filename)) : { graph: true, plugins: true }
+    if (!effect) return
+    needGraphReload ||= effect.graph
+    needPluginRefresh ||= effect.plugins
     if (timer) clearTimeout(timer)
     timer = setTimeout(() => {
       timer = undefined
@@ -860,9 +907,11 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
         graphPath,
         debounceMs: options.fileWatcherDebounceMs,
         logger,
-        onReload: () => {
-          multiCache?.invalidate()
-          pluginRuntime.refresh()
+        pluginWatchDirs: () => pluginRuntime.watchDirs(),
+        onReload: ({ graphReloaded, pluginsChanged }) => {
+          // Node-data changes do not re-resolve plugins; plugin/pack/graph.yaml changes do.
+          if (graphReloaded) multiCache?.invalidate()
+          if (pluginsChanged) pluginRuntime.refresh()
           options.onReload?.()
           reloadEvents.notify()
         },

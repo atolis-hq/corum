@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { startWebServer, type WebServerHandle } from '../src/web/server.js'
+import { startGraphFileWatcher, startWebServer, type WebServerHandle } from '../src/web/server.js'
 import { loadGraph } from '../src/loader/index.js'
 import { FileGraphSource } from '../src/source/file-source.js'
 import { LoadError, type Graph } from '../src/schema/index.js'
@@ -1252,6 +1252,105 @@ describe('web server', () => {
         if (watchedHandle) await watchedHandle.close()
         fs.rmSync(tmp, { recursive: true, force: true })
       }
+    })
+
+    describe('plugin refresh scope', () => {
+      type ReloadInfo = { graphReloaded: boolean; pluginsChanged: boolean }
+
+      async function watchFixture(extra?: (root: string, graphPath: string) => string[]) {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-watch-'))
+        const fixture = writeWatcherFixture(tmp)
+        const pluginDirs = extra ? extra(tmp, fixture.graphPath) : []
+        const graph = await loadGraph({ graphPath: fixture.graphPath })
+        const calls: ReloadInfo[] = []
+        const stop = startGraphFileWatcher(graph, {
+          graphPath: fixture.graphPath,
+          debounceMs: 25,
+          logger: () => {},
+          pluginWatchDirs: () => pluginDirs,
+          onReload: info => calls.push(info as ReloadInfo),
+        })
+        return { tmp, calls, stop, ...fixture, pluginDirs }
+      }
+
+      async function settled(calls: ReloadInfo[], count: number): Promise<void> {
+        await eventually(async () => calls.length, length => length >= count)
+        await new Promise(resolve => setTimeout(resolve, 150))
+      }
+
+      it('does not refresh plugins when only a node file changes', async () => {
+        const w = await watchFixture()
+        try {
+          fs.appendFileSync(w.nodePath, '\n')
+          await settled(w.calls, 1)
+          assert.equal(w.calls.at(-1)?.graphReloaded, true)
+          assert.equal(w.calls.at(-1)?.pluginsChanged, false)
+        } finally {
+          w.stop()
+          fs.rmSync(w.tmp, { recursive: true, force: true })
+        }
+      })
+
+      it('refreshes plugins when graph.yaml changes', async () => {
+        const w = await watchFixture()
+        try {
+          fs.appendFileSync(path.join(w.graphPath, 'graph.yaml'), '\n')
+          await settled(w.calls, 1)
+          assert.equal(w.calls.at(-1)?.graphReloaded, true)
+          assert.equal(w.calls.at(-1)?.pluginsChanged, true)
+        } finally {
+          w.stop()
+          fs.rmSync(w.tmp, { recursive: true, force: true })
+        }
+      })
+
+      it('refreshes plugins when a pack file changes', async () => {
+        const w = await watchFixture()
+        try {
+          fs.appendFileSync(w.templatePath, '\n')
+          await settled(w.calls, 1)
+          assert.equal(w.calls.at(-1)?.graphReloaded, true)
+          assert.equal(w.calls.at(-1)?.pluginsChanged, true)
+        } finally {
+          w.stop()
+          fs.rmSync(w.tmp, { recursive: true, force: true })
+        }
+      })
+
+      it('refreshes plugins without reloading the graph when a standalone plugin manifest changes', async () => {
+        const w = await watchFixture((tmp) => {
+          const dir = path.join(tmp, 'plugins', 'demo')
+          fs.mkdirSync(dir, { recursive: true })
+          fs.writeFileSync(path.join(dir, 'plugin.yaml'), 'id: demo\n')
+          return [dir]
+        })
+        try {
+          fs.appendFileSync(path.join(w.pluginDirs[0], 'plugin.yaml'), '\n')
+          await settled(w.calls, 1)
+          assert.equal(w.calls.at(-1)?.graphReloaded, false)
+          assert.equal(w.calls.at(-1)?.pluginsChanged, true)
+        } finally {
+          w.stop()
+          fs.rmSync(w.tmp, { recursive: true, force: true })
+        }
+      })
+
+      it('ignores non-manifest files inside a standalone plugin directory', async () => {
+        const w = await watchFixture((tmp) => {
+          const dir = path.join(tmp, 'plugins', 'demo')
+          fs.mkdirSync(dir, { recursive: true })
+          fs.writeFileSync(path.join(dir, 'index.js'), '// v1\n')
+          return [dir]
+        })
+        try {
+          fs.appendFileSync(path.join(w.pluginDirs[0], 'index.js'), '// v2\n')
+          await new Promise(resolve => setTimeout(resolve, 400))
+          assert.equal(w.calls.length, 0)
+        } finally {
+          w.stop()
+          fs.rmSync(w.tmp, { recursive: true, force: true })
+        }
+      })
     })
 
     it('preserves sourceContent and edgeTypes on the served graph object after a reload', async () => {

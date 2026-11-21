@@ -51,8 +51,9 @@ standalone plugins; a duplicate is logged and the first discovered plugin is
 kept. A standalone plugin cannot replace a built-in by reusing its ID.
 
 Restart the server after configuration changes, then reload the browser.
-Alternatively, use the UI's Reload control to re-resolve the plugin list;
-reload the browser afterwards if needed.
+Alternatively, use the UI's Reload control, or run with the file watcher
+enabled (`CORUM_FILE_WATCHER=true`), to re-resolve the plugin list without a
+restart.
 
 ### Current source and tooling limits
 
@@ -191,9 +192,14 @@ browser, or use the UI Reload control followed by a browser reload. Plugin
 modules are cached within a browser page; navigating away and back does not
 reload their code.
 
-The filesystem watcher handles graph and pack YAML changes, but does not
-provide JavaScript/CSS hot reload or watch arbitrary standalone directories.
-Update a plugin by replacing its directory contents, then reload as above.
+The plugin list is resolved at startup and again when plugins or packs change.
+With the file watcher enabled (`CORUM_FILE_WATCHER=true`), editing `graph.yaml`,
+a file in one of the graph's template packs, or a standalone plugin's
+`plugin.yaml` re-resolves the plugin list, and the page reloads if the list
+changed. Editing graph data (node files) does not re-resolve plugins. The
+watcher does not provide JavaScript/CSS hot reload, so edits to a plugin's
+other files need a browser reload. Update a plugin by replacing its directory
+contents, then reload as above.
 To uninstall a standalone plugin, remove its `path` registration and any
 associated override before deleting the directory.
 
