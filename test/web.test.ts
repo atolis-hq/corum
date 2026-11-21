@@ -1057,6 +1057,12 @@ describe('web server', () => {
   })
 
   describe('GET /api/search', () => {
+    it('includes owned nodes only when requested', async () => {
+      const res = await fetch(`http://localhost:${handle.port}/api/search?q=cancel&include_owned=true`)
+      assert.equal(res.status, 200)
+      const body = await res.json() as Array<{ node: { id: string; parentId?: string }; owner?: { id: string } }>
+      assert.ok(body.some(result => result.node.parentId && result.owner))
+    })
     it('returns ranked root-level search results', async () => {
       const res = await fetch(`http://localhost:${handle.port}/api/search?q=order&limit=5`)
       assert.equal(res.status, 200)
@@ -1601,7 +1607,7 @@ describe('web server', () => {
       assert.match(app, /refreshAllData\(\);\s*\};/)
       assert.match(app, /pluginsChangedOnServer\(\)/)
       assert.match(app, /refreshToken/)
-      assert.match(app, /fetch\(`\/api\/cluster\?nodeId=\$\{encodeURIComponent\(nodeId\)\}&includeEdges=maps-to,reads,uses-type,triggers,produces,calls,implements\$\{refParam\}\$\{overlayParam\}`\)/)
+      assert.match(app, /fetch\(`\/api\/cluster\?nodeId=\$\{encodeURIComponent\(nodeId\)\}&includeEdges=maps-to,reads,uses-type,triggers,produces,calls,implements\$\{refParam\}\$\{overlayParam\}`, \{ signal: controller.signal \}\)/)
     })
 
     it('app: SchemaCard receives allNodes including includedNodes', () => {

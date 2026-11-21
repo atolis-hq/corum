@@ -748,13 +748,21 @@ function NodePage({ nodeId, explorerView = false, templates, templatesByName, on
 
   useEffect(() => {
     if (!nodeId) return;
+    const controller = new AbortController();
     setCluster(null);
     setError(null);
     const refParam = viewingRef ? `&ref=${encodeURIComponent(viewingRef)}` : '';
-    fetch(`/api/cluster?nodeId=${encodeURIComponent(nodeId)}&includeEdges=maps-to,reads,uses-type,triggers,produces,calls,implements${refParam}${overlayParam}`)
+    fetch(`/api/cluster?nodeId=${encodeURIComponent(nodeId)}&includeEdges=maps-to,reads,uses-type,triggers,produces,calls,implements${refParam}${overlayParam}`, { signal: controller.signal })
       .then(response => response.ok ? response.json() : Promise.reject(response.status))
+      .then(async data => {
+        if (!data.owner) return data;
+        const response = await fetch(`/api/cluster?nodeId=${encodeURIComponent(data.owner.id)}&includeEdges=maps-to,reads,uses-type,triggers,produces,calls,implements${refParam}${overlayParam}`, { signal: controller.signal });
+        if (!response.ok) throw response.status;
+        return response.json();
+      })
       .then(setCluster)
-      .catch(err => setError(String(err)));
+      .catch(err => { if (err.name !== 'AbortError') setError(String(err)); });
+    return () => controller.abort();
   }, [nodeId, refreshToken, viewingRef, overlayParam]);
 
   const rootNode = cluster?.root ?? null;
@@ -773,10 +781,26 @@ function NodePage({ nodeId, explorerView = false, templates, templatesByName, on
     if (target.kind !== 'page') return;
     location.replace(buildRoute({
       pathname: `/p/${target.pluginId}/${target.pageId}`,
-      params: { id: rootNode.id },
+      params: { id: nodeId },
       branch: viewingRef,
     }));
-  }, [target, rootNode, viewingRef]);
+  }, [target, rootNode, nodeId, viewingRef]);
+
+  useEffect(() => {
+    if (!cluster || target.kind === 'page' || cluster.root.id === nodeId) return;
+    const nodes = new Map([cluster.root, ...cluster.descendants].map(node => [node.id, node]));
+    let current = nodes.get(nodeId);
+    const seen = new Set();
+    while (current && !seen.has(current.id)) {
+      seen.add(current.id);
+      const anchor = document.getElementById(anchorIdForNode(current.id));
+      if (anchor) {
+        anchor.scrollIntoView({ block: 'start' });
+        break;
+      }
+      current = nodes.get(current.parentId);
+    }
+  }, [cluster, nodeId, target]);
 
   if (!nodeId) return <div className="content"><p className="label-sm">No node selected.</p></div>;
   if (error) return <ErrorPanel message={`Error loading node: ${error}`} />;
@@ -787,11 +811,9 @@ function NodePage({ nodeId, explorerView = false, templates, templatesByName, on
   const { inbound: panelInbound, outbound: panelOutbound } = classifyEdges(edges, clusterIds);
   const template = templates.find(item => item.name === root.template);
   const colour = template?.ui?.colour ?? null;
-  const nestedSections = new Set((template?.ui?.nav?.nestOwned ?? []).map(item => item.section));
 
   const displayChildren = new Map();
   for (const child of descendants) {
-    if (child.parentId === root.id && nestedSections.has(child.ownedSection)) continue;
     if (!displayChildren.has(child.template)) displayChildren.set(child.template, []);
     displayChildren.get(child.template).push(child);
   }
@@ -1192,8 +1214,8 @@ function App() {
     navigate(hrefForExplorerView(nodeId, { branch: viewingRef }));
   }
 
-  function handleSearchNode(nodeId, templateName) {
-    const root = owningRoot(nodeId, nodesById);
+  function handleSearchNode(nodeId, templateName, owner) {
+    const root = owner ?? owningRoot(nodeId, nodesById);
     navigate(hrefForNode(hostRegistry, nodeId, matchKeysFor(root?.template ?? templateName, templatesByName), { branch: viewingRef }));
   }
 

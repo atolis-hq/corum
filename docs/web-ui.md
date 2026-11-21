@@ -40,7 +40,7 @@ The left rail switches between three views:
   surrounds it; edges are labelled with their type, including custom types from
   packs.
 
-A search box at the top finds nodes by ID. A debug toggle shows fully qualified
+A search box at the top finds all nodes by name and ID, including owned operations, schemas, fields, enums and values. Owned results show their cluster owner. Selecting one opens the owning view and scrolls to the child (or its nearest displayed ancestor) on the host node page. Results rank exact names, name prefixes, name substrings, then fuzzy ID matches; ties put roots first, then sort by ID. Results are capped at 50 overall and 8 per template. A debug toggle shows fully qualified
 node names instead of display names.
 
 ## Plugins
