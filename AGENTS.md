@@ -59,6 +59,21 @@ node dist/src/bin/corum.js import --config <yaml> [-b <branch>]  # import specs;
 | `project/adrs/` | Architecture decisions; read before changing core abstractions |
 | `project/` | Decisions (ADRs/PDRs), plans, specs, reports. `docs/` is for public-facing guides only; new superpowers specs/plans go in `project/superpowers/{specs,plans}` |
 
+## Design & Styling
+
+The styling contract is ADR-011 (`project/adrs/ADR-011-design-tokens-themes-and-layouts.md`); read it before touching `web/style.css`, theme code, or any UI markup. Rules for every UI change:
+
+- **No hard-coded colours.** Never write a hex/rgb/hsl literal in CSS, JSX or JS. Use a semantic token (`var(--background)`, `var(--foreground)`, `var(--border)`, `var(--accent)`, `var(--destructive)`, ...). The ratchet test in `test/architecture.test.ts` may only go down.
+- **Public tokens only.** Use Tier 2 semantic tokens. Never use primitive palette variables (`--c-*`) outside a theme file, and never invent a new `--` token without adding it to `web/sdk/tokens.json` (and a `since` version).
+- **Deprecated names.** Do not introduce `--paper*`, `--ink*`, `--rule*`, `--accent-2`, `--accent-ink`, `--ok`, `--warn` in new code. Migrate them when you touch the line.
+- **Every change must work in every theme.** Check light and dark at minimum; never assume a white or dark page. Do not use `color-scheme`-specific literals or `@media (prefers-color-scheme)` in component styles (themes own that).
+- **Pack colours are data.** Colours from `ui.colour`, kinds and edge types come from pack data via `--node-colour` / `--edge-colour` and derived tint/border/text tokens. Never hard-code a kind or edge-type colour, and never duplicate edge-type styling; use the shared helper.
+- **Standard markup.** Reuse the documented classes (`card`, `card-head`, `label-xs`, `meta-strip`, `quick-link*`, `open-in*`, ...) rather than writing one-off styles. Do not rename or remove a documented class or token without a migration note and a contract version bump.
+- **Plugins style through the contract.** Built-in plugins use only documented tokens and classes (no inline hex, no host internals), so the style guide plugin proves the contract works for third parties.
+- **Accessibility is part of styling.** Keep text contrast adequate in every theme, visible focus (`--ring`), and keyboard operability for menus and popovers (follow the Open in menu pattern).
+- **Layouts are CSS-only.** Do not hide or reorder host regions from a layout; structure is controlled through `--nav-width`, `--content-max`, `--density` and `data-layout`.
+- **Update docs and the style guide** (`docs/styling.md`, style guide plugin) in the same change when you add or change a token, class or standard pattern.
+
 ## Raising Issues
 
 Before creating a GitHub issue, ask the user (via a single-select menu) how it should be dispatched. Do not default to any of these:
