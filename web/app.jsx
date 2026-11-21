@@ -1087,7 +1087,7 @@ function OpenInMenu({ nodeId, claimants, actions, keys, viewingRef }) {
       {open && (
         <div className="open-in-menu" role="menu">
           {claimants.length > 0 && (
-            <a className="open-in-item" role="menuitem" href={genericHref} onClick={() => setOpen(false)}>Generic view</a>
+            <a className="open-in-item" role="menuitem" href={genericHref} onClick={() => setOpen(false)}>Default view</a>
           )}
           {claimants.map(claim => (
             <a

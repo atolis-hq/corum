@@ -57,7 +57,7 @@ test('node claimed by two plugins shows an Open in menu and node actions', async
   await bar.getByRole('button', { name: /open in/i }).click();
   await expect(bar.getByRole('menuitem', { name: 'Claim A' })).toBeVisible();
   await expect(bar.getByRole('menuitem', { name: 'Claim B' })).toBeVisible();
-  await expect(bar.getByRole('menuitem', { name: /generic/i })).toBeVisible();
+  await expect(bar.getByRole('menuitem', { name: /default view/i })).toBeVisible();
   await expect(bar.getByRole('menuitem', { name: 'View in OK' })).toBeVisible();
   await bar.getByRole('menuitem', { name: 'Claim B' }).click();
   await expect(page.getByTestId('plugin-claim-b')).toBeVisible();
@@ -107,4 +107,24 @@ test('a failing host module load shows a readable error instead of a blank page'
   await page.route('**/sdk/index.js', route => route.abort());
   await page.goto('/');
   await expect(page.getByTestId('boot-error')).toContainText('failed to start');
+});
+
+test('mobile nav rail scrolls within itself and keeps buttons equal width', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/#/dashboard');
+  const items = page.locator('.nav-rail-item');
+  await expect(items.first()).toBeVisible();
+  expect(await items.count()).toBeGreaterThan(6);
+  const metrics = await page.evaluate(() => {
+    const rail = document.querySelector('.nav-rail');
+    return {
+      docWidth: document.documentElement.scrollWidth,
+      viewport: window.innerWidth,
+      railScrolls: rail.scrollWidth > rail.clientWidth,
+      widths: [...document.querySelectorAll('.nav-rail-item')].map(el => Math.round(el.getBoundingClientRect().width)),
+    };
+  });
+  expect(metrics.docWidth).toBe(metrics.viewport);
+  expect(metrics.railScrolls).toBe(true);
+  expect(new Set(metrics.widths).size).toBe(1);
 });
