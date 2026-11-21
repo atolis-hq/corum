@@ -1731,6 +1731,18 @@ button {
   .dashboard-grid {
     grid-template-columns: 1fr;
   }
+  .dashboard-hero {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .hero-card {
+    flex: 1 1 calc(50% - 6px);
+    min-width: 0;
+    padding: 14px 16px;
+  }
+  .branch-diff-callout {
+    flex-wrap: wrap;
+  }
 }
 
 .dashboard-panel {
