@@ -6,4 +6,4 @@ contributes:
   pages:
     - { id: view, title: Graph, icon: diagram-project, order: 20, mount: mountGraph }
   nodeActions:
-    - { id: view-in-graph, label: "View in graph", icon: diagram-project, appliesTo: ["*"], page: view, param: focus, quick: [header, relations] }
+    - { id: view-in-graph, label: "View in graph", icon: diagram-project, appliesTo: ["*"], page: view, param: focus, menu: true, quick: [header, relations] }

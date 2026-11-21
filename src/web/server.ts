@@ -658,7 +658,14 @@ export function createApp(
         root: summarizeNodeForNavigation(targetGraph, annotateNode(targetGraph, cluster.root)),
         ...(owner ? { owner: { id: owner.id, template: owner.template } } : {}),
         descendants: cluster.descendants.map(child => summarizeNodeForNavigation(targetGraph, annotateNode(targetGraph, child))),
-        includedNodes: includedNodes.map(node => summarizeNodeForNavigation(targetGraph, annotateNode(targetGraph, node))),
+        includedNodes: includedNodes.map(node => {
+          const summary = summarizeNodeForNavigation(targetGraph, annotateNode(targetGraph, node))
+          const owningRoot = getOwningRoot(targetGraph, node, summary.parentId)
+          return {
+            ...summary,
+            ...(owningRoot ? { rootId: owningRoot.id, rootTemplate: owningRoot.template } : {}),
+          }
+        }),
         edges: cluster.edges,
         overlay,
       })

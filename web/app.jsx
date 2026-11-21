@@ -29,22 +29,6 @@ const {
 } = window.CorumHost.sdk;
 const hostRegistry = window.CorumHost.registry;
 
-// Quick-link icons for node actions that opt into a surface ('header' or 'relations').
-function QuickLinks({ nodeId, keys, surface, viewingRef }) {
-  const actions = hostRegistry.nodeActionsFor(keys).filter(action => action.quick.includes(surface));
-  return actions.map(action => (
-    <a
-      key={`${action.pluginId}/${action.id}`}
-      className="quick-link"
-      href={hrefForAction(action, nodeId, { branch: viewingRef })}
-      title={action.label}
-      aria-label={action.label}
-      onClick={event => event.stopPropagation()}
-    >
-      <Icon name={action.icon ?? 'arrow-up-right-from-square'} size={12} />
-    </a>
-  ));
-}
 const { buildNavTree, buildOverlayIndicatorIds, groupNamespacesByKind, namespaceEdges } = window.CorumNav;
 const { parseRoute, buildRoute } = window.CorumRouter;
 const { kindColour } = window.CorumGraphUtils;
@@ -62,6 +46,23 @@ const EDGE_TYPE_STYLES = {
   implements: { background: '#f1f5f9', color: '#475569' },
   reads: { background: '#dbeafe', color: '#1d4ed8' },
 };
+
+// Quick-link icons for node actions that opt into a surface ('header' or 'relations').
+function QuickLinks({ nodeId, keys, surface, viewingRef }) {
+  const actions = hostRegistry.nodeActionsFor(keys).filter(action => action.quick.includes(surface));
+  return actions.map(action => (
+    <a
+      key={`${action.pluginId}/${action.id}`}
+      className="quick-link"
+      href={hrefForAction(action, nodeId, { branch: viewingRef })}
+      title={action.label}
+      aria-label={action.label}
+      onClick={event => event.stopPropagation()}
+    >
+      <Icon name={action.icon ?? 'link'} size={12} />
+    </a>
+  ));
+}
 
 function classifyEdges(edges, clusterIds) {
   const inbound = [];
@@ -926,27 +927,32 @@ function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate, viewing
     const name = linkedNodeId.split('.').pop();
     // Match the linked node by its owning cluster root, like node links do.
     const linkedKeys = matchKeysFor(owningRoot(linkedNodeId, nodeMap)?.template ?? node?.template, templateMap);
+    const claimants = hostRegistry.claimants(linkedKeys);
+    const actions = hostRegistry.nodeActionsFor(linkedKeys).filter(action => action.menu);
     return (
       <div
         data-testid="edge-row"
         onClick={() => onNavigate(linkedNodeId)}
         title={linkedNodeId}
-        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', cursor: 'pointer' }}
+        style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, padding: '5px 0', cursor: 'pointer' }}
       >
         <span className="tag" style={EDGE_TYPE_STYLES[edge.type] ?? {}}>{edge.type}</span>
         <TemplateBadge name={tmpl?.ui?.displayName ?? node?.template ?? '?'} colour={colour} />
-        <span style={{ fontWeight: 500, fontSize: 13 }}>{name}</span>
+        <span style={{ fontWeight: 500, fontSize: 13, minWidth: 0, overflowWrap: 'anywhere' }}>{name}</span>
         {node && <StateTag state={node.state} />}
         {node && <StabilityTag stability={node.stability} />}
-        <span className="quick-links" style={{ marginLeft: 'auto' }}>
+        <div className="quick-links" style={{ marginLeft: 'auto' }}>
           <QuickLinks nodeId={linkedNodeId} keys={linkedKeys} surface="relations" viewingRef={viewingRef} />
-        </span>
+          {(claimants.length > 0 || actions.length > 0) && (
+            <OpenInMenu nodeId={linkedNodeId} claimants={claimants} actions={actions} keys={linkedKeys} viewingRef={viewingRef} />
+          )}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="card" style={{ marginBottom: 16 }}>
+    <div className="card connections-card" style={{ marginBottom: 16 }}>
       <div
         className="card-head"
         onClick={toggle}
@@ -1085,7 +1091,7 @@ function OpenInMenu({ nodeId, claimants, actions, keys, viewingRef }) {
 
   const genericHref = buildRoute({ pathname: '/node', params: { id: nodeId }, branch: viewingRef });
   return (
-    <div className="open-in" data-testid="open-in" ref={wrapRef}>
+    <div className="open-in" data-testid="open-in" ref={wrapRef} onClick={event => event.stopPropagation()}>
       <button
         type="button"
         className="open-in-trigger"
@@ -1095,7 +1101,7 @@ function OpenInMenu({ nodeId, claimants, actions, keys, viewingRef }) {
         title="Open in"
         onClick={() => setOpen(value => !value)}
       >
-        <Icon name="ellipsis" size={12} />
+        <Icon name="arrow-up-right-from-square" size={12} />
       </button>
       {open && (
         <div className="open-in-menu" role="menu">
@@ -1174,7 +1180,7 @@ function NodePage({ nodeId, templates, templatesByName, onNavigate, refreshToken
   if (!cluster || target.kind === 'page') return <div className="content"><p className="label-sm">Loading...</p></div>;
 
   const claimants = target.kind === 'chooser' ? target.claimants : [];
-  const nodeActions = hostRegistry.nodeActionsFor(matchKeys);
+  const nodeActions = hostRegistry.nodeActionsFor(matchKeys).filter(action => action.menu);
 
   const { root, descendants, includedNodes, edges } = cluster;
   const clusterIds = new Set([root.id, ...descendants.map(d => d.id)]);

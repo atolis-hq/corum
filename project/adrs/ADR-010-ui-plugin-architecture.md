@@ -87,9 +87,10 @@ Contribution types for v1:
 - **nodeActions**: a link the host shows on node pages for nodes matching `appliesTo` (template names or roles, resolved through the extends chain per `src/graph/roles.ts`; `"*"` matches every node). It is a generated direct link to the named `page` for that node, `#/<branch?>/p/<plugin>/<page>?<param>=<nodeId>` (built by the SDK's `hrefForAction`); there is no custom action code. This is the "View in journey" mechanism. Optional fields:
   - `icon`: a Font Awesome icon name used when the action is shown as a quick link.
   - `param`: the query parameter that carries the node id on the target page. Default `id`.
+  - `menu`: whether the action appears in "Open in" menus. Default `true`; `false` permits shortcut-only actions. Independent of `quick`.
   - `quick`: surfaces where the host also shows the action as an icon-only link, a list drawn from `header` (the node page title row) and `relations` (each connection row, targeting the linked node, so `appliesTo` is matched against that node). Default none. Unknown surfaces are a manifest error.
 
-  The node page's "Open in" menu always lists every applicable action, quick ones included, so a quick link is a shortcut and never the only route. The host names no plugin: the Graph plugin's "View in graph" link is a `"*"` action with `quick: [header, relations]`, so disabling the plugin removes every Graph link.
+  Node headers and connection rows have an "Open in" menu listing matching page claims and applicable actions whose `menu` is true. Connection-row matching uses the linked node's owning root, while links retain the original linked node ID and viewed branch. Empty menus are hidden. Menu membership and icon placement are independent: `quick` alone does not add or remove a menu entry. One action can appear in both places without a second declaration. The host names no plugin: the Graph plugin's "View in graph" link is a `"*"` action with `menu: true` and `quick: [header, relations]`, so disabling the plugin removes every Graph link.
 
 Deliberately not in v1: custom node-page renderers (a plugin that wants to render a node opens a page), plugin-defined extension points (other plugins contributing into a plugin's slots), and shadow-DOM isolation. Each can be added later without breaking manifests.
 

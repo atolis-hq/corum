@@ -7,7 +7,7 @@ const sdkDir = path.join(process.cwd(), 'web', 'sdk')
 const load = (file: string) => import(pathToFileURL(path.join(sdkDir, file)).href)
 
 type Page = { id: string; title: string; icon?: string; order?: number; mount: string; opens?: string[] }
-type Action = { id: string; label: string; appliesTo: string[]; page: string; icon?: string; param?: string; quick?: string[] }
+type Action = { id: string; label: string; appliesTo: string[]; page: string; icon?: string; param?: string; menu?: boolean; quick?: string[] }
 
 const { createRegistry } = await load('registry.js')
 const { resolveNodeTarget, hrefForNode, hrefForAction } = await load('resolve-node.js')
@@ -98,6 +98,23 @@ describe('registry', () => {
     assert.equal(plain.param, 'id')
     assert.deepEqual(plain.quick, [])
     assert.deepEqual(reg.nodeActionsFor([]).map((a: Action) => a.id), ['all'])
+  })
+
+  it('menu membership defaults on and is independent of quick placement', () => {
+    const reg = createRegistry()
+    reg.registerPlugin(plugin('j', [{ id: 'map', title: 'Map', mount: 'm' }], {
+      actions: [
+        { id: 'menu', label: 'Menu', appliesTo: ['*'], page: 'map', menu: true },
+        { id: 'shortcut', label: 'Shortcut', appliesTo: ['*'], page: 'map', menu: false, quick: ['header', 'relations'] },
+        { id: 'default', label: 'Default', appliesTo: ['*'], page: 'map', quick: ['header'] },
+      ],
+    }))
+    const actions = reg.nodeActionsFor(['Journey'])
+    assert.deepEqual(actions.map((action: Action) => [action.id, action.menu]), [
+      ['menu', true], ['shortcut', false], ['default', true],
+    ])
+    assert.deepEqual(actions[1].quick, ['header', 'relations'])
+    assert.deepEqual(actions[2].quick, ['header'])
   })
 
   it('page mount lazily loads the module and calls the named export', async () => {

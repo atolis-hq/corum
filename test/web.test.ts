@@ -561,6 +561,16 @@ describe('web server', () => {
       assert.equal(nodes.find(n => n.id === 'orders.DomainModel.order')?.rootId, undefined)
     })
 
+    it('includes owning root metadata for external owned nodes in /api/cluster', async () => {
+      const response = await fetch(`http://localhost:${sourceHandle.port}/api/cluster?nodeId=payments.APIEndpoint.complete-payment&includeEdges=calls`)
+      assert.equal(response.status, 200)
+      const body = await response.json() as { includedNodes: Array<{ id: string; rootId?: string; rootTemplate?: string }> }
+      const operation = body.includedNodes.find(node => node.id === 'payments.DomainModel.payment.operations.capture')
+      assert.ok(operation)
+      assert.equal(operation.rootId, 'payments.DomainModel.payment')
+      assert.equal(operation.rootTemplate, 'DomainModel')
+    })
+
     it('GET /api/cluster returns overlay: null when overlayRefs not provided', async () => {
       const branchesRes = await fetch(`http://localhost:${sourceHandle.port}/api/branches`)
       const { default: defaultRef } = await branchesRes.json() as { default: string }
@@ -1101,7 +1111,7 @@ describe('web server', () => {
         '  pages:',
         '    - { id: view, title: View, mount: mount }',
         '  nodeActions:',
-        '    - { id: quick-one, label: Quick one, appliesTo: ["*"], page: view, icon: diagram-project, param: focus, quick: [header, relations] }',
+        '    - { id: quick-one, label: Quick one, appliesTo: ["*"], page: view, icon: diagram-project, param: focus, menu: false, quick: [header, relations] }',
         '',
       ].join('\n'))
       writePlugin('off')
@@ -1135,7 +1145,7 @@ describe('web server', () => {
       assert.equal(byId.get('on')?.manifest.id, 'on')
       const manifest = byId.get('on')?.manifest as unknown as { contributes: { nodeActions: unknown[] } }
       assert.deepEqual(manifest.contributes.nodeActions, [{
-        id: 'quick-one', label: 'Quick one', appliesTo: ['*'], page: 'view', icon: 'diagram-project', param: 'focus', quick: ['header', 'relations'],
+        id: 'quick-one', label: 'Quick one', appliesTo: ['*'], page: 'view', icon: 'diagram-project', param: 'focus', menu: false, quick: ['header', 'relations'],
       }])
       assert.ok(!JSON.stringify(body).includes(path.basename(tmp)))
     })

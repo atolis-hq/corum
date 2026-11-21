@@ -59,6 +59,16 @@ describe('parsePluginManifest', () => {
     assert.deepEqual(manifest?.contributes, { pages: [], nodeActions: [] })
   })
 
+  for (const menu of [true, false]) {
+    it(`preserves explicit menu: ${menu} independently of quick`, () => {
+      const text = withChange('page: map }', `page: map, menu: ${menu}, quick: [header, relations] }`)
+      const { manifest, errors } = parsePluginManifest(text)
+      assert.deepEqual(errors, [])
+      assert.equal(manifest?.contributes.nodeActions[0].menu, menu)
+      assert.deepEqual(manifest?.contributes.nodeActions[0].quick, ['header', 'relations'])
+    })
+  }
+
   const invalid: Array<[string, string, RegExp]> = [
     ['bad id', withChange('id: journeys', 'id: Bad_Id'), /id "Bad_Id"/],
     ['missing main', withChange('main: ./index.js\n', ''), /main is required/],
@@ -77,6 +87,8 @@ describe('parsePluginManifest', () => {
     ['non-string param', withChange('page: map }', 'page: map, param: 3 }'), /param must be a non-empty string/],
     ['empty param', withChange('page: map }', 'page: map, param: "" }'), /param must be a non-empty string/],
     ['non-string action icon', withChange('page: map }', 'page: map, icon: [x] }'), /nodeActions\[0\]\.icon must be a string/],
+    ['non-boolean menu', withChange('page: map }', 'page: map, menu: "true" }'), /menu must be a boolean/],
+    ['null menu', withChange('page: map }', 'page: map, menu: null }'), /menu must be a boolean/],
     ['page missing mount', withChange('mount: mountJourneyMap, ', ''), /mount is required/],
   ]
   for (const [name, text, pattern] of invalid) {

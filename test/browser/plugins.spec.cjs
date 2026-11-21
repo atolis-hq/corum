@@ -54,7 +54,7 @@ test('unknown plugin shows Plugin unavailable with a link to the node page', asy
 
 test('node claimed by two plugins shows an Open in menu and node actions', async ({ page }) => {
   await page.goto(`/#/node?id=${MODEL}`);
-  const bar = page.locator('[data-testid="open-in"]');
+  const bar = page.getByTestId('node-title-row').getByTestId('open-in');
   await expect(bar).toBeVisible();
   await bar.getByRole('button', { name: /open in/i }).click();
   await expect(bar.getByRole('menuitem', { name: 'Claim A' })).toBeVisible();
@@ -72,8 +72,8 @@ test('node title row shows quick-link icons and the Open in menu icon last, list
   await expect(graphLink).toBeVisible();
   await expect(graphLink).toHaveAttribute('href', hrefTo('graph/view', 'focus', MODEL));
   // A fixture plugin's quick action uses its own icon and query param.
-  const okLink = row.locator('a.quick-link[title="Quick OK"]');
-  await expect(okLink).toHaveAttribute('href', hrefTo('ok/home', 'target', MODEL));
+  const okLink = row.locator('a.quick-link[title="View in OK"]');
+  await expect(okLink).toHaveAttribute('href', hrefTo('ok/home', 'id', MODEL));
   await expect(okLink.locator('i.fa-star')).toHaveCount(1);
   // The menu trigger is an icon button and the last item of the row.
   const trigger = row.getByRole('button', { name: /open in/i });
@@ -83,17 +83,22 @@ test('node title row shows quick-link icons and the Open in menu icon last, list
     .map(node => (node.classList.contains('open-in-trigger') ? 'trigger' : 'quick')));
   expect(order[order.length - 1]).toBe('trigger');
   expect(order.filter(item => item === 'quick').length).toBeGreaterThanOrEqual(2);
-  const lastRight = await row.evaluate(el => {
-    const box = el.getBoundingClientRect();
-    return box.right - el.querySelector('.open-in-trigger').getBoundingClientRect().right;
+  const menuGap = await row.evaluate(el => {
+    const quickLinks = el.querySelectorAll('a.quick-link');
+    const lastQuick = quickLinks[quickLinks.length - 1].getBoundingClientRect();
+    return el.querySelector('.open-in-trigger').getBoundingClientRect().left - lastQuick.right;
   });
-  expect(lastRight).toBeLessThan(2);
+  expect(menuGap).toBeGreaterThanOrEqual(0);
+  expect(menuGap).toBeLessThanOrEqual(12);
   // The menu lists everything, quick actions included, with the existing separator.
   await trigger.click();
   const menu = page.getByRole('menu');
-  for (const name of ['Default view', 'Claim A', 'Claim B', 'View in OK', 'Quick OK', 'View in graph']) {
+  for (const name of ['Default view', 'Claim A', 'Claim B', 'View in OK', 'View in graph']) {
     await expect(menu.getByRole('menuitem', { name })).toBeVisible();
   }
+  await expect(menu.getByRole('menuitem', { name: 'View in OK', exact: true })).toHaveCount(1);
+  await expect(menu.getByRole('menuitem', { name: 'Quick OK', exact: true })).toHaveCount(0);
+  await expect(menu.getByRole('menuitem', { name: 'View in OK', exact: true })).toHaveAttribute('href', await okLink.getAttribute('href'));
   await expect(menu.getByRole('menuitem', { name: 'View in graph' })).toHaveAttribute('href', hrefTo('graph/view', 'focus', MODEL));
   await expect(menu.getByRole('separator')).toHaveCount(1);
 });
@@ -106,11 +111,132 @@ test('relation rows show quick icons targeting the linked node', async ({ page }
   const linkedId = await rows.first().getAttribute('title');
   const quick = rows.first().locator('a.quick-link[title="View in graph"]');
   await expect(quick).toHaveAttribute('href', hrefTo('graph/view', 'focus', linkedId));
-  // Only actions that opt into the relations surface appear there.
-  await expect(rows.first().locator('a.quick-link[title="Quick OK"]')).toHaveCount(0);
   // Clicking the icon goes to the graph without also navigating the row.
   await quick.click();
   await expect.poll(() => page.url()).toContain(`/p/graph/view?focus=${linkedId}`);
+});
+
+test('connection row menu and star target an owned child and preserve the viewed branch', async ({ page, request }) => {
+  await page.addInitScript(() => localStorage.setItem('corum:edgePanelOpen', 'true'));
+  const { default: ref } = await (await request.get('/api/branches')).json();
+  expect(ref).toBeTruthy();
+  const prefix = `#/${encodeURIComponent(ref)}`;
+  const linkedId = 'payments.DomainModel.payment.operations.capture';
+  await page.goto(`/${prefix}/node?id=payments.APIEndpoint.complete-payment`);
+  const row = page.locator(`[data-testid="edge-row"][title="${linkedId}"]`);
+  const star = row.locator('a.quick-link[title="View in OK"]');
+  await expect(star).toHaveAttribute('href', `${prefix}/p/ok/home?id=${linkedId}`);
+  await expect(star.locator('i.fa-star')).toHaveCount(1);
+  const originalUrl = page.url();
+  const trigger = row.getByRole('button', { name: 'Open in', exact: true });
+  await trigger.click();
+  await expect(page).toHaveURL(originalUrl);
+  const menu = row.getByRole('menu');
+  await expect(menu.getByRole('menuitem', { name: 'Claim A', exact: true })).toHaveAttribute('href', `${prefix}/p/claim-a/home?id=${linkedId}`);
+  await expect(menu.getByRole('menuitem', { name: 'Claim B', exact: true })).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: 'View in graph', exact: true })).toHaveAttribute('href', `${prefix}/p/graph/view?focus=${linkedId}`);
+  const okItem = menu.getByRole('menuitem', { name: 'View in OK', exact: true });
+  await expect(okItem).toHaveCount(1);
+  await expect(okItem).toHaveAttribute('href', await star.getAttribute('href'));
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+  await trigger.click();
+  // This last item extends past the card: it must remain visible and clickable.
+  await okItem.click();
+  await expect(page).toHaveURL(`${new URL(originalUrl).origin}/${prefix}/p/ok/home?id=${linkedId}`);
+  await expect(page.getByTestId('plugin-ok-id')).toHaveText(linkedId);
+});
+
+test('a connection row can open a claimant without triggering the row navigation', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('corum:edgePanelOpen', 'true'));
+  await page.goto('/#/node?id=payments.APIEndpoint.complete-payment');
+  const linkedId = 'payments.DomainModel.payment.operations.capture';
+  const row = page.locator(`[data-testid="edge-row"][title="${linkedId}"]`);
+  await row.getByRole('button', { name: 'Open in', exact: true }).click();
+  await row.getByRole('menuitem', { name: 'Claim A', exact: true }).click();
+  await expect(page.getByTestId('plugin-claim-a')).toBeVisible();
+  await expect.poll(() => page.url()).toContain(`/p/claim-a/home?id=${linkedId}`);
+});
+
+test('connection-row action controls remain visible and usable on a phone', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('corum:edgePanelOpen', 'true'));
+  await page.goto('/#/node?id=payments.APIEndpoint.complete-payment');
+  const row = page.locator('[data-testid="edge-row"]').first();
+  const star = row.locator('a.quick-link[title="View in OK"]');
+  await expect(star).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(star).toBeInViewport();
+  const trigger = row.getByRole('button', { name: 'Open in', exact: true });
+  await expect(trigger).toBeInViewport();
+  await trigger.click();
+  await row.getByRole('menuitem', { name: 'View in OK', exact: true }).click();
+  await expect(page.getByTestId('plugin-ok-id')).toHaveText('payments.DomainModel.payment.operations.capture');
+});
+
+test('connection rows hide disabled plugin links and have no empty overflow menu', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('corum:edgePanelOpen', 'true'));
+  await page.route('**/api/plugins', async route => {
+    const response = await route.fetch();
+    const plugins = await response.json();
+    await route.fulfill({ response, json: plugins.map(plugin => ({ ...plugin, status: 'disabled' })) });
+  });
+  await page.goto('/#/node?id=payments.APIEndpoint.complete-payment');
+  const row = page.locator('[data-testid="edge-row"]').first();
+  await expect(row).toBeVisible();
+  await expect(row.locator('a.quick-link')).toHaveCount(0);
+  await expect(row.getByRole('button', { name: 'Open in', exact: true })).toHaveCount(0);
+});
+
+for (const menuSetting of [false, undefined]) {
+  test(`quick links remain independent of menu: ${menuSetting ?? 'omitted'}`, async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('corum:edgePanelOpen', 'true'));
+    await page.route('**/api/plugins', async route => {
+      const response = await route.fetch();
+      const plugins = await response.json();
+      const graph = plugins.find(plugin => plugin.id === 'graph');
+      for (const action of graph.manifest.contributes.nodeActions) {
+        if (menuSetting === undefined) delete action.menu;
+        else action.menu = menuSetting;
+      }
+      await route.fulfill({ response, json: plugins });
+    });
+    await page.goto('/#/node?id=payments.APIEndpoint.complete-payment');
+    const header = page.getByTestId('node-title-row');
+    await expect(header.locator('a.quick-link[title="View in graph"]')).toBeVisible();
+    if (menuSetting === false) {
+      await expect(header.getByRole('button', { name: 'Open in', exact: true })).toHaveCount(0);
+    } else {
+      await header.getByRole('button', { name: 'Open in', exact: true }).click();
+      await expect(header.getByRole('menuitem', { name: 'View in graph', exact: true })).toBeVisible();
+      await page.keyboard.press('Escape');
+    }
+    const row = page.locator('[data-testid="edge-row"]').first();
+    await expect(row.locator('a.quick-link[title="View in graph"]')).toBeVisible();
+    await row.getByRole('button', { name: 'Open in', exact: true }).click();
+    await expect(row.getByRole('menuitem', { name: 'View in OK', exact: true })).toBeVisible();
+    await expect(row.getByRole('menuitem', { name: 'View in graph', exact: true })).toHaveCount(menuSetting === false ? 0 : 1);
+  });
+}
+
+test('menu-only actions appear in headers and connection menus without quick icons', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('corum:edgePanelOpen', 'true'));
+  await page.route('**/api/plugins', async route => {
+    const response = await route.fetch();
+    const plugins = await response.json();
+    const ok = plugins.find(plugin => plugin.id === 'ok');
+    for (const action of ok.manifest.contributes.nodeActions) action.quick = [];
+    await route.fulfill({ response, json: plugins });
+  });
+  await page.goto(`/#/node?id=${MODEL}`);
+  const header = page.getByTestId('node-title-row');
+  await expect(header.locator('a.quick-link[title="View in OK"]')).toHaveCount(0);
+  await header.getByRole('button', { name: 'Open in', exact: true }).click();
+  await expect(header.getByRole('menuitem', { name: 'View in OK', exact: true })).toBeVisible();
+  await page.goto('/#/node?id=payments.APIEndpoint.complete-payment');
+  const row = page.locator('[data-testid="edge-row"]').first();
+  await expect(row.locator('a.quick-link[title="View in OK"]')).toHaveCount(0);
+  await row.getByRole('button', { name: 'Open in', exact: true }).click();
+  await expect(row.getByRole('menuitem', { name: 'View in OK', exact: true })).toBeVisible();
 });
 
 test('node page title row wraps on a phone without horizontal overflow', async ({ page }) => {
@@ -140,7 +266,7 @@ test('unclaimed node shows the generic page', async ({ page }) => {
   await page.goto(`/#/node?id=${SCHEMA_NODE}`);
   await expect(page.locator('.detail-pane h1')).toBeVisible();
   // No claimant pages: the menu holds only node actions, never a Default view entry.
-  await page.locator('[data-testid="open-in"]').getByRole('button', { name: /open in/i }).click();
+  await page.getByTestId('node-title-row').getByRole('button', { name: /open in/i }).click();
   await expect(page.getByRole('menuitem', { name: /default view/i })).toHaveCount(0);
   await expect(page.getByRole('menuitem', { name: 'View in graph' })).toBeVisible();
   await expect(page).toHaveURL(/#\/(.+\/)?node\?id=/);

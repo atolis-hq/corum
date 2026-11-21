@@ -17,6 +17,7 @@ export type PluginNodeAction = {
   page: string
   icon?: string
   param?: string
+  menu?: boolean
   quick?: QuickSurface[]
 }
 
@@ -154,6 +155,7 @@ export function parsePluginManifest(yamlText: string): { manifest: PluginManifes
       const appliesTo = stringList(raw.appliesTo, `${label}.appliesTo`, errors)
       if (raw.icon !== undefined && typeof raw.icon !== 'string') errors.push(`${label}.icon must be a string`)
       if (raw.param !== undefined && !isNonEmptyString(raw.param)) errors.push(`${label}.param must be a non-empty string`)
+      if (raw.menu !== undefined && typeof raw.menu !== 'boolean') errors.push(`${label}.menu must be a boolean`)
       const quick = quickSurfaces(raw.quick, `${label}.quick`, errors)
       if (!isNonEmptyString(raw.page)) errors.push(`${label}.page is required`)
       else if (!pageIds.has(raw.page)) errors.push(`${label}.page "${raw.page}" does not reference a declared page`)
@@ -161,6 +163,7 @@ export function parsePluginManifest(yamlText: string): { manifest: PluginManifes
         const action: PluginNodeAction = { id: raw.id, label: raw.label, appliesTo, page: raw.page }
         if (typeof raw.icon === 'string') action.icon = raw.icon
         if (isNonEmptyString(raw.param)) action.param = raw.param
+        if (typeof raw.menu === 'boolean') action.menu = raw.menu
         if (quick.length > 0) action.quick = quick
         nodeActions.push(action)
       }

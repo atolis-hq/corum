@@ -46,6 +46,7 @@ function buildActionEntry(plugin, action) {
     page: action.page,
     icon: action.icon ?? null,
     param: action.param ?? 'id',
+    menu: action.menu ?? true,
     quick: action.quick ?? [],
   }
 }
