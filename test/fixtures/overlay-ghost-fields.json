@@ -1,0 +1,23 @@
+{
+  "overlayRefs": ["feature/ghost", "main"],
+  "fields": [
+    {
+      "localName": "ghost-added",
+      "ghostState": "ghost-added",
+      "sourceRef": "feature/ghost",
+      "node": { "template": "Field", "state": "proposed", "stability": "unstable", "properties": { "type": "string" } }
+    },
+    {
+      "localName": "ghost-other-branch",
+      "ghostState": "ghost-added",
+      "sourceRef": "main",
+      "node": { "template": "Field", "state": "agreed", "stability": "stable", "properties": { "type": "integer" } }
+    },
+    {
+      "localName": "ghost-clash",
+      "ghostState": "ghost-conflict",
+      "sourceRef": "feature/ghost",
+      "node": { "template": "Field", "state": "proposed", "stability": "unstable", "properties": { "type": "boolean" } }
+    }
+  ]
+}

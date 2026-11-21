@@ -1,4 +1,4 @@
-import { describe, it, before, after } from 'node:test'
+import { describe, it, before, after, beforeEach, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
@@ -1097,6 +1097,75 @@ describe('web server', () => {
     it('returns 400 when node_ids is missing', async () => {
       const res = await fetch(`http://localhost:${handle.port}/api/lineage`)
       assert.equal(res.status, 400)
+    })
+  })
+
+  describe('plugin list re-resolution and overrides', () => {
+    let tmp: string
+    let savedEnv: string | undefined
+    let handle2: WebServerHandle | undefined
+
+    function writeBuiltin(id: string): void {
+      const dir = path.join(tmp, 'builtin', id)
+      fs.mkdirSync(dir, { recursive: true })
+      fs.writeFileSync(path.join(dir, 'plugin.yaml'), `id: ${id}\nversion: 1.0.0\nengines: { corum: "*" }\nmain: ./index.js\n`)
+      fs.writeFileSync(path.join(dir, 'index.js'), `export const id = '${id}'\n`)
+    }
+
+    beforeEach(() => {
+      tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-web-reload-'))
+      savedEnv = process.env.CORUM_BUILTIN_PLUGIN_DIRS
+      process.env.CORUM_BUILTIN_PLUGIN_DIRS = path.join(tmp, 'builtin')
+      writeBuiltin('alpha')
+      fs.mkdirSync(path.join(tmp, 'graph'))
+    })
+
+    afterEach(async () => {
+      await handle2?.close()
+      handle2 = undefined
+      if (savedEnv === undefined) delete process.env.CORUM_BUILTIN_PLUGIN_DIRS
+      else process.env.CORUM_BUILTIN_PLUGIN_DIRS = savedEnv
+      fs.rmSync(tmp, { recursive: true, force: true })
+    })
+
+    async function statuses(base: string): Promise<Map<string, string>> {
+      const body = await fetch(`${base}/api/plugins`).then(r => r.json()) as Array<{ id: string; status: string }>
+      return new Map(body.map(p => [p.id, p.status]))
+    }
+
+    it('a graph override disables a built-in end to end and a reload re-enables it', async () => {
+      const graphDir = path.join(tmp, 'graph')
+      fs.writeFileSync(path.join(graphDir, 'graph.yaml'), 'plugins:\n  - id: alpha\n    enabled: false\n')
+      handle2 = await startWebServer(makeTestGraph(), { port: 0, graphPath: graphDir, logger: () => {} })
+      const base = `http://localhost:${handle2.port}`
+      assert.equal((await statuses(base)).get('alpha'), 'disabled')
+      assert.equal((await fetch(`${base}/plugins/alpha/index.js`)).status, 404)
+
+      fs.writeFileSync(path.join(graphDir, 'graph.yaml'), 'plugins: []\n')
+      assert.equal((await fetch(`${base}/api/reload`, { method: 'POST' })).status, 202)
+      assert.equal((await statuses(base)).get('alpha'), 'enabled')
+      assert.equal((await fetch(`${base}/plugins/alpha/index.js`)).status, 200)
+    })
+
+    it('POST /api/reload re-resolves the plugin list without a restart', async () => {
+      const graphDir = path.join(tmp, 'graph')
+      fs.writeFileSync(path.join(graphDir, 'graph.yaml'), 'plugins: []\n')
+      handle2 = await startWebServer(makeTestGraph(), { port: 0, graphPath: graphDir, logger: () => {} })
+      const base = `http://localhost:${handle2.port}`
+      const before = await statuses(base)
+      assert.equal(before.get('alpha'), 'enabled')
+      assert.equal(before.has('beta'), false)
+
+      writeBuiltin('beta')
+      assert.equal((await fetch(`${base}/api/reload`, { method: 'POST' })).status, 202)
+      const after = await statuses(base)
+      assert.equal(after.get('alpha'), 'enabled')
+      assert.equal(after.get('beta'), 'enabled')
+      assert.equal((await fetch(`${base}/plugins/beta/index.js`)).status, 200)
+
+      fs.rmSync(path.join(tmp, 'builtin', 'beta'), { recursive: true })
+      await fetch(`${base}/api/reload`, { method: 'POST' })
+      assert.equal((await statuses(base)).has('beta'), false)
     })
   })
 
