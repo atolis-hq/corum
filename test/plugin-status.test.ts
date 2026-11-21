@@ -55,6 +55,17 @@ describe('resolvePluginStatuses', () => {
     assert.equal(status.status, 'enabled')
   })
 
+  it('prerelease versions follow semver range semantics', () => {
+    const status = (range: string, version: string) =>
+      resolvePluginStatuses([plugin('a', { corum: range })], { ...ctx, corumVersion: version })[0].status
+    assert.equal(status('>=0.5.0', '0.5.0-beta.1'), 'unavailable')
+    assert.equal(status('>=0.4', '0.6.0-rc.1'), 'enabled')
+    assert.equal(status('>=0.4 <0.5.0', '0.5.0-beta.1'), 'enabled')
+    assert.equal(status('>=0.4 <0.5.0', '0.5.0'), 'unavailable')
+    assert.equal(status('>=0.5.0-beta.1', '0.5.0-beta.2'), 'enabled')
+    assert.equal(status('^0.5.0', '0.5.0-alpha.1'), 'unavailable')
+  })
+
   it('an invalid engines range is unavailable', () => {
     const [status] = resolvePluginStatuses([plugin('a', { corum: 'not a range' })], ctx)
     assert.equal(status.status, 'unavailable')

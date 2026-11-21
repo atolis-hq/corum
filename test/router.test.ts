@@ -153,3 +153,25 @@ describe('parseRoute graph routes', () => {
     assert.equal(r.plugin, null)
   })
 })
+
+describe('a branch named like the reserved plugin segment', () => {
+  it('a branch named "p" is read as a plugin route, so it is unreachable as a branch', () => {
+    // Pins current behaviour, logged as a separate defect: branch "p" links parse as plugin id "node".
+    const hash = buildRoute({ pathname: '/node', params: { id: 'orders.Order' }, branch: 'p' })
+    const r = parseRoute(hash)
+    assert.equal(r.branch, null)
+    assert.deepEqual(JSON.parse(JSON.stringify(r.plugin)), { id: 'node', page: null })
+  })
+
+  it('other branches and branch-scoped plugin routes still resolve', () => {
+    const r = parseRoute(buildRoute({ pathname: '/node', params: { id: 'x' }, branch: 'pp' }))
+    assert.equal(r.branch, 'pp')
+    assert.equal(r.plugin, null)
+    const scoped = parseRoute('#/main/p/graph/home')
+    assert.equal(scoped.branch, 'main')
+    assert.deepEqual(JSON.parse(JSON.stringify(scoped.plugin)), { id: 'graph', page: 'home' })
+    const named = parseRoute('#/p/p/home')
+    assert.equal(named.branch, null)
+    assert.deepEqual(JSON.parse(JSON.stringify(named.plugin)), { id: 'p', page: 'home' })
+  })
+})

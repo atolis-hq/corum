@@ -93,6 +93,41 @@ describe('discoverPlugins', () => {
     assert.match(errors[0], /duplicate plugin id "graph"/)
   })
 
+  it('reports a duplicate id between pack-bundled and standalone plugins deterministically', () => {
+    const graphDir = path.join(tmp, 'g')
+    const packPlugin = writePlugin(path.join(tmp, 'pack'), 'journeys')
+    writePlugin(path.join(graphDir, 'plugins'), 'journeys')
+    const input = {
+      builtinDir: path.join(tmp, 'nope'),
+      graphDir,
+      graphYaml: { plugins: [{ path: 'plugins/journeys' }] },
+      packPluginDirs: [packPlugin],
+    }
+
+    const { plugins, errors } = discoverPlugins(input)
+    assert.equal(plugins.length, 1)
+    assert.equal(errors.length, 1)
+    assert.match(errors[0], /duplicate plugin id "journeys"/)
+    const again = discoverPlugins(input)
+    assert.equal(again.plugins[0].origin, plugins[0].origin)
+    assert.equal(again.plugins[0].dir, plugins[0].dir)
+  })
+
+  it('reports a duplicate id between two standalone plugins and keeps the first listed', () => {
+    const graphDir = path.join(tmp, 'g')
+    writePlugin(path.join(graphDir, 'a'), 'same')
+    writePlugin(path.join(graphDir, 'b'), 'same')
+    const { plugins, errors } = discoverPlugins({
+      builtinDir: path.join(tmp, 'nope'),
+      graphDir,
+      graphYaml: { plugins: [{ path: 'a/same' }, { path: 'b/same' }] },
+      packPluginDirs: [],
+    })
+    assert.equal(plugins.length, 1)
+    assert.equal(plugins[0].dir, path.join(graphDir, 'a', 'same'))
+    assert.match(errors.join('\n'), /duplicate plugin id "same"/)
+  })
+
   it('reports malformed manifests, missing plugin.yaml and bad plugins entries', () => {
     const graphDir = path.join(tmp, 'g')
     fs.mkdirSync(path.join(graphDir, 'bad'), { recursive: true })
