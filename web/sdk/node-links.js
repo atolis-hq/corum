@@ -64,7 +64,7 @@ function MenuButton({ menu }) {
       </button>
       ${open && html`
         <div className="open-in-menu" role="menu">
-          ${menu.defaultHref && item('default', menu.defaultHref, 'Default view')}
+          ${menu.explorerHref && item('explorer', menu.explorerHref, 'Explorer view')}
           ${menu.destinations.map(link => item(link.key, link.href, link.label))}
           ${menu.destinations.length > 0 && menu.actions.length > 0 && html`<div className="open-in-sep" role="separator" />`}
           ${menu.actions.map(link => item(link.key, link.href, link.label))}
@@ -82,7 +82,7 @@ export function QuickLinks({ nodeId, surface }) {
   return html`<span className="quick-links"><${QuickIcons} links=${links} /></span>`
 }
 
-/* The "Open in" menu: default view, claimant pages and node actions. Renders nothing when it would be empty. */
+/* The "Open in" menu: Explorer view, claimant pages and node actions. Renders nothing when it would be empty. */
 export function OpenInMenu({ nodeId }) {
   const ctx = useCtx()
   const menu = ctx ? ctx.nodeLinks(nodeId).menu : null

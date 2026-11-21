@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url'
 const load = (dir: string, file: string) => import(pathToFileURL(path.join(process.cwd(), 'web', dir, file)).href)
 const { createPluginContext } = await load('host', 'context.js')
 const { createRegistry } = await load('sdk', 'registry.js')
-const { hrefForNode, hrefForAction, owningRoot } = await load('sdk', 'resolve-node.js')
+const { hrefForNode, hrefForAction, hrefForExplorerView, owningRoot } = await load('sdk', 'resolve-node.js')
 const { matchKeysFor } = await load('sdk', 'match-keys.js')
 
 function route(search = '', branch: string | null = null) {
@@ -20,6 +20,7 @@ function setup(overrides: Record<string, unknown> = {}) {
     registry,
     hrefForNode,
     hrefForAction,
+    hrefForExplorerView,
     owningRoot,
     matchKeysFor,
     navigate: (hash: string) => { calls.navigated.push(hash) },
@@ -140,16 +141,16 @@ describe('ctx.nodeLinks', () => {
     const { ctx } = setup()
     assert.deepEqual(ctx.nodeLinks('orders.DomainModel.order'), {
       quick: { header: [], relations: [] },
-      menu: { defaultHref: null, destinations: [], actions: [] },
+      menu: { explorerHref: null, destinations: [], actions: [] },
     })
     assert.deepEqual(ctx.nodeLinks('unknown.node').menu.actions, [])
   })
 
-  it('lists claimant destinations with a default view, and actions in menu and quick surfaces', () => {
+  it('lists claimant destinations with an explorer view, and actions in menu and quick surfaces', () => {
     const { ctx, registry, update, state } = setup()
     registry.registerPlugin(claimer('a', ['DomainModel'], {}, [action({ id: 'view', label: 'View', icon: 'eye', quick: ['header'] })]))
     const links = ctx.nodeLinks('orders.DomainModel.order')
-    assert.equal(links.menu.defaultHref, '#/node?id=orders.DomainModel.order')
+    assert.equal(links.menu.explorerHref, '#/node?id=orders.DomainModel.order&view=explorer')
     assert.deepEqual(links.menu.destinations, [
       { key: 'a/home', pluginId: 'a', id: 'home', label: 'Page a', icon: 'star', href: '#/p/a/home?id=orders.DomainModel.order' },
     ])
@@ -158,7 +159,7 @@ describe('ctx.nodeLinks', () => {
     assert.deepEqual(links.quick, { header: [expected], relations: [] })
     update({ ...state, viewingRef: 'feat/x' })
     const branched = ctx.nodeLinks('orders.DomainModel.order')
-    assert.equal(branched.menu.defaultHref, '#/feat/x/node?id=orders.DomainModel.order')
+    assert.equal(branched.menu.explorerHref, '#/feat%2Fx/node?id=orders.DomainModel.order&view=explorer')
     assert.equal(branched.menu.actions[0].href, '#/feat%2Fx/p/a/home?id=orders.DomainModel.order')
   })
 
@@ -166,7 +167,7 @@ describe('ctx.nodeLinks', () => {
     const { ctx, registry } = setup()
     registry.registerPlugin(claimer('w', [], {}, [action({ appliesTo: ['*'], param: 'focus', quick: ['relations'] })]))
     const links = ctx.nodeLinks('orders.DomainModel.order')
-    assert.equal(links.menu.defaultHref, null)
+    assert.equal(links.menu.explorerHref, null)
     assert.deepEqual(links.menu.destinations, [])
     assert.equal(links.menu.actions[0].href, '#/p/w/home?focus=orders.DomainModel.order')
     assert.equal(links.menu.actions[0].icon, null)
@@ -179,7 +180,7 @@ describe('ctx.nodeLinks', () => {
     registry.registerPlugin(claimer('a', ['DomainModel'], {}, [action({ quick: ['header'] })]))
     const child = 'orders.DomainModel.order.fields.id'
     const links = ctx.nodeLinks(child)
-    assert.equal(links.menu.defaultHref, `#/node?id=${child}`)
+    assert.equal(links.menu.explorerHref, `#/node?id=${child}&view=explorer`)
     assert.equal(links.menu.destinations[0].href, `#/p/a/home?id=${child}`)
     assert.equal(links.quick.header[0].href, `#/p/a/home?id=${child}`)
   })

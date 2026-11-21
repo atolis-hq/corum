@@ -10,7 +10,7 @@ type Page = { id: string; title: string; icon?: string; order?: number; mount: s
 type Action = { id: string; label: string; appliesTo: string[]; page: string; icon?: string; param?: string; menu?: boolean; quick?: string[] }
 
 const { createRegistry } = await load('registry.js')
-const { resolveNodeTarget, hrefForNode, hrefForAction } = await load('resolve-node.js')
+const { resolveNodeTarget, hrefForNode, hrefForAction, hrefForExplorerView } = await load('resolve-node.js')
 
 function plugin(
   id: string,
@@ -234,6 +234,17 @@ describe('hrefForAction', () => {
   it('defaults the param to id and prefixes the branch', () => {
     assert.equal(hrefForAction({ pluginId: 'j', page: 'map' }, 'a.b'), '#/p/j/map?id=a.b')
     assert.equal(hrefForAction(action, 'a.b', { branch: 'feat/x' }), '#/feat%2Fx/p/graph/view?focus=a.b')
+  })
+})
+
+describe('hrefForExplorerView', () => {
+  it('links to the generic node page with the view=explorer bypass', () => {
+    assert.equal(hrefForExplorerView('a.b'), '#/node?id=a.b&view=explorer')
+  })
+
+  it('prefixes the encoded branch and encodes the node id', () => {
+    assert.equal(hrefForExplorerView('a.b', { branch: 'feat/x' }), '#/feat%2Fx/node?id=a.b&view=explorer')
+    assert.equal(hrefForExplorerView('a b&c'), '#/node?id=a+b%26c&view=explorer')
   })
 })
 

@@ -53,6 +53,12 @@ export function hrefForAction(action, nodeId, { branch } = {}) {
   return buildHref(`/p/${action.pluginId}/${action.page}`, nodeId, branch, action.param ?? 'id')
 }
 
+/** Link to the host's built-in node page (the Explorer view); `view=explorer` stops it redirecting to a claimant plugin page. */
+export function hrefForExplorerView(nodeId, { branch } = {}) {
+  const query = `?${new URLSearchParams({ id: nodeId, view: 'explorer' })}`
+  return branch ? `#/${encodeURIComponent(branch)}/node${query}` : `#/node${query}`
+}
+
 /** True when the page exists in an enabled plugin (host chrome should not link to pages that are not there). */
 export function isPageAvailable(registry, pluginId, pageId) {
   return registry.findPage(pluginId, pageId) !== null
