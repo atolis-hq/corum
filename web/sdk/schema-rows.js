@@ -1,6 +1,7 @@
 import React from 'react'
+import { NodeReference } from './node-reference.js'
 import { html } from './html.js'
-import { navigate, Icon, StateTag } from './ui.js'
+import { Icon, StateTag } from './ui.js'
 import {
   fieldLocalName, refName, refLocalSchemaName, fieldType, fieldRequirement,
   fieldCardinality, fieldDetails, linkSummary,
@@ -119,7 +120,7 @@ export function SchemaFieldRows({
       return html`
         <${React.Fragment} key=${edge.id}>
           ${index > 0 && html`<span key=${`sep-${edge.id}`}>${' '}</span>`}
-          <a className="node-ref-link" onClick=${() => navigate(`/node?id=${encodeURIComponent(link.targetNodeId)}`)} title=${link.title}>${link.direction} ${link.label}</a>
+          <${NodeReference} nodeId=${link.targetNodeId} title=${link.title}>${link.direction} ${link.label}<//>
         <//>
       `
     });

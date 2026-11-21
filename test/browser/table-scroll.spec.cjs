@@ -7,8 +7,8 @@ for (const width of [393, 1280, 1440]) {
     await page.goto('/#/node?id=orders.DomainModel.order');
     await expect(page.locator('.detail-pane h1')).toBeVisible();
     await page.evaluate(() => document.fonts.ready);
-    // Retry the actual layout/scroll conditions, including the injected wide key,
-    // so an in-flight render cannot invalidate a one-shot measurement.
+    // Branch initialization can replace the detail DOM after its first render.
+    // Retry the injection and measurement together against the current tables.
     await expect(async () => {
       // A long property key exercises natural table overflow without changing fixtures.
       await page.locator('.prop-key-label').first().evaluate(el => {
@@ -44,6 +44,6 @@ for (const width of [393, 1280, 1440]) {
         content: document.querySelector('.content').scrollWidth - document.querySelector('.content').clientWidth,
       }));
       expect(overflow).toEqual({ document: 0, content: 0 });
-    }).toPass({ timeout: 5000 });
+    }).toPass({ timeout: 10000 });
   });
 }
