@@ -7,7 +7,15 @@ const port = process.env.CORUM_E2E_PORT || '3002';
 module.exports = defineConfig({
   testDir: './test/browser',
   timeout: 60000,
-  use: { baseURL: `http://127.0.0.1:${port}`, viewport: { width: 375, height: 812 } },
+  forbidOnly: !!process.env.CI,
+  reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
+  use: {
+    browserName: 'chromium',
+    baseURL: `http://127.0.0.1:${port}`,
+    viewport: { width: 375, height: 812 },
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
+  },
   webServer: {
     command: 'npm run web',
     env: {
