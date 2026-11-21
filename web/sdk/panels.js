@@ -5,7 +5,7 @@ export function ErrorPanel({ title, message, testId, className = 'content', styl
   return html`
     <div className=${className} style=${style} data-testid=${testId}>
       ${title ? html`<h1>${title}</h1>` : null}
-      <p style=${{ color: 'var(--warn)' }}>${message}</p>
+      <p style=${{ color: 'var(--warning)' }}>${message}</p>
     </div>`
 }
 

@@ -139,7 +139,7 @@ function FocusSearch({ allNodes, focalNodeId, onFocalNode }) {
               onClick=${() => { onFocalNode(n.id); setSearchQuery(''); setSearchOpen(false) }}
             >
               <span style=${{ fontWeight: 500 }}>${getDisplayName(n.id)}</span>
-              <span style=${{ color: 'var(--ink-3)', fontSize: 10, marginLeft: 4 }}>${n.namespace}</span>
+              <span style=${{ color: 'var(--muted-foreground)', fontSize: 10, marginLeft: 4 }}>${n.namespace}</span>
             </div>
           `)}
         </div>

@@ -44,6 +44,6 @@ export function Chip({ children, title }) {
 }
 
 export function TemplateBadge({ name, colour }) {
-  const style = colour ? { background: colour } : { background: 'var(--ink-4)' }
+  const style = colour ? { background: colour } : { background: 'var(--subtle-foreground)' }
   return html`<span className="template-badge" style=${style}>${name}</span>`
 }

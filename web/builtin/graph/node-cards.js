@@ -18,7 +18,7 @@ function ComponentCardNode({ data }) {
 
 // Level 2/3: node card node
 function NodeCardNode({ data }) {
-  const colour = data.colour ?? 'var(--ink-4)'
+  const colour = data.colour ?? 'var(--subtle-foreground)'
   return html`
     <div className=${`graph-node-card${data.faded ? ' faded' : ''}${data.focal ? ' focal' : ''}`} onClick=${data.onClick}>
       ${data.parentLabel && html`<div className="graph-node-card-owner">${data.parentLabel}</div>`}

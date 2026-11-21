@@ -1,38 +1,50 @@
 :root,
 [data-theme="light"] {
-  --paper: #ffffff;
-  --paper-2: #f7f7f8;
-  --paper-3: #eeeef1;
-  --ink: #141519;
-  --ink-2: #3a3c43;
-  --ink-3: #6c6f78;
-  --ink-4: #a8acb5;
-  --rule: #e4e6ea;
-  --rule-2: #cdd0d6;
+  --background: #ffffff;
+  --card: #f7f7f8;
+  --muted: #eeeef1;
+  --foreground: #141519;
+  --secondary-foreground: #3a3c43;
+  --muted-foreground: #6c6f78;
+  --subtle-foreground: #a8acb5;
+  --border: #e4e6ea;
+  --border-strong: #cdd0d6;
   --accent: #e8614a;
-  --accent-2: #fde6e0;
-  --accent-ink: #b3422e;
-  --ok: #3b9a66;
-  --warn: var(--accent);
+  --accent-soft: #fde6e0;
+  --accent-text: #b3422e;
+  --success: #3b9a66;
+  --warning: var(--accent);
+  --ring: var(--accent);
+  --destructive: #c44;
+  --info: #3b6fb3;
+  --radius-sm: 4px;
   --radius: 6px;
+  --radius-lg: 10px;
+  --corum-tokens-version: 1;
   color-scheme: light;
 }
 
-body[data-theme="dark"] {
-  --paper: #15171c;
-  --paper-2: #1c1f25;
-  --paper-3: #262a33;
-  --ink: #f2f3f5;
-  --ink-2: #d4d6dc;
-  --ink-3: #9498a2;
-  --ink-4: #5f636d;
-  --rule: #2c2f38;
-  --rule-2: #3d414c;
+[data-theme="dark"] {
+  --background: #15171c;
+  --card: #1c1f25;
+  --muted: #262a33;
+  --foreground: #f2f3f5;
+  --secondary-foreground: #d4d6dc;
+  --muted-foreground: #9498a2;
+  --subtle-foreground: #5f636d;
+  --border: #2c2f38;
+  --border-strong: #3d414c;
   --accent: #f27561;
-  --accent-2: #3a221c;
-  --accent-ink: #ffa796;
-  --ok: #5bbd85;
-  --warn: var(--accent);
+  --accent-soft: #3a221c;
+  --accent-text: #ffa796;
+  --success: #5bbd85;
+  --warning: var(--accent);
+  --ring: var(--accent);
+  --destructive: #e87070;
+  --info: #7aa7e0;
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 10px;
   color-scheme: dark;
 }
 
@@ -42,8 +54,8 @@ body {
   margin: 0;
   padding: 0;
   height: 100%;
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--background);
+  color: var(--foreground);
 }
 
 body {
@@ -65,14 +77,14 @@ button {
 
 .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
 .label-xs {
-  color: var(--ink-3);
+  color: var(--muted-foreground);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 .label-sm {
-  color: var(--ink-3);
+  color: var(--muted-foreground);
   font-size: 11px;
 }
 
@@ -83,7 +95,7 @@ button {
   height: 48px;
   padding: 10px 16px;
   background: var(--accent);
-  color: var(--paper);
+  color: var(--background);
   flex-shrink: 0;
 }
 
@@ -124,8 +136,8 @@ button {
   gap: 4px;
   width: 72px;
   padding: 10px 8px;
-  background: var(--paper-2);
-  border-right: 1px solid var(--rule-2);
+  background: var(--card);
+  border-right: 1px solid var(--border-strong);
   flex-shrink: 0;
   overflow-y: auto;
   scrollbar-width: thin;
@@ -142,7 +154,7 @@ button {
   padding: 6px 4px;
   border: 1px solid transparent;
   border-radius: var(--radius);
-  color: var(--ink-3);
+  color: var(--muted-foreground);
   cursor: pointer;
 }
 
@@ -156,13 +168,13 @@ button {
 }
 
 .nav-rail-item:hover {
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--background);
+  color: var(--foreground);
 }
 
 .nav-rail-item.active {
   background: var(--accent);
-  color: var(--paper);
+  color: var(--background);
 }
 
 .nav-tree {
@@ -170,16 +182,16 @@ button {
   min-width: 280px;
   padding: 12px 10px 24px;
   overflow: auto;
-  background: var(--paper);
-  border-right: 1px solid var(--rule);
+  background: var(--background);
+  border-right: 1px solid var(--border);
 }
 
 .nav-kind-head {
   padding: 10px 6px 2px;
-  color: var(--ink);
+  color: var(--foreground);
   font-size: 13px;
   font-weight: 700;
-  border-bottom: 1px solid var(--rule-2);
+  border-bottom: 1px solid var(--border-strong);
 }
 
 .ns-kind-pill {
@@ -202,7 +214,7 @@ button {
   justify-content: space-between;
   gap: 8px;
   padding: 8px 6px;
-  color: var(--ink-4);
+  color: var(--subtle-foreground);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-size: 12px;
@@ -215,7 +227,7 @@ button {
   align-items: center;
   gap: 7px;
   padding: 7px 6px 4px 16px;
-  color: var(--ink-3);
+  color: var(--muted-foreground);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -227,7 +239,7 @@ button {
   align-items: center;
   gap: 7px;
   padding: 5px 6px 2px 22px;
-  color: var(--ink-3);
+  color: var(--muted-foreground);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -239,7 +251,7 @@ button {
   padding: 6px 8px 6px 30px;
   overflow: hidden;
   border-radius: 4px;
-  color: var(--ink-2);
+  color: var(--secondary-foreground);
   cursor: pointer;
   font-size: 12px;
   text-overflow: ellipsis;
@@ -247,12 +259,12 @@ button {
 }
 
 .nav-node-item:hover {
-  background: var(--paper-2);
+  background: var(--card);
 }
 
 .nav-node-item.active {
-  background: var(--nav-node-active-bg, var(--ink));
-  color: var(--paper);
+  background: var(--nav-node-active-bg, var(--foreground));
+  color: var(--background);
 }
 
 .nav-child-group {
@@ -264,7 +276,7 @@ button {
   align-items: center;
   gap: 6px;
   padding: 4px 8px 2px 42px;
-  color: var(--ink-4);
+  color: var(--subtle-foreground);
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
@@ -290,16 +302,16 @@ button {
 .card {
   margin-bottom: 14px;
   overflow: hidden;
-  border: 1px solid var(--rule-2);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
-  background: var(--paper);
+  background: var(--background);
 }
 
 .card-head {
   padding: 10px 14px;
-  background: var(--paper-2);
-  border-bottom: 1px solid var(--rule);
-  color: var(--ink-3);
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -307,31 +319,31 @@ button {
 }
 
 .card-body {
-  background: var(--paper);
+  background: var(--background);
 }
 
 .tag {
   display: inline-block;
   padding: 1px 7px;
-  border: 1px solid var(--rule-2);
+  border: 1px solid var(--border-strong);
   border-radius: 3px;
-  background: var(--paper);
-  color: var(--ink-2);
+  background: var(--background);
+  color: var(--secondary-foreground);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
-.tag.state-draft { background: var(--paper-3); color: var(--ink-2); }
-.tag.state-proposed { background: var(--accent-2); border-color: var(--accent); color: var(--accent-ink); }
-.tag.state-agreed { background: color-mix(in oklch, var(--ok) 18%, var(--paper)); border-color: var(--ok); color: var(--ink); }
-.tag.state-implemented { background: var(--ink); border-color: var(--ink); color: var(--paper); }
-.tag.state-future { background: transparent; border-style: dashed; color: var(--ink-3); }
-.tag.state-removed { text-decoration: line-through; color: var(--ink-3); }
+.tag.state-draft { background: var(--muted); color: var(--secondary-foreground); }
+.tag.state-proposed { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-text); }
+.tag.state-agreed { background: color-mix(in oklch, var(--success) 18%, var(--background)); border-color: var(--success); color: var(--foreground); }
+.tag.state-implemented { background: var(--foreground); border-color: var(--foreground); color: var(--background); }
+.tag.state-future { background: transparent; border-style: dashed; color: var(--muted-foreground); }
+.tag.state-removed { text-decoration: line-through; color: var(--muted-foreground); }
 .tag.stability-stable { background: transparent; }
-.tag.stability-unstable { border-style: dashed; color: var(--ink-3); }
-.tag.stability-deprecated { color: var(--ink-3); text-decoration: line-through; }
+.tag.stability-unstable { border-style: dashed; color: var(--muted-foreground); }
+.tag.stability-deprecated { color: var(--muted-foreground); text-decoration: line-through; }
 
 .chip,
 .template-badge {
@@ -340,10 +352,10 @@ button {
   gap: 6px;
   min-height: 20px;
   padding: 2px 8px;
-  border: 1px solid var(--rule-2);
+  border: 1px solid var(--border-strong);
   border-radius: 999px;
-  background: var(--paper);
-  color: var(--ink-2);
+  background: var(--background);
+  color: var(--secondary-foreground);
   font-size: 11px;
   font-weight: 600;
 }
@@ -378,7 +390,7 @@ button {
 .prop-table td {
   vertical-align: top;
   padding: 8px 14px;
-  border-bottom: 1px dashed var(--rule);
+  border-bottom: 1px dashed var(--border);
   font-size: 12px;
 }
 
@@ -388,7 +400,7 @@ button {
 
 .prop-table td:first-child {
   width: 220px;
-  color: var(--ink-3);
+  color: var(--muted-foreground);
   font-size: 11px;
   font-weight: 600;
 }
@@ -400,7 +412,7 @@ button {
 }
 
 .prop-row.nested {
-  background: color-mix(in oklch, var(--accent) 2%, var(--paper));
+  background: color-mix(in oklch, var(--accent) 2%, var(--background));
 }
 
 .prop-key-cell {
@@ -415,7 +427,7 @@ button {
 .prop-key-label--inline {
   display: inline;
   padding-left: 0;
-  color: var(--ink-3);
+  color: var(--muted-foreground);
   font-size: 11px;
   font-weight: 600;
 }
@@ -427,14 +439,14 @@ button {
   font-size: inherit;
 }
 
-.prop-empty { color: var(--ink-4); }
+.prop-empty { color: var(--subtle-foreground); }
 
 .schema-card .card-body {
   padding: 0;
 }
 
 .schema-section {
-  border-bottom: 1px solid var(--rule-2);
+  border-bottom: 1px solid var(--border-strong);
 }
 
 .schema-section:last-child {
@@ -446,7 +458,7 @@ button {
 }
 
 .enum-section {
-  border-bottom: 1px solid var(--rule-2);
+  border-bottom: 1px solid var(--border-strong);
 }
 
 .enum-section:last-child {
@@ -459,7 +471,7 @@ button {
   gap: 12px;
   align-items: center;
   padding: 8px 14px;
-  border-bottom: 1px dashed var(--rule);
+  border-bottom: 1px dashed var(--border);
   font-size: 12px;
 }
 
@@ -468,12 +480,12 @@ button {
 }
 
 .enum-row-head {
-  background: var(--paper-2);
+  background: var(--card);
   font-weight: 600;
 }
 
 .enum-row .name {
-  color: var(--ink);
+  color: var(--foreground);
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 11.5px;
   font-weight: 600;
@@ -482,7 +494,7 @@ button {
 .enum-row .description {
   min-width: 0;
   overflow-wrap: anywhere;
-  color: var(--ink-2);
+  color: var(--secondary-foreground);
 }
 
 .schema-section-head {
@@ -491,12 +503,12 @@ button {
   justify-content: space-between;
   gap: 16px;
   padding: 12px 14px;
-  background: var(--paper);
+  background: var(--background);
 }
 
 .schema-title {
   margin-bottom: 2px;
-  color: var(--ink);
+  color: var(--foreground);
   font-size: 18px;
   font-weight: 700;
 }
@@ -507,7 +519,7 @@ button {
   gap: 10px;
   align-items: center;
   padding: 8px 14px;
-  border-bottom: 1px dashed var(--rule);
+  border-bottom: 1px dashed var(--border);
   font-size: 12px;
 }
 
@@ -516,25 +528,25 @@ button {
 }
 
 .field-row-head {
-  background: var(--paper-2);
+  background: var(--card);
   font-weight: 600;
 }
 
 .field-row.nested {
-  background: color-mix(in oklch, var(--accent) 3%, var(--paper));
+  background: color-mix(in oklch, var(--accent) 3%, var(--background));
 }
 
 .field-row .gutter {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--ink-4);
+  color: var(--subtle-foreground);
 }
 
 .field-row .name {
   min-width: 0;
   overflow-wrap: anywhere;
-  color: var(--ink);
+  color: var(--foreground);
   font-weight: 600;
 }
 
@@ -544,14 +556,14 @@ button {
 
 .field-row .type {
   overflow-wrap: anywhere;
-  color: var(--ink-3);
+  color: var(--muted-foreground);
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 11.5px;
 }
 
 .field-row .cardinality,
 .field-row .req {
-  color: var(--ink-3);
+  color: var(--muted-foreground);
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 10.5px;
 }
@@ -563,7 +575,7 @@ button {
 .field-row .lineage {
   min-width: 0;
   overflow-wrap: anywhere;
-  color: var(--ink-3);
+  color: var(--muted-foreground);
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 11px;
 }
@@ -572,7 +584,7 @@ button {
   display: grid;
   grid-template-columns: repeat(5, minmax(110px, 1fr));
   margin-bottom: 16px;
-  border: 1px solid var(--rule-2);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -580,8 +592,8 @@ button {
 .meta-cell {
   min-width: 0;
   padding: 10px 12px;
-  border-right: 1px solid var(--rule);
-  background: var(--paper-2);
+  border-right: 1px solid var(--border);
+  background: var(--card);
 }
 
 .meta-cell:last-child {
@@ -590,9 +602,9 @@ button {
 
 .empty-state {
   padding: 14px;
-  border: 1px dashed var(--rule-2);
+  border: 1px dashed var(--border-strong);
   border-radius: 8px;
-  color: var(--ink-3);
+  color: var(--muted-foreground);
 }
 
 @media (max-width: 780px) {
@@ -606,7 +618,7 @@ button {
     min-width: 0;
     min-height: 64px;
     border-right: none;
-    border-bottom: 1px solid var(--rule-2);
+    border-bottom: 1px solid var(--border-strong);
     overflow-x: auto;
     overflow-y: hidden;
     overscroll-behavior-x: contain;
@@ -625,7 +637,7 @@ button {
     min-height: 0;
     flex: 1;
     border-right: none;
-    border-bottom: 1px solid var(--rule);
+    border-bottom: 1px solid var(--border);
   }
 
   .content {
@@ -638,7 +650,7 @@ button {
 
   .meta-cell {
     border-right: none;
-    border-bottom: 1px solid var(--rule);
+    border-bottom: 1px solid var(--border);
   }
 
   .meta-cell:last-child {
@@ -652,8 +664,8 @@ button {
   align-items: center;
   gap: 8px;
   padding: 0 14px;
-  background: var(--paper-2);
-  border-bottom: 1px solid var(--rule);
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   font-size: 11.5px;
   position: relative;
@@ -679,8 +691,8 @@ button {
 }
 
 .branch-chip.viewing {
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--foreground);
+  color: var(--background);
   font-weight: 600;
 }
 
@@ -690,8 +702,8 @@ button {
   padding: 2px 7px;
   border: 1px solid color-mix(in oklch, var(--accent) 35%, transparent);
   border-radius: 999px;
-  background: color-mix(in oklch, var(--accent) 12%, var(--paper));
-  color: var(--accent-ink);
+  background: color-mix(in oklch, var(--accent) 12%, var(--background));
+  color: var(--accent-text);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -699,7 +711,7 @@ button {
 }
 
 .branch-chip.overlay {
-  background: color-mix(in oklch, var(--accent) 15%, var(--paper));
+  background: color-mix(in oklch, var(--accent) 15%, var(--background));
   color: var(--accent);
   border: 1px solid color-mix(in oklch, var(--accent) 40%, transparent);
 }
@@ -709,24 +721,24 @@ button {
 }
 
 .branch-chip.overlay:hover {
-  background: color-mix(in oklch, var(--accent) 22%, var(--paper));
+  background: color-mix(in oklch, var(--accent) 22%, var(--background));
 }
 
 .branch-chip.reload {
-  background: var(--paper);
-  color: var(--ink-2);
-  border: 1px solid color-mix(in oklch, var(--ink) 18%, transparent);
+  background: var(--background);
+  color: var(--secondary-foreground);
+  border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent);
   cursor: pointer;
 }
 
 .branch-chip.reload:hover {
-  background: color-mix(in oklch, var(--ink) 10%, var(--paper));
+  background: color-mix(in oklch, var(--foreground) 10%, var(--background));
 }
 
 .branch-chip.more {
-  background: var(--paper-3);
-  color: var(--ink-3);
-  border: 1px solid var(--rule);
+  background: var(--muted);
+  color: var(--muted-foreground);
+  border: 1px solid var(--border);
 }
 
 .branch-chip-remove {
@@ -743,7 +755,7 @@ button {
 .branch-seg {
   display: flex;
   gap: 1px;
-  background: var(--rule);
+  background: var(--border);
   border-radius: 5px;
   overflow: hidden;
   font-size: 10.5px;
@@ -751,8 +763,8 @@ button {
 
 .branch-seg-item {
   padding: 3px 9px;
-  background: var(--paper);
-  color: var(--ink-2);
+  background: var(--background);
+  color: var(--secondary-foreground);
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
@@ -765,7 +777,7 @@ button {
 }
 
 .branch-label {
-  color: var(--ink-3);
+  color: var(--muted-foreground);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -777,8 +789,8 @@ button {
   top: calc(100% + 4px);
   left: 0;
   z-index: 100;
-  background: var(--paper);
-  border: 1px solid var(--rule-2);
+  background: var(--background);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.12);
   min-width: 320px;
@@ -800,7 +812,7 @@ button {
 }
 
 .branch-picker-item:hover {
-  background: var(--paper-2);
+  background: var(--card);
 }
 
 .branch-picker-item.active {
@@ -820,16 +832,16 @@ button {
 .branch-picker-item-disabled {
   display: block;
   cursor: not-allowed;
-  background: color-mix(in oklch, var(--accent) 5%, var(--paper));
+  background: color-mix(in oklch, var(--accent) 5%, var(--background));
 }
 
 .branch-picker-item-disabled:hover {
-  background: color-mix(in oklch, var(--accent) 5%, var(--paper));
+  background: color-mix(in oklch, var(--accent) 5%, var(--background));
 }
 
 .branch-picker-error {
   margin-top: 2px;
-  color: var(--ink-3);
+  color: var(--muted-foreground);
   font-family: inherit;
   font-size: 10px;
   line-height: 1.35;
@@ -855,13 +867,13 @@ button {
 .signal-dot-1 { background: #5c7aa8; }
 
 .field-row.mapping-meta .name {
-  color: var(--ink-3);
+  color: var(--muted-foreground);
   font-weight: 500;
 }
 
 .field-row.overlay-ghost {
   opacity: 0.7;
-  background: color-mix(in oklch, var(--ink) 6%, var(--paper));
+  background: color-mix(in oklch, var(--foreground) 6%, var(--background));
 }
 
 .field-row.overlay-ghost .name {
@@ -870,17 +882,17 @@ button {
 
 .overlay-stripe-0 {
   border-left: 3px solid var(--accent);
-  background: color-mix(in oklch, var(--ink) 8%, var(--paper));
+  background: color-mix(in oklch, var(--foreground) 8%, var(--background));
 }
 
 .overlay-stripe-1 {
   border-left: 3px solid #5c7aa8;
-  background: color-mix(in oklch, var(--ink) 8%, var(--paper));
+  background: color-mix(in oklch, var(--foreground) 8%, var(--background));
 }
 
 .overlay-conflict {
   border-left: 3px solid #c44;
-  background: color-mix(in oklch, #c44 5%, var(--paper));
+  background: color-mix(in oklch, #c44 5%, var(--background));
 }
 
 .overlay-legend {
@@ -888,8 +900,8 @@ button {
   align-items: center;
   gap: 10px;
   padding: 6px 12px;
-  background: var(--paper-2);
-  border-bottom: 1px dashed var(--rule);
+  background: var(--card);
+  border-bottom: 1px dashed var(--border);
   flex-wrap: wrap;
 }
 
@@ -898,7 +910,7 @@ button {
   align-items: center;
   gap: 5px;
   font-size: 10.5px;
-  color: var(--ink-2);
+  color: var(--secondary-foreground);
 }
 
 .overlay-legend-swatch {
@@ -975,7 +987,7 @@ button {
   transform: translateX(-50%);
   width: 560px;
   max-width: calc(100vw - 40px);
-  background: var(--paper);
+  background: var(--background);
   border-radius: 10px;
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.1);
   overflow: hidden;
@@ -986,8 +998,8 @@ button {
   align-items: center;
   gap: 10px;
   padding: 14px 16px;
-  border-bottom: 1px solid var(--rule);
-  color: var(--ink-3);
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
 }
 
 .search-modal-input {
@@ -997,11 +1009,11 @@ button {
   background: transparent;
   font: inherit;
   font-size: 15px;
-  color: var(--ink);
+  color: var(--foreground);
 }
 
 .search-modal-input::placeholder {
-  color: var(--ink-4);
+  color: var(--subtle-foreground);
 }
 
 .search-results {
@@ -1021,14 +1033,14 @@ button {
 
 .search-result-row:hover,
 .search-result-row.selected {
-  background: var(--paper-2);
+  background: var(--card);
 }
 
 .search-result-name {
   flex: 1;
   font-size: 13px;
   font-weight: 500;
-  color: var(--ink);
+  color: var(--foreground);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1036,14 +1048,14 @@ button {
 
 .search-result-component {
   font-size: 11px;
-  color: var(--ink-4);
+  color: var(--subtle-foreground);
   font-family: "JetBrains Mono", ui-monospace, monospace;
   flex-shrink: 0;
 }
 
 .search-no-results {
   padding: 20px 16px;
-  color: var(--ink-3);
+  color: var(--muted-foreground);
   font-size: 13px;
   text-align: center;
 }
@@ -1064,10 +1076,10 @@ button {
   align-items: center;
   gap: 4px;
   padding: 8px 16px;
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--border);
   font-size: 12px;
   flex-shrink: 0;
-  background: var(--paper-2);
+  background: var(--card);
 }
 
 .graph-breadcrumb-item {
@@ -1083,11 +1095,11 @@ button {
 .graph-breadcrumb-item:hover { text-decoration: underline; }
 
 .graph-breadcrumb-sep {
-  color: var(--ink-4);
+  color: var(--subtle-foreground);
 }
 
 .graph-breadcrumb-current {
-  color: var(--ink);
+  color: var(--foreground);
   font-weight: 500;
 }
 
@@ -1097,9 +1109,9 @@ button {
   flex-wrap: wrap;
   gap: 6px;
   padding: 8px 16px;
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
-  background: var(--paper);
+  background: var(--background);
 }
 
 .graph-edge-pill {
@@ -1116,37 +1128,37 @@ button {
 }
 
 .graph-edge-pill.inactive {
-  background: var(--paper-3) !important;
-  color: var(--ink-4) !important;
+  background: var(--muted) !important;
+  color: var(--subtle-foreground) !important;
   opacity: 0.6;
 }
 
 .graph-toolbar-sep {
   width: 1px;
   height: 20px;
-  background: var(--rule-2);
+  background: var(--border-strong);
   flex-shrink: 0;
 }
 
 .graph-toolbar-btn {
   padding: 3px 10px;
-  border: 1px solid var(--rule-2);
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
-  background: var(--paper);
-  color: var(--ink-2);
+  background: var(--background);
+  color: var(--secondary-foreground);
   cursor: pointer;
   font: inherit;
   font-size: 11px;
   font-weight: 500;
 }
 
-.graph-toolbar-btn:hover { background: var(--paper-2); }
+.graph-toolbar-btn:hover { background: var(--card); }
 .graph-toolbar-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
 .graph-depth-ctrl {
   display: flex;
   align-items: center;
-  border: 1px solid var(--rule-2);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   overflow: hidden;
 }
@@ -1158,11 +1170,11 @@ button {
   cursor: pointer;
   background: none;
   border: none;
-  color: var(--ink-3);
+  color: var(--muted-foreground);
   font: inherit;
 }
 
-.graph-depth-btn:hover:not(:disabled) { color: var(--ink); background: var(--paper-2); }
+.graph-depth-btn:hover:not(:disabled) { color: var(--foreground); background: var(--card); }
 .graph-depth-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
 .graph-depth-val {
@@ -1170,9 +1182,9 @@ button {
   text-align: center;
   font-size: 11px;
   font-weight: 600;
-  color: var(--ink);
-  border-left: 1px solid var(--rule-2);
-  border-right: 1px solid var(--rule-2);
+  color: var(--foreground);
+  border-left: 1px solid var(--border-strong);
+  border-right: 1px solid var(--border-strong);
   padding: 2px 4px;
   user-select: none;
 }
@@ -1183,10 +1195,10 @@ button {
 
 .graph-focus-search-input {
   padding: 4px 10px;
-  border: 1px solid var(--rule-2);
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--background);
+  color: var(--foreground);
   font: inherit;
   font-size: 11px;
   outline: none;
@@ -1200,8 +1212,8 @@ button {
   top: calc(100% + 4px);
   left: 0;
   z-index: 100;
-  background: var(--paper);
-  border: 1px solid var(--rule-2);
+  background: var(--background);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.12);
   min-width: 280px;
@@ -1219,7 +1231,7 @@ button {
 
 .graph-focus-search-item:hover,
 .graph-focus-search-item.selected {
-  background: var(--paper-2);
+  background: var(--card);
 }
 
 .graph-canvas-wrap {
@@ -1235,8 +1247,8 @@ button {
   flex-direction: column;
   justify-content: center;
   padding: 12px 14px;
-  background: var(--paper);
-  border: 1.5px solid var(--rule-2);
+  background: var(--background);
+  border: 1.5px solid var(--border-strong);
   border-radius: 8px;
   cursor: pointer;
   box-shadow: 0 1px 4px rgba(0,0,0,0.06);
@@ -1251,7 +1263,7 @@ button {
 .graph-component-card-name {
   font-size: 13px;
   font-weight: 600;
-  color: var(--ink);
+  color: var(--foreground);
   margin-bottom: 3px;
 }
 
@@ -1271,14 +1283,14 @@ button {
   gap: 6px;
   padding: 8px 16px;
   font-size: 12px;
-  color: var(--ink-3);
-  background: var(--paper);
-  border-bottom: 1px solid var(--rule);
+  color: var(--muted-foreground);
+  background: var(--background);
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .graph-breadcrumb-item {
-  color: var(--ink-3);
+  color: var(--muted-foreground);
   cursor: pointer;
   background: none;
   border: none;
@@ -1287,19 +1299,19 @@ button {
   padding: 0;
 }
 
-.graph-breadcrumb-item:hover { color: var(--ink); }
+.graph-breadcrumb-item:hover { color: var(--foreground); }
 
-.graph-breadcrumb-sep { color: var(--ink-4); }
+.graph-breadcrumb-sep { color: var(--subtle-foreground); }
 
-.graph-breadcrumb-current { color: var(--ink); font-weight: 600; }
+.graph-breadcrumb-current { color: var(--foreground); font-weight: 600; }
 
 .graph-toolbar {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 8px 16px;
-  background: var(--paper);
-  border-bottom: 1px solid var(--rule);
+  background: var(--background);
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   flex-wrap: wrap;
 }
@@ -1312,8 +1324,8 @@ button {
 
 /* Node cards (Levels 2 & 3) */
 .graph-node-card {
-  background: var(--paper);
-  border: 1.5px solid var(--rule-2);
+  background: var(--background);
+  border: 1.5px solid var(--border-strong);
   border-radius: var(--radius);
   width: 210px;
   font-size: 12px;
@@ -1343,7 +1355,7 @@ button {
 .graph-node-card-name {
   font-weight: 600;
   font-size: 13px;
-  color: var(--ink);
+  color: var(--foreground);
   white-space: normal;
   overflow: visible;
   text-overflow: clip;
@@ -1357,7 +1369,7 @@ button {
   left: 8px;
   font-size: 10px;
   font-weight: 500;
-  color: var(--ink-3);
+  color: var(--muted-foreground);
   white-space: nowrap;
   pointer-events: none;
   line-height: 1;
@@ -1365,7 +1377,7 @@ button {
 
 .graph-node-card-component {
   font-size: 10px;
-  color: var(--ink-3);
+  color: var(--muted-foreground);
   margin-top: 1px;
   white-space: nowrap;
   overflow: hidden;
@@ -1381,13 +1393,13 @@ button {
   align-items: center;
   gap: 6px;
   padding: 3px 8px 5px 10px;
-  border-top: 1px solid var(--rule);
+  border-top: 1px solid var(--border);
   margin-top: 3px;
 }
 
 .graph-node-card-link {
   margin-left: auto;
-  color: var(--ink-4);
+  color: var(--subtle-foreground);
   cursor: pointer;
   font-size: 11px;
   background: none;
@@ -1398,12 +1410,12 @@ button {
   align-items: center;
 }
 
-.graph-node-card-link:hover { color: var(--ink-2); }
+.graph-node-card-link:hover { color: var(--secondary-foreground); }
 
 /* Component cards (Level 1) */
 .graph-component-card {
-  background: var(--paper);
-  border: 1.5px solid var(--rule-2);
+  background: var(--background);
+  border: 1.5px solid var(--border-strong);
   border-radius: var(--radius);
   width: 180px;
   padding: 14px 16px;
@@ -1414,12 +1426,12 @@ button {
 
 .graph-component-card:hover {
   box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-  border-color: var(--ink-4);
+  border-color: var(--subtle-foreground);
 }
 
-.graph-component-card-name { font-weight: 700; font-size: 14px; color: var(--ink); margin-bottom: 4px; }
+.graph-component-card-name { font-weight: 700; font-size: 14px; color: var(--foreground); margin-bottom: 4px; }
 
-.graph-component-card-count { font-size: 11px; color: var(--ink-3); }
+.graph-component-card-count { font-size: 11px; color: var(--muted-foreground); }
 
 /* Edge type toggle pills */
 .graph-edge-pill {
@@ -1438,14 +1450,14 @@ button {
 
 .graph-edge-pill.inactive {
   background: transparent !important;
-  color: var(--ink-3) !important;
-  border-color: var(--rule-2) !important;
+  color: var(--muted-foreground) !important;
+  border-color: var(--border-strong) !important;
 }
 
 .graph-toolbar-sep {
   width: 1px;
   height: 20px;
-  background: var(--rule);
+  background: var(--border);
   flex-shrink: 0;
 }
 
@@ -1457,14 +1469,14 @@ button {
   font-weight: 500;
   cursor: pointer;
   background: none;
-  border: 1px solid var(--rule-2);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  color: var(--ink-3);
+  color: var(--muted-foreground);
   font: inherit;
 }
 
-.graph-toolbar-btn:hover { color: var(--ink); }
-.graph-toolbar-btn.active { background: var(--paper-3); color: var(--ink); }
+.graph-toolbar-btn:hover { color: var(--foreground); }
+.graph-toolbar-btn.active { background: var(--muted); color: var(--foreground); }
 
 /* Focus node search */
 .graph-focus-search { display: flex; align-items: center; gap: 6px; position: relative; }
@@ -1473,10 +1485,10 @@ button {
   font: inherit;
   font-size: 12px;
   padding: 3px 8px;
-  border: 1px solid var(--rule-2);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--background);
+  color: var(--foreground);
   width: 180px;
 }
 
@@ -1487,8 +1499,8 @@ button {
   top: calc(100% + 4px);
   left: 0;
   width: 280px;
-  background: var(--paper);
-  border: 1px solid var(--rule-2);
+  background: var(--background);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   box-shadow: 0 4px 16px rgba(0,0,0,0.12);
   z-index: 100;
@@ -1505,7 +1517,7 @@ button {
 }
 
 .graph-focus-search-item:hover,
-.graph-focus-search-item.selected { background: var(--paper-2); }
+.graph-focus-search-item.selected { background: var(--card); }
 
 /* Quick-link icons for node actions (node title row and relation rows) */
 .quick-links {
@@ -1522,11 +1534,11 @@ button {
   width: 24px;
   height: 24px;
   border-radius: var(--radius);
-  color: var(--ink-4);
+  color: var(--subtle-foreground);
   text-decoration: none;
 }
 
-.quick-link:hover { color: var(--ink); background: var(--paper-2); }
+.quick-link:hover { color: var(--foreground); background: var(--card); }
 
 /* Flat/Grouped layout mode toggle */
 .graph-layout-toggle {
@@ -1559,8 +1571,8 @@ button {
   top: calc(100% + 4px);
   left: 0;
   z-index: 100;
-  background: var(--paper);
-  border: 1px solid var(--rule-2);
+  background: var(--background);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   box-shadow: 0 4px 16px rgba(0,0,0,0.12);
   padding: 10px;
@@ -1579,7 +1591,7 @@ button {
 .graph-scope-label {
   font-size: 11px;
   font-weight: 500;
-  color: var(--ink-3);
+  color: var(--muted-foreground);
   width: 64px;
   flex-shrink: 0;
 }
@@ -1589,10 +1601,10 @@ button {
   font-size: 11px;
   flex: 1;
   padding: 3px 6px;
-  border: 1px solid var(--rule-2);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--background);
+  color: var(--foreground);
 }
 
 .graph-scope-select:disabled { opacity: 0.5; }
@@ -1612,23 +1624,23 @@ button {
   border-radius: 999px;
   font-size: 11px;
   font-weight: 500;
-  background: var(--paper-3);
-  color: var(--ink-2);
-  border: 1.5px solid var(--rule-2);
+  background: var(--muted);
+  color: var(--secondary-foreground);
+  border: 1.5px solid var(--border-strong);
   white-space: nowrap;
 }
 
 .graph-scope-pill-clear {
   cursor: pointer;
-  color: var(--ink-3);
+  color: var(--muted-foreground);
   font-weight: 600;
 }
 
-.graph-scope-pill-clear:hover { color: var(--ink); }
+.graph-scope-pill-clear:hover { color: var(--foreground); }
 
 .graph-scope-count {
   font-size: 11px;
-  color: var(--ink-3);
+  color: var(--muted-foreground);
   white-space: nowrap;
 }
 
@@ -1636,7 +1648,7 @@ button {
 .graph-group-card {
   width: 100%;
   height: 100%;
-  border: 1.5px dashed var(--ink-4);
+  border: 1.5px dashed var(--subtle-foreground);
   background: rgba(0, 0, 0, 0.02);
   border-radius: var(--radius);
   box-sizing: border-box;
@@ -1646,7 +1658,7 @@ button {
 .graph-group-card-label {
   font-size: 11px;
   font-weight: 600;
-  color: var(--ink-3);
+  color: var(--muted-foreground);
 }
 
 /* ── Dashboard ────────────────────────────────────── */
@@ -1659,8 +1671,8 @@ button {
 
 .hero-card {
   flex: 1;
-  background: var(--paper-2);
-  border: 1px solid var(--rule);
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 20px 24px;
 }
@@ -1669,7 +1681,7 @@ button {
   font-size: 32px;
   font-weight: 700;
   line-height: 1;
-  color: var(--ink);
+  color: var(--foreground);
   margin-bottom: 6px;
   font-family: 'Space Grotesk', system-ui, sans-serif;
 }
@@ -1679,7 +1691,7 @@ button {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: var(--ink-3);
+  color: var(--muted-foreground);
 }
 
 .branch-diff-callout {
@@ -1687,8 +1699,8 @@ button {
   align-items: center;
   gap: 12px;
   padding: 10px 16px;
-  background: var(--paper-2);
-  border: 1px solid var(--rule);
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   margin-bottom: 24px;
   font-size: 12px;
@@ -1697,21 +1709,21 @@ button {
 .branch-diff-branch {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 11px;
-  color: var(--ink-2);
+  color: var(--secondary-foreground);
 }
 
 .branch-diff-label {
-  color: var(--ink-3);
+  color: var(--muted-foreground);
   font-size: 11px;
 }
 
 .branch-diff-added {
-  color: var(--ok);
+  color: var(--success);
   font-weight: 600;
 }
 
 .branch-diff-removed {
-  color: var(--warn);
+  color: var(--warning);
   font-weight: 600;
 }
 
@@ -1747,9 +1759,9 @@ button {
 
 .dashboard-panel {
   overflow: hidden;
-  border: 1px solid var(--rule-2);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
-  background: var(--paper);
+  background: var(--background);
 }
 
 .stat-row {
@@ -1764,14 +1776,14 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--ink-2);
+  color: var(--secondary-foreground);
   font-size: 12px;
 }
 
 .stat-row-value {
   font-weight: 600;
   font-size: 13px;
-  color: var(--ink);
+  color: var(--foreground);
   flex-shrink: 0;
 }
 
@@ -1804,7 +1816,7 @@ button {
     position: absolute;
     inset: 0;
     width: 100%;
-    background: var(--paper);
+    background: var(--background);
     transition: transform 220ms ease, visibility 220ms;
   }
   .master-detail > .detail-pane {
@@ -1826,9 +1838,9 @@ button {
     min-height: 44px;
     padding: 8px 16px;
     border: 0;
-    border-bottom: 1px solid var(--rule);
-    background: var(--paper-2);
-    color: var(--ink);
+    border-bottom: 1px solid var(--border);
+    background: var(--card);
+    color: var(--foreground);
     cursor: pointer;
     flex-shrink: 0;
   }
@@ -1882,7 +1894,7 @@ button {
   border: 0;
   border-radius: var(--radius);
   background: transparent;
-  color: var(--ink-4);
+  color: var(--subtle-foreground);
   font: inherit;
   font-size: 11px;
   cursor: pointer;
@@ -1890,8 +1902,8 @@ button {
 
 .open-in-trigger:hover,
 .open-in-trigger[aria-expanded="true"] {
-  background: var(--paper-2);
-  color: var(--ink);
+  background: var(--card);
+  color: var(--foreground);
 }
 
 .open-in-trigger:focus-visible {
@@ -1906,9 +1918,9 @@ button {
   z-index: 100;
   min-width: 180px;
   padding: 4px;
-  border: 1px solid var(--rule-2);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  background: var(--paper);
+  background: var(--background);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
   display: flex;
   flex-direction: column;
@@ -1917,19 +1929,19 @@ button {
 .open-in-item {
   padding: 6px 10px;
   border-radius: 4px;
-  color: var(--ink-2);
+  color: var(--secondary-foreground);
   font-size: 12px;
   text-decoration: none;
   white-space: nowrap;
 }
 
 .open-in-item:hover {
-  background: var(--paper-2);
-  color: var(--ink);
+  background: var(--card);
+  color: var(--foreground);
 }
 
 .open-in-sep {
   height: 1px;
   margin: 4px 0;
-  background: var(--rule);
+  background: var(--border);
 }

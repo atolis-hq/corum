@@ -56,7 +56,7 @@ function GroupEntry({ entry, open, onToggle, ...rest }) {
 }
 
 function TemplateEntry({ entry, template, templateMap, open, onToggle, openGroupKeys, setOpenGroupKeys, ...rest }) {
-  const colour = template?.ui?.colour ?? 'var(--ink-4)'
+  const colour = template?.ui?.colour ?? 'var(--subtle-foreground)'
   return html`
     <div>
       <div className="nav-template-head" role="button" tabIndex=${0} aria-expanded=${open} onClick=${onToggle} style=${{ cursor: 'pointer' }}>

@@ -79,7 +79,7 @@ function SchemaListCard({ nodes, allNodes, edges, anchorIdForNode, overlayFields
                 <div style=${{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <div className="schema-title">${schemaName}</div>
                   ${isShared && html`
-                    <span className="tag" style=${{ fontSize: 10, padding: '1px 6px', background: 'var(--ink-4)', color: 'var(--bg)' }}>shared</span>
+                    <span className="tag" style=${{ fontSize: 10, padding: '1px 6px', background: 'var(--subtle-foreground)', color: 'var(--bg)' }}>shared</span>
                   `}
                   ${schema.properties?.description && html`<div className="label-sm">${schema.properties.description}</div>`}
                 </div>
@@ -138,8 +138,8 @@ export function SchemaCard({
       <div className="card-head">${title}</div>
       <div className="card-body">
         ${nodes.map(node => html`
-          <div key=${node.id} id=${anchorIdForNode ? anchorIdForNode(node.id) : undefined} style=${{ borderBottom: '1px dashed var(--rule)' }}>
-            <div className="mono" style=${{ padding: '8px 14px 0', color: 'var(--ink-3)', fontSize: 11, fontWeight: 600 }}>
+          <div key=${node.id} id=${anchorIdForNode ? anchorIdForNode(node.id) : undefined} style=${{ borderBottom: '1px dashed var(--border)' }}>
+            <div className="mono" style=${{ padding: '8px 14px 0', color: 'var(--muted-foreground)', fontSize: 11, fontWeight: 600 }}>
               ${node.id.split('.').pop()}
             </div>
             <${PropertiesTable} properties=${node.properties} />

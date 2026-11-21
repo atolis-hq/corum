@@ -150,7 +150,7 @@ function NavRail({ activeSection, onSection, pluginPages = [], debugMode, onDebu
         type="button"
         style={{
           marginTop: 'auto',
-          ...(debugMode ? { background: 'var(--paper-3)', color: 'var(--ink)', borderColor: 'var(--rule-2)' } : {}),
+          ...(debugMode ? { background: 'var(--muted)', color: 'var(--foreground)', borderColor: 'var(--border-strong)' } : {}),
         }}
       >
         <Icon name="code" size={16} />
@@ -399,7 +399,7 @@ function DashboardPage({ nodes, templates, kinds, gitMode, viewingRef, branches,
             {stats === null && <div className="label-sm">Loading…</div>}
             {nodesByTemplate.map(([name, count]) => {
               const tmpl = templateMap.get(name);
-              const colour = tmpl?.ui?.colour ?? 'var(--ink-4)';
+              const colour = tmpl?.ui?.colour ?? 'var(--subtle-foreground)';
               return (
                 <div key={name} className="stat-row">
                   <span className="stat-row-label">
@@ -449,7 +449,7 @@ function DashboardPage({ nodes, templates, kinds, gitMode, viewingRef, branches,
             {stats !== null && orphanRows.length === 0 && <div className="label-sm">No orphan nodes.</div>}
             {orphanRows.map(([name, count]) => {
               const tmpl = templateMap.get(name);
-              const colour = tmpl?.ui?.colour ?? 'var(--ink-4)';
+              const colour = tmpl?.ui?.colour ?? 'var(--subtle-foreground)';
               return (
                 <div key={name} className="stat-row">
                   <span className="stat-row-label">
@@ -489,7 +489,7 @@ function DashboardPage({ nodes, templates, kinds, gitMode, viewingRef, branches,
                 <span className="stat-row-value">{count}</span>
               </div>
             ))}
-            <div style={{ borderTop: '1px solid var(--rule-2)', margin: '8px 0' }} />
+            <div style={{ borderTop: '1px solid var(--border-strong)', margin: '8px 0' }} />
             {nodesByStability.map(([stability, count]) => (
               <div key={stability} className="stat-row">
                 <span className="stat-row-label"><StabilityTag stability={stability} /></span>
@@ -504,12 +504,12 @@ function DashboardPage({ nodes, templates, kinds, gitMode, viewingRef, branches,
           <div className="card-body" style={{ padding: '12px 16px' }}>
             {stats === null && <div className="label-sm">Loading…</div>}
             {stats !== null && stats.diagnosticCount > 0 && (
-              <span style={{ color: 'var(--warn)' }}>
+              <span style={{ color: 'var(--warning)' }}>
                 {stats.diagnosticCount} load warning{stats.diagnosticCount !== 1 ? 's' : ''}
               </span>
             )}
             {stats !== null && stats.diagnosticCount === 0 && (
-              <span style={{ color: 'var(--ok)' }}>No issues</span>
+              <span style={{ color: 'var(--success)' }}>No issues</span>
             )}
           </div>
         </div>
@@ -528,7 +528,7 @@ function DashboardPage({ nodes, templates, kinds, gitMode, viewingRef, branches,
                     <span>{result.ref}</span>
                   </span>
                   {result.status === 'failed' && (
-                    <span className="label-sm" style={{ color: 'var(--warn)', maxWidth: 200, textAlign: 'right' }}>
+                    <span className="label-sm" style={{ color: 'var(--warning)', maxWidth: 200, textAlign: 'right' }}>
                       {result.diagnostics?.[0]?.message ?? result.error ?? 'failed'}
                     </span>
                   )}
@@ -1285,7 +1285,7 @@ function App() {
         <div
           data-testid="plugins-failed"
           role="status"
-          style={{ position: 'fixed', right: 12, bottom: 12, zIndex: 50, padding: '8px 12px', background: 'var(--paper-3)', border: '1px solid var(--rule-2)', borderRadius: 6, fontSize: 12, color: 'var(--warn)' }}
+          style={{ position: 'fixed', right: 12, bottom: 12, zIndex: 50, padding: '8px 12px', background: 'var(--muted)', border: '1px solid var(--border-strong)', borderRadius: 6, fontSize: 12, color: 'var(--warning)' }}
         >
           Plugins failed to load. Reload the page to retry.
         </div>
