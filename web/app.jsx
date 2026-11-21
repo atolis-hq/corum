@@ -1219,6 +1219,13 @@ function App() {
     navigate(hrefForNode(hostRegistry, nodeId, matchKeysFor(root?.template ?? templateName, templatesByName), { branch: viewingRef }));
   }
 
+  // Every host /node page is the Explorer: its links build Explorer URLs and stay in the Explorer.
+  const explorerCtx = useMemo(() => ({
+    ...hostCtx,
+    hrefForNode: id => hrefForExplorerView(id, { branch: viewingRef }),
+    openNode: id => navigate(hrefForExplorerView(id, { branch: viewingRef })),
+  }), [hostCtx, viewingRef]);
+
   let page;
   if (loading || !hostReady) {
     page = <LoadingPanel message="Loading graph..." />;
@@ -1242,16 +1249,14 @@ function App() {
       : <PluginUnavailablePage pluginId={legacy.entry.id} reason={pluginUnavailableReason(legacy.entry.id, legacy.page.id)} viewingRef={viewingRef} />;
   } else if (route.pathname === '/node') {
     page = (
-      <CtxProvider ctx={route.params.get('view') === 'explorer'
-        ? { ...hostCtx, hrefForNode: id => hrefForExplorerView(id, { branch: viewingRef }) }
-        : hostCtx}>
+      <CtxProvider ctx={explorerCtx}>
         <NodePage
           key={activeNodeId}
           nodeId={activeNodeId}
           explorerView={route.params.get('view') === 'explorer'}
           templates={templates}
           templatesByName={templatesByName}
-          onNavigate={route.params.get('view') === 'explorer' ? handleNode : id => hostCtx.openNode(id)}
+          onNavigate={handleNode}
           refreshToken={refreshToken}
           viewingRef={viewingRef}
           overlayRefs={activeOverlayRefs}
