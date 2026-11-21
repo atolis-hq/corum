@@ -67,7 +67,11 @@ Only allowed asset types are served, never YAML, and Git symlinks are rejected.
 If a declared plugin directory or `plugin.yaml` is missing at that commit, its
 unavailable entry uses the exact declared path as both ID and displayed name.
 The reason includes that path and the short commit SHA. Once the manifest exists,
-the entry uses its real manifest ID. For local plugin development, use
+the entry uses its real manifest ID. Because the declared path is not a manifest
+ID, `/api/plugins` can list an unavailable entry and a different, valid plugin
+under the same `id`; the valid plugin is the one that is served. If the
+default-branch graph fails to load, built-in and template-free plugins keep
+working. Plugin state is computed once per commit and shared by requests. For local plugin development, use
 `source: file` (see [Configuration](configuration.md)).
 
 There is no `corum plugin init`, `corum plugin validate`, `corum plugin update`

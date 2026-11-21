@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { parse as parseYaml } from 'yaml'
-import type { GraphSource } from '../../source/index.js'
+import type { GraphSource, PluginSnapshot } from '../../source/index.js'
 import { loadGraph } from '../../loader/index.js'
 import { discoverPlugins, readPluginOverrides, readStandalonePaths, validatePluginsKey, type DiscoveredPlugin, type PluginOrigin } from './discover.js'
 import { isSafeRelativePath, parsePluginManifest, type PluginManifest } from './manifest.js'
@@ -12,10 +12,32 @@ function record(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {}
 }
 
-/** One request, one default-branch commit, including compatibility and asset bytes. */
-export async function gitPluginRequest(source: GraphSource, builtinDir: string, corumVersion: string) {
+type PluginRequest = Awaited<ReturnType<typeof computePluginRequest>>
+const cache = new WeakMap<GraphSource, { key: string; value: Promise<PluginRequest> }>()
+
+/**
+ * One request, one default-branch commit, including compatibility and asset bytes.
+ * Computed state is shared by every request at the same commit.
+ */
+export async function gitPluginRequest(source: GraphSource, builtinDir: string, corumVersion: string): Promise<PluginRequest> {
   const snapshot = await source.pluginSnapshot!()
-  const graph = await loadGraph({ source: snapshot.source })
+  const key = `${snapshot.ref}\0${builtinDir}\0${corumVersion}`
+  const hit = cache.get(source)
+  if (hit?.key === key) return hit.value
+  const value = computePluginRequest(snapshot, builtinDir, corumVersion)
+  cache.set(source, { key, value })
+  value.catch(() => { if (cache.get(source)?.value === value) cache.delete(source) })
+  return value
+}
+
+async function computePluginRequest(snapshot: PluginSnapshot, builtinDir: string, corumVersion: string) {
+  // A broken default-branch graph must not take plugins down: plugins that
+  // require templates become unavailable, everything else keeps working.
+  let templates = new Set<string>()
+  try {
+    const graph = await loadGraph({ source: snapshot.source, strict: false })
+    templates = new Set(graph.templates.keys())
+  } catch { /* leave the template set empty */ }
   const readYaml = async (file: string): Promise<unknown> => {
     const bytes = await snapshot.readFile(file)
     if (!bytes) return null
@@ -76,7 +98,7 @@ export async function gitPluginRequest(source: GraphSource, builtinDir: string, 
     await add(declared, snapshot.graphDir, 'standalone')
   }
   const statuses = [...resolvePluginStatuses(plugins, {
-    graphTemplates: new Set(graph.templates.keys()), corumVersion,
+    graphTemplates: templates, corumVersion,
     overrides: readPluginOverrides(graphYaml),
   }), ...missing]
   return {

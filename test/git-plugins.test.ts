@@ -115,6 +115,49 @@ it('serves Git plugins from a pinned default commit with secure assets and curre
   }
 })
 
+it('keeps built-ins working and shares state per commit when the default branch graph is broken', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-git-plugins-broken-'))
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim()
+  const write = (file: string, text: string) => {
+    fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true })
+    fs.writeFileSync(path.join(dir, file), text)
+  }
+  const manifest = (id: string, templates: string[] = []) => JSON.stringify({
+    id, version: '1.0.0', engines: { corum: '*' }, main: './index.js',
+    requires: { templates }, contributes: { pages: [], nodeActions: [] },
+  })
+  try {
+    git('init', '-b', 'main')
+    git('config', 'user.name', 'Fixture')
+    git('config', 'user.email', 'fixture@example.com')
+    write('graph/graph.yaml', JSON.stringify({
+      templatePacks: [{ path: '../pack' }],
+      plugins: [{ path: '../plain' }, { path: '../needy' }],
+    }))
+    write('pack/pack.yaml', 'name: fixture\nversion: 1.0.0\n')
+    write('pack/templates/Thing.yaml', 'name: Thing\ninfo: { version: "1", core: false }\n')
+    write('plain/plugin.yaml', manifest('plain'))
+    write('needy/plugin.yaml', manifest('needy', ['Thing']))
+    write('graph/nodes/bad.yaml', 'not: a cluster\n')
+    write('builtins/core/plugin.yaml', manifest('core'))
+    write('builtins/core/index.js', 'core')
+    git('add', '-A')
+    git('commit', '-qm', 'broken')
+    const source = new GitGraphSource({ localPath: dir, graphDir: 'graph', defaultBranch: 'main' })
+    const builtins = path.join(dir, 'builtins')
+    const request = await gitPluginRequest(source, builtins, '0.1.0')
+    const status = (id: string) => request.statuses.find(entry => entry.id === id)?.status
+    assert.equal(status('core'), 'enabled')
+    assert.equal(status('plain'), 'enabled')
+    // Templates still load from the broken commit, so template checks still work.
+    assert.equal(status('needy'), 'enabled')
+    await assert.rejects(loadGraph({ source }), 'fixture must be a strict-load failure')
+    assert.equal(await gitPluginRequest(source, builtins, '0.1.0'), request)
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 it('keeps missing declaration paths separate from manifest IDs', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-git-plugins-collide-'))
   const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim()
