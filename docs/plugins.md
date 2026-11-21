@@ -311,6 +311,7 @@ navigation does not remount; subscribe to changes and read the live context.
 | `ctx.api.get(path, params)` | Fetch parsed JSON from an API endpoint; throws on non-2xx responses |
 | `ctx.navigate(hash)` | Navigate to a hash URL |
 | `ctx.hrefForNode(id, options)` | Resolve a node destination; optional `{ via: 'plugin-id', page: 'page-id' }` selects a plugin page |
+| `ctx.nodeLinks(id)` | Quick-link and **Open in** entries for a node, as `{ quick: { header, relations }, menu: { defaultHref, destinations, actions } }`. Each link is `{ key, pluginId, id, label, icon, href }`; `defaultHref` (the generic node page) is non-null only when a plugin page claims the node. A child node resolves through its owning root and keeps its own ID in every href. |
 | `ctx.openNode(id, options)` | Navigate using the same resolution as `hrefForNode` |
 | `ctx.hrefForPage(params, options)` | Build a URL for this plugin, preserving the viewed branch; optional `{ page: 'map' }`, otherwise the current page |
 | `ctx.subscribe(listener)` | Listen for route/query, viewed-ref or template changes; returns an unsubscribe function |
@@ -368,6 +369,27 @@ This can replace the example's `index.js` without changing its manifest.
 `ctx` as a prop; `useCtx()` also exposes it to descendants. Both update when
 the context changes. `html` is htm bound to React, so JSX is unnecessary.
 If you use JSX or TypeScript, compile it yourself to browser ES modules.
+
+`corum:ui/react` exports `mountReact`, `useCtx`, `CtxProvider` and the node link
+components. `NodeLinks({ nodeId, surface })` renders the quick icons for
+`surface` (`'header'` or `'relations'`) followed by the **Open in** menu button,
+the same controls the host shows on node pages and connection rows.
+`QuickLinks({ nodeId, surface })` and `OpenInMenu({ nodeId })` render the two
+parts separately; each renders nothing when it has no entries. They read
+`useCtx()`, so they work in any component under `mountReact`, or under
+`CtxProvider ctx=${ctx}` for a ctx you hold yourself:
+
+```js
+import { html } from 'corum:ui'
+import { NodeLinks } from 'corum:ui/react'
+
+const Heading = ({ nodeId }) => html`<h2>${nodeId} <${NodeLinks} nodeId=${nodeId} surface="header" /></h2>`
+```
+
+The components use the host's `quick-links`, `quick-link`, `open-in`,
+`open-in-trigger`, `open-in-menu`, `open-in-item` and `open-in-sep` CSS classes;
+these are the styling hooks. The `ok` test fixture plugin
+(`test/fixtures/plugins/ok`) demonstrates them together with `SchemaCard`.
 
 `corum:ui` exports `html` and shared components including `Icon`, `StateTag`,
 `StabilityTag`, `Chip`, `TemplateBadge`, `PropertyValue`, `PropertiesTable`
