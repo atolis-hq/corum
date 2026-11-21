@@ -26,13 +26,13 @@ const {
   hrefForNode,
   hrefForAction,
   owningRoot,
+  kindColour,
 } = window.CorumHost.sdk;
 const { CtxProvider, NodeLinks } = window.CorumHost.sdkReact;
 const hostRegistry = window.CorumHost.registry;
 
 const { buildNavTree, buildOverlayIndicatorIds, groupNamespacesByKind, namespaceEdges } = window.CorumNav;
 const { parseRoute, buildRoute } = window.CorumRouter;
-const { kindColour } = window.CorumGraphUtils;
 const { SearchModal } = window.CorumSearch;
 
 // uses-type is excluded here: it's the auto-generated type-reference edge

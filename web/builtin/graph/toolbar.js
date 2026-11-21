@@ -1,9 +1,8 @@
 /* Graph breadcrumb, scope popover and toolbar. */
 import React, { useState, useEffect, useMemo, useRef } from 'react'
-import { html } from 'corum:ui'
-import { EDGE_PILL_STYLES, DEPTH_STEPS, GraphUtils } from './constants.js'
+import { html, getDisplayName } from 'corum:ui'
+import { EDGE_PILL_STYLES, DEPTH_STEPS } from './constants.js'
 
-const { getDisplayName } = GraphUtils
 
 export function GraphBreadcrumb({ level, selectedComponent, focalNodeId, onNavigateToRoot, onNavigateToComponent }) {
   return html`

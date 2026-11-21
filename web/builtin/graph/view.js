@@ -3,15 +3,15 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import ReactFlowCanvas, { MiniMap, Background, useNodesState, useEdgesState, ReactFlowProvider } from 'reactflow'
 import { html } from 'corum:ui'
 import {
-  GraphUtils, NODE_W, NODE_H, COMP_W, COMP_H,
+  NODE_W, NODE_H, COMP_W, COMP_H,
   loadHiddenEdgeTypes, saveHiddenEdgeTypes, loadLayoutMode, saveLayoutMode,
 } from './constants.js'
+import { resolveKindFilter, collectKinds, collectEdgeTypes } from './graph-helpers.js'
 import { computeLayout, fitGroupsToChildren } from './layout.js'
 import { buildComponentLevel, buildInteriorLevel, buildFocusLevel } from './levels.js'
 import { nodeTypes } from './node-cards.js'
 import { GraphBreadcrumb, GraphToolbar } from './toolbar.js'
 
-const { resolveKindFilter, collectKinds, collectEdgeTypes } = GraphUtils
 
 export function GraphView({ ctx }) {
   const { params, templates } = ctx
