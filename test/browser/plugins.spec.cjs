@@ -8,6 +8,14 @@ const EVENT = 'orders.DomainEvent.order-placed';
 const hrefTo = (page, param, id) => new RegExp('^#/(.+/)?p/' + page + '\\?' + param + '=' + id.replace(/\./g, '\\.') + '$');
 const SCHEMA_NODE = 'shared.Schema.problem-detail';
 
+test('plugin pages can show error, loading and empty states from the SDK alone', async ({ page }) => {
+  await page.goto('/#/p/ok/home');
+  await expect(page.getByTestId('ok-loading').locator('p.label-sm')).toHaveText('Fixture loading');
+  await expect(page.getByTestId('ok-error')).toContainText('Fixture failure');
+  await expect(page.getByTestId('ok-error').locator('h1')).toHaveText('Fixture error');
+  await expect(page.getByTestId('ok-empty').locator('.empty-state')).toHaveText('Fixture empty');
+});
+
 test('ok plugin mounts at its route and has a nav entry', async ({ page }) => {
   await page.goto('/#/p/ok/home?id=abc');
   await expect(page.getByTestId('plugin-ok')).toHaveText('OK plugin page');

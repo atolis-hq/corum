@@ -468,6 +468,20 @@ The components use the host's `quick-links`, `quick-link`, `open-in`,
 these are the styling hooks. The `ok` test fixture plugin
 (`test/fixtures/plugins/ok`) demonstrates them together with `SchemaCard`.
 
+`corum:ui` also exports three state panels that use the host's own markup:
+`ErrorPanel({ message, title?, testId?, className?, style? })` (a warn-coloured
+message with an optional `h1` title and `data-testid`),
+`LoadingPanel({ message?, className?, style?, innerStyle? })` (message defaults
+to "Loading…") and `EmptyState({ className?, children })`. The caller supplies
+the wording.
+
+```js
+import { html, ErrorPanel, LoadingPanel, EmptyState } from 'corum:ui'
+const loading = html`<${LoadingPanel} message="Loading nodes..." />`
+const failed = html`<${ErrorPanel} title="Failed" message="Could not load" testId="my-error" />`
+const empty = html`<${EmptyState}>Nothing here yet.<//>`
+```
+
 `corum:ui` exports `html` and shared components including `Icon`, `StateTag`,
 `StabilityTag`, `Chip`, `TemplateBadge`, `PropertyValue`, `PropertiesTable`,
 `SchemaCard` and `BrandMark`, plus the helpers `getDisplayName(id)` (the last
