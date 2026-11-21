@@ -8,6 +8,16 @@ export type PluginPage = {
   order?: number
   mount: string
   opens?: string[]
+  /** false keeps the page out of the navigation rail (a page reached only through links). Default true. */
+  nav?: boolean
+  /** Host routes (e.g. "/namespaces") that redirect to this page while the plugin is enabled. */
+  legacyPaths?: string[]
+  /** Export that mounts a navigation panel beside this page (in the host's list pane). */
+  sidebar?: string
+  /** With a sidebar: the panel also accompanies the host's node page. */
+  nodeSidebar?: boolean
+  /** With a sidebar: this page is the detail view of the master-detail layout (mobile shows it instead of the panel). */
+  detail?: boolean
 }
 
 export type PluginNodeAction = {
@@ -34,6 +44,9 @@ export type PluginManifest = {
 }
 
 const PLUGIN_ID = /^[a-z0-9-]+$/
+
+/** Retired host routes (they predate the Explorer plugin) that a plugin page may take over as redirects. */
+export const LEGACY_HOST_PATHS = ['/namespaces', '/namespace']
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -129,10 +142,25 @@ export function parsePluginManifest(yamlText: string): { manifest: PluginManifes
         errors.push(`${label}.order must be a number`)
       }
       const opens = stringList(raw.opens, `${label}.opens`, errors)
+      const legacyPaths = stringList(raw.legacyPaths, `${label}.legacyPaths`, errors)
+      for (const legacy of legacyPaths) {
+        if (!LEGACY_HOST_PATHS.includes(legacy)) {
+          errors.push(`${label}.legacyPaths entry "${legacy}" is not a deprecated host route (allowed: ${LEGACY_HOST_PATHS.join(', ')}); host routes such as /node and /dashboard cannot be claimed`)
+        }
+      }
+      for (const flag of ['nav', 'nodeSidebar', 'detail'] as const) {
+        if (raw[flag] !== undefined && typeof raw[flag] !== 'boolean') errors.push(`${label}.${flag} must be a boolean`)
+      }
+      if (raw.sidebar !== undefined && !isNonEmptyString(raw.sidebar)) errors.push(`${label}.sidebar must be a non-empty string`)
       if (isNonEmptyString(raw.id) && isNonEmptyString(raw.title) && isNonEmptyString(raw.mount)) {
         const page: PluginPage = { id: raw.id, title: raw.title, mount: raw.mount, opens }
         if (typeof raw.icon === 'string') page.icon = raw.icon
         if (typeof raw.order === 'number') page.order = raw.order
+        if (typeof raw.nav === 'boolean') page.nav = raw.nav
+        if (legacyPaths.length > 0) page.legacyPaths = legacyPaths
+        if (isNonEmptyString(raw.sidebar)) page.sidebar = raw.sidebar
+        if (typeof raw.nodeSidebar === 'boolean') page.nodeSidebar = raw.nodeSidebar
+        if (typeof raw.detail === 'boolean') page.detail = raw.detail
         pages.push(page)
       }
     })

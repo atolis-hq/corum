@@ -1,7 +1,7 @@
 const { test, expect } = require('@playwright/test');
 
 async function openList(page) {
-  await page.goto('/#/namespaces');
+  await page.goto('/#/p/explorer/namespaces');
   await page.locator('.nav-section-head').filter({ hasText: 'orders' }).click();
   const template = page.locator('.nav-template-head').filter({ hasText: 'Domain' }).first();
   await template.click();
@@ -16,7 +16,7 @@ async function expectDetail(page) {
 }
 
 async function expectList(page) {
-  await expect(page).toHaveURL(/\/namespaces$/);
+  await expect(page).toHaveURL(/\/p\/explorer\/namespaces$/);
   await expect(page.locator('.nav-node-item.active')).toBeFocused();
   await expect(page.locator('.detail-pane')).toHaveAttribute('inert', '');
   await expect(page.locator('.list-pane')).not.toHaveAttribute('inert');
@@ -68,7 +68,7 @@ test('direct links retain branch context and browser Back reaches the list', asy
   await expectDetail(page);
   await page.goBack();
   await expectList(page);
-  await expect(page).toHaveURL(/#\/feature%2Fmobile\/namespaces$/);
+  await expect(page).toHaveURL(/#\/feature%2Fmobile\/p\/explorer\/namespaces$/);
   await page.goForward();
   await expectDetail(page);
   await page.getByRole('button', { name: 'Back to models' }).click();
@@ -76,11 +76,11 @@ test('direct links retain branch context and browser Back reaches the list', asy
 });
 
 test('generic namespace page opens as a detail pane and Back returns to the list', async ({ page }) => {
-  await page.goto('/#/namespace?name=orders');
+  await page.goto('/#/p/explorer/namespace?name=orders');
   await expectDetail(page);
   await expect(page.locator('.detail-pane h1')).toHaveText('orders');
   await page.getByRole('button', { name: 'Back to models' }).click();
-  await expect(page).toHaveURL(/\/namespaces$/);
+  await expect(page).toHaveURL(/\/p\/explorer\/namespaces$/);
   await expect(page.locator('.detail-pane')).toHaveAttribute('inert', '');
 });
 
