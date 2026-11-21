@@ -1,5 +1,6 @@
 /* Host bootstrap: exposes the SDK and plugin registry to the Babel-compiled host shell. */
 import * as sdk from 'corum:ui'
+import * as sdkReact from 'corum:ui/react'
 import { loadPlugins, pluginsChanged } from './plugin-loader.js'
 import { createPluginContext } from './context.js'
 
@@ -42,5 +43,5 @@ function createContext(identity, state, onError) {
   }, state, onError)
 }
 
-const host = { sdk, registry, ready, createContext, pluginsChangedOnServer, pluginsFailed: false }
+const host = { sdk, sdkReact, registry, ready, createContext, pluginsChangedOnServer, pluginsFailed: false }
 window.CorumHost = host

@@ -27,6 +27,7 @@ const {
   hrefForAction,
   owningRoot,
 } = window.CorumHost.sdk;
+const { CtxProvider, NodeLinks } = window.CorumHost.sdkReact;
 const hostRegistry = window.CorumHost.registry;
 
 const { buildNavTree, buildOverlayIndicatorIds, groupNamespacesByKind, namespaceEdges } = window.CorumNav;
@@ -46,23 +47,6 @@ const EDGE_TYPE_STYLES = {
   implements: { background: '#f1f5f9', color: '#475569' },
   reads: { background: '#dbeafe', color: '#1d4ed8' },
 };
-
-// Quick-link icons for node actions that opt into a surface ('header' or 'relations').
-function QuickLinks({ nodeId, keys, surface, viewingRef }) {
-  const actions = hostRegistry.nodeActionsFor(keys).filter(action => action.quick.includes(surface));
-  return actions.map(action => (
-    <a
-      key={`${action.pluginId}/${action.id}`}
-      className="quick-link"
-      href={hrefForAction(action, nodeId, { branch: viewingRef })}
-      title={action.label}
-      aria-label={action.label}
-      onClick={event => event.stopPropagation()}
-    >
-      <Icon name={action.icon ?? 'link'} size={12} />
-    </a>
-  ));
-}
 
 function classifyEdges(edges, clusterIds) {
   const inbound = [];
@@ -901,7 +885,7 @@ function NamespacePage({ namespace, nodes, templates, kinds, onNavigate, viewing
   );
 }
 
-function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate, viewingRef }) {
+function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate }) {
   const { useState: useLocalState } = React;
   const [open, setOpen] = useLocalState(() => {
     try { return localStorage.getItem('corum:edgePanelOpen') === 'true'; } catch { return false; }
@@ -925,10 +909,6 @@ function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate, viewing
     const tmpl = node ? templateMap.get(node.template) : null;
     const colour = tmpl?.ui?.colour ?? null;
     const name = linkedNodeId.split('.').pop();
-    // Match the linked node by its owning cluster root, like node links do.
-    const linkedKeys = matchKeysFor(owningRoot(linkedNodeId, nodeMap)?.template ?? node?.template, templateMap);
-    const claimants = hostRegistry.claimants(linkedKeys);
-    const actions = hostRegistry.nodeActionsFor(linkedKeys).filter(action => action.menu);
     return (
       <div
         data-testid="edge-row"
@@ -941,11 +921,8 @@ function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate, viewing
         <span style={{ fontWeight: 500, fontSize: 13, minWidth: 0, overflowWrap: 'anywhere' }}>{name}</span>
         {node && <StateTag state={node.state} />}
         {node && <StabilityTag stability={node.stability} />}
-        <div className="quick-links" style={{ marginLeft: 'auto' }}>
-          <QuickLinks nodeId={linkedNodeId} keys={linkedKeys} surface="relations" viewingRef={viewingRef} />
-          {(claimants.length > 0 || actions.length > 0) && (
-            <OpenInMenu nodeId={linkedNodeId} claimants={claimants} actions={actions} keys={linkedKeys} viewingRef={viewingRef} />
-          )}
+        <div style={{ marginLeft: 'auto' }}>
+          <NodeLinks nodeId={linkedNodeId} surface="relations" />
         </div>
       </div>
     );
@@ -1069,74 +1046,6 @@ function PluginPage({ route, templates, templatesByName, nodes, viewingRef }) {
   );
 }
 
-function OpenInMenu({ nodeId, claimants, actions, keys, viewingRef }) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = React.useRef(null);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    function onDown(event) {
-      if (wrapRef.current && !wrapRef.current.contains(event.target)) setOpen(false);
-    }
-    function onKey(event) {
-      if (event.key === 'Escape') setOpen(false);
-    }
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
-
-  const genericHref = buildRoute({ pathname: '/node', params: { id: nodeId }, branch: viewingRef });
-  return (
-    <div className="open-in" data-testid="open-in" ref={wrapRef} onClick={event => event.stopPropagation()}>
-      <button
-        type="button"
-        className="open-in-trigger"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label="Open in"
-        title="Open in"
-        onClick={() => setOpen(value => !value)}
-      >
-        <Icon name="arrow-up-right-from-square" size={12} />
-      </button>
-      {open && (
-        <div className="open-in-menu" role="menu">
-          {claimants.length > 0 && (
-            <a className="open-in-item" role="menuitem" href={genericHref} onClick={() => setOpen(false)}>Default view</a>
-          )}
-          {claimants.map(claim => (
-            <a
-              key={`${claim.pluginId}/${claim.id}`}
-              className="open-in-item"
-              role="menuitem"
-              href={hrefForNode(hostRegistry, nodeId, keys, { branch: viewingRef, via: claim.pluginId, page: claim.id })}
-              onClick={() => setOpen(false)}
-            >
-              {claim.title}
-            </a>
-          ))}
-          {claimants.length > 0 && actions.length > 0 && <div className="open-in-sep" role="separator" />}
-          {actions.map(action => (
-            <a
-              key={`${action.pluginId}/${action.id}`}
-              className="open-in-item"
-              role="menuitem"
-              href={hrefForAction(action, nodeId, { branch: viewingRef })}
-              onClick={() => setOpen(false)}
-            >
-              {action.label}
-            </a>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function NodePage({ nodeId, templates, templatesByName, onNavigate, refreshToken, viewingRef, overlayRefs, compact = true }) {
   const [cluster, setCluster] = useState(null);
   const [error, setError] = useState(null);
@@ -1178,9 +1087,6 @@ function NodePage({ nodeId, templates, templatesByName, onNavigate, refreshToken
   if (!nodeId) return <div className="content"><p className="label-sm">No node selected.</p></div>;
   if (error) return <div className="content"><p style={{ color: 'var(--warn)' }}>Error loading node: {error}</p></div>;
   if (!cluster || target.kind === 'page') return <div className="content"><p className="label-sm">Loading...</p></div>;
-
-  const claimants = target.kind === 'chooser' ? target.claimants : [];
-  const nodeActions = hostRegistry.nodeActionsFor(matchKeys).filter(action => action.menu);
 
   const { root, descendants, includedNodes, edges } = cluster;
   const clusterIds = new Set([root.id, ...descendants.map(d => d.id)]);
@@ -1228,10 +1134,7 @@ function NodePage({ nodeId, templates, templatesByName, onNavigate, refreshToken
           <TemplateBadge name={templateDisplayName(template)} colour={colour} />
           <StateTag state={root.state} />
           <StabilityTag stability={root.stability} />
-          <QuickLinks nodeId={root.id} keys={matchKeys} surface="header" viewingRef={viewingRef} />
-          {(claimants.length > 0 || nodeActions.length > 0) && (
-            <OpenInMenu nodeId={root.id} claimants={claimants} actions={nodeActions} keys={matchKeys} viewingRef={viewingRef} />
-          )}
+          <NodeLinks nodeId={root.id} surface="header" />
         </div>
         <div className="label-sm mono">{root.id}</div>
       </div>
@@ -1242,7 +1145,6 @@ function NodePage({ nodeId, templates, templatesByName, onNavigate, refreshToken
         allNodes={[root, ...descendants, ...includedNodes]}
         templates={templates}
         onNavigate={onNavigate}
-        viewingRef={viewingRef}
       />
 
       <div className="meta-strip">
@@ -1359,6 +1261,20 @@ function App() {
 
   const nodesById = useMemo(() => new Map(nodes.map(node => [node.id, node])), [nodes]);
   const templatesByName = useMemo(() => new Map(allTemplates.map(template => [template.name, template])), [allTemplates]);
+
+  // One live host-level ctx (pluginId "host") so SDK components in host pages (node title row, connection rows) read the same state as plugin pages.
+  const hostCtxHandle = React.useRef(null);
+  const hostState = { route, viewingRef, templates, nodes, templatesByName };
+  if (!hostCtxHandle.current) {
+    hostCtxHandle.current = window.CorumHost.createContext({ pluginId: 'host', pageId: 'home' }, hostState, error => console.error('Host context error', error));
+  } else {
+    hostCtxHandle.current.update(hostState);
+  }
+  const hostCtx = useMemo(
+    () => ({ ...hostCtxHandle.current.ctx }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [route, viewingRef, templates, nodes, templatesByName, hostReady],
+  );
 
   function handleDebugMode() {
     setDebugMode(prev => {
@@ -1622,7 +1538,7 @@ function App() {
   }
 
   return (
-    <>
+    <CtxProvider ctx={hostCtx}>
       {searchOpen && (
         <SearchModal
           nodes={nodes}
@@ -1694,7 +1610,7 @@ function App() {
           {page}
         </div>
       </div>
-    </>
+    </CtxProvider>
   );
 }
 
