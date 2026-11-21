@@ -68,7 +68,7 @@ contributes:
   pages:
     - { id: map, title: Journeys, icon: route, mount: mountJourneyMap, opens: [Journey, JourneyStep] }
   nodeActions:
-    - { id: view-in-journey, label: View in journey, appliesTo: [DomainModel], page: map }
+    - { id: view-in-journey, label: View in journey, icon: route, appliesTo: [DomainModel], page: map, param: focus, quick: [header] }
 ```
 
 | Field | Meaning |
@@ -84,7 +84,12 @@ contributes:
 
 Contribution types for v1:
 - **pages**: a route plus a nav entry (title and icon yield the nav item; there is no separate nav-item contribution). Optional `order`. Optional `opens`: templates or roles for which this page is a destination when a node is opened (section 5a).
-- **nodeActions**: a link the host shows on node pages for nodes matching `appliesTo` (template names or roles, resolved through the extends chain per `src/graph/roles.ts`). It is a generated direct link to the named `page` for that node (`hrefForNode(id, { via })`); there is no custom action code. This is the "View in journey" mechanism.
+- **nodeActions**: a link the host shows on node pages for nodes matching `appliesTo` (template names or roles, resolved through the extends chain per `src/graph/roles.ts`; `"*"` matches every node). It is a generated direct link to the named `page` for that node, `#/<branch?>/p/<plugin>/<page>?<param>=<nodeId>` (built by the SDK's `hrefForAction`); there is no custom action code. This is the "View in journey" mechanism. Optional fields:
+  - `icon`: a Font Awesome icon name used when the action is shown as a quick link.
+  - `param`: the query parameter that carries the node id on the target page. Default `id`.
+  - `quick`: surfaces where the host also shows the action as an icon-only link, a list drawn from `header` (the node page title row) and `relations` (each connection row, targeting the linked node, so `appliesTo` is matched against that node). Default none. Unknown surfaces are a manifest error.
+
+  The node page's "Open in" menu always lists every applicable action, quick ones included, so a quick link is a shortcut and never the only route. The host names no plugin: the Graph plugin's "View in graph" link is a `"*"` action with `quick: [header, relations]`, so disabling the plugin removes every Graph link.
 
 Deliberately not in v1: custom node-page renderers (a plugin that wants to render a node opens a page), plugin-defined extension points (other plugins contributing into a plugin's slots), and shadow-DOM isolation. Each can be added later without breaking manifests.
 

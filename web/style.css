@@ -1507,22 +1507,25 @@ button {
 .graph-focus-search-item:hover,
 .graph-focus-search-item.selected { background: var(--paper-2); }
 
-/* Graph nav link (used in EdgePanel and node header) */
-.graph-nav-link {
+/* Quick-link icons for node actions (node title row and relation rows) */
+.quick-links {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  color: var(--ink-4);
-  cursor: pointer;
-  background: none;
-  border: none;
-  padding: 0;
-  font: inherit;
-  font-size: 11px;
-  line-height: 1;
+  gap: 6px;
 }
 
-.graph-nav-link:hover { color: var(--ink-2); }
+.quick-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius);
+  color: var(--ink-4);
+  text-decoration: none;
+}
+
+.quick-link:hover { color: var(--ink); background: var(--paper-2); }
 
 /* Flat/Grouped layout mode toggle */
 .graph-layout-toggle {
@@ -1842,8 +1845,10 @@ button {
 .open-in-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
   border: 1px solid var(--rule-2);
   border-radius: var(--radius);
   background: var(--paper);

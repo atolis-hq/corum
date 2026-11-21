@@ -24,11 +24,27 @@ const {
   matchKeysFor,
   resolveNodeTarget,
   hrefForNode,
+  hrefForAction,
   owningRoot,
-  isPageAvailable,
 } = window.CorumHost.sdk;
 const hostRegistry = window.CorumHost.registry;
-const hasGraphPage = () => isPageAvailable(hostRegistry, 'graph', 'view');
+
+// Quick-link icons for node actions that opt into a surface ('header' or 'relations').
+function QuickLinks({ nodeId, keys, surface, viewingRef }) {
+  const actions = hostRegistry.nodeActionsFor(keys).filter(action => action.quick.includes(surface));
+  return actions.map(action => (
+    <a
+      key={`${action.pluginId}/${action.id}`}
+      className="quick-link"
+      href={hrefForAction(action, nodeId, { branch: viewingRef })}
+      title={action.label}
+      aria-label={action.label}
+      onClick={event => event.stopPropagation()}
+    >
+      <Icon name={action.icon ?? 'arrow-up-right-from-square'} size={12} />
+    </a>
+  ));
+}
 const { buildNavTree, buildOverlayIndicatorIds, groupNamespacesByKind, namespaceEdges } = window.CorumNav;
 const { parseRoute, buildRoute } = window.CorumRouter;
 const { kindColour } = window.CorumGraphUtils;
@@ -908,8 +924,11 @@ function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate, viewing
     const tmpl = node ? templateMap.get(node.template) : null;
     const colour = tmpl?.ui?.colour ?? null;
     const name = linkedNodeId.split('.').pop();
+    // Match the linked node by its owning cluster root, like node links do.
+    const linkedKeys = matchKeysFor(owningRoot(linkedNodeId, nodeMap)?.template ?? node?.template, templateMap);
     return (
       <div
+        data-testid="edge-row"
         onClick={() => onNavigate(linkedNodeId)}
         title={linkedNodeId}
         style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', cursor: 'pointer' }}
@@ -919,16 +938,9 @@ function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate, viewing
         <span style={{ fontWeight: 500, fontSize: 13 }}>{name}</span>
         {node && <StateTag state={node.state} />}
         {node && <StabilityTag stability={node.stability} />}
-        {hasGraphPage() && (
-          <button
-            className="graph-nav-link"
-            title="View in graph"
-            onClick={e => { e.stopPropagation(); navigate(buildRoute({ pathname: '/p/graph/view', params: { focus: linkedNodeId }, branch: viewingRef })); }}
-            style={{ marginLeft: 'auto' }}
-          >
-            <Icon name="diagram-project" size={11} />
-          </button>
-        )}
+        <span className="quick-links" style={{ marginLeft: 'auto' }}>
+          <QuickLinks nodeId={linkedNodeId} keys={linkedKeys} surface="relations" viewingRef={viewingRef} />
+        </span>
       </div>
     );
   }
@@ -1079,10 +1091,11 @@ function OpenInMenu({ nodeId, claimants, actions, keys, viewingRef }) {
         className="open-in-trigger"
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-label="Open in"
+        title="Open in"
         onClick={() => setOpen(value => !value)}
       >
-        <span>Open in</span>
-        <Icon name="chevron-down" size={10} />
+        <Icon name="ellipsis" size={12} />
       </button>
       {open && (
         <div className="open-in-menu" role="menu">
@@ -1106,7 +1119,7 @@ function OpenInMenu({ nodeId, claimants, actions, keys, viewingRef }) {
               key={`${action.pluginId}/${action.id}`}
               className="open-in-item"
               role="menuitem"
-              href={buildRoute({ pathname: `/p/${action.pluginId}/${action.page}`, params: { id: nodeId }, branch: viewingRef })}
+              href={hrefForAction(action, nodeId, { branch: viewingRef })}
               onClick={() => setOpen(false)}
             >
               {action.label}
@@ -1161,7 +1174,7 @@ function NodePage({ nodeId, templates, templatesByName, onNavigate, refreshToken
   if (!cluster || target.kind === 'page') return <div className="content"><p className="label-sm">Loading...</p></div>;
 
   const claimants = target.kind === 'chooser' ? target.claimants : [];
-  const nodeActions = matchKeys.length > 0 ? hostRegistry.nodeActionsFor(matchKeys) : [];
+  const nodeActions = hostRegistry.nodeActionsFor(matchKeys);
 
   const { root, descendants, includedNodes, edges } = cluster;
   const clusterIds = new Set([root.id, ...descendants.map(d => d.id)]);
@@ -1204,21 +1217,12 @@ function NodePage({ nodeId, templates, templatesByName, onNavigate, refreshToken
   return (
     <div className="content">
       <div id={anchorIdForNode(root.id)} style={{ marginBottom: 18 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
+        <div data-testid="node-title-row" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
           <h1 style={{ margin: 0 }}>{displayName(root.id)}</h1>
           <TemplateBadge name={templateDisplayName(template)} colour={colour} />
           <StateTag state={root.state} />
           <StabilityTag stability={root.stability} />
-          {hasGraphPage() && (
-            <button
-              className="graph-nav-link"
-              onClick={() => navigate(buildRoute({ pathname: '/p/graph/view', params: { focus: root.id }, branch: viewingRef }))}
-              title="View in graph"
-            >
-              <Icon name="diagram-project" size={11} />
-              <span>Graph</span>
-            </button>
-          )}
+          <QuickLinks nodeId={root.id} keys={matchKeys} surface="header" viewingRef={viewingRef} />
           {(claimants.length > 0 || nodeActions.length > 0) && (
             <OpenInMenu nodeId={root.id} claimants={claimants} actions={nodeActions} keys={matchKeys} viewingRef={viewingRef} />
           )}

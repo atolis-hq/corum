@@ -46,7 +46,7 @@ test('drilling into a component changes params without remounting the page', asy
 
 test('a node page "view in graph" link lands on the plugin route with focus', async ({ page }) => {
   await page.goto('/#/node?id=orders.DomainModel.order');
-  await page.locator('button[title="View in graph"]').first().click();
+  await page.locator('a[title="View in graph"]').first().click();
   await expect(page).toHaveURL(/#\/(.+\/)?p\/graph\/view\?focus=orders\.DomainModel\.order$/);
   await expect(page.locator('.graph-breadcrumb-current')).toHaveText('order');
   await expect(page.locator('.react-flow__node').first()).toBeVisible();
@@ -70,5 +70,5 @@ test('View in graph buttons are absent when the graph plugin is disabled', async
 test('View in graph button is present on the node page when the graph plugin is enabled', async ({ page }) => {
   await page.goto('/#/node?id=orders.DomainModel.order');
   await expect(page.locator('.detail-pane').getByText('orders.DomainModel.order', { exact: true })).toBeVisible();
-  await expect(page.locator('button[title="View in graph"]').first()).toBeVisible();
+  await expect(page.locator('a[title="View in graph"]').first()).toBeVisible();
 });

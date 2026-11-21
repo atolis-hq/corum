@@ -8,3 +8,4 @@ contributes:
     - { id: home, title: "OK Plugin", icon: puzzle-piece, order: 10, mount: mount, opens: [] }
   nodeActions:
     - { id: view-in-ok, label: "View in OK", appliesTo: [DomainModel], page: home }
+    - { id: quick-ok, label: "Quick OK", icon: star, appliesTo: [DomainModel], page: home, param: target, quick: [header] }
