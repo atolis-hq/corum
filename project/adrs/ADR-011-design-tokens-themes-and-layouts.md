@@ -119,6 +119,24 @@ The nav rail's Debug button is removed and replaced by a Settings (gear) button 
 
 The popover follows the keyboard-accessible pattern of the Open in menu (#197): focus management, arrow-key navigation, Escape to close. The Settings menu is a host component; plugins cannot add items in this version. A `contributes.settings` point can be added later without breaking this decision.
 
+### 9. Enforcement
+
+The contract is enforced by tests, not review alone. Rules that existing code violates start as ratchets (the count may only go down) and are tightened to zero by the audit slices.
+
+**Static checks** (in `test/architecture.test.ts` or alongside it):
+- **No colour literals.** No hex, `rgb()`, `hsl()` or named colours in `web/` CSS, JSX or JS, except in theme files and pack data. This extends the existing JS ratchet to CSS and JSX.
+- **No visual inline styles.** `style={{…}}` and `el.style.*` may set only layout-dynamic properties that cannot be a class (`width`, `height`, `transform`, `top`/`left`/`right`/`bottom`, `grid-template-*`) and CSS custom properties (for example `--node-colour`). Visual properties (`color`, `background*`, `border*`, `font*`, `box-shadow`, `opacity`, …) fail.
+- **Documented tokens only.** Every `var(--x)` in `web/` must be in `tokens.json` or be a component-local property declared in the same file. A theme file may set only documented tokens.
+- **No raw values where a token exists.** Literal radii, and font sizes and shadows once those tokens exist, fail a stylelint rule or an equivalent scan.
+- **No legacy names.** Old variable names must not appear in `web/`.
+- **Built-in plugins use the vocabulary.** Every class in a `className` string in `web/builtin/**` must be a documented standard class or namespaced to the plugin (`graph-*`, `explorer-*`), and plugin-local classes may use only tokens. Template-literal class names fail unless the prefix is allowlisted, so extraction stays sound.
+- **Third-party plugins** are not banned from custom classes. `corum plugin validate` gains the same colour-literal and visual-inline-style checks as advisory lints.
+
+**Runtime and visual checks** (delivered with the style guide, which they depend on):
+- Render the style guide in every registered theme in a browser. Assert there are no visual inline styles in the DOM, and run axe-core for contrast and focus-visibility.
+- A sentinel theme sets every colour token to one conspicuous colour. A test asserts that nothing outside pack-coloured elements keeps its original palette, which catches colours built at runtime that static scans miss.
+- Per-theme screenshots of the style guide are the visual-regression target.
+
 ## Consequences
 
 - Third parties and packs can add themes without changing the host, using the mechanism ADR-010 already provides.
@@ -147,10 +165,10 @@ The popover follows the keyboard-accessible pattern of the Open in menu (#197): 
 Delivered as separate issues tracked from #181, in this order:
 
 1. Token rename: replace the old variable names with the semantic names across all in-tree CSS and JS (no aliases), unify `data-theme` on `<html>`, and add a test that fails if an old name remains.
-2. Settings popover and theme switcher (replaces Debug button), with persistence and no-flash boot.
-3. Token audit: stylesheet hex colours to tokens.
-4. Token audit: script hex colours to tokens, pack-colour derivation, fallback palette and a single edge-type styling helper. Ratchet reaches zero.
-5. Contract document (`docs/styling.md`), DTCG `tokens.json`, CSS generation script and the snapshot test. (Issue 1 introduces the new names by hand; this issue makes `tokens.json` the source of truth.)
+2. Settings popover and theme switcher (replaces Debug button), with persistence and no-flash boot. Its markup must satisfy the enforcement rules (no inline visual styles).
+3. Token audit: stylesheet hex colours to tokens; adds the CSS colour-literal and no-raw-values checks as ratchets that reach zero here.
+4. Token audit: script hex colours to tokens, pack-colour derivation, fallback palette and a single edge-type styling helper. Script colour ratchet and the visual-inline-style ratchet reach zero.
+5. Contract document (`docs/styling.md`), DTCG `tokens.json`, CSS generation script, the snapshot test, the documented-tokens-only and built-in-plugin class-vocabulary checks, and the `corum plugin validate` lints. (Issue 1 introduces the new names by hand; this issue makes `tokens.json` the source of truth.)
 6. `contributes.themes` in the plugin manifest and loader, built-in `themes` plugin, one additional example theme.
-7. Style guide built-in plugin.
+7. Style guide built-in plugin, with the runtime DOM, axe-core, sentinel-theme and screenshot checks.
 8. Layouts (`contributes.layouts`, `data-layout`, one alternative layout).
