@@ -3,12 +3,14 @@ import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { isSafeRelativePath, parsePluginManifest, type PluginManifest } from './manifest.js'
 
-export type PluginOrigin = 'builtin' | 'pack' | 'standalone'
+export type PluginOrigin = 'builtin' | 'pack' | 'standalone' | 'dev'
 
 export type DiscoveredPlugin = {
   manifest: PluginManifest
   dir: string
   origin: PluginOrigin
+  /** Set when this plugin is listed but not usable (shadowed or duplicate); status becomes unavailable. */
+  unavailableReason?: string
 }
 
 export type PluginOverride = { id: string; enabled: boolean }
@@ -18,6 +20,8 @@ export type DiscoverOptions = {
   graphDir: string | null
   graphYaml: unknown
   packPluginDirs: string[]
+  /** Unpacked development plugins (`--plugin-dir`); never read from graph configuration. */
+  devPluginDirs?: string[]
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -155,5 +159,38 @@ export function discoverPlugins(opts: DiscoverOptions): { plugins: DiscoveredPlu
     }
   }
 
+  // Development plugins last: they replace pack/standalone plugins of the same id for this run.
+  const devSeen = new Map<string, DiscoveredPlugin>()
+  for (const rawDir of opts.devPluginDirs ?? []) {
+    const dir = path.resolve(rawDir)
+    const manifest = readManifestFile(dir, `development plugin ${dir}`, errors)
+    if (!manifest) continue
+    const earlierDev = devSeen.get(manifest.id)
+    if (earlierDev) {
+      const reason = `duplicate plugin id "${manifest.id}"; keeping the development plugin at ${earlierDev.dir}`
+      errors.push(`development plugin ${dir}: ${reason}`)
+      plugins.push({ manifest, dir, origin: 'dev', unavailableReason: reason })
+      continue
+    }
+    const existing = byId.get(manifest.id)
+    if (existing?.origin === 'builtin') {
+      const reason = `cannot replace the built-in plugin "${manifest.id}"`
+      errors.push(`development plugin ${dir}: ${reason}`)
+      plugins.push({ manifest, dir, origin: 'dev', unavailableReason: reason })
+      continue
+    }
+    const plugin: DiscoveredPlugin = { manifest, dir, origin: 'dev' }
+    devSeen.set(manifest.id, plugin)
+    if (existing) {
+      errors.push(`warning: development plugin at ${dir} replaces ${existing.origin} plugin "${manifest.id}" at ${existing.dir} for this run`)
+      existing.unavailableReason = `shadowed by development plugin at ${dir}`
+      plugins.splice(plugins.indexOf(existing), 0, plugin)
+    } else {
+      plugins.push(plugin)
+    }
+    byId.set(manifest.id, plugin)
+  }
+
   return { plugins, errors }
 }
+

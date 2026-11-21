@@ -54,6 +54,8 @@ export type WebServerOptions = {
   graphPath?: string
   source?: GraphSource
   fileWatcher?: boolean
+  /** Unpacked development plugin directories (`--plugin-dir`); watched regardless of `fileWatcher`. */
+  pluginDirs?: string[]
   fileWatcherDebounceMs?: number
   gitPollSeconds?: number
   logger?: (message: string) => void
@@ -72,6 +74,10 @@ export type GraphFileWatcherOptions = {
   logger?: (message: string) => void
   /** Standalone plugin directories to watch; only their `plugin.yaml` changes matter. */
   pluginWatchDirs?: () => string[]
+  /** Development plugin directories: any file change inside them reloads the plugin list. */
+  devPluginWatchDirs?: () => string[]
+  /** Watch the graph, packs and standalone plugins. False watches only development plugin directories. */
+  watchGraph?: boolean
   /**
    * Called after a debounced batch of changes. `graphReloaded` is false when only plugin
    * manifests changed; `pluginsChanged` is false when only graph data (node files) changed.
@@ -337,15 +343,18 @@ export function startGraphFileWatcher(
 
   let packDirs: string[] = []
   let pluginDirs: string[] = []
+  let devDirs: string[] = []
+  const watchGraph = options.watchGraph ?? true
   let needGraphReload = false
   let needPluginRefresh = false
 
   function refreshWatchers(): void {
     closeWatchers()
-    packDirs = resolvePackDirs(graphPath)
-    pluginDirs = (options.pluginWatchDirs?.() ?? []).map(dir => path.resolve(dir))
-    const graphRoot = path.resolve(graphPath)
-    watchers = [...new Set([graphRoot, ...packDirs, ...pluginDirs])]
+    packDirs = watchGraph ? resolvePackDirs(graphPath) : []
+    pluginDirs = watchGraph ? (options.pluginWatchDirs?.() ?? []).map(dir => path.resolve(dir)) : []
+    devDirs = (options.devPluginWatchDirs?.() ?? []).map(dir => path.resolve(dir))
+    const graphRoots = watchGraph ? [path.resolve(graphPath)] : []
+    watchers = [...new Set([...graphRoots, ...packDirs, ...pluginDirs, ...devDirs])]
       .flatMap(root => watchRoot(root, filename => scheduleReload(root, filename)))
   }
 
@@ -357,6 +366,7 @@ export function startGraphFileWatcher(
   /** What a change to this file affects: the graph data, the plugin list, or both. */
   function classify(root: string, filename: string): { graph: boolean; plugins: boolean } | null {
     const file = path.resolve(root, filename)
+    if (devDirs.some(dir => isInside(file, dir))) return { graph: false, plugins: true }
     if (file === path.join(path.resolve(graphPath), 'graph.yaml')) return { graph: true, plugins: true }
     if (packDirs.some(dir => isInside(file, dir))) return { graph: true, plugins: true }
     if (pluginDirs.some(dir => isInside(file, dir))) {
@@ -395,7 +405,8 @@ export function startGraphFileWatcher(
   }
 
   function scheduleReload(root: string, filename?: string | Buffer | null): void {
-    if (!isRelevantWatchEvent(filename)) return
+    // Development plugin directories react to any file; everything else only to YAML.
+    if (!devDirs.includes(root) && !isRelevantWatchEvent(filename)) return
     const effect = filename ? classify(root, String(filename)) : { graph: true, plugins: true }
     if (!effect) return
     needGraphReload ||= effect.graph
@@ -739,7 +750,12 @@ export function createApp(
       if (gitPlugins) {
         const request = await gitPlugins.current()
         res.setHeader('Cache-Control', 'no-cache')
-        res.json(request.statuses)
+        const dev = pluginRuntime.devStatuses()
+        const devIds = new Set(dev.filter(entry => entry.status === 'enabled').map(entry => entry.id))
+        const merged = request.statuses.map(entry => devIds.has(entry.id) && entry.origin !== 'builtin'
+          ? { ...entry, status: 'unavailable' as const, reason: 'shadowed by a development plugin' }
+          : entry)
+        res.json([...merged, ...dev])
         return
       }
       res.setHeader('Cache-Control', 'no-cache')
@@ -751,6 +767,20 @@ export function createApp(
     try {
       const request = gitPlugins ? await gitPlugins.current() : null
       const plugin = request?.enabledPlugin(req.params.id)
+      const devDir = request && plugin?.origin !== 'builtin' ? pluginRuntime.enabledDevDir(req.params.id) : null
+      if (request && devDir) {
+        const asset = resolvePluginAsset(devDir, (req.params as Record<string, string>)[0] ?? '')
+        if (!asset) { res.status(404).json({ error: 'Not found' }); return }
+        res.setHeader('Cache-Control', 'no-cache')
+        res.setHeader('ETag', asset.etag)
+        res.setHeader('Content-Type', asset.contentType)
+        res.setHeader('X-Content-Type-Options', 'nosniff')
+        if (ifNoneMatchSatisfied(req.headers['if-none-match'], asset.etag)) { res.status(304).end(); return }
+        res.sendFile(asset.file, { etag: false, lastModified: false, cacheControl: false, acceptRanges: false, dotfiles: 'allow' }, err => {
+          if (err && !res.headersSent) res.status(404).json({ error: 'Not found' })
+        })
+        return
+      }
       if (request && plugin?.origin !== 'builtin') {
         const asset = plugin ? await request.asset(plugin, (req.params as Record<string, string>)[0] ?? '') : null
         if (!asset) { res.status(404).json({ error: 'Not found' }); return }
@@ -909,6 +939,7 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
     graphDir: pluginGraphDir,
     builtinDir: BUILTIN_PLUGIN_DIR,
     corumVersion: version,
+    devPluginDirs: options.pluginDirs,
     logger,
   })
 
@@ -942,9 +973,12 @@ export function startWebServer(graph: Graph, options: WebServerOptions = {}): Pr
   }
 
   const app = createApp(graph, reloadEvents, options.source, multiCache, () => reloadState('manual reload'), pluginRuntime, gitPlugins)
-  const stopWatcher = isFileWatcherEnabled(options)
+  const watchGraphFiles = isFileWatcherEnabled(options)
+  const stopWatcher = watchGraphFiles || (options.pluginDirs?.length ?? 0) > 0
     ? startGraphFileWatcher(graph, {
         graphPath,
+        watchGraph: watchGraphFiles,
+        devPluginWatchDirs: () => pluginRuntime.devWatchDirs(),
         debounceMs: options.fileWatcherDebounceMs,
         logger,
         pluginWatchDirs: () => pluginRuntime.watchDirs(),

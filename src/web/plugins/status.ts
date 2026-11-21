@@ -26,6 +26,8 @@ function evaluate(plugin: DiscoveredPlugin, ctx: StatusContext): { status: Plugi
     return { status: 'disabled' }
   }
 
+  if (plugin.unavailableReason !== undefined) return { status: 'unavailable', reason: plugin.unavailableReason }
+
   const range = manifest.engines.corum
   if (semver.validRange(range) === null) {
     return { status: 'unavailable', reason: `engines.corum "${range}" is not a valid semver range` }

@@ -1438,6 +1438,75 @@ describe('web server', () => {
           fs.rmSync(w.tmp, { recursive: true, force: true })
         }
       })
+
+      it('reloads plugins when any file in a development plugin directory changes', async () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-watch-'))
+        const { graphPath } = writeWatcherFixture(tmp)
+        const dir = path.join(tmp, 'devplugin')
+        fs.mkdirSync(dir, { recursive: true })
+        fs.writeFileSync(path.join(dir, 'index.js'), '// v1\n')
+        const graph = await loadGraph({ graphPath })
+        const calls: ReloadInfo[] = []
+        const stop = startGraphFileWatcher(graph, {
+          graphPath,
+          debounceMs: 25,
+          logger: () => {},
+          watchGraph: false,
+          devPluginWatchDirs: () => [dir],
+          onReload: info => calls.push(info as ReloadInfo),
+        })
+        try {
+          fs.appendFileSync(path.join(dir, 'index.js'), '// v2\n')
+          await settled(calls, 1)
+          assert.equal(calls.at(-1)?.graphReloaded, false)
+          assert.equal(calls.at(-1)?.pluginsChanged, true)
+        } finally {
+          stop()
+          fs.rmSync(tmp, { recursive: true, force: true })
+        }
+      })
+    })
+
+    it('serves and live-reloads a --plugin-dir development plugin without touching graph.yaml', async () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-dev-plugin-'))
+      let handle: WebServerHandle | undefined
+      const saved = { w: process.env.CORUM_FILE_WATCHER, c: process.env.CORUM_WATCH }
+      delete process.env.CORUM_FILE_WATCHER
+      delete process.env.CORUM_WATCH
+      try {
+        const { graphPath } = writeWatcherFixture(tmp)
+        const dir = path.join(tmp, 'devplugin')
+        fs.mkdirSync(dir, { recursive: true })
+        fs.writeFileSync(path.join(dir, 'plugin.yaml'), 'id: dev-demo\nversion: "1.0.0"\nengines:\n  corum: ">=0.0.0"\nmain: index.js\n')
+        fs.writeFileSync(path.join(dir, 'index.js'), 'export {}\n')
+        const graphYamlBefore = fs.readFileSync(path.join(graphPath, 'graph.yaml'))
+        let reloads = 0
+        const graph = await loadGraph({ graphPath })
+        handle = await startWebServer(graph, {
+          port: 0,
+          graphPath,
+          pluginDirs: [dir],
+          fileWatcherDebounceMs: 25,
+          logger: () => {},
+          onReload: () => { reloads++ },
+        })
+        const base = `http://localhost:${handle.port}`
+        const list = await fetch(`${base}/api/plugins`).then(res => res.json()) as Array<{ id: string; origin: string; status: string }>
+        const dev = list.find(entry => entry.id === 'dev-demo')
+        assert.equal(dev?.origin, 'dev')
+        assert.equal(dev?.status, 'enabled')
+        assert.equal((await fetch(`${base}/plugins/dev-demo/index.js`)).status, 200)
+        assert.equal((await fetch(`${base}/plugins/dev-demo/plugin.yaml`)).status, 404)
+
+        fs.appendFileSync(path.join(dir, 'index.js'), '// edit\n')
+        await eventually(async () => reloads, count => count >= 1)
+        assert.deepEqual(fs.readFileSync(path.join(graphPath, 'graph.yaml')), graphYamlBefore)
+      } finally {
+        if (saved.w !== undefined) process.env.CORUM_FILE_WATCHER = saved.w
+        if (saved.c !== undefined) process.env.CORUM_WATCH = saved.c
+        if (handle) await handle.close()
+        fs.rmSync(tmp, { recursive: true, force: true })
+      }
     })
 
     it('preserves sourceContent and edgeTypes on the served graph object after a reload', async () => {
