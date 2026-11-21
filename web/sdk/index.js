@@ -2,6 +2,7 @@
 export { html } from './html.js'
 
 export { navigate, BrandMark, Icon, StateTag, StabilityTag, Chip, TemplateBadge } from './ui.js'
+export { ErrorPanel, LoadingPanel, EmptyState } from './panels.js'
 export { PropertyValue, PropertiesTable } from './properties.js'
 export { SchemaCard } from './schema-card.js'
 export { createRegistry } from './registry.js'

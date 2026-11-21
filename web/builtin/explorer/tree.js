@@ -1,6 +1,6 @@
 /* Explorer tree: namespaces grouped by kind, then node types, then nodes. Mounted in the host's list pane. */
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { html, Icon, getDisplayName, hrefForExplorerView } from 'corum:ui'
+import { html, EmptyState, Icon, getDisplayName, hrefForExplorerView } from 'corum:ui'
 import { useApi, useCtx } from 'corum:ui/react'
 import { buildNavTree, buildOverlayIndicatorIds, groupNamespacesByKind } from './nav.js'
 
@@ -193,7 +193,7 @@ export function ExplorerTree() {
 
   if (nodes === null) return null
   if (navTree.size === 0) {
-    return html`<div className="nav-tree"><div className="empty-state">No graph nodes loaded.</div></div>`
+    return html`<div className="nav-tree"><${EmptyState}>No graph nodes loaded.<//></div>`
   }
 
   const itemProps = { activeNodeId, onNode, overlayIds }
