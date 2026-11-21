@@ -1084,19 +1084,26 @@ describe('web server', () => {
     let savedEnv: string | undefined
     let base: string
 
-    function writePlugin(id: string, templates: string[] = []): void {
+    function writePlugin(id: string, templates: string[] = [], contributes = ''): void {
       const dir = path.join(tmp, 'builtin', id)
       fs.mkdirSync(dir, { recursive: true })
       fs.writeFileSync(
         path.join(dir, 'plugin.yaml'),
-        `id: ${id}\nversion: 1.0.0\nengines: { corum: "*" }\nrequires: { templates: [${templates.join(', ')}] }\nmain: ./index.js\n`,
+        `id: ${id}\nversion: 1.0.0\nengines: { corum: "*" }\nrequires: { templates: [${templates.join(', ')}] }\nmain: ./index.js\n${contributes}`,
       )
       fs.writeFileSync(path.join(dir, 'index.js'), `export const id = '${id}'\n`)
     }
 
     before(async () => {
       tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-web-plugins-'))
-      writePlugin('on')
+      writePlugin('on', [], [
+        'contributes:',
+        '  pages:',
+        '    - { id: view, title: View, mount: mount }',
+        '  nodeActions:',
+        '    - { id: quick-one, label: Quick one, appliesTo: ["*"], page: view, icon: diagram-project, param: focus, quick: [header, relations] }',
+        '',
+      ].join('\n'))
       writePlugin('off')
       writePlugin('needs-missing', ['NoSuchTemplate'])
       const graphDir = path.join(tmp, 'graph')
@@ -1126,6 +1133,10 @@ describe('web server', () => {
       assert.equal(byId.get('needs-missing')?.status, 'unavailable')
       assert.match(byId.get('needs-missing')?.reason ?? '', /NoSuchTemplate/)
       assert.equal(byId.get('on')?.manifest.id, 'on')
+      const manifest = byId.get('on')?.manifest as unknown as { contributes: { nodeActions: unknown[] } }
+      assert.deepEqual(manifest.contributes.nodeActions, [{
+        id: 'quick-one', label: 'Quick one', appliesTo: ['*'], page: 'view', icon: 'diagram-project', param: 'focus', quick: ['header', 'relations'],
+      }])
       assert.ok(!JSON.stringify(body).includes(path.basename(tmp)))
     })
 

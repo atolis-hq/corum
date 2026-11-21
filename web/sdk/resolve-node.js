@@ -37,8 +37,8 @@ export function resolveNodeTarget(registry, matchKeys, opts = {}) {
 }
 
 // Mirrors buildRoute() in web/router.js (a classic script, so not importable here).
-function buildHref(pathname, id, branch) {
-  const query = `?${new URLSearchParams({ id })}`
+function buildHref(pathname, id, branch, param = 'id') {
+  const query = `?${new URLSearchParams({ [param]: id })}`
   return branch ? `#/${encodeURIComponent(branch)}${pathname}${query}` : `#${pathname}${query}`
 }
 
@@ -46,6 +46,11 @@ export function hrefForNode(registry, nodeId, matchKeys, { branch, via, page } =
   const target = resolveNodeTarget(registry, matchKeys, { via, page })
   const pathname = target.kind === 'page' ? `/p/${target.pluginId}/${target.pageId}` : '/node'
   return buildHref(pathname, nodeId, branch)
+}
+
+/** Link for a node action (registry.nodeActionsFor entry) applied to a node: `#/<branch?>/p/<plugin>/<page>?<param>=<id>`. */
+export function hrefForAction(action, nodeId, { branch } = {}) {
+  return buildHref(`/p/${action.pluginId}/${action.page}`, nodeId, branch, action.param ?? 'id')
 }
 
 /** True when the page exists in an enabled plugin (host chrome should not link to pages that are not there). */

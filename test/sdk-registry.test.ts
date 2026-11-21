@@ -7,10 +7,10 @@ const sdkDir = path.join(process.cwd(), 'web', 'sdk')
 const load = (file: string) => import(pathToFileURL(path.join(sdkDir, file)).href)
 
 type Page = { id: string; title: string; icon?: string; order?: number; mount: string; opens?: string[] }
-type Action = { id: string; label: string; appliesTo: string[]; page: string }
+type Action = { id: string; label: string; appliesTo: string[]; page: string; icon?: string; param?: string; quick?: string[] }
 
 const { createRegistry } = await load('registry.js')
-const { resolveNodeTarget, hrefForNode } = await load('resolve-node.js')
+const { resolveNodeTarget, hrefForNode, hrefForAction } = await load('resolve-node.js')
 
 function plugin(
   id: string,
@@ -78,6 +78,26 @@ describe('registry', () => {
     const actions = reg.nodeActionsFor(['Journey'])
     assert.deepEqual(actions.map((a: Action) => a.id), ['open'])
     assert.equal(actions[0].pluginId, 'j')
+  })
+
+  it('nodeActionsFor includes * actions and carries icon, param and quick', () => {
+    const reg = createRegistry()
+    reg.registerPlugin(plugin('g', [{ id: 'view', title: 'Graph', mount: 'm' }], {
+      actions: [
+        { id: 'all', label: 'All', appliesTo: ['*'], page: 'view', icon: 'diagram-project', param: 'focus', quick: ['header'] },
+        { id: 'plain', label: 'Plain', appliesTo: ['Order'], page: 'view' },
+      ],
+    }))
+    const actions = reg.nodeActionsFor(['Journey'])
+    assert.deepEqual(actions.map((a: Action) => a.id), ['all'])
+    assert.equal(actions[0].icon, 'diagram-project')
+    assert.equal(actions[0].param, 'focus')
+    assert.deepEqual(actions[0].quick, ['header'])
+    const plain = reg.nodeActionsFor(['Order']).find((a: Action) => a.id === 'plain')
+    assert.equal(plain.icon, null)
+    assert.equal(plain.param, 'id')
+    assert.deepEqual(plain.quick, [])
+    assert.deepEqual(reg.nodeActionsFor([]).map((a: Action) => a.id), ['all'])
   })
 
   it('page mount lazily loads the module and calls the named export', async () => {
@@ -184,6 +204,19 @@ describe('resolveNodeTarget / hrefForNode', () => {
     reg.registerPlugin(plugin('a', [page('one', ['Journey'])]))
     reg.registerPlugin(plugin('b', [page('two', ['Journey'])]))
     assert.equal(hrefForNode(reg, 'a.b', ['Journey'], {}), '#/node?id=a.b')
+  })
+})
+
+describe('hrefForAction', () => {
+  const action = { pluginId: 'graph', page: 'view', param: 'focus' }
+
+  it('builds the plugin page link with the action param', () => {
+    assert.equal(hrefForAction(action, 'a.b'), '#/p/graph/view?focus=a.b')
+  })
+
+  it('defaults the param to id and prefixes the branch', () => {
+    assert.equal(hrefForAction({ pluginId: 'j', page: 'map' }, 'a.b'), '#/p/j/map?id=a.b')
+    assert.equal(hrefForAction(action, 'a.b', { branch: 'feat/x' }), '#/feat%2Fx/p/graph/view?focus=a.b')
   })
 })
 

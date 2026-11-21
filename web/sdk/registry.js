@@ -44,6 +44,9 @@ function buildActionEntry(plugin, action) {
     label: action.label,
     appliesTo: action.appliesTo ?? [],
     page: action.page,
+    icon: action.icon ?? null,
+    param: action.param ?? 'id',
+    quick: action.quick ?? [],
   }
 }
 
@@ -75,7 +78,7 @@ export function createRegistry() {
       const keys = new Set(matchKeys)
       return enabled()
         .flatMap(entry => (entry.manifest?.contributes?.nodeActions ?? []).map(action => buildActionEntry(entry, action)))
-        .filter(action => action.appliesTo.some(key => keys.has(key)))
+        .filter(action => action.appliesTo.some(key => key === '*' || keys.has(key)))
     },
   }
 }

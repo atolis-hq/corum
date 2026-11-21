@@ -34,6 +34,24 @@ describe('parsePluginManifest', () => {
     })
   })
 
+  it('parses optional nodeAction icon, param and quick, and the * wildcard', () => {
+    const text = withChange(
+      '{ id: view-in-journey, label: View in journey, appliesTo: [DomainModel], page: map }',
+      '{ id: view-in-journey, label: View in journey, appliesTo: ["*"], page: map, icon: diagram-project, param: focus, quick: [header, relations] }',
+    )
+    const { manifest, errors } = parsePluginManifest(text)
+    assert.deepEqual(errors, [])
+    assert.deepEqual(manifest?.contributes.nodeActions[0], {
+      id: 'view-in-journey',
+      label: 'View in journey',
+      appliesTo: ['*'],
+      page: 'map',
+      icon: 'diagram-project',
+      param: 'focus',
+      quick: ['header', 'relations'],
+    })
+  })
+
   it('defaults requires and contributes', () => {
     const { manifest, errors } = parsePluginManifest('id: a\nversion: 1.0.0\nengines: { corum: "*" }\nmain: index.js\n')
     assert.deepEqual(errors, [])
@@ -54,6 +72,11 @@ describe('parsePluginManifest', () => {
       withChange('  nodeActions:', '    - { id: map, title: Again, mount: other }\n  nodeActions:'),
       /duplicated/,
     ],
+    ['unknown quick surface', withChange('page: map }', 'page: map, quick: [header, sidebar] }'), /quick.*"sidebar"/],
+    ['quick not a list', withChange('page: map }', 'page: map, quick: header }'), /quick must be a list/],
+    ['non-string param', withChange('page: map }', 'page: map, param: 3 }'), /param must be a non-empty string/],
+    ['empty param', withChange('page: map }', 'page: map, param: "" }'), /param must be a non-empty string/],
+    ['non-string action icon', withChange('page: map }', 'page: map, icon: [x] }'), /nodeActions\[0\]\.icon must be a string/],
     ['page missing mount', withChange('mount: mountJourneyMap, ', ''), /mount is required/],
   ]
   for (const [name, text, pattern] of invalid) {
