@@ -458,3 +458,88 @@ test.describe('explorer view bypass (view=explorer)', () => {
     await expect(page.getByTestId('plugin-claim-solo')).toHaveCount(0);
   });
 });
+
+for (const context of ['title', 'connection', 'plugin']) {
+  test(`Open in supports menu-button keys in ${context}`, async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('corum:edgePanelOpen', 'true'));
+    await page.goto(context === 'plugin' ? `/#/p/ok/home?id=${MODEL}`
+      : context === 'connection' ? '/#/node?id=payments.APIEndpoint.complete-payment' : `/#/node?id=${MODEL}`);
+    const scope = context === 'plugin' ? page.getByTestId('ok-node-heading')
+      : context === 'connection' ? page.locator('[data-testid="edge-row"][title="payments.DomainModel.payment.operations.capture"]')
+        : page.getByTestId('node-title-row');
+    const trigger = scope.getByRole('button', { name: 'Open in', exact: true });
+    const menu = scope.getByRole('menu', { name: 'Open in', exact: true });
+    const entries = menu.getByRole('menuitem');
+    await trigger.focus();
+    await expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    for (const key of ['Enter', 'Space', 'ArrowDown', 'ArrowUp']) {
+      await trigger.press(key);
+      await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      await expect(menu).toHaveAttribute('id', await trigger.getAttribute('aria-controls'));
+      await expect(key === 'ArrowUp' ? entries.last() : entries.first()).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(menu).toHaveCount(0);
+      await expect(trigger).toBeFocused();
+    }
+    await trigger.press('ArrowDown');
+    const count = await entries.count();
+    for (let index = 1; index <= count; index++) {
+      await page.keyboard.press('ArrowDown');
+      await expect(entries.nth(index % count)).toBeFocused();
+    }
+    await page.keyboard.press('ArrowUp');
+    await expect(entries.last()).toBeFocused();
+    await page.keyboard.press('Home');
+    await expect(entries.first()).toBeFocused();
+    await page.keyboard.press('End');
+    await expect(entries.last()).toBeFocused();
+    await page.keyboard.press('Escape');
+    // Compare native Tab destinations with the closed popup, in both directions.
+    for (const key of ['Tab', 'Shift+Tab']) {
+      await trigger.focus();
+      await page.keyboard.press(key);
+      const destination = await page.evaluateHandle(() => document.activeElement);
+      await trigger.focus();
+      await trigger.press('ArrowDown');
+      await page.keyboard.press(key);
+      await expect(menu).toHaveCount(0);
+      expect(await destination.evaluate(el => el === document.activeElement)).toBe(true);
+      await destination.dispose();
+    }
+    await trigger.click();
+    await expect(entries.first()).toBeFocused();
+    // Pressing a non-entry part of the menu must not close it.
+    await menu.dispatchEvent('mousedown');
+    await menu.dispatchEvent('click');
+    await expect(menu).toHaveCount(1);
+    await trigger.click();
+    await expect(menu).toHaveCount(0);
+    await trigger.click();
+    await page.evaluate(() => {
+      const button = document.createElement('button');
+      button.textContent = 'Outside focus target';
+      button.id = 'outside-focus-target';
+      button.style.cssText = 'position:fixed;right:8px;bottom:8px;z-index:99999';
+      document.body.append(button);
+    });
+    const outside = page.locator('#outside-focus-target');
+    await outside.click();
+    await expect(menu).toHaveCount(0);
+    await expect(outside).toBeFocused();
+    await outside.evaluate(el => el.remove());
+    await trigger.focus();
+    await trigger.press('Enter');
+    const target = menu.getByRole('menuitem', { name: 'View in OK', exact: true });
+    const href = await target.getAttribute('href');
+    // Reach an action past the separator using only the keyboard.
+    for (let index = 0; index < count; index++) {
+      if (await target.evaluate(el => el === document.activeElement)) break;
+      await page.keyboard.press('ArrowDown');
+    }
+    await expect(target).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect.poll(() => new URL(page.url()).hash).toBe(href);
+    await expect(page.getByTestId('plugin-ok')).toBeVisible();
+  });
+}
