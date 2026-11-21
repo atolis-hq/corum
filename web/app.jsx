@@ -1050,20 +1050,22 @@ function PluginPage({ route, templates, templatesByName, nodes, viewingRef, revi
 function NodePage({ nodeId, explorerView = false, templates, templatesByName, onNavigate, refreshToken, viewingRef, overlayRefs, compact = true }) {
   const [cluster, setCluster] = useState(null);
   const [error, setError] = useState(null);
+  // Depend on the requested refs, not array identity: host updates can create
+  // equivalent arrays and must not replace the focused heading with Loading.
+  const overlayParam = overlayRefs && overlayRefs.length > 0
+    ? '&' + overlayRefs.map(ref => `overlayRefs=${encodeURIComponent(ref)}`).join('&')
+    : '';
 
   useEffect(() => {
     if (!nodeId) return;
     setCluster(null);
     setError(null);
     const refParam = viewingRef ? `&ref=${encodeURIComponent(viewingRef)}` : '';
-    const overlayParam = overlayRefs && overlayRefs.length > 0
-      ? '&' + overlayRefs.map(ref => `overlayRefs=${encodeURIComponent(ref)}`).join('&')
-      : '';
     fetch(`/api/cluster?nodeId=${encodeURIComponent(nodeId)}&includeEdges=maps-to,reads,uses-type,triggers,produces,calls,implements${refParam}${overlayParam}`)
       .then(response => response.ok ? response.json() : Promise.reject(response.status))
       .then(setCluster)
       .catch(err => setError(String(err)));
-  }, [nodeId, refreshToken, viewingRef, overlayRefs]);
+  }, [nodeId, refreshToken, viewingRef, overlayParam]);
 
   const rootNode = cluster?.root ?? null;
   const matchKeys = useMemo(
@@ -1246,6 +1248,7 @@ function App() {
   const [revision, setRevision] = useState(0);
   const refreshToken = revision;
   const [gitMode, setGitMode] = useState(false);
+  const [branchReady, setBranchReady] = useState(false);
   const [branches, setBranches] = useState([]);
   const [branchResults, setBranchResults] = useState([]);
   const [viewingRef, setViewingRef] = useState(null);
@@ -1355,14 +1358,16 @@ function App() {
   }, [refreshAllData]);
 
   useEffect(() => {
-    refreshBranchState();
+    refreshBranchState().finally(() => setBranchReady(true));
   }, [refreshBranchState]);
 
   useEffect(() => {
-    if (viewingRef !== null || !gitMode) {
+    // Resolve the initial branch before rendering graph/detail data. Otherwise
+    // a late branch response can discard a heading that already received focus.
+    if (branchReady && (viewingRef !== null || !gitMode)) {
       refreshGraphData();
     }
-  }, [viewingRef, gitMode, refreshGraphData]);
+  }, [branchReady, viewingRef, gitMode, refreshGraphData]);
 
   useEffect(() => {
     let previous = parseRoute(window.location.hash);

@@ -99,3 +99,56 @@ test('reduced motion, landscape, dashboard and graph', async ({ page }) => {
   await expect(page.locator('.graph-section')).toBeVisible();
   expect((await page.locator('.graph-section').boundingBox()).height).toBeGreaterThan(100);
 });
+
+test('branch discovery and equivalent host updates preserve the detail and user focus', async ({ page }) => {
+  let releaseInitial;
+  let releaseRefresh;
+  const initialGate = new Promise(resolve => { releaseInitial = resolve; });
+  const refreshGate = new Promise(resolve => { releaseRefresh = resolve; });
+  let branchRequests = 0;
+  let clusterRequests = 0;
+  page.on('request', request => {
+    if (new URL(request.url()).pathname === '/api/cluster') clusterRequests++;
+  });
+  await page.route('**/api/branches', async route => {
+    const request = ++branchRequests;
+    const response = await route.fetch();
+    if (request === 1) {
+      await initialGate;
+      await route.fulfill({ response });
+    } else if (request === 2) {
+      await refreshGate;
+      const data = await response.json();
+      // A visible marker proves the later branch response reached React.
+      await route.fulfill({ response, json: { ...data, results: [
+        ...(data.results || []), { ref: 'unavailable-test-branch', status: 'failed', error: 'Unavailable' },
+      ] } });
+    } else {
+      await route.fulfill({ response });
+    }
+  });
+  try {
+    await page.goto('/#/node?id=orders.DomainModel.order');
+    await expect(page.getByText('Loading graph...', { exact: true })).toBeVisible();
+    await expect.poll(() => branchRequests).toBe(1);
+    expect(clusterRequests).toBe(0);
+    releaseInitial();
+    await expectDetail(page);
+    await expect.poll(() => branchRequests).toBe(2);
+    const heading = await page.locator('.detail-pane h1').elementHandle();
+    const back = page.getByRole('button', { name: 'Back to models' });
+    await back.focus();
+    releaseRefresh();
+    await expect(page.locator('.branch-failed-badge')).toHaveText('1 failed');
+    // Flush the effects and ensuing renders from this specific host update.
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    expect(clusterRequests).toBe(1);
+    expect(await heading.evaluate(el => el.isConnected)).toBe(true);
+    await expect(back).toBeFocused();
+    await back.press('Enter');
+    await expectList(page);
+  } finally {
+    releaseInitial();
+    releaseRefresh();
+  }
+});

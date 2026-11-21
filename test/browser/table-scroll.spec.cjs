@@ -6,6 +6,7 @@ for (const width of [393, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/#/node?id=orders.DomainModel.order');
     await expect(page.locator('.detail-pane h1')).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
     // Branch initialization can replace the detail DOM after its first render.
     // Retry the injection and measurement together against the current tables.
     await expect(async () => {
