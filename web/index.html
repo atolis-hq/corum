@@ -18,6 +18,18 @@
       }
     }
   </script>
+  <script id="theme-boot">
+    /* First paint: keep in agreement with resolveTheme/readChoice in host/theme.js (test/theme.test.ts). */
+    (function () {
+      var t = 'system';
+      try { t = localStorage.getItem('corum:theme'); } catch (e) {}
+      if (t !== 'light' && t !== 'dark') {
+        t = 'light';
+        try { if (matchMedia('(prefers-color-scheme: dark)').matches) t = 'dark'; } catch (e) {}
+      }
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="stylesheet" href="/vendor/fonts.css" />

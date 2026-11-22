@@ -181,6 +181,119 @@ button {
   color: var(--background);
 }
 
+.settings {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-trigger {
+  width: 100%;
+  background: transparent;
+  font: inherit;
+}
+
+.settings-trigger[aria-expanded="true"] {
+  background: var(--background);
+  color: var(--foreground);
+  border-color: var(--border-strong);
+}
+
+.settings-trigger:focus-visible,
+.settings-menu-item:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Fixed so the rail's overflow scrolling cannot clip it. */
+.settings-menu {
+  position: fixed;
+  left: 76px;
+  bottom: 10px;
+  z-index: 100;
+  min-width: 190px;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--background);
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-menu-label {
+  padding: 6px 10px 2px;
+}
+
+.settings-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--secondary-foreground);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.settings-menu-item:hover,
+.settings-menu-item:focus-visible {
+  background: var(--card);
+  color: var(--foreground);
+}
+
+.settings-menu-sep {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}
+
+.settings-menu-mark {
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+}
+
+.settings-menu-item[aria-checked="true"] .settings-menu-mark {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.settings-menu-switch {
+  position: relative;
+  width: 22px;
+  height: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--muted);
+}
+
+.settings-menu-switch::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted-foreground);
+}
+
+.settings-menu-item[aria-checked="true"] .settings-menu-switch {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.settings-menu-item[aria-checked="true"] .settings-menu-switch::after {
+  left: 11px;
+  background: var(--background);
+}
+
 .nav-tree {
   width: 280px;
   min-width: 280px;
@@ -633,6 +746,19 @@ button {
   .nav-rail-item {
     flex: 0 0 72px;
     width: 72px;
+  }
+
+  .settings {
+    margin-top: 0;
+    margin-left: auto;
+    flex: 0 0 72px;
+  }
+
+  .settings-menu {
+    left: auto;
+    right: 8px;
+    bottom: auto;
+    top: 68px;
   }
 
   .nav-tree {

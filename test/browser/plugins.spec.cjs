@@ -32,7 +32,7 @@ test('nav rail lists host items (Dashboard, Explorer) before plugin pages sorted
   expect(labels.slice(0, 2)).toEqual(['Dashboard', 'Explorer']);
   // Orders: OK Plugin 10, Broken Import 20 and Graph 20 (title tie-break), Throws On Mount 30.
   expect(labels.slice(2, 6)).toEqual(['OK Plugin', 'Broken Import', 'Graph', 'Throws On Mount']);
-  expect(labels[labels.length - 1]).toBe('Debug');
+  expect(labels[labels.length - 1]).toBe('Settings');
 });
 
 test('broken plugins show an error while Dashboard and other plugins still work', async ({ page }) => {
