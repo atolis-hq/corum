@@ -149,7 +149,7 @@ async function computePluginRequest(snapshot: PluginSnapshot, builtinDir: string
       // A missing manifest has no ID; preserve the exact author-supplied path.
       const manifest: PluginManifest = {
         id: declared, version: '', engines: { corum: '*' }, requires: { templates: [] },
-        main: '', contributes: { pages: [], nodeActions: [], themes: [] },
+        main: '', contributes: { pages: [], nodeActions: [], themes: [], layouts: [] },
       }
       missing.push({
         id: declared, name: declared, origin, version: '', manifest, status: 'unavailable',

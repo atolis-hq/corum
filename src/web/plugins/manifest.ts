@@ -45,6 +45,17 @@ export type PluginTheme = {
   css: string
 }
 
+/** A layout contributed by a plugin (ADR-011 section 6): a CSS file that sets only the layout token group. */
+export type PluginLayout = {
+  id: string
+  label: string
+  /** Plugin-relative path of the CSS file. */
+  css: string
+}
+
+/** Reserved: the host's own layout, which reproduces the stock shell. */
+export const DEFAULT_LAYOUT_ID = 'default'
+
 /** Reserved: the Settings choice that follows prefers-color-scheme. */
 export const SYSTEM_THEME_ID = 'system'
 
@@ -57,7 +68,7 @@ export type PluginManifest = {
   engines: { corum: string }
   requires: { templates: string[] }
   main: string
-  contributes: { pages: PluginPage[]; nodeActions: PluginNodeAction[]; themes: PluginTheme[] }
+  contributes: { pages: PluginPage[]; nodeActions: PluginNodeAction[]; themes: PluginTheme[]; layouts: PluginLayout[] }
 }
 
 const PLUGIN_ID = /^[a-z0-9-]+$/
@@ -249,6 +260,33 @@ export function parsePluginManifest(yamlText: string): { manifest: PluginManifes
     })
   }
 
+  const layouts: PluginLayout[] = []
+  const rawLayouts = contributesRec.layouts ?? []
+  if (!Array.isArray(rawLayouts)) {
+    errors.push('contributes.layouts must be a list')
+  } else {
+    const seen = new Set<string>()
+    rawLayouts.forEach((raw, index) => {
+      const label = `contributes.layouts[${index}]`
+      if (!isRecord(raw)) {
+        errors.push(`${label} must be a mapping`)
+        return
+      }
+      let ok = true
+      const fail = (message: string) => { errors.push(message); ok = false }
+      if (!isNonEmptyString(raw.id)) fail(`${label}.id is required`)
+      else if (!PLUGIN_ID.test(raw.id)) fail(`${label}.id "${raw.id}" must match ^[a-z0-9-]+$`)
+      else if (raw.id === DEFAULT_LAYOUT_ID) fail(`${label}.id "${DEFAULT_LAYOUT_ID}" is reserved for the host's own layout`)
+      else if (seen.has(raw.id)) fail(`${label}.id "${raw.id}" is duplicated`)
+      else seen.add(raw.id)
+      if (!isNonEmptyString(raw.label)) fail(`${label}.label is required`)
+      if (!isNonEmptyString(raw.css)) fail(`${label}.css is required`)
+      else if (!isSafeRelativePath(raw.css)) fail(`${label}.css "${raw.css}" must be a relative path inside the plugin directory`)
+      else if (!/\.css$/.test(raw.css)) fail(`${label}.css "${raw.css}" must be a .css file`)
+      if (ok) layouts.push({ id: raw.id as string, label: (raw.label as string).trim(), css: raw.css as string })
+    })
+  }
+
   if (errors.length > 0) return { manifest: null, errors }
   return {
     manifest: {
@@ -257,7 +295,7 @@ export function parsePluginManifest(yamlText: string): { manifest: PluginManifes
       engines: { corum: corumRange as string },
       requires: { templates },
       main: main as string,
-      contributes: { pages, nodeActions, themes },
+      contributes: { pages, nodeActions, themes, layouts },
     },
     errors: [],
   }

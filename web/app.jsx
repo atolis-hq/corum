@@ -128,6 +128,17 @@ function SettingsMenu({ debugMode, onDebugMode, pages = [], onOpenPage }) {
     sync(); // the registry may have filled between the first render and this effect
     return theme.subscribeThemes(sync);
   }, []);
+  const layoutHost = window.CorumHost.layout;
+  const [layoutChoice, setLayoutChoice] = useState(() => layoutHost.getChoice());
+  const [layouts, setLayouts] = useState(() => layoutHost.getLayouts());
+  useEffect(() => {
+    const sync = () => {
+      setLayouts(layoutHost.getLayouts());
+      setLayoutChoice(layoutHost.getChoice());
+    };
+    sync();
+    return layoutHost.subscribeLayouts(sync);
+  }, []);
   const wrapRef = React.useRef(null);
   const triggerRef = React.useRef(null);
   const menuId = React.useId();
@@ -187,6 +198,11 @@ function SettingsMenu({ debugMode, onDebugMode, pages = [], onOpenPage }) {
     restoreFocus();
   }
 
+  function pickLayout(id) {
+    setLayoutChoice(layoutHost.setChoice(id));
+    restoreFocus();
+  }
+
   const themeOptions = [{ id: 'system', label: 'System' }, ...themes];
 
   return (
@@ -202,7 +218,7 @@ function SettingsMenu({ debugMode, onDebugMode, pages = [], onOpenPage }) {
         title="Settings"
         onClick={() => {
           if (open) restoreFocus();
-          else { setChoice(theme.getChoice()); setOpen(true); }
+          else { setChoice(theme.getChoice()); setLayoutChoice(layoutHost.getChoice()); setOpen(true); }
         }}
         onKeyDown={event => {
           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -239,6 +255,24 @@ function SettingsMenu({ debugMode, onDebugMode, pages = [], onOpenPage }) {
                 {window.CorumHost.pluginsFailed ? 'Themes unavailable (plugins failed to load)' : 'Loading themes…'}
               </div>
             )}
+          </div>
+          <div className="settings-menu-sep" role="separator" />
+          <div className="settings-menu-label label-xs" role="presentation" id={`${menuId}-layout`}>Layout</div>
+          <div role="group" aria-labelledby={`${menuId}-layout`}>
+            {layouts.map(option => (
+              <button
+                key={option.id}
+                type="button"
+                className="settings-menu-item"
+                role="menuitemradio"
+                aria-checked={layoutChoice === option.id}
+                tabIndex={-1}
+                onClick={() => pickLayout(option.id)}
+              >
+                <span className="settings-menu-mark" aria-hidden="true" />
+                {option.label}
+              </button>
+            ))}
           </div>
           <div className="settings-menu-sep" role="separator" />
           <button

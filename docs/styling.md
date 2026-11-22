@@ -261,6 +261,21 @@ The default values are generated:
 3. Give `dark.css` and `high-contrast.css` in `web/builtin/themes` the same token (a test fails if one is missing).
 4. Add the token to this page, set `since` to the current version, and run `npm run styling:snapshot`.
 
+## Layouts
+
+A layout (`contributes.layouts`, see [plugins](plugins.md#layouts)) is a per-user, CSS-only choice independent of the
+theme, applied as `data-layout="<id>"` on `<html>`. It may set only the layout token group (scope *layout*, defaults in
+`web/tokens.css`, never set by themes):
+
+| Token | Default | Meaning |
+| --- | --- | --- |
+| `--nav-width` | `72px` | Width of the desktop nav rail (48px to 120px). The mobile rail ignores it. |
+| `--content-max` | `none` | Maximum width of page content (`none` or 480px to 2400px). |
+| `--density` | `1` | Spacing multiplier for the nav rail and page content padding (0.5 to 1.5). |
+
+The only selector is `[data-layout="<id>"]`; a layout cannot hide, reorder or replace host regions. The `default`
+layout reproduces the stock shell; `compact` (built-in `layouts` plugin) is the alternative.
+
 ## Pack colours
 
 Packs define colours as data: `ui.colour` on templates and `colour` on edge types. A colour is a `#rrggbb` string,

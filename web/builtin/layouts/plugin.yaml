@@ -1,0 +1,8 @@
+id: layouts
+version: 0.1.0
+engines: { corum: ">=0.1.0" }
+main: ./index.js
+contributes:
+  layouts:
+    # Reduced density and a narrower desktop rail. The `default` layout is the host's own and needs no entry.
+    - { id: compact, label: Compact, css: ./compact.css }

@@ -59,7 +59,7 @@ export type SanitisedTheme = {
 }
 
 /** True when every ( and [ is closed in order and every quote is terminated (braces are checked by the block rule). */
-function isBalanced(text: string): boolean {
+export function isBalanced(text: string): boolean {
   const stack: string[] = []
   let quote: string | null = null
   for (const ch of text) {

@@ -64,9 +64,9 @@ before(async () => {
 })
 
 describe('styling contract: tokens.json (DTCG)', () => {
-  const DTCG_TYPES = new Set(['color', 'dimension', 'shadow', 'fontFamily', 'strokeStyle'])
+  const DTCG_TYPES = new Set(['color', 'dimension', 'shadow', 'fontFamily', 'strokeStyle', 'number'])
   const ORIGINS = new Set(['shadcn', 'material', 'corum'])
-  const SCOPES = new Set(['theme', 'input', 'derived', 'optional'])
+  const SCOPES = new Set(['theme', 'input', 'derived', 'optional', 'layout'])
 
   it('every token has $value, $type, $description and $extensions.corum since/origin', () => {
     const problems: string[] = []

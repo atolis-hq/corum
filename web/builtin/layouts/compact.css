@@ -1,0 +1,5 @@
+/* Compact: a narrower desktop rail and tighter spacing. Layouts set the layout tokens only (ADR-011 section 6). */
+[data-layout="compact"] {
+  --nav-width: 64px;
+  --density: 0.75;
+}
