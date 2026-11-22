@@ -166,6 +166,14 @@ describe('host theme selection with a registry', () => {
   const builtin = { id: 'themes', themes: [{ id: 'light', label: 'Light', colorScheme: 'light' }, { id: 'dark', label: 'Dark', colorScheme: 'dark' }] }
   const store = (value?: string) => ({ getItem: () => value ?? null })
 
+  it('before the registry loads, a stored choice is reported as stored (so Settings cannot overwrite it by accident)', async () => {
+    const fresh = await import(`${pathToFileURL(path.join(process.cwd(), 'web', 'host', 'theme.js')).href}?fresh`)
+    assert.equal(fresh.readChoice(store('dark')), 'dark')
+    assert.equal(fresh.readChoice(store()), 'system')
+    fresh.registerThemes([])
+    assert.equal(fresh.readChoice(store('dark')), 'system')
+  })
+
   it('lists registered themes of enabled plugins only; first wins; system is reserved', () => {
     const list = hostTheme.registerThemes(statuses(builtin,
       { id: 'x', themes: [{ id: 'light', label: 'Fake', colorScheme: 'dark' }, { id: 'system', label: 'S', colorScheme: 'light' }, { id: 'sepia', label: 'Sepia', colorScheme: 'light' }] },

@@ -120,10 +120,14 @@ function SettingsMenu({ debugMode, onDebugMode }) {
   const [choice, setChoice] = useState(() => theme.getChoice());
   const [themes, setThemes] = useState(() => theme.getThemes());
   // The registry fills once the plugin list loads; follow it so the menu never lists a stale (empty) set.
-  useEffect(() => theme.subscribeThemes(() => {
-    setThemes(theme.getThemes());
-    setChoice(theme.getChoice());
-  }), []);
+  useEffect(() => {
+    const sync = () => {
+      setThemes(theme.getThemes());
+      setChoice(theme.getChoice());
+    };
+    sync(); // the registry may have filled between the first render and this effect
+    return theme.subscribeThemes(sync);
+  }, []);
   const wrapRef = React.useRef(null);
   const triggerRef = React.useRef(null);
   const menuId = React.useId();

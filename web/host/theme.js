@@ -44,6 +44,9 @@ const isRegistered = id => registry.some(theme => theme.id === id)
 export function readChoice(storage) {
   try {
     const value = storage.getItem(THEME_KEY)
+    /* Until the plugin list has loaded nothing is registered, so report the stored value as is (a stored `dark` must not
+       read as System, or a pick in Settings would overwrite it); afterwards an unregistered id behaves as System. */
+    if (!loaded) return typeof value === 'string' && value !== '' ? value : SYSTEM
     return isRegistered(value) ? value : SYSTEM
   } catch {
     return SYSTEM
