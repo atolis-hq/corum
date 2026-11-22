@@ -370,6 +370,30 @@ export const TOKENS = [
     "description": "Optional: monospace font stack. Not set by default; the stylesheet falls back to JetBrains Mono, so a theme may set it to change the monospace font."
   },
   {
+    "name": "--nav-width",
+    "group": "layout",
+    "type": "dimension",
+    "scope": "layout",
+    "since": 2,
+    "description": "Layout: width of the desktop nav rail (48px to 120px). Set by a layout (contributes.layouts), never by a theme. The mobile rail ignores it."
+  },
+  {
+    "name": "--content-max",
+    "group": "layout",
+    "type": "dimension",
+    "scope": "layout",
+    "since": 2,
+    "description": "Layout: maximum width of the page content (`none`, or 480px to 2400px). Set by a layout, never by a theme."
+  },
+  {
+    "name": "--density",
+    "group": "layout",
+    "type": "number",
+    "scope": "layout",
+    "since": 2,
+    "description": "Layout: spacing multiplier for the nav rail and page content padding (0.5 to 1.5). Set by a layout, never by a theme."
+  },
+  {
     "name": "--edge-dash",
     "group": "stroke",
     "type": "strokeStyle",

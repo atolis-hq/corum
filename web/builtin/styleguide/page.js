@@ -364,6 +364,12 @@ function Menus() {
             <button type="button" className="settings-menu-item" role="menuitemradio" aria-checked="false" tabIndex=${-1}><span className="settings-menu-mark" aria-hidden="true"></span>Dark</button>
           </div>
           <div className="settings-menu-sep" role="separator"></div>
+          <div className="settings-menu-label label-xs" role="presentation">Layout</div>
+          <div role="group" aria-label="Layout choices">
+            <button type="button" className="settings-menu-item" role="menuitemradio" aria-checked="true" tabIndex=${-1}><span className="settings-menu-mark" aria-hidden="true"></span>Default</button>
+            <button type="button" className="settings-menu-item" role="menuitemradio" aria-checked="false" tabIndex=${-1}><span className="settings-menu-mark" aria-hidden="true"></span>Compact</button>
+          </div>
+          <div className="settings-menu-sep" role="separator"></div>
           <button type="button" className="settings-menu-item" role="menuitemcheckbox" aria-checked="true" tabIndex=${-1}><span className="settings-menu-switch" aria-hidden="true"></span>Debug mode</button>
           <div className="settings-menu-sep" role="separator"></div>
           <button type="button" className="settings-menu-item" role="menuitem" tabIndex=${-1}>Style guide</button>
@@ -375,6 +381,46 @@ function Menus() {
             <a className="open-in-item selected" role="menuitem" tabIndex=${-1} href="#/p/styleguide/home">Graph</a>
             <div className="open-in-sep" role="separator"></div>
             <a className="open-in-item" role="menuitem" tabIndex=${-1} href="#/p/styleguide/home">View in graph</a>
+          </div>
+        </div>
+      </div>
+    <//>
+  `
+}
+
+/* Layouts (ADR-011 section 6) are CSS-only and apply to the whole shell, so the guide lists every registered layout and
+   the layout tokens as the active layout sets them, rather than previewing one inside the page. */
+const LAYOUT_TOKENS = TOKENS.filter(token => token.scope === 'layout')
+
+function Layouts() {
+  const { data: plugins } = useApi('/api/plugins')
+  const active = document.documentElement.getAttribute('data-layout') || 'default'
+  const contributed = (Array.isArray(plugins) ? plugins : [])
+    .filter(plugin => plugin?.status === 'enabled')
+    .flatMap(plugin => (plugin.manifest?.contributes?.layouts ?? []).map(layout => ({ ...layout, pluginId: plugin.id })))
+  const layouts = [{ id: 'default', label: 'Default', pluginId: 'host' }, ...contributed.filter(layout => layout.id !== 'default')]
+  return html`
+    <${Section} id="layouts" title="Layouts" intro="A layout sets only the layout tokens, independent of the theme. Switch layout from Settings; the values below are those of the active layout.">
+      <div className="card">
+        <div className="card-head">Registered layouts</div>
+        <div className="card-body content">
+          <table className="prop-table">
+            <tbody>
+              ${layouts.map(layout => html`
+                <tr key=${layout.id} data-layout-id=${layout.id}>
+                  <td className="prop-key-cell"><span className="prop-key-label mono">${layout.id}</span></td>
+                  <td>${layout.label} <span className="label-xs">${layout.pluginId}${layout.id === active ? ' · active' : ''}</span></td>
+                </tr>
+              `)}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="card">
+        <div className="card-head">Layout tokens</div>
+        <div className="card-body content">
+          <div className="styleguide-grid">
+            ${LAYOUT_TOKENS.map(token => html`<${TokenCard} key=${token.name} token=${token} />`)}
           </div>
         </div>
       </div>
@@ -418,6 +464,7 @@ export function StyleGuidePage() {
       <${Components} />
       <${States} />
       <${Menus} />
+      <${Layouts} />
       <${Vocabulary} />
     </div>
   `
