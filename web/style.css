@@ -734,7 +734,9 @@ button {
     flex-direction: row;
     width: 100%;
     min-width: 0;
-    min-height: 64px;
+    padding: 4px 8px;
+    gap: 4px;
+    align-items: stretch;
     border-right: none;
     border-bottom: 1px solid var(--border-strong);
     overflow-x: auto;
@@ -747,6 +749,9 @@ button {
   .nav-rail-item {
     flex: 0 0 72px;
     width: 72px;
+    min-height: 44px;
+    gap: 2px;
+    padding: 4px;
   }
 
   .settings {
@@ -763,6 +768,11 @@ button {
   .settings-backdrop {
     background: var(--scrim);
     pointer-events: auto;
+  }
+
+  /* Settings trigger fills the stretched wrapper so it matches its siblings. */
+  .settings > .settings-trigger {
+    flex: 1 1 auto;
   }
 
   .settings-menu {
