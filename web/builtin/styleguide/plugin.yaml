@@ -1,0 +1,9 @@
+id: styleguide
+version: 0.1.0
+engines: { corum: ">=0.1.0" }
+main: ./index.js
+contributes:
+  pages:
+    # The style guide: every documented token, standard class, component and state in the active theme (ADR-011
+    # section 7). Hidden from the rail; reached from the Settings menu or at #/p/styleguide/home.
+    - { id: home, title: Style guide, order: 90, nav: false, mount: mountStyleGuide, settings: { label: Style guide } }

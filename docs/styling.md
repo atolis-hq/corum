@@ -64,7 +64,7 @@ name follows (`shadcn`, `material`) or `corum`. Every token with scope *theme* i
 | `--accent-soft` | corum | 1 | Tinted background for accent badges. |
 | `--accent-text` | corum | 1 | Accent text readable on `--accent-soft`. |
 | `--success` | corum | 1 | Positive status. |
-| `--warning` | corum | 1 | Warning status (an alias of `--accent` in the shipped themes). |
+| `--warning` | corum | 1 | Warning status (a dark orange in the light theme so warning text stays readable; `--accent` in the dark theme). |
 | `--ring` | shadcn | 1 | Focus ring (an alias of `--accent` in the shipped themes). |
 | `--destructive` | shadcn | 1 | Errors and destructive actions. |
 | `--info` | corum | 1 | Informational status. |
@@ -179,6 +179,59 @@ html`<span className="tag edge-type-tag edge-coloured" style=${edgeTypeStyle(edg
 |-------|-------|-----|
 | `active` | 1 | The current item of a list, tab or button group. |
 | `selected` | 1 | The chosen row of a list or menu. |
+| `state-disabled` | 2 | An unavailable control (muted, not interactive). On a `tag`: a dashed, muted label. |
+| `state-error` | 2 | An invalid or failed control, field or tag, in the destructive colour. |
+
+### Settings menu
+
+The Settings menu markup is standard, so a plugin can build a menu that looks and behaves the same. Follow the menu
+pattern: `role="menu"`, items with `role="menuitem"`, `menuitemradio` or `menuitemcheckbox` and `tabIndex={-1}`, arrow
+keys to move, Escape to close and return focus to the trigger.
+
+| Class | Since | Use |
+|-------|-------|-----|
+| `settings-menu` | 2 | The popover (fixed beside the nav rail on desktop, a bottom sheet on mobile). |
+| `settings-menu-label` | 2 | Group caption; combine with `label-xs`. |
+| `settings-menu-item` | 2 | One entry. |
+| `settings-menu-sep` | 2 | Separator between groups. |
+| `settings-menu-mark` | 2 | Radio mark in a `menuitemradio` item. |
+| `settings-menu-switch` | 2 | Switch in a `menuitemcheckbox` item. |
+
+## Style guide
+
+The built-in `styleguide` plugin (`web/builtin/styleguide`) renders every documented token, standard class, component,
+menu and state in the active theme, using only public tokens and standard classes. Open it from **Settings > Style
+guide** or at `#/p/styleguide/home`. It is hidden from the navigation rail.
+
+- The token and class lists are generated into `web/builtin/styleguide/contract.js` by `npm run tokens` (a plugin may
+  not import `web/sdk/*.json`). A test fails when it is stale, and another fails if `page.js` does not use every
+  standard class, so the guide cannot drift from the contract. Token values are read live from the active theme.
+- When you add a token or class, run `npm run tokens`, add a sample to `page.js`, and update the visual baselines.
+- A page adds an entry to the Settings menu with `settings: { label: ... }` (see [plugins](plugins.md)).
+
+### Browser checks and visual baselines
+
+`test/browser/styleguide.spec.cjs` opens the guide in every registered theme (light, dark, high-contrast) and asserts:
+no visual inline styles in the DOM (only custom properties), no axe-core `color-contrast` violations, a visible `--ring`
+focus indicator on every focusable sample and, in a test-only sentinel theme that sets every colour token to one
+conspicuous colour, that nothing outside pack-coloured elements keeps its original palette. It also compares a
+screenshot per theme with the committed baseline in `test/browser/styleguide.spec.cjs-snapshots/`.
+
+```bash
+npx playwright install chromium     # once
+npm run test:web                    # all browser specs (builds first); the CI browser job runs the same
+npm run test:web -- styleguide      # just this spec
+```
+
+Baselines are generated on Linux (the CI runner image). Font rendering differs on other systems, so a visual diff
+there is not authoritative. After an intentional visual change, regenerate them on Linux (or in a Linux container) and
+review the PNG diff in the PR:
+
+```bash
+npm run test:web -- styleguide --update-snapshots
+```
+
+These baselines are committed to the repository on purpose; PR screenshots are not (they live on `pr-assets`).
 
 ## Themes
 
@@ -256,7 +309,7 @@ The snapshot test (`test/styling-contract.test.ts`) compares the contract with t
 - Then regenerate the snapshot with `npm run styling:snapshot`.
 
 The static checks also fail on: a `var(--x)` in `web/` that is neither documented nor declared in the same file; a
-theme setting an undocumented token; a built-in plugin class that is not a standard class or `graph-*`/`explorer-*`;
+theme setting an undocumented token; a built-in plugin class that is not a standard class or prefixed with the plugin id (`graph-*`, `explorer-*`, `styleguide-*`);
 and a template-literal class name with another prefix. A PR that changes how the UI looks embeds before/after
 screenshots in its body (see `DEVELOPMENT.md`).
 

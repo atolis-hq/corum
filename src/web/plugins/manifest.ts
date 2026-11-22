@@ -18,6 +18,8 @@ export type PluginPage = {
   nodeSidebar?: boolean
   /** With a sidebar: this page is the detail view of the master-detail layout (mobile shows it instead of the panel). */
   detail?: boolean
+  /** Adds a menu entry with this label to the host's Settings menu that opens the page. Such pages usually also set nav: false. */
+  settings?: { label: string }
 }
 
 export type PluginNodeAction = {
@@ -167,6 +169,9 @@ export function parsePluginManifest(yamlText: string): { manifest: PluginManifes
         if (raw[flag] !== undefined && typeof raw[flag] !== 'boolean') errors.push(`${label}.${flag} must be a boolean`)
       }
       if (raw.sidebar !== undefined && !isNonEmptyString(raw.sidebar)) errors.push(`${label}.sidebar must be a non-empty string`)
+      if (raw.settings !== undefined && !(isRecord(raw.settings) && isNonEmptyString(raw.settings.label))) {
+        errors.push(`${label}.settings must be a mapping with a non-empty label`)
+      }
       if (isNonEmptyString(raw.id) && isNonEmptyString(raw.title) && isNonEmptyString(raw.mount)) {
         const page: PluginPage = { id: raw.id, title: raw.title, mount: raw.mount, opens }
         if (typeof raw.icon === 'string') page.icon = raw.icon
@@ -176,6 +181,7 @@ export function parsePluginManifest(yamlText: string): { manifest: PluginManifes
         if (isNonEmptyString(raw.sidebar)) page.sidebar = raw.sidebar
         if (typeof raw.nodeSidebar === 'boolean') page.nodeSidebar = raw.nodeSidebar
         if (typeof raw.detail === 'boolean') page.detail = raw.detail
+        if (isRecord(raw.settings) && isNonEmptyString(raw.settings.label)) page.settings = { label: raw.settings.label }
         pages.push(page)
       }
     })

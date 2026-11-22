@@ -184,7 +184,7 @@ describe('styling contract: docs', () => {
 
 describe('styling contract: static checks', () => {
   // Custom properties that components set inline and read in the stylesheet. Not tokens: never theme-set.
-  const COMPONENT_PROPERTIES = new Set(['--prop-depth', '--field-depth', '--icon-size'])
+  const COMPONENT_PROPERTIES = new Set(['--prop-depth', '--field-depth', '--icon-size', '--swatch', '--sample'])
   const HOST_OWNED = new Set(['--corum-tokens-version'])
   // Template-literal class names are checked by static prefix: namespaces plus the vendored Font Awesome icon classes.
   const DYNAMIC_PREFIXES = ['graph-', 'explorer-', 'fa-']
@@ -214,11 +214,12 @@ describe('styling contract: static checks', () => {
 
   it('every class in web/builtin className literals is a standard class or plugin-namespaced', () => {
     const problems: string[] = []
-    const allowed = (name: string) => contract.documentedClasses.has(name) || /^(?:graph|explorer)-/.test(name) || /^fa-/.test(name)
+    const allowed = (name: string, plugin: string) => contract.documentedClasses.has(name) || name.startsWith(plugin + '-') || /^fa-/.test(name)
     for (const file of walk(path.join(WEB, 'builtin'), f => /\.(js|jsx)$/.test(f))) {
+      const plugin = path.relative(path.join(WEB, 'builtin'), file).split(path.sep)[0]
       const { classes, dynamic } = classLib.classLiterals(stripComments(file))
       for (const [name, lines] of classes as Map<string, number[]>) {
-        if (!allowed(name)) problems.push(`  ${rel(file)}:${lines[0]}  class "${name}" is neither a documented standard class nor graph-*/explorer-*`)
+        if (!allowed(name, plugin)) problems.push(`  ${rel(file)}:${lines[0]}  class "${name}" is neither a documented standard class nor ${plugin}-*`)
       }
       for (const [prefix, lines] of dynamic as Map<string, number[]>) {
         if (!DYNAMIC_PREFIXES.some(allowedPrefix => prefix.startsWith(allowedPrefix))) {
@@ -234,6 +235,28 @@ describe('styling contract: static checks', () => {
       'html`<div className="card odd-one" /><i className=${`fa-solid fa-${x} pre-${y}${on ? \' active\' : \'\'}`} /><b className=${a === \'flat\' ? \'b\' : \'\'} />`')
     assert.deepEqual([...classes.keys()].sort(), ['active', 'b', 'card', 'fa-solid', 'odd-one'])
     assert.deepEqual([...dynamic.keys()].sort(), ['fa-', 'pre-'])
+  })
+})
+
+describe('styling contract: style guide plugin', () => {
+  const GUIDE = path.join(WEB, 'builtin', 'styleguide')
+
+  it('contract.js is up to date with tokens.json and classes.json', () => {
+    assert.equal(read(path.join(GUIDE, 'contract.js')), tokensLib.generateStyleguideContractJs(contract.tokensDoc, contract.classesDoc),
+      'web/builtin/styleguide/contract.js is stale: run `npm run tokens` and commit the result')
+  })
+
+  it('page.js uses every standard class as a literal, so the guide cannot miss one', () => {
+    const text = read(path.join(GUIDE, 'page.js')).replace(/\/\*[\s\S]*?\*\//g, block => block.replace(/[^\n]/g, ' '))
+    const { classes } = classLib.classLiterals(text)
+    const missing = [...contract.documentedClasses].filter(name => !classes.has(name))
+    assert.deepEqual(missing, [], 'Add a sample of each class to web/builtin/styleguide/page.js:')
+  })
+
+  it('declares a hidden page that is linked from the Settings menu', () => {
+    const manifest = read(path.join(GUIDE, 'plugin.yaml'))
+    assert.match(manifest, /nav: false/)
+    assert.match(manifest, /settings: \{ label: Style guide \}/)
   })
 })
 

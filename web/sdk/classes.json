@@ -46,6 +46,14 @@
     "prop-empty": { "since": 1, "description": "Muted placeholder for an unset property value." },
     "node-ref-link": { "since": 1, "description": "Link to another node (the NodeReference helper)." },
     "active": { "since": 1, "description": "State modifier: the current item of a list, tab or button group." },
-    "selected": { "since": 1, "description": "State modifier: the chosen row of a list or menu." }
+    "selected": { "since": 1, "description": "State modifier: the chosen row of a list or menu." },
+    "state-disabled": { "since": 2, "description": "State modifier: an unavailable control or tag, muted and not interactive. On a tag it gives a dashed, muted label." },
+    "state-error": { "since": 2, "description": "State modifier: an invalid or failed control, field or tag, in the destructive colour." },
+    "settings-menu": { "since": 2, "description": "Popover menu of the Settings menu; also the pattern for other small menus (role=\"menu\")." },
+    "settings-menu-label": { "since": 2, "description": "Group caption inside a settings-menu; combine with label-xs." },
+    "settings-menu-item": { "since": 2, "description": "One entry of a settings-menu (role menuitem, menuitemradio or menuitemcheckbox)." },
+    "settings-menu-sep": { "since": 2, "description": "Separator between settings-menu groups." },
+    "settings-menu-mark": { "since": 2, "description": "Radio mark inside a menuitemradio settings-menu-item; filled when aria-checked is true." },
+    "settings-menu-switch": { "since": 2, "description": "Switch inside a menuitemcheckbox settings-menu-item; on when aria-checked is true." }
   }
 }

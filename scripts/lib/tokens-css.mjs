@@ -98,3 +98,24 @@ export function generateLightThemeCss(doc) {
 export function readTokensJson(root = process.cwd()) {
   return JSON.parse(fs.readFileSync(path.join(root, TOKENS_JSON), 'utf8'))
 }
+
+/* The style guide plugin cannot import web/sdk/*.json (plugin boundary), so its copy of the contract is generated. */
+export const STYLEGUIDE_CONTRACT_JS = path.join('web', 'builtin', 'styleguide', 'contract.js')
+export const CLASSES_JSON = path.join('web', 'sdk', 'classes.json')
+
+export function readClassesJson(root = process.cwd()) {
+  return JSON.parse(fs.readFileSync(path.join(root, CLASSES_JSON), 'utf8'))
+}
+
+/** Token names, groups and descriptions plus the standard class list. Values are omitted: the guide shows live computed values. */
+export function generateStyleguideContractJs(tokensDoc, classesDoc) {
+  const tokens = readTokens(tokensDoc).map(t => ({ name: t.name, group: t.path.split('.')[0], type: t.type, scope: t.scope, since: t.since, description: t.description }))
+  const classes = Object.entries(classesDoc.classes).map(([name, def]) => ({ name, since: def.since, description: def.description }))
+  return [
+    '/* Generated from web/sdk/tokens.json and web/sdk/classes.json by `npm run tokens`. Do not edit; a test fails when it is stale. */',
+    `export const CONTRACT_VERSION = ${contractVersion(tokensDoc)}`,
+    `export const TOKENS = ${JSON.stringify(tokens, null, 2)}`,
+    `export const CLASSES = ${JSON.stringify(classes, null, 2)}`,
+    '',
+  ].join('\n')
+}

@@ -409,6 +409,10 @@ button {
 .tag.state-implemented { background: var(--foreground); border-color: var(--foreground); color: var(--background); }
 .tag.state-future { background: transparent; border-style: dashed; color: var(--muted-foreground); }
 .tag.state-removed { text-decoration: line-through; color: var(--muted-foreground); }
+.tag.state-disabled { background: transparent; border-style: dashed; color: var(--muted-foreground); }
+.tag.state-error { background: transparent; border-color: var(--destructive); color: var(--destructive); }
+.state-disabled { color: var(--muted-foreground); cursor: not-allowed; }
+.state-error { border-color: var(--destructive); color: var(--destructive); }
 .tag.stability-stable { background: transparent; }
 .tag.stability-unstable { border-style: dashed; color: var(--muted-foreground); }
 .tag.stability-deprecated { color: var(--muted-foreground); text-decoration: line-through; }
@@ -502,7 +506,7 @@ button {
 
 .node-ref-link {
   cursor: pointer;
-  color: var(--accent);
+  color: var(--accent-text);
   text-decoration: underline;
   font-size: inherit;
 }
@@ -884,6 +888,10 @@ button {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   white-space: nowrap;
+}
+
+.branch-picker-anchor {
+  position: relative;
 }
 
 .branch-picker {
@@ -1642,6 +1650,12 @@ button {
 
 .quick-link:hover { color: var(--foreground); background: var(--card); }
 
+.quick-link:focus-visible,
+.node-ref-link:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
 /* Flat/Grouped layout mode toggle */
 .graph-layout-toggle {
   display: flex;
@@ -2143,7 +2157,7 @@ button {
 }
 
 .open-in-trigger:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
 

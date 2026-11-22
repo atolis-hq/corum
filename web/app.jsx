@@ -114,7 +114,7 @@ function pluginSectionId(page) {
 
 const SETTINGS_ITEM = '[role="menuitemradio"], [role="menuitemcheckbox"], [role="menuitem"]';
 
-function SettingsMenu({ debugMode, onDebugMode }) {
+function SettingsMenu({ debugMode, onDebugMode, pages = [], onOpenPage }) {
   const theme = window.CorumHost.theme;
   const [open, setOpen] = useState(false);
   const [choice, setChoice] = useState(() => theme.getChoice());
@@ -248,6 +248,22 @@ function SettingsMenu({ debugMode, onDebugMode }) {
             <span className="settings-menu-switch" aria-hidden="true" />
             Debug mode
           </button>
+          {pages.length > 0 && <div className="settings-menu-sep" role="separator" />}
+          {pages.map(page => (
+            <button
+              key={pluginSectionId(page)}
+              type="button"
+              className="settings-menu-item"
+              role="menuitem"
+              tabIndex={-1}
+              onClick={() => {
+                restoreFocus();
+                onOpenPage(page);
+              }}
+            >
+              {page.settings.label}
+            </button>
+          ))}
         </div>
       )}
     </div>
@@ -279,7 +295,12 @@ function NavRail({ activeSection, onSection, pluginPages = [], debugMode, onDebu
           <span>{item.label}</span>
         </button>
       ))}
-      <SettingsMenu debugMode={debugMode} onDebugMode={onDebugMode} />
+      <SettingsMenu
+        debugMode={debugMode}
+        onDebugMode={onDebugMode}
+        pages={pluginPages.filter(page => page.settings)}
+        onOpenPage={page => onSection(pluginSectionId(page), page)}
+      />
     </div>
   );
 }
@@ -320,7 +341,7 @@ function BranchBar({ branches, branchResults, viewingRef, overlayRefs, overlayMo
     <div className="branch-bar">
       <span className="branch-label">⎇</span>
       <span className="branch-label">Viewing</span>
-      <div ref={viewingPickerRef} style={{ position: 'relative' }}>
+      <div ref={viewingPickerRef} className="branch-picker-anchor">
         <span
           className="branch-chip viewing"
           onClick={() => { setPickerOpen(open => !open); setComparePickerOpen(false); }}
@@ -361,7 +382,7 @@ function BranchBar({ branches, branchResults, viewingRef, overlayRefs, overlayMo
       {overlayMode === 'selected' && (
         <>
           <span className="branch-label">Compare</span>
-          <div ref={comparePickerRef} style={{ position: 'relative' }}>
+          <div ref={comparePickerRef} className="branch-picker-anchor">
             <span
               className="branch-chip overlay branch-chip-select"
               onClick={() => { setComparePickerOpen(open => !open); setPickerOpen(false); }}
