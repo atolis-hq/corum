@@ -24,7 +24,15 @@ export function registerThemes(statuses) {
   }
   registry = next
   loaded = true
+  for (const listener of [...listeners]) listener()
   return registry
+}
+
+/* Calls `listener` whenever the registry changes (it fills once the plugin list loads). Returns an unsubscribe function. */
+const listeners = new Set()
+export function subscribeThemes(listener) {
+  listeners.add(listener)
+  return () => listeners.delete(listener)
 }
 
 export function getThemes() {

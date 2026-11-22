@@ -58,6 +58,21 @@ export type SanitisedTheme = {
   warnings: string[]
 }
 
+/** True when every ( and [ is closed in order and every quote is terminated (braces are checked by the block rule). */
+function isBalanced(text: string): boolean {
+  const stack: string[] = []
+  let quote: string | null = null
+  for (const ch of text) {
+    if (quote) {
+      if (ch === quote) quote = null
+      else if (ch === '\n') return false
+    } else if (ch === '"' || ch === "'") quote = ch
+    else if (ch === '(' || ch === '[') stack.push(ch === '(' ? ')' : ']')
+    else if (ch === ')' || ch === ']') { if (stack.pop() !== ch) return false }
+  }
+  return quote === null && stack.length === 0
+}
+
 /**
  * Check one theme file. Accepts a single `:root { ... }` block or bare declarations. Any other selector, at-rule,
  * `url(`, escape or markup rejects the whole file. Declarations of undocumented public tokens (and of anything that is
@@ -71,6 +86,9 @@ export function sanitiseThemeCss(source: string, catalogue: TokenCatalogue = loa
   const text = source.replace(/\/\*[\s\S]*?\*\//g, ' ').trim()
   if (/@/.test(text)) return reject('at-rules (such as @import) are not allowed in a theme')
   if (/url\s*\(|image-set\s*\(|expression\s*\(|\\|[<>]/i.test(text)) return reject('url(), image-set(), escapes and markup are not allowed in a theme')
+
+  // An unclosed ( [ or quote runs to the end of the shared stylesheet in CSS and would swallow every theme after this one.
+  if (!isBalanced(text)) return reject('unbalanced brackets or quotes')
 
   let body = text
   if (text.includes('{') || text.includes('}')) {

@@ -12,6 +12,9 @@ test('keyboard: focus in on open, arrows wrap, Escape returns focus', async ({ p
   const system = page.getByRole('menuitemradio', { name: 'System' });
   await expect(system).toBeFocused();
   await expect(system).toHaveAttribute('aria-checked', 'true');
+  // Themes are contributed by plugins and listed once the plugin list has loaded.
+  await expect(page.getByRole('menuitemradio', { name: 'Light' })).toBeVisible();
+  await expect(system).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(page.getByRole('menuitemradio', { name: 'Light' })).toBeFocused();
   await page.keyboard.press('End');

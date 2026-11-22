@@ -457,7 +457,8 @@ export function createApp(
     const match = /^\/v\/([^/?]+)(\/[^?]*)?(\?.*)?$/.exec(req.url)
     if (!match) { next(); return }
     const rest = match[2] ?? '/'
-    if (match[1] !== encodeURIComponent(version) || /^\/(api|v)(\/|$)/.test(rest)) {
+    // The page links /api/themes.css as a first-party asset, so it is the one API path served under the version prefix.
+    if (match[1] !== encodeURIComponent(version) || (/^\/(api|v)(\/|$)/.test(rest) && rest !== '/api/themes.css')) {
       res.status(404).json({ error: 'Not found' })
       return
     }

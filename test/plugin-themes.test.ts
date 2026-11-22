@@ -87,6 +87,10 @@ describe('theme sanitiser', () => {
     ['an escape', ':root { --background: \\75rl(x) }'],
     ['an at-rule block', '@media print { :root { --background: #000 } }'],
     ['markup', ':root { --background: #000 } </style><script>'],
+    ['an unclosed parenthesis', ':root { --background: var(--c-x }'],
+    ['an unclosed bracket', ':root { --background: [x }'],
+    ['an unterminated string', ':root { --font-mono: "JetBrains Mono }'],
+    ['a stray closing parenthesis', ':root { --background: #000) }'],
   ] as const) {
     it(`rejects a theme with ${name} as a whole`, () => {
       const result = sanitiseThemeCss(css)
@@ -122,6 +126,23 @@ describe('theme registration', () => {
     const { plugins } = discoverPlugins({ builtinDir: BUILTIN_PLUGIN_DIR, graphDir: null, graphYaml: null, packPluginDirs: [impostor] })
     const { themes } = registerThemes(plugins.map(p => ({ id: p.manifest.id, status: 'enabled' as const, manifest: p.manifest })))
     assert.deepEqual(themes.map(t => `${t.id}:${t.pluginId}:${t.colorScheme}`), ['light:themes:light', 'dark:themes:dark', 'high-contrast:themes:light', 'extra:impostor:light'])
+  })
+
+  it('accepts balanced quotes and brackets', () => {
+    const result = sanitiseThemeCss(':root { --font-mono: "JetBrains Mono", monospace; --shadow-sm: 0 1px rgba(0, 0, 0, 0.1) }')
+    assert.equal(result.errors.length, 0)
+    assert.equal(result.declarations?.length, 2)
+  })
+
+  it('a malformed theme does not affect the themes served after it', async () => {
+    const files: Record<string, string> = { 'a.css': ':root { --background: var(--c-x }', 'b.css': ':root { --background: #202020 }' }
+    const built = await buildThemesCss(
+      [one('p', `    - { id: broken, label: Broken, colorScheme: light, css: a.css }\n    - { id: after, label: After, colorScheme: dark, css: b.css }`)],
+      async (_plugin, file) => files[file] ?? null,
+    )
+    assert.deepEqual(built.themes.map(t => t.id), ['after'])
+    assert.match(built.css, /^html\[data-theme="after"\] \{\n {2}color-scheme: dark;\n {2}--background: #202020;\n\}\n$/)
+    assert.ok(built.diagnostics.some(d => d.includes('"broken"') && d.includes('unbalanced')))
   })
 
   it('builds scoped CSS, drops rejected themes and reports them', async () => {
@@ -207,6 +228,11 @@ describe('themes over HTTP', () => {
       const plugins = await (await fetch(`${origin}/api/plugins`)).json() as Array<{ id: string; status: string; manifest: { contributes: { themes: Array<{ id: string }> } } }>
       assert.deepEqual(plugins.find(p => p.id === 'themes')?.manifest.contributes.themes.map(t => t.id), ['light', 'dark', 'high-contrast'])
       assert.deepEqual(plugins.find(p => p.id === 'night')?.manifest.contributes.themes.map(t => t.id), ['midnight'])
+      const index = await (await fetch(`${origin}/`)).text()
+      const link = /href="(\/v\/[^"/]+\/api\/themes\.css)"/.exec(index)
+      assert.ok(link, 'the page links the themes stylesheet under the version prefix')
+      assert.equal((await fetch(`${origin}${link[1]}`)).status, 200)
+      assert.equal((await fetch(`${origin}/v/0.0.0-stale/api/themes.css`)).status, 404)
       const response = await fetch(`${origin}/api/themes.css`)
       assert.equal(response.status, 200)
       assert.match(response.headers.get('content-type') ?? '', /text\/css/)
