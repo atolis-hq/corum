@@ -41,11 +41,13 @@ function tokens() {
 }
 
 const settings = page => page.locator('.settings');
+// The open menu is portaled to <body> (outside .settings), so it is located on its own.
+const menu = page => page.getByTestId('settings-backdrop');
 
 async function registeredThemes(page) {
   await page.goto('/');
   await settings(page).getByRole('button', { name: 'Settings' }).click();
-  const radios = settings(page).getByRole('menuitemradio');
+  const radios = menu(page).getByRole('menuitemradio');
   await expect(radios.nth(1)).toBeVisible();
   const names = (await radios.allInnerTexts()).map(name => name.trim()).filter(name => name && name !== 'System');
   await page.keyboard.press('Escape');
@@ -56,7 +58,7 @@ async function openGuide(page, themeLabel) {
   await page.goto(URL);
   if (themeLabel) {
     await settings(page).getByRole('button', { name: 'Settings' }).click();
-    await settings(page).getByRole('menuitemradio', { name: themeLabel }).click();
+    await menu(page).getByRole('menuitemradio', { name: themeLabel, exact: true }).click();
   }
   await expect(page.locator(GUIDE)).toBeVisible();
   await page.setViewportSize(TALL);
@@ -85,7 +87,7 @@ test('the guide is hidden from the rail and reachable from the Settings menu and
   await page.goto('/');
   await expect(page.locator('.nav-rail').getByText('Style guide')).toHaveCount(0);
   await settings(page).getByRole('button', { name: 'Settings' }).click();
-  await settings(page).getByRole('menuitem', { name: 'Style guide' }).click();
+  await menu(page).getByRole('menuitem', { name: 'Style guide' }).click();
   await expect(page).toHaveURL(/#.*\/p\/styleguide\/home/);
   await expect(page.locator(GUIDE)).toBeVisible();
   await page.goto(URL);
