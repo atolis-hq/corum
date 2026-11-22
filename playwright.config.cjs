@@ -11,6 +11,7 @@ module.exports = defineConfig({
   snapshotPathTemplate: '{testDir}/{testFileName}-snapshots/{arg}-{platform}{ext}',
   forbidOnly: !!process.env.CI,
   // Fail fast in CI: one broken spec should not spend the whole job budget timing out.
+  workers: process.env.CI ? 4 : undefined,
   maxFailures: process.env.CI ? 3 : 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
