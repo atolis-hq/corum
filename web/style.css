@@ -195,12 +195,19 @@ button {
   outline-offset: 2px;
 }
 
-/* Fixed so the rail's overflow scrolling cannot clip it. */
+/* Rendered through a portal to <body>, so the nav rail's overflow scrolling cannot clip it.
+   Transparent on desktop; the narrow-screen block below turns it into a scrimmed overlay. */
+.settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+
 .settings-menu {
   position: fixed;
   left: 76px;
   bottom: 10px;
-  z-index: 100;
+  z-index: 1;
   min-width: 190px;
   padding: 4px;
   border: 1px solid var(--border-strong);
@@ -749,7 +756,11 @@ button {
     background: var(--card);
   }
 
-  /* Bottom sheet: always fully on-screen regardless of rail scroll. */
+  /* Top-level overlay: scrimmed backdrop like search, panel always fully on-screen. */
+  .settings-backdrop {
+    background: var(--scrim);
+  }
+
   .settings-menu {
     left: 8px;
     right: 8px;
@@ -757,6 +768,8 @@ button {
     top: auto;
     max-height: calc(100dvh - 16px);
     overflow-y: auto;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xl);
   }
 
   .settings-menu-item {

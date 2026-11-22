@@ -30,8 +30,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
-      - name: Install Chromium and system dependencies
-        run: npx playwright install --with-deps chromium
+      - name: Install Chromium, WebKit and system dependencies
+        run: npx playwright install --with-deps chromium webkit
       - name: Run browser specs
         run: npm run test:web
       - name: Upload browser failure diagnostics
