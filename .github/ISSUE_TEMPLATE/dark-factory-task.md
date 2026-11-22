@@ -20,7 +20,8 @@ assignees: atolis-hq-agent
 
 <!-- How to verify the outcome was reached: commands to run (for example
      `npm test`), behaviors that must be unchanged. For UI changes, add: before/after
-     screenshots embedded in the PR body (DEVELOPMENT.md "PR screenshots"). -->
+     screenshots of the affected pages or states embedded in the PR body, plus mobile
+     (375 px) screenshots if mobile is likely affected (DEVELOPMENT.md "PR screenshots"). -->
 
 ## Constraints
 
