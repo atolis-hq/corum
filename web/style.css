@@ -87,9 +87,9 @@ button {
 .nav-rail {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  width: 72px;
-  padding: 10px 8px;
+  gap: calc(4px * var(--density));
+  width: var(--nav-width);
+  padding: calc(10px * var(--density)) calc(8px * var(--density));
   background: var(--card);
   border-right: 1px solid var(--border-strong);
   flex-shrink: 0;
@@ -113,7 +113,7 @@ button {
 }
 
 .nav-rail-item span {
-  max-width: 58px;
+  max-width: calc(var(--nav-width) - 14px);
   overflow: hidden;
   font-size: 10px;
   font-weight: 600;
@@ -368,7 +368,12 @@ button {
   flex: 1;
   min-width: 0;
   overflow: auto;
-  padding: 24px 30px 60px;
+  padding: calc(24px * var(--density)) calc(30px * var(--density)) calc(60px * var(--density));
+}
+
+/* Layout token (ADR-011 section 6): caps the width of page content; `none` (the default) changes nothing. */
+.content > * {
+  max-width: var(--content-max);
 }
 
 .content h1 {
@@ -696,7 +701,7 @@ button {
     flex-direction: row;
     width: 100%;
     min-width: 0;
-    padding: 4px 8px;
+    padding: calc(4px * var(--density)) calc(8px * var(--density));
     gap: 4px;
     align-items: stretch;
     border-right: none;
@@ -706,6 +711,11 @@ button {
     overscroll-behavior-x: contain;
     scrollbar-width: thin;
     -webkit-overflow-scrolling: touch;
+  }
+
+  /* The horizontal rail does not follow --nav-width, so its labels keep their fixed width. */
+  .nav-rail-item span {
+    max-width: 58px;
   }
 
   .nav-rail-item {
@@ -762,7 +772,7 @@ button {
   }
 
   .content {
-    padding: 20px 16px 40px;
+    padding: calc(20px * var(--density)) calc(16px * var(--density)) calc(40px * var(--density));
   }
 
   .meta-strip {

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="light" data-layout="default">
 <head>
   <meta charset="utf-8" />
   <title>Corum</title>
@@ -32,12 +32,24 @@
       document.documentElement.setAttribute('data-theme', t);
     })();
   </script>
+  <script id="layout-boot">
+    /* First paint: keep in agreement with readChoice in host/layout.js (test/layout.test.ts). The registry is not known
+       yet, so a stored layout id is applied as is (its CSS is already in the page: /api/layouts.css below) and
+       host/boot.js corrects it once the plugin list is in (an unregistered layout falls back to default). */
+    (function () {
+      var l = 'default';
+      try { l = localStorage.getItem('corum:layout'); } catch (e) {}
+      if (typeof l !== 'string' || !/^[a-z0-9-]+$/.test(l)) l = 'default';
+      document.documentElement.setAttribute('data-layout', l);
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="stylesheet" href="/vendor/fonts.css" />
   <link rel="stylesheet" href="tokens.css" />
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="/api/themes.css" />
+  <link rel="stylesheet" href="/api/layouts.css" />
   <link rel="stylesheet" href="/vendor/fontawesome.css" />
   <link rel="stylesheet" href="/vendor/solid.css" />
   <link rel="stylesheet" href="/vendor/reactflow.css" />

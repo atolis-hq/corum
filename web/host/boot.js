@@ -4,6 +4,7 @@ import * as sdkReact from 'corum:ui/react'
 import { loadPlugins, pluginsChanged } from './plugin-loader.js'
 import { createPluginContext } from './context.js'
 import * as theme from './theme.js'
+import * as layout from './layout.js'
 import { applyPackColours } from './pack-colours.js'
 
 const registry = sdk.createRegistry()
@@ -28,6 +29,9 @@ const ready = loadPlugins({
      default (light) values rather than guessing at themes. */
   theme.registerThemes(statuses ?? [])
   theme.applyTheme(theme.getChoice())
+  /* Same for layouts: an unregistered stored id falls back to `default` (storage is left alone). */
+  layout.registerLayouts(statuses ?? [])
+  layout.applyLayout(layout.getChoice())
 })
 
 /* After a graph reload: true when the server's plugin list differs from what this page booted with. */
@@ -56,5 +60,5 @@ function createContext(identity, state, onError) {
 
 theme.watchSystem()
 
-const host = { sdk, sdkReact, registry, theme, applyPackColours, ready, createContext, pluginsChangedOnServer, pluginsFailed: false }
+const host = { sdk, sdkReact, registry, theme, layout, applyPackColours, ready, createContext, pluginsChangedOnServer, pluginsFailed: false }
 window.CorumHost = host

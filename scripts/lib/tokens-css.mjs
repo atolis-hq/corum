@@ -75,6 +75,11 @@ export function generateTokensCss(doc) {
     '  color-scheme: light;',
     '}',
     '',
+    '/* Layout defaults (ADR-011 section 6). A layout overrides them with html[data-layout="<id>"]. */',
+    ':root {',
+    ...tokens.filter(t => t.scope === 'layout').map(t => `  ${t.name}: ${cssValue(t, byPath)};`),
+    '}',
+    '',
   ].join('\n')
 }
 

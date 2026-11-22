@@ -305,6 +305,7 @@ associated override before deleting the directory.
 | `contributes.pages` | No | Page contributions; defaults to `[]` |
 | `contributes.nodeActions` | No | Node action contributions; defaults to `[]` |
 | `contributes.themes` | No | Theme contributions (see [Themes](#themes)); defaults to `[]` |
+| `contributes.layouts` | No | Layout contributions (see [Layouts](#layouts)); defaults to `[]` |
 
 For example, a plugin that needs the domain pack can declare:
 
@@ -366,6 +367,42 @@ Rules (details in [styling](styling.md#themes)):
 
 `corum plugin init <id> --theme` adds a starter `theme.css` (a copy of the light tokens) and the manifest entry;
 `corum plugin validate` rejects an unsafe theme file and warns about undocumented or missing tokens.
+
+### Layouts
+
+A plugin can contribute layouts. They appear in **Settings → Layout**, independent of the theme. The host's own
+`default` layout is always available; the built-in `layouts` plugin ships `compact` (narrower rail, tighter spacing).
+
+```yaml
+contributes:
+  layouts:
+    - { id: compact, label: Compact, css: ./compact.css }
+```
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `id` | Yes | `^[a-z0-9-]+$`, unique. `default` is reserved. The layout is applied as `data-layout="<id>"` |
+| `label` | Yes | Name shown in Settings |
+| `css` | Yes | Relative `.css` path inside the plugin directory |
+
+```css
+[data-layout="compact"] {
+  --nav-width: 64px;
+  --density: 0.75;
+}
+```
+
+Rules (details in [styling](styling.md#layouts)):
+
+- A layout sets only `--nav-width` (48px to 120px), `--content-max` (`none` or 480px to 2400px) and `--density`
+  (0.5 to 1.5). Any other declaration, or an out-of-range value, is reported and ignored; the rest still applies.
+- The only selector is the root, `[data-layout="<id>"]`. A descendant selector, an `@import`, `@media`, `url()` or an
+  escape rejects the file. A layout cannot hide, reorder or replace host regions or change plugin markup. No JavaScript.
+- The server serves a sanitised copy at `/api/layouts.css`. The first registered layout with an id wins.
+- The choice is stored as `corum:layout`. A stored layout that is no longer registered behaves as `default`; it is not
+  rewritten.
+
+`corum plugin validate` rejects an unsafe layout file and warns about ignored declarations.
 
 ### Pages and node actions
 

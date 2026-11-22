@@ -5,6 +5,7 @@ import { discoverPlugins } from '../web/plugins/discover.js'
 import { parsePluginManifest } from '../web/plugins/manifest.js'
 import { resolvePluginStatuses } from '../web/plugins/status.js'
 import { sanitiseThemeCss } from '../web/plugins/themes.js'
+import { sanitiseLayoutCss } from '../web/plugins/layouts.js'
 import { lintPluginStyles } from './style-lints.js'
 
 export type ValidationResult = {
@@ -52,6 +53,16 @@ export function validatePluginDir(dir: string, graphTemplates: Set<string>, coru
     const checked = sanitiseThemeCss(readFileSync(file, 'utf8'))
     for (const message of checked.errors) errors.push(`${file}: theme "${theme.id}": ${message}`)
     for (const message of checked.warnings) warnings.push(`${file}: theme "${theme.id}": ${message}`)
+  }
+  for (const layout of parsed.manifest.contributes.layouts) {
+    const file = path.join(root, ...layout.css.split('/'))
+    if (!existsSync(file) || !statSync(file).isFile()) {
+      errors.push(`${root}: layout "${layout.id}": css "${layout.css}" does not exist`)
+      continue
+    }
+    const checked = sanitiseLayoutCss(layout.id, readFileSync(file, 'utf8'))
+    for (const message of checked.errors) errors.push(`${file}: layout "${layout.id}": ${message}`)
+    for (const message of checked.warnings) warnings.push(`${file}: layout "${layout.id}": ${message}`)
   }
   warnings.push(...lintPluginStyles(root, parsed.manifest.contributes.themes.map(theme => theme.css)))
   return { exitCode: errors.length > 0 ? 1 : 0, errors, warnings }

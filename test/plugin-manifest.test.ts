@@ -56,7 +56,7 @@ describe('parsePluginManifest', () => {
     const { manifest, errors } = parsePluginManifest('id: a\nversion: 1.0.0\nengines: { corum: "*" }\nmain: index.js\n')
     assert.deepEqual(errors, [])
     assert.deepEqual(manifest?.requires.templates, [])
-    assert.deepEqual(manifest?.contributes, { pages: [], nodeActions: [], themes: [] })
+    assert.deepEqual(manifest?.contributes, { pages: [], nodeActions: [], themes: [], layouts: [] })
   })
 
   describe('contributes.themes', () => {
