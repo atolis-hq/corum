@@ -36,7 +36,7 @@ read/write workflow, output formats and graph-completeness caveats.
 | `get_cluster` | A node's structure. Schemas and enums are collapsed into compact blocks by default; pass `collapse_schemas: false` for node-per-field output |
 | `get_graph` | The semantic graph as `{ nodes, edges }`, excluding structural templates and edges by default |
 | `get_lineage` | Traverse lineage from one or more start nodes |
-| `get_linked_fields` | `maps-to` edges touching fields owned by a root node |
+| `get_linked_fields` | `maps-to` edges touching fields owned by a root node; optional `field` (name or full ID) limits to one field |
 | `list_branches` | Branches and their load status |
 | `diff_branch` | Diff a branch against the default branch |
 

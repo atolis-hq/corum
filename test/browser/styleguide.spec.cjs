@@ -47,7 +47,7 @@ const menu = page => page.getByTestId('settings-backdrop');
 async function registeredThemes(page) {
   await page.goto('/');
   await settings(page).getByRole('button', { name: 'Settings' }).click();
-  const radios = menu(page).getByRole('menuitemradio');
+  const radios = menu(page).getByRole('group', { name: 'Theme' }).getByRole('menuitemradio');
   await expect(radios.nth(1)).toBeVisible();
   const names = (await radios.allInnerTexts()).map(name => name.trim()).filter(name => name && name !== 'System');
   await page.keyboard.press('Escape');
@@ -97,7 +97,8 @@ test('the guide is hidden from the rail and reachable from the Settings menu and
 test('the guide lists every documented token and standard class', async ({ page }) => {
   await openGuide(page);
   const classes = Object.keys(readJson('web', 'sdk', 'classes.json').classes);
-  const colours = tokens().filter(token => token.type === 'color');
+  // Colour tokens plus the layout tokens, which the guide shows in their own section.
+  const colours = tokens().filter(token => token.type === 'color' || token.scope === 'layout');
   await expect(page.locator('[data-token]')).toHaveCount(colours.length);
   await expect(page.locator('[data-class]')).toHaveCount(classes.length);
 });

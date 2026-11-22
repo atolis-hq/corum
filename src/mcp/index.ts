@@ -561,7 +561,7 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
 
     get_linked_fields(args) {
       const run = (targetGraph: Graph): ToolResult => {
-        const linked = getLinkedFields(targetGraph, String(args.node_id))
+        const linked = getLinkedFields(targetGraph, String(args.node_id), typeof args.field === 'string' && args.field ? { field: args.field } : {})
         const incProv = includesProvenance(args)
         const edgeOptions = getEdgeOutputOptions(args)
         return formatResult({
@@ -1085,7 +1085,7 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
     },
     {
       name: 'get_lineage',
-      description: 'BFS traversal from origin node(s); returns reachable nodes annotated with depth and the edge/node they arrived via. Batch multiple node_ids in one call — results merge and dedupe. Lean by default; scope with direction, depth, and edge_types.',
+      description: 'BFS traversal from origin node(s); returns reachable nodes annotated with depth and the edge/node they arrived via. Batch multiple node_ids in one call — results merge and dedupe. Lean by default; scope with direction, depth, and edge_types. Field-level lineage: pass a field node ID, or a root with edge_types ["maps-to"], to follow maps-to across roots (raise depth to follow the thread).',
       inputSchema: {
         type: 'object',
         required: ['node_ids'],
@@ -1109,12 +1109,13 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
     },
     {
       name: 'get_linked_fields',
-      description: 'All maps-to edges touching fields owned by the given root node.',
+      description: 'maps-to edges touching fields owned by the given root node. Pass field to limit to one field and keep the payload small.',
       inputSchema: {
         type: 'object',
         required: ['node_id'],
         properties: {
           node_id: { type: 'string', description: 'Fully qualified root node ID.' },
+          field: { type: 'string', description: 'Only edges touching this owned field: exact field name (e.g. PayFrequency; matches any schema under the root) or full field node ID. Unknown field returns empty.' },
           include_edge_ids: EDGE_IDS_PARAM,
           include_provenance: PROVENANCE_PARAM,
           branch: BRANCH_READ_PARAM,

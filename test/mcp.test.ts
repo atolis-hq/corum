@@ -487,6 +487,16 @@ describe('MCP handlers', () => {
       assert.ok(!('lastModifiedAt' in linked.nodes[0]))
     })
 
+    it('field filter limits edges; unknown field is empty', async () => {
+      const handlers = createMcpHandlers(graph)
+      const call = async (extra: Record<string, unknown>) =>
+        JSON.parse((await handlers.get_linked_fields({ node_id: 'orders.ReadModel.order-detail', format: 'json', ...extra })).content[0].text)
+      const all = await call({})
+      const one = await call({ field: 'createdAt' })
+      assert.ok(one.edges.length > 0 && one.edges.length < all.edges.length)
+      assert.equal((await call({ field: 'nope' })).edges.length, 0)
+    })
+
     it('includes linked field node provenance when requested', async () => {
       const handlers = createMcpHandlers(graph)
       const result = await handlers.get_linked_fields({

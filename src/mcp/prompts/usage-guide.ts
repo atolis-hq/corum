@@ -78,7 +78,7 @@ When compact_keys is true these keys are shortened:
 - What does this node produce? get_lineage, direction "downstream", edge_types ["produces"], depth 1.
 - What triggers this node? get_lineage, direction "upstream", edge_types ["triggers"], depth 1.
 - Full flow around a node: get_lineage, direction "both", depth 3.
-- Field-level mappings: get_linked_fields for maps-to edges on fields owned by a root node.
+- Field-level mappings: get_linked_fields for maps-to edges on fields owned by a root node (pass field to scope to one field). To trace a field across roots, call get_lineage with a field node ID (or a root) and edge_types ["maps-to"], raising depth.
 - Schema / field detail: get_cluster (collapse_schemas true, the default) returns each schema as a compact map of field name to { type?, $ref?, collection?, nullable?, edges? } — not child nodes. Local refs use $ref: '#/schemas/name' or '#/enums/name'. Map fields appear as { type: map, key, value }. Cross-cluster field edges (maps-to, derived-from) appear in the field's edges block. Set collapse_schemas false only to get the raw child nodes instead.
 
 ## Write workflow
