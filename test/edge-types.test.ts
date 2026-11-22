@@ -261,7 +261,7 @@ describe('core edge type definitions', () => {
   })
 
   it('declares uses-type as a core semantic edge type', () => {
-    assert.deepEqual(CORE_EDGE_TYPES['uses-type'], { name: 'uses-type', category: 'semantic', traversal: 'outbound-only' })
+    assert.deepEqual(CORE_EDGE_TYPES['uses-type'], { name: 'uses-type', category: 'semantic', traversal: 'outbound-only', colour: '#0891b2' })
   })
 
   it('declares reads and uses-type as outbound-only', () => {

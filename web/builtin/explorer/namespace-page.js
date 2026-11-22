@@ -1,5 +1,5 @@
 /* Generic namespace overview: owned nodes plus inbound and outbound edges. Knows nothing about specific kinds. */
-import { html, getDisplayName, kindColour, hrefForExplorerView } from 'corum:ui'
+import { html, getDisplayName, kindColour, edgeTypeStyle, hrefForExplorerView } from 'corum:ui'
 import { useApi, useCtx } from 'corum:ui/react'
 import { namespaceEdges } from './nav.js'
 
@@ -16,7 +16,7 @@ function NodeLink({ id, nodeMap, templateMap, onOpen }) {
       onClick=${() => onOpen(id)}
       onKeyDown=${event => { if (event.key === 'Enter') onOpen(id) }}
     >
-      <span style=${{ fontWeight: 500 }}>${getDisplayName(id)}</span>
+      <span className="weight-medium">${getDisplayName(id)}</span>
       ${template && html`<span className="label-sm"> · ${templateLabel(template)}</span>`}
       <span className="label-sm mono"> ${id}</span>
     </span>
@@ -29,11 +29,11 @@ function EdgeList({ title, edges, endpoint, graph, error, linkProps }) {
       <div className="card-head">${title} (${edges.length})</div>
       <div className="card-body" style=${{ padding: '12px 16px' }}>
         ${graph === null && !error && html`<div className="label-sm">Loading…</div>`}
-        ${error && html`<div style=${{ color: 'var(--warning)' }}>Error loading edges: ${error}</div>`}
+        ${error && html`<div className="text-warning">Error loading edges: ${error}</div>`}
         ${graph !== null && edges.length === 0 && html`<div className="label-sm">None.</div>`}
         ${edges.map(edge => html`
           <div key=${edge.id} style=${{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0' }}>
-            <span className="tag edge-type-tag" data-edge-type=${edge.type}>${edge.type}</span>
+            <span className="tag edge-type-tag edge-coloured" style=${edgeTypeStyle(edge.type)}>${edge.type}</span>
             <${NodeLink} id=${edge[endpoint]} ...${linkProps} />
           </div>
         `)}
@@ -76,7 +76,7 @@ export function NamespacePage() {
     <div className="content">
       <div style=${{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
         <h1 style=${{ margin: 0 }}>${namespace}</h1>
-        <span className="ns-kind-pill" style=${{ background: kindColour(kind) }}>${kindLabel}</span>
+        <span className="ns-kind-pill node-coloured" style=${{ '--node-colour': kindColour(kind) }}>${kindLabel}</span>
       </div>
       <div className="label-sm" style=${{ marginBottom: 16 }}>Namespace · ${owned.length} ${owned.length === 1 ? 'node' : 'nodes'}</div>
 

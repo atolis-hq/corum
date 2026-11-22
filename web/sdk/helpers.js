@@ -4,13 +4,14 @@ export function getDisplayName(nodeId) {
   return nodeId.split('.').pop();
 }
 
-const KIND_PALETTE = ['#2f6fb0', '#b0562f', '#4a8a3c', '#8a3c7a', '#b08a2f', '#2f8a8a', '#7a3c3c', '#5a5ab0'];
+const KIND_TOKEN_COUNT = 8;
 
-// Stable colour per kind id. The default kind has a fixed slot; others hash into the rest.
+// Stable colour token per kind id (`var(--kind-N)`, defined by every theme). The default kind has a fixed slot;
+// others hash into the remaining ones. Use it as a `--node-colour` value: `style={{ '--node-colour': kindColour(kind) }}`.
 export function kindColour(kind) {
   const id = kind ?? 'component';
-  if (id === 'component') return KIND_PALETTE[0];
+  if (id === 'component') return 'var(--kind-1)';
   let hash = 0;
   for (const ch of id) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-  return KIND_PALETTE[1 + (hash % (KIND_PALETTE.length - 1))];
+  return `var(--kind-${2 + (hash % (KIND_TOKEN_COUNT - 1))})`;
 }

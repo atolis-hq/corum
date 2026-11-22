@@ -549,7 +549,16 @@ const empty = html`<${EmptyState}>Nothing here yet.<//>`
 `corum:ui` exports `html` and shared components including `Icon`, `StateTag`,
 `StabilityTag`, `Chip`, `TemplateBadge`, `PropertyValue`, `PropertiesTable`,
 `SchemaCard` and `BrandMark`, plus the helpers `getDisplayName(id)` (the last
-segment of a node ID) and `kindColour(kind)` (a stable colour per node kind).
+segment of a node ID) and `kindColour(kind)` (a stable colour per node kind, as a
+`var(--kind-N)` token reference). Pack colours reach plugins as custom properties:
+`edgeTypeStyle(type)` returns the `--edge-colour` / `--edge-dash` properties for an
+edge type and `templateColourStyle(...templates)` returns `--node-colour` for a
+template (later names are fallbacks). Spread them into `style` next to the
+`edge-coloured` / `node-coloured` class and use the derived `--edge-tint`,
+`--edge-border`, `--edge-on-tint` (and `--node-*`) tokens in CSS; see
+[Styling](styling.md). `TemplateBadge` takes `{ name, template }`, where `template`
+is the template name whose colour tints the badge. Plugins never set visual
+properties (colour, background, border, font, shadow, opacity) inline.
 Shared node references in `SchemaCard`, `PropertyValue` and `PropertiesTable` use
 the surrounding context's `hrefForNode`. Render them under `mountReact` or
 `CtxProvider` so links preserve the viewed branch and normal plugin resolution.

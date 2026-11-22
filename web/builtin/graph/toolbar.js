@@ -1,7 +1,7 @@
 /* Graph breadcrumb, scope popover and toolbar. */
 import React, { useState, useEffect, useMemo, useRef } from 'react'
-import { html, getDisplayName } from 'corum:ui'
-import { EDGE_PILL_STYLES, DEPTH_STEPS } from './constants.js'
+import { html, getDisplayName, edgeTypeStyle } from 'corum:ui'
+import { DEPTH_STEPS } from './constants.js'
 
 
 export function GraphBreadcrumb({ level, selectedComponent, focalNodeId, onNavigateToRoot, onNavigateToComponent }) {
@@ -138,8 +138,8 @@ function FocusSearch({ allNodes, focalNodeId, onFocalNode }) {
               className=${`graph-focus-search-item${n.id === focalNodeId ? ' selected' : ''}`}
               onClick=${() => { onFocalNode(n.id); setSearchQuery(''); setSearchOpen(false) }}
             >
-              <span style=${{ fontWeight: 500 }}>${getDisplayName(n.id)}</span>
-              <span style=${{ color: 'var(--muted-foreground)', fontSize: 10, marginLeft: 4 }}>${n.namespace}</span>
+              <span className="weight-medium">${getDisplayName(n.id)}</span>
+              <span className="node-owner-meta">${n.namespace}</span>
             </div>
           `)}
         </div>
@@ -188,12 +188,11 @@ export function GraphToolbar({ edgeTypes, visibleEdgeTypes, onToggleEdgeType, sh
     <div className="graph-toolbar">
       ${edgeTypes.map(type => {
         const active = visibleEdgeTypes.has(type)
-        const pill = EDGE_PILL_STYLES[type] || { background: '#f3f4f6', color: '#6b7280' }
         return html`
           <span
             key=${type}
-            className=${`graph-edge-pill${active ? '' : ' inactive'}`}
-            style=${active ? pill : {}}
+            className=${`graph-edge-pill${active ? ' edge-coloured' : ' inactive'}`}
+            style=${edgeTypeStyle(type)}
             onClick=${() => onToggleEdgeType(type)}
           >
             ${type}

@@ -1,6 +1,6 @@
 /* Host-owned: themes must not set this. */
 :root {
-  --corum-tokens-version: 1;
+  --corum-tokens-version: 2;
 }
 
 :root,
@@ -30,16 +30,15 @@
   --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.12);
   --shadow-xl: 0 8px 40px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.1);
   --overlay-secondary: #5c7aa8;
-  --edge-triggers: #b45309;
-  --edge-triggers-soft: #fef3c7;
-  --edge-produces: #0f766e;
-  --edge-produces-soft: #ccfbf1;
-  --edge-calls: #6d28d9;
-  --edge-calls-soft: #ede9fe;
-  --edge-implements: #475569;
-  --edge-implements-soft: #f1f5f9;
-  --edge-reads: #1d4ed8;
-  --edge-reads-soft: #dbeafe;
+  --edge-default: #6c6f78;
+  --kind-1: #2f6fb0;
+  --kind-2: #b0562f;
+  --kind-3: #4a8a3c;
+  --kind-4: #8a3c7a;
+  --kind-5: #b08a2f;
+  --kind-6: #2f8a8a;
+  --kind-7: #7a3c3c;
+  --kind-8: #5a5ab0;
   --radius-sm: 4px;
   --radius: 6px;
   --radius-lg: 10px;
@@ -72,16 +71,15 @@
   --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.12);
   --shadow-xl: 0 8px 40px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.1);
   --overlay-secondary: #8fb0dc;
-  --edge-triggers: #fcd34d;
-  --edge-triggers-soft: #3a2e12;
-  --edge-produces: #5eead4;
-  --edge-produces-soft: #12332f;
-  --edge-calls: #c4b5fd;
-  --edge-calls-soft: #2a2347;
-  --edge-implements: #cbd5e1;
-  --edge-implements-soft: #2a303a;
-  --edge-reads: #93c5fd;
-  --edge-reads-soft: #172a4a;
+  --edge-default: #9498a2;
+  --kind-1: #6fa3dc;
+  --kind-2: #d98a5f;
+  --kind-3: #7fc16e;
+  --kind-4: #c37ab5;
+  --kind-5: #d6b45e;
+  --kind-6: #62c2c2;
+  --kind-7: #c97f7f;
+  --kind-8: #9a9ae0;
   --radius-sm: 4px;
   --radius: 6px;
   --radius-lg: 10px;
@@ -416,8 +414,9 @@ button {
 }
 
 .nav-node-item.active {
-  background: var(--nav-node-active-bg, var(--foreground));
-  color: var(--background);
+  background: var(--node-tint, var(--muted));
+  color: var(--node-on-tint, var(--foreground));
+  box-shadow: inset 3px 0 0 var(--node-border, var(--foreground));
 }
 
 .nav-child-group {
@@ -2043,12 +2042,146 @@ button {
   display: contents;
 }
 
-/* Edge-type tags of the Explorer namespace page (the colours were inline styles in the host). */
-.edge-type-tag[data-edge-type="triggers"] { background: var(--edge-triggers-soft); color: var(--edge-triggers); }
-.edge-type-tag[data-edge-type="produces"] { background: var(--edge-produces-soft); color: var(--edge-produces); }
-.edge-type-tag[data-edge-type="calls"] { background: var(--edge-calls-soft); color: var(--edge-calls); }
-.edge-type-tag[data-edge-type="implements"] { background: var(--edge-implements-soft); color: var(--edge-implements); }
-.edge-type-tag[data-edge-type="reads"] { background: var(--edge-reads-soft); color: var(--edge-reads); }
+/* Pack colours (ADR-011 section 5). Pack data arrives as `--node-colour` / `--edge-colour` (see web/sdk/pack-colours.js);
+   everything below is derived from it with color-mix() against surface tokens, so it follows every theme.
+   test/pack-colour-contrast.test.ts evaluates these exact expressions; keep them in the `color-mix(in srgb, X p%, Y)` form. */
+.node-coloured {
+  --node-tint: color-mix(in srgb, var(--node-colour) 14%, var(--card));
+  --node-border: color-mix(in srgb, var(--node-colour) 70%, var(--foreground));
+  --node-on-tint: color-mix(in srgb, var(--node-colour) 45%, var(--foreground));
+}
+
+.edge-coloured {
+  --edge-tint: color-mix(in srgb, var(--edge-colour) 14%, var(--card));
+  --edge-border: color-mix(in srgb, var(--edge-colour) 70%, var(--foreground));
+  --edge-on-tint: color-mix(in srgb, var(--edge-colour) 45%, var(--foreground));
+}
+
+.tag.edge-type-tag,
+.graph-edge-pill.edge-coloured {
+  background: var(--edge-tint);
+  border-color: var(--edge-border);
+  color: var(--edge-on-tint);
+}
+
+.ns-kind-pill.node-coloured {
+  background: var(--node-tint);
+  border: 1px solid var(--node-border);
+  color: var(--node-on-tint);
+}
+
+.stat-colour-dot {
+  background: var(--node-colour);
+}
+
+.graph-component-card {
+  border-left: 4px solid var(--node-colour);
+}
+
+.graph-node-card-bar {
+  background: var(--node-colour);
+}
+
+.graph-node-card-component.node-coloured {
+  color: var(--node-on-tint);
+}
+
+.react-flow__handle.graph-handle-hidden {
+  opacity: 0;
+}
+
+/* Graph edges: stroke, dash and label colours come from the edge-type custom properties set by edgeTypeStyle(). */
+.graph-edge .react-flow__edge-path {
+  stroke: var(--edge-colour);
+  stroke-width: 1.5;
+  stroke-dasharray: var(--edge-dash);
+}
+
+.graph-edge .react-flow__edge-text {
+  --edge-on-tint: color-mix(in srgb, var(--edge-colour) 45%, var(--foreground));
+  fill: var(--edge-on-tint);
+  font-size: 10px;
+}
+
+.graph-edge .react-flow__edge-textbg {
+  fill: var(--background);
+  fill-opacity: 0.85;
+}
+
+.graph-edge-cross {
+  opacity: 0.45;
+}
+
+.overlay-swatch-0 { background: var(--accent); }
+.overlay-swatch-1 { background: var(--overlay-secondary); }
+.overlay-swatch-conflict { background: var(--destructive); }
+.overlay-legend-conflict { color: var(--destructive); }
+
+.template-badge.node-coloured {
+  background: var(--node-tint);
+  border-color: var(--node-border);
+  color: var(--node-on-tint);
+}
+
+.tag.shared-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  background: var(--subtle-foreground);
+  color: var(--background);
+}
+
+.tag.conflict-tag {
+  background: color-mix(in srgb, var(--destructive) 13%, var(--background));
+  color: var(--destructive);
+}
+
+.conflict-mark {
+  color: var(--destructive);
+  font-weight: 700;
+}
+
+.mono-meta {
+  font-size: 10.5px;
+}
+
+.mono-meta.dim {
+  opacity: 0.7;
+}
+
+.pipe-sep {
+  margin: 0 6px;
+  opacity: 0.4;
+}
+
+.icon-sized {
+  font-size: var(--icon-size);
+}
+
+.icon-fixed {
+  width: 14px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.text-warning { color: var(--warning); }
+.text-success { color: var(--success); }
+.weight-medium { font-weight: 500; }
+.rule-strong { border-top: 1px solid var(--border-strong); }
+.boot-error { padding: 24px; font: 14px/1.5 system-ui, sans-serif; color: var(--destructive); }
+.debug-toast {
+  background: var(--muted);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  font-size: 12px;
+  color: var(--warning);
+}
+
+.node-owner-meta { font-size: 10px; color: var(--muted-foreground); margin-left: 4px; }
+.row-name { font-weight: 500; font-size: 13px; min-width: 0; overflow-wrap: anywhere; }
+.row-detail { font-size: 12px; margin-top: 3px; }
+.shared-head { border-bottom: 1px dashed var(--border); }
+.shared-head-label { color: var(--muted-foreground); font-size: 11px; font-weight: 600; }
+.warning-note { color: var(--warning); text-align: right; }
 
 /* Node header and connection-row "Open in" menus (plugin destinations and node actions) */
 .connections-card {

@@ -5,7 +5,7 @@ if (!window.CorumHost) {
   const box = document.getElementById('root');
   const message = document.createElement('div');
   message.setAttribute('data-testid', 'boot-error');
-  message.style.cssText = 'padding:24px;font:14px/1.5 system-ui,sans-serif;color:#7f1d1d';
+  message.className = 'boot-error';
   message.textContent = 'Corum failed to start: the UI modules could not be loaded. Check the browser console and the server, then reload the page.';
   box.appendChild(message);
   throw new Error('window.CorumHost is not available (boot.js failed to load)');
@@ -30,6 +30,8 @@ const {
   hrefForExplorerView,
   owningRoot,
   kindColour,
+  edgeTypeStyle,
+  templateColourStyle,
 } = window.CorumHost.sdk;
 const { CtxProvider, NodeLinks } = window.CorumHost.sdkReact;
 const hostRegistry = window.CorumHost.registry;
@@ -41,14 +43,6 @@ const { SearchModal } = window.CorumSearch;
 // (schema/field-level), surfaced via SchemaCard node-ref links and the
 // includedSchemaNodes panel instead of the root-to-root Connections list.
 const PANEL_EDGE_TYPES = new Set(['triggers', 'produces', 'calls', 'implements', 'reads']);
-
-const EDGE_TYPE_STYLES = {
-  triggers: { background: '#fef3c7', color: '#b45309' },
-  produces: { background: '#ccfbf1', color: '#0f766e' },
-  calls: { background: '#ede9fe', color: '#6d28d9' },
-  implements: { background: '#f1f5f9', color: '#475569' },
-  reads: { background: '#dbeafe', color: '#1d4ed8' },
-};
 
 function classifyEdges(edges, clusterIds) {
   const inbound = [];
@@ -96,7 +90,7 @@ function TopBar({ onSearchOpen }) {
   return (
     <div className="topbar">
       <div className="brand">
-        <BrandMark size={22} color="#fff" />
+        <BrandMark size={22} />
         <span>corum</span>
       </div>
       <div className="topbar-search-wrap">
@@ -511,11 +505,10 @@ function DashboardPage({ nodes, templates, kinds, gitMode, viewingRef, branches,
             {stats === null && <div className="label-sm">Loading…</div>}
             {nodesByTemplate.map(([name, count]) => {
               const tmpl = templateMap.get(name);
-              const colour = tmpl?.ui?.colour ?? 'var(--subtle-foreground)';
               return (
                 <div key={name} className="stat-row">
                   <span className="stat-row-label">
-                    <span className="stat-colour-dot" style={{ background: colour }} />
+                    <span className="stat-colour-dot" style={templateColourStyle(name)} />
                     {tmpl?.ui?.displayName ?? name}
                   </span>
                   <span className="stat-row-value">{count}</span>
@@ -532,7 +525,7 @@ function DashboardPage({ nodes, templates, kinds, gitMode, viewingRef, branches,
             {namespacesByKind.map(([kind, count]) => (
               <div key={kind} className="stat-row">
                 <span className="stat-row-label">
-                  <span className="stat-colour-dot" style={{ background: kindColour(kind) }} />
+                  <span className="stat-colour-dot" style={{ '--node-colour': kindColour(kind) }} />
                   {kindLabels.get(kind) ?? kind}
                 </span>
                 <span className="stat-row-value">{count}</span>
@@ -561,11 +554,10 @@ function DashboardPage({ nodes, templates, kinds, gitMode, viewingRef, branches,
             {stats !== null && orphanRows.length === 0 && <div className="label-sm">No orphan nodes.</div>}
             {orphanRows.map(([name, count]) => {
               const tmpl = templateMap.get(name);
-              const colour = tmpl?.ui?.colour ?? 'var(--subtle-foreground)';
               return (
                 <div key={name} className="stat-row">
                   <span className="stat-row-label">
-                    <span className="stat-colour-dot" style={{ background: colour }} />
+                    <span className="stat-colour-dot" style={templateColourStyle(name)} />
                     {tmpl?.ui?.displayName ?? name}
                   </span>
                   <span className="stat-row-value">{count}</span>
@@ -583,7 +575,7 @@ function DashboardPage({ nodes, templates, kinds, gitMode, viewingRef, branches,
             {edgeRows.map(([type, count]) => (
               <div key={type} className="stat-row">
                 <span className="stat-row-label">
-                  <span className="tag" style={EDGE_TYPE_STYLES[type] ?? {}}>{type}</span>
+                  <span className="tag edge-type-tag edge-coloured" style={edgeTypeStyle(type)}>{type}</span>
                 </span>
                 <span className="stat-row-value">{count}</span>
               </div>
@@ -601,7 +593,7 @@ function DashboardPage({ nodes, templates, kinds, gitMode, viewingRef, branches,
                 <span className="stat-row-value">{count}</span>
               </div>
             ))}
-            <div style={{ borderTop: '1px solid var(--border-strong)', margin: '8px 0' }} />
+            <div className="rule-strong" style={{ margin: '8px 0' }} />
             {nodesByStability.map(([stability, count]) => (
               <div key={stability} className="stat-row">
                 <span className="stat-row-label"><StabilityTag stability={stability} /></span>
@@ -616,12 +608,12 @@ function DashboardPage({ nodes, templates, kinds, gitMode, viewingRef, branches,
           <div className="card-body" style={{ padding: '12px 16px' }}>
             {stats === null && <div className="label-sm">Loading…</div>}
             {stats !== null && stats.diagnosticCount > 0 && (
-              <span style={{ color: 'var(--warning)' }}>
+              <span className="text-warning">
                 {stats.diagnosticCount} load warning{stats.diagnosticCount !== 1 ? 's' : ''}
               </span>
             )}
             {stats !== null && stats.diagnosticCount === 0 && (
-              <span style={{ color: 'var(--success)' }}>No issues</span>
+              <span className="text-success">No issues</span>
             )}
           </div>
         </div>
@@ -640,7 +632,7 @@ function DashboardPage({ nodes, templates, kinds, gitMode, viewingRef, branches,
                     <span>{result.ref}</span>
                   </span>
                   {result.status === 'failed' && (
-                    <span className="label-sm" style={{ color: 'var(--warning)', maxWidth: 200, textAlign: 'right' }}>
+                    <span className="label-sm warning-note" style={{ maxWidth: 200 }}>
                       {result.diagnostics?.[0]?.message ?? result.error ?? 'failed'}
                     </span>
                   )}
@@ -676,7 +668,6 @@ function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate }) {
   function EdgeRow({ edge, linkedNodeId }) {
     const node = nodeMap.get(linkedNodeId);
     const tmpl = node ? templateMap.get(node.template) : null;
-    const colour = tmpl?.ui?.colour ?? null;
     const name = linkedNodeId.split('.').pop();
     return (
       <div
@@ -685,9 +676,9 @@ function EdgePanel({ inbound, outbound, allNodes, templates, onNavigate }) {
         title={linkedNodeId}
         style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, padding: '5px 0', cursor: 'pointer' }}
       >
-        <span className="tag" style={EDGE_TYPE_STYLES[edge.type] ?? {}}>{edge.type}</span>
-        <TemplateBadge name={tmpl?.ui?.displayName ?? node?.template ?? '?'} colour={colour} />
-        <span style={{ fontWeight: 500, fontSize: 13, minWidth: 0, overflowWrap: 'anywhere' }}>{name}</span>
+        <span className="tag edge-type-tag edge-coloured" style={edgeTypeStyle(edge.type)}>{edge.type}</span>
+        <TemplateBadge name={tmpl?.ui?.displayName ?? node?.template ?? '?'} template={node?.template} />
+        <span className="row-name">{name}</span>
         {node && <StateTag state={node.state} />}
         {node && <StabilityTag stability={node.stability} />}
         <div style={{ marginLeft: 'auto' }}>
@@ -922,7 +913,6 @@ function NodePage({ nodeId, explorerView = false, templates, templatesByName, on
   const clusterIds = new Set([root.id, ...descendants.map(d => d.id)]);
   const { inbound: panelInbound, outbound: panelOutbound } = classifyEdges(edges, clusterIds);
   const template = templates.find(item => item.name === root.template);
-  const colour = template?.ui?.colour ?? null;
 
   const displayChildren = new Map();
   for (const child of descendants) {
@@ -959,7 +949,7 @@ function NodePage({ nodeId, explorerView = false, templates, templatesByName, on
       <div id={anchorIdForNode(root.id)} style={{ marginBottom: 18 }}>
         <div data-testid="node-title-row" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
           <h1 style={{ margin: 0 }}>{displayName(root.id)}</h1>
-          <TemplateBadge name={templateDisplayName(template)} colour={colour} />
+          <TemplateBadge name={templateDisplayName(template)} template={root.template} />
           <StateTag state={root.state} />
           <StabilityTag stability={root.stability} />
           <NodeLinks nodeId={root.id} surface="header" />
@@ -985,7 +975,7 @@ function NodePage({ nodeId, explorerView = false, templates, templatesByName, on
         ].map(([label, value]) => (
           <div key={label} className="meta-cell">
             <div className="label-xs">{label}</div>
-            <div style={{ fontSize: 12, marginTop: 3 }}>{value}</div>
+            <div className="row-detail">{value}</div>
           </div>
         ))}
       </div>
@@ -1128,10 +1118,13 @@ function App() {
       fetch(`/api/templates?includeCore=true${targetViewingRef ? `&ref=${encodeURIComponent(targetViewingRef)}` : ''}`).then(response => response.ok ? response.json() : Promise.reject(response.status)),
       fetch(`/api/nodes${refParam}`).then(response => response.ok ? response.json() : Promise.reject(response.status)),
       fetch(`/api/kinds${refParam}`).then(response => response.ok ? response.json() : Promise.reject(response.status)),
+      // Edge-type colours are optional styling data: a failure here must not block the graph from loading.
+      fetch(`/api/edge-types${refParam}`).then(response => response.ok ? response.json() : []).catch(() => []),
     ])
-      .then(([templateData, allTemplateData, nodeData, kindData]) => {
+      .then(([templateData, allTemplateData, nodeData, kindData, edgeTypeData]) => {
         setTemplates(resolveTemplates(templateData));
         setAllTemplates(allTemplateData);
+        window.CorumHost.applyPackColours(resolveTemplates(allTemplateData), edgeTypeData);
         setNodes(nodeData);
         setKinds(kindData.kinds ?? []);
         setLoading(false);
@@ -1397,7 +1390,8 @@ function App() {
         <div
           data-testid="plugins-failed"
           role="status"
-          style={{ position: 'fixed', right: 12, bottom: 12, zIndex: 50, padding: '8px 12px', background: 'var(--muted)', border: '1px solid var(--border-strong)', borderRadius: 6, fontSize: 12, color: 'var(--warning)' }}
+          className="debug-toast"
+          style={{ position: 'fixed', right: 12, bottom: 12, zIndex: 50, padding: '8px 12px' }}
         >
           Plugins failed to load. Reload the page to retry.
         </div>

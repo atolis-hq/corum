@@ -99,9 +99,24 @@ properties:
         type: string
         description: Icon identifier for the node card.
       colour:
-        type: string
-        pattern: "^#[0-9A-Fa-f]{6}$"
-        description: Hex colour for the node card background.
+        description: >-
+          Pack colour for this template. Either one #rrggbb hex string used in
+          every theme, or an object with `light` and `dark` hex strings chosen
+          by the active theme's colour scheme. The UI derives tint, border and
+          readable text colours from it.
+        oneOf:
+          - type: string
+            pattern: "^#[0-9A-Fa-f]{6}$"
+          - type: object
+            additionalProperties: false
+            required: [light, dark]
+            properties:
+              light:
+                type: string
+                pattern: "^#[0-9A-Fa-f]{6}$"
+              dark:
+                type: string
+                pattern: "^#[0-9A-Fa-f]{6}$"
       displayName:
         type: string
         description: Human-friendly label for this template in the UI.

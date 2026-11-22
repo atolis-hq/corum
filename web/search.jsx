@@ -73,7 +73,6 @@ function SearchModal({ nodes, templates, onNavigate, onClose }) {
               const { node } = result;
               const template = templateMap.get(node.template);
               const name = node.id.split('.').pop();
-              const colour = template?.ui?.colour ?? null;
               const tplName = template?.ui?.displayName ?? node.template;
               return (
                 <div
@@ -82,7 +81,7 @@ function SearchModal({ nodes, templates, onNavigate, onClose }) {
                   onClick={() => { onNavigate(node.id, node.template, result.owner); onClose(); }}
                   title={result.owner ? `${node.id} — ${result.owner.id}` : node.id}
                 >
-                  <TemplateBadge name={tplName} colour={colour} />
+                  <TemplateBadge name={tplName} template={node.template} />
                   <span className="search-result-name">{name}</span>
                   <span className="search-result-component">{result.owner?.id ?? node.namespace}</span>
                 </div>

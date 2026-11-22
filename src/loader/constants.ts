@@ -21,14 +21,14 @@ export const VALID_STABILITIES = [
  * `edge-types.yaml` (see loader/edge-type-loader.ts).
  */
 export const CORE_EDGE_TYPES: Record<string, EdgeTypeDef> = {
-  'triggers': { name: 'triggers', category: 'semantic' },
-  'produces': { name: 'produces', category: 'semantic' },
-  'reads': { name: 'reads', category: 'semantic', traversal: 'outbound-only' },
-  'uses-type': { name: 'uses-type', category: 'semantic', traversal: 'outbound-only' },
-  'calls': { name: 'calls', category: 'semantic' },
-  'implements': { name: 'implements', category: 'semantic' },
-  'maps-to': { name: 'maps-to', category: 'lineage' },
-  'derived-from': { name: 'derived-from', category: 'lineage' },
+  'triggers': { name: 'triggers', category: 'semantic', colour: '#b45309' },
+  'produces': { name: 'produces', category: 'semantic', colour: '#0f766e' },
+  'reads': { name: 'reads', category: 'semantic', traversal: 'outbound-only', colour: '#1d4ed8' },
+  'uses-type': { name: 'uses-type', category: 'semantic', traversal: 'outbound-only', colour: '#0891b2' },
+  'calls': { name: 'calls', category: 'semantic', colour: '#6d28d9' },
+  'implements': { name: 'implements', category: 'semantic', colour: '#475569' },
+  'maps-to': { name: 'maps-to', category: 'lineage', colour: '#be185d' },
+  'derived-from': { name: 'derived-from', category: 'lineage', colour: '#6b7280', line: { dash: '5 5' } },
   'renamed-from': { name: 'renamed-from', category: 'lineage', hidden: true },
   'has-field': { name: 'has-field', category: 'structural' },
   'has-value': { name: 'has-value', category: 'structural' },

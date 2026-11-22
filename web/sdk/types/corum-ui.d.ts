@@ -125,7 +125,7 @@ declare module 'corum:ui' {
   export const StateTag: Component<{ state: string }>
   export const StabilityTag: Component<{ stability: string }>
   export const Chip: Component<{ children?: unknown; title?: string }>
-  export const TemplateBadge: Component<{ name: string; colour?: string }>
+  export const TemplateBadge: Component<{ name: string; template?: string }>
   /** Inline style object accepted by the shared panels. */
   type PanelStyle = Record<string, string | number>
   export const ErrorPanel: Component<{ message?: unknown; title?: string; testId?: string; className?: string; style?: PanelStyle }>
@@ -161,6 +161,10 @@ declare module 'corum:ui' {
 
   /** The last segment of a node ID. */
   export function getDisplayName(nodeId: string): string
-  /** A stable colour per node kind. */
+  /** A stable colour token per node kind: a `var(--kind-N)` reference, usable as a `--node-colour` value. */
   export function kindColour(kind: string): string
+  /** Custom properties (`--edge-colour`, `--edge-dash`) for an edge type; put them in `style` next to the `edge-coloured` class. */
+  export function edgeTypeStyle(type: string): Record<string, string>
+  /** Custom property (`--node-colour`) for a template's pack colour; later names are fallbacks. Pair with the `node-coloured` class. */
+  export function templateColourStyle(...templates: Array<string | null | undefined>): Record<string, string>
 }

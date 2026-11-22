@@ -45,7 +45,8 @@ Users will choose themes and layouts, plugins must be styled by global styles wi
 | Border | `--border`, `--border-strong`, `--ring` (focus) |
 | Accent | `--accent`, `--accent-soft`, `--accent-text` (Corum's brand colour; unlike shadcn, `accent` is not a hover surface, which is `--muted`) |
 | State | `--success`, `--warning`, `--destructive`, `--info` |
-| Edge types | `--edge-<type>` (one per edge type, plus `--edge-default`) |
+| Edge types | `--edge-default` only. Per-type colours are pack data (section 5), not theme tokens. |
+| Kinds | `--kind-1` to `--kind-8` (fallback palette; section 5) |
 | Kind fallback | `--kind-1` … `--kind-N` |
 | Shape | `--radius-sm`, `--radius`, `--radius-lg` |
 | Layout (host-owned) | `--nav-width`, `--content-max`, `--density` |
@@ -97,6 +98,7 @@ Colours for kinds, templates (`ui.colour`) and edge types **stay in packs as dat
 - **Optional override.** A pack may supply `colour: { light: "#…", dark: "#…" }` in place of a single string. A string remains valid and is the common case. Themes of either `colorScheme` pick the matching key.
 - **Fallback.** Kinds and edge types with no pack colour use `--kind-N` and `--edge-default` tokens, replacing the hashed hex palette (`KIND_PALETTE`). Fallback assignment stays deterministic (hash of the kind name modulo N).
 - **Single edge-type styling.** Edge-type styling lives in one place: the pack's edge-type definition (colour, and dash/weight if declared), resolved by one shared SDK helper that the host and the Graph plugin both call. `EDGE_TYPE_STYLES`, `EDGE_STYLES` and `EDGE_PILL_STYLES` are deleted.
+- **Amendment (implementation of slice 4).** Per-type theme tokens (`--edge-triggers`, `--edge-triggers-soft`, ...) are removed, because a second per-type definition in the themes would break the single-definition rule above. Core edge-type colours (and the `derived-from` dash) live on `CORE_EDGE_TYPES`; pack `edge-types.yaml` accepts the same optional `colour` and `line.dash`. The host writes one `--pack-*` custom property per pack colour into a single `<style>` element; `{ light, dark }` values use CSS `light-dark()`, so the active theme's `color-scheme` picks the key without any script branching on the theme. Components receive `--node-colour` / `--edge-colour` through the SDK helpers `templateColourStyle` and `edgeTypeStyle`, and the derived `--*-tint`, `--*-border`, `--*-on-tint` tokens are declared on the `node-coloured` / `edge-coloured` classes. The contract version is bumped to 2; the migration note is in `docs/styling.md`. Minimum ratios: 4.5:1 for derived text, 3:1 for borders (WCAG 1.4.11). Component and edge-type pills now show derived tints rather than hand-picked pastels.
 - **Acceptable rendering** is checked by a test that evaluates contrast of derived text and border colours for every pack colour in the repo's packs against every registered theme, with a minimum ratio recorded in the test.
 
 ### 6. Layouts
