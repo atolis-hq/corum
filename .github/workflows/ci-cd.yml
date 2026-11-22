@@ -23,6 +23,14 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # Browsers and system dependencies are preinstalled in this image; keep the tag in step with @playwright/test.
+    container:
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
+      options: --ipc=host
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
@@ -30,25 +38,14 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
-      - name: Cache Playwright browsers
-        id: playwright-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-      - name: Install Chromium and WebKit
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium webkit
-      - name: Install system dependencies for cached browsers
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium webkit
-      - name: Run browser specs
-        run: npm run test:web
+      - run: npm run build
+      - name: Run browser specs (shard ${{ matrix.shard }}/2)
+        run: npx playwright test --shard=${{ matrix.shard }}/2
       - name: Upload browser failure diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: browser-failure-diagnostics
+          name: browser-failure-diagnostics-${{ matrix.shard }}
           path: |
             playwright-report/
             test-results/
