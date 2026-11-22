@@ -343,7 +343,7 @@ describe('architecture: stylesheet tokens', () => {
     '--background', '--card', '--muted', '--foreground', '--secondary-foreground', '--muted-foreground',
     '--subtle-foreground', '--border', '--border-strong', '--accent', '--accent-soft', '--accent-text',
     '--success', '--warning', '--ring', '--destructive', '--info',
-    '--on-accent', '--scrim', '--shadow-sm', '--shadow-md', '--shadow-lg', '--shadow-xl', '--overlay-secondary',
+    '--on-accent', '--on-solid', '--scrim', '--shadow-sm', '--shadow-md', '--shadow-lg', '--shadow-xl', '--overlay-secondary',
     '--edge-triggers', '--edge-triggers-soft', '--edge-produces', '--edge-produces-soft',
     '--edge-calls', '--edge-calls-soft', '--edge-implements', '--edge-implements-soft',
     '--edge-reads', '--edge-reads-soft',
