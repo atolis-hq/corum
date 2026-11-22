@@ -137,6 +137,19 @@ This builds the project and starts a local server on port 3002 against the sampl
 
 Failures retain screenshots and traces in `test-results/`. Open a trace with `npx playwright show-trace <path-to-trace.zip>`. CI also generates an HTML report and uploads it with the failure diagnostics as `browser-failure-diagnostics`, retained for seven days. Download and extract the artifact, then run `npx playwright show-report <path-to-playwright-report>` to inspect the report.
 
+## PR screenshots
+
+A pull request that changes how the web UI looks embeds before/after screenshots in its body. GitHub has no API for attaching images to a PR, so images are stored on the never-merged `pr-assets` branch and embedded by commit SHA. Do not commit screenshots to the PR branch: squash merge would put them in `main`.
+
+Convention:
+- **Where:** branch `pr-assets` (create it as an orphan branch if missing), directory `pr-<number>/`. Never merge it.
+- **Names:** `<page>-<theme>-<before|after>.png`, for example `graph-dark-after.png`. Keep each under 600 KB.
+- **Standard capture:** `fixtures/sample-graph`, 1280 x 800 viewport, light and dark, for Dashboard (`/#/dashboard`), Explorer (`/#/namespaces`), Graph (`/#/p/graph/view`) and any page the change touches. Capture `before` from `origin/main`.
+- **Embed:** under a "Screenshots" heading in the PR body, using SHA-pinned URLs so they survive branch deletion: `![graph dark after](https://raw.githubusercontent.com/atolis-hq/corum/<commit-sha>/pr-<number>/graph-dark-after.png)`.
+- If screenshots cannot be produced, say so in the PR body with the reason.
+
+Tooling that captures and publishes these is a planned follow-up; until then capture with Playwright (`@playwright/test` is already a dependency) and push with plain git.
+
 ## Namespace metadata
 
 Namespace metadata may be declared in `nodes/<namespace>/namespace.yaml`:
