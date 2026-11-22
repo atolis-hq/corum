@@ -7,7 +7,11 @@ const port = process.env.CORUM_E2E_PORT || '3002';
 module.exports = defineConfig({
   testDir: './test/browser',
   timeout: 60000,
+  // Baselines are per platform, not per project (see test/browser/styleguide.spec.cjs).
+  snapshotPathTemplate: '{testDir}/{testFileName}-snapshots/{arg}-{platform}{ext}',
   forbidOnly: !!process.env.CI,
+  // Fail fast in CI: one broken spec should not spend the whole job budget timing out.
+  maxFailures: process.env.CI ? 3 : 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
     browserName: 'chromium',
