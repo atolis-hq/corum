@@ -143,12 +143,85 @@ A pull request that changes how the web UI looks embeds before/after screenshots
 
 Convention:
 - **Where:** branch `pr-assets` (create it as an orphan branch if missing), directory `pr-<number>/`. Never merge it.
-- **Names:** `<page>-<theme>-<before|after>.png`, for example `graph-dark-after.png`. Keep each under 600 KB.
-- **Standard capture:** `fixtures/sample-graph`, 1280 x 800 viewport, light and dark, for Dashboard (`/#/dashboard`), Explorer (`/#/namespaces`), Graph (`/#/p/graph/view`) and any page the change touches. Capture `before` from `origin/main`.
-- **Embed:** under a "Screenshots" heading in the PR body, using SHA-pinned URLs so they survive branch deletion: `![graph dark after](https://raw.githubusercontent.com/atolis-hq/corum/<commit-sha>/pr-<number>/graph-dark-after.png)`.
-- If screenshots cannot be produced, say so in the PR body with the reason.
+- **Names:** any `<subject>-<variant>-<before|after>.png`, for example `orders-card-mobile-dark-after.png`. Only the `-before.png` / `-after.png` suffix is required; subject and variant are free-form (letters, digits, `.`, `_`, `-`). Keep each under 600 KB.
+- **Standard capture:** `fixtures/sample-graph`, 1280 x 800 viewport, light and dark, for Dashboard (`/#/dashboard`), Explorer (`/#/namespaces`), Graph (`/#/p/graph/view`) and any page the change touches. Capture `before` from `origin/main`. Capture whatever shows the change: a mobile viewport, one component, an open menu, hover or error states.
+- **Embed:** under a "Screenshots" heading in the PR body, using SHA-pinned URLs so they survive branch deletion. The publish command builds this for you.
+- If screenshots cannot be produced (for example the browser cannot be installed offline), say so in the PR body with the reason.
 
-Tooling that captures and publishes these is a planned follow-up; until then capture with Playwright (`@playwright/test` is already a dependency) and push with plain git.
+### Publish
+
+Put the PNGs in a directory (default `tmp/screenshots`, which is gitignored), then:
+
+```bash
+npm run screenshots:publish -- --pr <number> [--dir tmp/screenshots] [--update-pr]
+```
+
+This clones the remote into a temp directory, creates or updates the orphan `pr-assets` branch, replaces `pr-<number>/` with the files, pushes, and prints the SHA and the "Screenshots" markdown (one before/after row per subject). With `--update-pr` it also replaces or appends the `## Screenshots` section in the PR body using `gh pr edit`. Rerunning for the same PR replaces the images and the section rather than duplicating them. The whole batch is refused if any file is not a PNG, lacks the `-before.png`/`-after.png` suffix, or exceeds 600 KB. A subject with only one side (a new page has no `before`) is allowed and shown with `—`.
+
+`--remote <name-or-url>` (default `origin`) and `--repo owner/name` exist for testing against a local bare repository. Only publish to `origin` for a real PR.
+
+### Capture
+
+Capturing is plain Playwright, so nothing is restricted. Prerequisites on any machine, CI or agent sandbox:
+
+```bash
+npm ci
+npx playwright install chromium
+```
+
+On Linux the browser also needs system libraries: use `npx playwright install --with-deps chromium` as root, or run `npx playwright install-deps chromium` once in the image or setup script. The browser is cached per user and reused after the first download.
+
+Serve the sample graph:
+
+```bash
+npm run build
+CORUM_GRAPH_PATH=fixtures/sample-graph CORUM_WEB_PORT=3100 npm run web
+```
+
+One-line capture. A device name defaults to that device's own browser (iPhone devices use WebKit), so pass `--browser=chromium` with a Chromium-based device such as `Pixel 5`, or install the other browser:
+
+```bash
+npx playwright screenshot --viewport-size=1280,800 --wait-for-timeout=1000 \
+  "http://localhost:3100/#/dashboard" tmp/screenshots/dashboard-light-after.png
+npx playwright screenshot --browser=chromium --device="Pixel 5" --wait-for-timeout=1000 \
+  "http://localhost:3100/#/dashboard" tmp/screenshots/dashboard-mobile-light-after.png
+```
+
+`--color-scheme=light|dark` sets `prefers-color-scheme`, but the host does not follow it today: the page ships `<html data-theme="light">` and ADR-011 themes are selected by that attribute. To capture another theme, set the attribute from a script.
+
+For one component, a theme, or an open menu, use a small script (`tmp/capture.mjs`, gitignored):
+
+```js
+import { chromium } from '@playwright/test'
+
+const browser = await chromium.launch()
+const context = await browser.newContext({ viewport: { width: 1280, height: 800 } })
+const page = await context.newPage()
+await page.goto('http://localhost:3100/#/dashboard')
+await page.waitForLoadState('networkidle')
+await page.evaluate(() => document.fonts.ready)
+// Select a theme by name (the host reads it from <html data-theme>).
+await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'))
+await page.addStyleTag({ content: '*,*::before,*::after{animation:none!important;transition:none!important}' })
+await page.locator('.dashboard-panel').first().screenshot({ path: 'tmp/screenshots/dashboard-panel-light-after.png' })
+await browser.close()
+```
+
+Run it with `node tmp/capture.mjs`. Use `page.hover()`, `page.click()` or a mobile `devices['Pixel 5']` context from `@playwright/test` for hover, open-menu and mobile states. For stable images, wait for fonts and network idle, disable animations (as above), and if a tiny pixel difference appears between runs, rerun once before treating it as a real change.
+
+For the `before` images, build `origin/main` in a second worktree and serve it on another port:
+
+```bash
+git fetch origin main
+git worktree add --detach tmp/base origin/main
+ln -s "$PWD/node_modules" tmp/base/node_modules
+(cd tmp/base && npx tsc)
+(cd tmp/base && CORUM_GRAPH_PATH=fixtures/sample-graph CORUM_WEB_PORT=3101 node dist/src/web/server.js) &
+# capture the same pages from http://localhost:3101 as <name>-before.png, then stop the server
+git worktree remove --force tmp/base
+```
+
+Remove the worktree even if a step fails.
 
 ## Namespace metadata
 

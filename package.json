@@ -21,7 +21,8 @@
     "mcp:smoke": "npm run build && node scripts/mcp-smoke.mjs",
     "mcp:write-smoke": "npm run build && node scripts/mcp-write-smoke.mjs",
     "web": "node dist/src/web/server.js",
-    "test:web": "npm run build && playwright test"
+    "test:web": "npm run build && playwright test",
+    "screenshots:publish": "node scripts/publish-screenshots.mjs"
   },
   "dependencies": {
     "@apidevtools/swagger-parser": "^12.1.0",
