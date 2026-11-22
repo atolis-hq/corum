@@ -1,4 +1,4 @@
-const { defineConfig } = require('@playwright/test');
+const { defineConfig, devices } = require('@playwright/test');
 
 // Override with CORUM_E2E_PORT if the default port is unavailable (for example
 // lingering TIME_WAIT sockets on Windows after many local runs).
@@ -16,6 +16,19 @@ module.exports = defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
+  projects: [
+    { name: 'chromium', testIgnore: /settings-overlay\.spec/ },
+    {
+      name: 'chromium-pixel5',
+      testMatch: /settings-overlay\.spec/,
+      use: { ...devices['Pixel 5'], viewport: { width: 375, height: 812 } },
+    },
+    {
+      name: 'webkit-iphone',
+      testMatch: /settings-overlay\.spec/,
+      use: { ...devices['iPhone 13'], viewport: { width: 375, height: 812 } },
+    },
+  ],
   webServer: {
     command: 'npm run web',
     env: {

@@ -46,6 +46,20 @@ test('theme choice applies, persists across reload, and outside click keeps sele
   expect(await page.evaluate(() => localStorage.getItem('corum:theme'))).toBe('dark');
 });
 
+test('desktop: an outside click closes the menu and still reaches the clicked element', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/');
+  await trigger(page).click();
+  await expect(page.getByRole('menu')).toBeVisible();
+  const reached = await page.evaluate(() => {
+    const el = document.elementFromPoint(700, 400);
+    return !!el && !el.closest('.settings-backdrop');
+  });
+  expect(reached).toBe(true);
+  await page.mouse.click(700, 400);
+  await expect(page.getByRole('menu')).toHaveCount(0);
+});
+
 test('system follows the OS setting live; unknown stored id falls back to system', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.addInitScript(() => localStorage.setItem('corum:theme', 'solarized'));

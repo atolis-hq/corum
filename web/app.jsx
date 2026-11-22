@@ -131,7 +131,8 @@ function SettingsMenu({ debugMode, onDebugMode }) {
   const wrapRef = React.useRef(null);
   const triggerRef = React.useRef(null);
   const menuId = React.useId();
-  const items = () => [...(wrapRef.current?.querySelectorAll(SETTINGS_ITEM) ?? [])];
+  const menuRef = React.useRef(null);
+  const items = () => [...(menuRef.current?.querySelectorAll(SETTINGS_ITEM) ?? [])];
   const restoreFocus = () => {
     setOpen(false);
     triggerRef.current?.focus();
@@ -145,15 +146,17 @@ function SettingsMenu({ debugMode, onDebugMode }) {
 
   useEffect(() => {
     if (!open) return undefined;
-    const onDown = event => {
-      if (wrapRef.current && !wrapRef.current.contains(event.target)) setOpen(false);
-    };
     const onKey = event => {
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
         restoreFocus();
       }
+    };
+    // Taps on the backdrop close via its own click handler (which restores focus); this catches
+    // pointer events that land elsewhere in the document, e.g. outside the viewport.
+    const onDown = event => {
+      if (!event.target.closest?.('.settings-backdrop') && !wrapRef.current?.contains(event.target)) setOpen(false);
     };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
@@ -211,8 +214,10 @@ function SettingsMenu({ debugMode, onDebugMode }) {
         <Icon name="gear" size={16} />
         <span>Settings</span>
       </button>
-      {open && (
-        <div className="settings-menu" role="menu" id={menuId} aria-labelledby={`${menuId}-trigger`} onKeyDown={onMenuKey}>
+      {open && ReactDOM.createPortal(
+        // Portaled to <body> inside a fixed backdrop so the nav rail's scroll container cannot clip it.
+        <div className="settings-backdrop" data-testid="settings-backdrop" onClick={restoreFocus}>
+        <div className="settings-menu" role="menu" id={menuId} ref={menuRef} aria-labelledby={`${menuId}-trigger`} onKeyDown={onMenuKey} onClick={event => event.stopPropagation()}>
           <div className="settings-menu-label label-xs" role="presentation" id={`${menuId}-theme`}>Theme</div>
           <div role="group" aria-labelledby={`${menuId}-theme`}>
             {themeOptions.map(option => (
@@ -249,6 +254,8 @@ function SettingsMenu({ debugMode, onDebugMode }) {
             Debug mode
           </button>
         </div>
+        </div>,
+        document.body
       )}
     </div>
   );
