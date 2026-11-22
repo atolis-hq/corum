@@ -17,7 +17,7 @@ function ComponentCardNode({ data }) {
 // Level 2/3: node card node
 function NodeCardNode({ data }) {
   return html`
-    <div className=${`graph-node-card node-coloured${data.faded ? ' faded' : ''}${data.focal ? ' focal' : ''}`} style=${templateColourStyle(data.template)} onClick=${data.onClick}>
+    <div className=${`graph-node-card${data.faded ? ' graph-faded' : ''}${data.focal ? ' graph-focal' : ''} node-coloured`} style=${templateColourStyle(data.template)} onClick=${data.onClick}>
       ${data.parentLabel && html`<div className="graph-node-card-owner">${data.parentLabel}</div>`}
       <${Handle} type="target" position=${Position.Left} className="graph-handle-hidden" />
       <div className="graph-node-card-bar" />

@@ -28,11 +28,13 @@ describe('css tokens (ADR-011 section 1)', () => {
     assert.equal(hits.length, 0, `Legacy CSS variable names found; use the ADR-011 semantic names (no aliases):\n${hits.join('\n')}`)
   })
 
-  it('html carries data-theme, dark is scoped by [data-theme], tokens version is 1', () => {
+  it('html carries data-theme, dark is scoped by [data-theme], tokens.css loads before style.css', () => {
     const css = fs.readFileSync(path.join(WEB, 'style.css'), 'utf8')
-    assert.match(fs.readFileSync(path.join(WEB, 'index.html'), 'utf8'), /<html[^>]*\sdata-theme="light"/)
+    const html = fs.readFileSync(path.join(WEB, 'index.html'), 'utf8')
+    assert.match(html, /<html[^>]*\sdata-theme="light"/)
+    assert.ok(html.indexOf('href="tokens.css"') >= 0 && html.indexOf('href="tokens.css"') < html.indexOf('href="style.css"'), 'tokens.css must load before style.css')
     assert.doesNotMatch(css, /body\[data-theme/)
-    assert.match(css, /--corum-tokens-version:\s*2;/)
+    assert.doesNotMatch(css, /--corum-tokens-version/, 'the contract version is generated into tokens.css from tokens.json')
     assert.match(css, /\[data-theme="dark"\]\s*\{[^}]*color-scheme:\s*dark/)
   })
 })

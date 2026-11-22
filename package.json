@@ -16,6 +16,8 @@
   "scripts": {
     "build": "tsc",
     "test": "tsc && node scripts/run-tests.mjs",
+    "tokens": "node scripts/generate-tokens.mjs",
+    "styling:snapshot": "node scripts/update-styling-snapshot.mjs",
     "wireframes": "node design/wireframes/server.mjs",
     "mcp": "node dist/src/mcp/index.js",
     "mcp:smoke": "npm run build && node scripts/mcp-smoke.mjs",

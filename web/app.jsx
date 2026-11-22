@@ -1284,7 +1284,7 @@ function App() {
     let frame;
     const observer = new MutationObserver(focusTarget);
     function focusTarget() {
-      const target = pane?.querySelector(detailOpen ? 'h1' : '.nav-node-item.active');
+      const target = pane?.querySelector(detailOpen ? 'h1' : '.explorer-nav-node-item.active');
       if (!target) return;
       target.tabIndex = detailOpen ? -1 : 0;
       target.focus({ preventScroll: true });

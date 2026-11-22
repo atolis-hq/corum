@@ -1796,7 +1796,7 @@ describe('web server', () => {
     it('explorer: navigation is grouped into one section per kind and non-default kinds open the generic page', () => {
       assert.match(explorer, /groupNamespacesByKind\(nodes \?\? \[\], kindsData\?\.kinds \?\? \[\]\)/)
       assert.match(explorer, /kindSections\.map\(section =>/)
-      assert.match(explorer, /<div className="nav-kind-head">\$\{section\.label\}<\/div>/)
+      assert.match(explorer, /<div className="explorer-nav-kind-head">\$\{section\.label\}<\/div>/)
       assert.match(explorer, /if \(kind !== 'component'\) onNamespace\(component\)/)
       assert.match(explorer, /useApi\('\/api\/kinds'\)/)
     })

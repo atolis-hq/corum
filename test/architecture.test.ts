@@ -386,15 +386,20 @@ describe('architecture: stylesheet tokens', () => {
   // literal rules but are checked for light/dark parity and against the documented list below.
   const cssFiles = walk(WEB, file => file.endsWith('.css') && !file.split(path.sep).includes('vendor'))
 
-  // Plain list of the documented tokens (web/sdk/tokens.json does not exist yet). Adding a token requires updating it.
-  const DOCUMENTED_TOKENS = [
-    '--background', '--card', '--muted', '--foreground', '--secondary-foreground', '--muted-foreground',
-    '--subtle-foreground', '--border', '--border-strong', '--accent', '--accent-soft', '--accent-text',
-    '--success', '--warning', '--ring', '--destructive', '--info',
-    '--on-accent', '--on-solid', '--scrim', '--shadow-sm', '--shadow-md', '--shadow-lg', '--shadow-xl', '--overlay-secondary',
-    '--edge-default', '--kind-1', '--kind-2', '--kind-3', '--kind-4', '--kind-5', '--kind-6', '--kind-7', '--kind-8',
-    '--radius-sm', '--radius', '--radius-lg',
-  ]
+  // The documented tokens are web/sdk/tokens.json (the styling contract). Themes set the `theme`-scoped ones, and may
+  // set `optional` ones; `input` and `derived` tokens are set by the SDK helpers and standard classes, never by a theme.
+  const TOKENS_DOC = JSON.parse(read(path.join(SDK, 'tokens.json')))
+  const flatTokens: { name: string; scope?: string }[] = []
+  const collectTokens = (node: Record<string, any>) => {
+    for (const [key, child] of Object.entries(node)) {
+      if (key.startsWith('$') || typeof child !== 'object' || child === null) continue
+      if ('$value' in child) flatTokens.push({ name: `--${key}`, scope: child.$extensions?.corum?.scope })
+      else collectTokens(child)
+    }
+  }
+  collectTokens(TOKENS_DOC)
+  const THEME_TOKENS = flatTokens.filter(t => !t.scope || t.scope === 'theme').map(t => t.name)
+  const SETTABLE_TOKENS = new Set([...THEME_TOKENS, ...flatTokens.filter(t => t.scope === 'optional').map(t => t.name)])
   const HOST_OWNED = new Set(['--corum-tokens-version'])
 
   const COLOUR_LITERAL = /#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b|\b(?:rgba?|hsla?)\(/
@@ -494,8 +499,9 @@ describe('architecture: stylesheet tokens', () => {
     assert.deepEqual([...dark].filter(t => !light.has(t)), [], 'tokens missing from the light theme')
   })
 
-  it('theme tokens match the documented token list', () => {
-    assert.deepEqual([...light].sort(), [...DOCUMENTED_TOKENS].sort(),
-      'Update DOCUMENTED_TOKENS (and the contract docs) in the same change that adds or removes a token')
+  it('theme tokens match the documented tokens in web/sdk/tokens.json', () => {
+    assert.deepEqual([...light].filter(t => !SETTABLE_TOKENS.has(t)).sort(), [], 'theme blocks set tokens that web/sdk/tokens.json does not document as theme-settable')
+    assert.deepEqual(THEME_TOKENS.filter(t => !light.has(t)).sort(), [], 'documented theme tokens missing from the light theme (run `npm run tokens`)')
+    assert.deepEqual(THEME_TOKENS.filter(t => !dark.has(t)).sort(), [], 'documented theme tokens missing from the dark theme in web/style.css')
   })
 })

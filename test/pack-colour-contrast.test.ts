@@ -12,7 +12,8 @@ import { CORE_EDGE_TYPES } from '../src/loader/constants.js'
 import type { PackColour } from '../src/schema/index.js'
 
 const ROOT = process.cwd()
-const CSS = fs.readFileSync(path.join(ROOT, 'web', 'style.css'), 'utf8')
+// The light theme is generated into tokens.css (from web/sdk/tokens.json); the dark theme and derivations live in style.css.
+const CSS = ['tokens.css', 'style.css'].map(file => fs.readFileSync(path.join(ROOT, 'web', file), 'utf8')).join('\n')
 const PACKS = path.join(ROOT, '.corum', 'packs')
 
 /** Minimum contrast ratios. Text: WCAG 1.4.3 (AA). Borders: WCAG 1.4.11 (non-text contrast). */

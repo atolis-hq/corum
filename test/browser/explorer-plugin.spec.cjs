@@ -4,7 +4,7 @@ test('legacy #/namespaces redirects to the Explorer plugin list', async ({ page 
   await page.goto('/#/namespaces');
   await expect(page).toHaveURL(/#\/p\/explorer\/namespaces$/);
   await expect(page.locator('.nav-rail-item.active')).toHaveText('Explorer');
-  await expect(page.locator('.nav-tree')).toBeVisible();
+  await expect(page.locator('.explorer-nav-tree')).toBeVisible();
 });
 
 test('legacy #/namespace?name=… redirects to the plugin namespace page, keeping the name', async ({ page }) => {
@@ -26,7 +26,7 @@ test('the Explorer namespace page opens nodes in the Explorer view', async ({ pa
   await page.locator('.detail-pane .card', { hasText: 'Owned nodes' }).locator('[role="link"]').first().click();
   await expect.poll(() => page.url()).toContain('view=explorer');
   // The tree stays mounted beside the node page (hidden behind it at phone widths).
-  await expect(page.locator('.nav-tree')).toHaveCount(1);
+  await expect(page.locator('.explorer-nav-tree')).toHaveCount(1);
 });
 
 test.describe('Explorer disabled', () => {
@@ -53,6 +53,6 @@ test.describe('Explorer disabled', () => {
     await expect(page.locator('.nav-rail-item', { hasText: 'Dashboard' })).toBeVisible();
     await page.goto('/#/node?id=orders.DomainModel.order');
     await expect(page.locator('.detail-pane h1')).toBeVisible();
-    await expect(page.locator('.nav-tree')).toHaveCount(0);
+    await expect(page.locator('.explorer-nav-tree')).toHaveCount(0);
   });
 });

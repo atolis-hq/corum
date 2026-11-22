@@ -3,7 +3,9 @@
 Plugins add pages and links from node pages to the [web UI](web-ui.md). A plugin
 is a directory containing a `plugin.yaml` manifest and a browser ES module.
 It can be installed separately or bundled with a [template pack](templates-and-packs.md).
-No build step is required.
+No build step is required. Style a plugin with the documented tokens and standard classes in
+[Styling](styling.md) so it follows every theme; `corum plugin validate` warns about colour literals and visual
+inline styles.
 
 **Trust:** plugins run arbitrary JavaScript with the full privileges of the
 web page. They are not sandboxed. Only install plugins, including plugins
