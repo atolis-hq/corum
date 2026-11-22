@@ -788,13 +788,24 @@ button {
     margin-top: 0;
     margin-left: auto;
     flex: 0 0 72px;
+    position: sticky;
+    right: 0;
+    z-index: 1;
+    background: var(--card);
   }
 
+  /* Bottom sheet: always fully on-screen regardless of rail scroll. */
   .settings-menu {
-    left: auto;
+    left: 8px;
     right: 8px;
-    bottom: auto;
-    top: 68px;
+    bottom: 8px;
+    top: auto;
+    max-height: calc(100dvh - 16px);
+    overflow-y: auto;
+  }
+
+  .settings-menu-item {
+    min-height: 44px;
   }
 
   .nav-tree {

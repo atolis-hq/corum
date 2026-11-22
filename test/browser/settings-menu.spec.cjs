@@ -52,6 +52,29 @@ test('system follows the OS setting live; unknown stored id falls back to system
   await expect(html(page)).toHaveAttribute('data-theme', 'light');
 });
 
+for (const width of [375, 780]) {
+  test(`narrow layout at ${width}px: trigger and menu stay inside the viewport`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 812 });
+    await page.goto('/');
+    const inside = async locator => {
+      const box = await locator.boundingBox();
+      const vp = page.viewportSize();
+      expect(box).not.toBeNull();
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.y).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(vp.width);
+      expect(box.y + box.height).toBeLessThanOrEqual(vp.height);
+    };
+    await inside(trigger(page));
+    await trigger(page).click();
+    await inside(page.getByRole('menu'));
+    for (const item of await page.getByRole('menuitemradio').all()) await inside(item);
+    await inside(page.getByRole('menuitemcheckbox', { name: 'Debug mode' }));
+    await page.getByRole('menuitemradio', { name: 'Dark' }).click();
+    await expect(html(page)).toHaveAttribute('data-theme', 'dark');
+  });
+}
+
 test('debug mode keeps its storage key and value format', async ({ page }) => {
   await page.goto('/');
   await trigger(page).click();
