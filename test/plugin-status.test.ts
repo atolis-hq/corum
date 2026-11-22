@@ -16,7 +16,7 @@ function plugin(id: string, opts: { corum?: string; templates?: string[] } = {})
     engines: { corum: opts.corum ?? '*' },
     requires: { templates: opts.templates ?? [] },
     main: './index.js',
-    contributes: { pages: [], nodeActions: [] },
+    contributes: { pages: [], nodeActions: [], themes: [] },
   }
   return { manifest, dir: `/x/${id}`, origin: 'builtin' }
 }

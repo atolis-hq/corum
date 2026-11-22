@@ -133,7 +133,7 @@ corum plugin validate ./my-plugin      # checks it
 corum web --plugin-dir ./my-plugin     # runs it
 ```
 
-**`corum plugin init <id> [--dir <path>]`** writes `plugin.yaml` and `index.js`
+**`corum plugin init <id> [--dir <path>] [--theme]`** writes `plugin.yaml` and `index.js`
 (one page and one node action, the same as the example below) into `./<id>`,
 or into `--dir`. It refuses an existing non-empty directory and an invalid ID
 (`^[a-z0-9-]+$`), and in both cases writes nothing and exits 1. `engines.corum`
@@ -304,6 +304,7 @@ associated override before deleting the directory.
 | `requires.templates` | No | Exact template names that must exist in the loaded graph; defaults to `[]` |
 | `contributes.pages` | No | Page contributions; defaults to `[]` |
 | `contributes.nodeActions` | No | Node action contributions; defaults to `[]` |
+| `contributes.themes` | No | Theme contributions (see [Themes](#themes)); defaults to `[]` |
 
 For example, a plugin that needs the domain pack can declare:
 
@@ -314,6 +315,57 @@ requires:
 
 Requirements check availability; they do not install packs. A template
 requirement is distinct from the matching rules for `opens` and `appliesTo`.
+
+### Themes
+
+A plugin or pack can contribute themes. They appear in **Settings → Theme** and restyle the whole UI, pack colours
+included, with no host change. Light and dark are delivered this way by the built-in `themes` plugin, which also ships
+`high-contrast`, the worked example below.
+
+```yaml
+contributes:
+  themes:
+    - { id: high-contrast, label: High contrast, colorScheme: light, css: ./high-contrast.css }
+```
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `id` | Yes | `^[a-z0-9-]+$`, unique. `system` is reserved. The theme is applied as `data-theme="<id>"` |
+| `label` | Yes | Name shown in Settings |
+| `colorScheme` | Yes | `light` or `dark`: the browser `color-scheme`, and what **System** matches against `prefers-color-scheme` |
+| `css` | Yes | Relative `.css` path inside the plugin directory |
+
+`high-contrast.css` sets documented tokens in one `:root` block, optionally naming colours with private `--c-*`
+primitives:
+
+```css
+:root {
+  --c-ink: #000000;
+  --c-paper: #ffffff;
+
+  --background: var(--c-paper);
+  --foreground: var(--c-ink);
+  --border: #595959;
+  --border-strong: var(--c-ink);
+  /* ...every other documented token (web/sdk/tokens.json)... */
+}
+```
+
+Rules (details in [styling](styling.md#themes)):
+
+- A theme sets documented tokens only. Any other custom property is reported and ignored; the rest still applies. A
+  selector other than `:root`, an `@import`, `url()` or an escape rejects the file. No JavaScript.
+- The server serves a sanitised copy scoped to `html[data-theme="<id>"]`; the browser never receives your file as written.
+- The first registered theme with an id wins (built-ins, then pack plugins, then standalone and development plugins), so
+  `light` and `dark` cannot be replaced. A duplicate is reported in the server log and, within one plugin, by
+  `corum plugin validate`.
+- **System** picks the first registered theme whose `colorScheme` matches `prefers-color-scheme` (light defaults when none
+  does). A stored choice whose plugin is disabled or removed behaves as **System**; it is not rewritten.
+- A theme from a third-party plugin is in the page before first paint, but the host learns it is registered only after
+  the plugin list loads, so a stored choice that is no longer registered may repaint once.
+
+`corum plugin init <id> --theme` adds a starter `theme.css` (a copy of the light tokens) and the manifest entry;
+`corum plugin validate` rejects an unsafe theme file and warns about undocumented or missing tokens.
 
 ### Pages and node actions
 

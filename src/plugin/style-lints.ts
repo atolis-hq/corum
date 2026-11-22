@@ -55,10 +55,16 @@ function visualInlineStyles(text: string): { index: number; what: string }[] {
   return hits
 }
 
-/** Warnings for colour literals and visual inline styles in the plugin's own sources. */
-export function lintPluginStyles(root: string): string[] {
+/**
+ * Warnings for colour literals and visual inline styles in the plugin's own sources. Theme files
+ * (`contributes.themes[].css`, given as plugin-relative paths in `themeFiles`) are where colour values are defined, so
+ * they are exempt.
+ */
+export function lintPluginStyles(root: string, themeFiles: string[] = []): string[] {
   const warnings: string[] = []
+  const exempt = new Set(themeFiles.map(file => path.resolve(root, ...file.split('/'))))
   for (const file of sourceFiles(root)) {
+    if (exempt.has(path.resolve(file))) continue
     const css = STYLE.test(file)
     const text = withoutComments(readFileSync(file, 'utf8'), css)
     const lineAt = (index: number) => text.slice(0, index).split('\n').length

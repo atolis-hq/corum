@@ -78,6 +78,23 @@ export function generateTokensCss(doc) {
   ].join('\n')
 }
 
+/** The built-in light theme file: the same values as the host defaults, as a theme contribution (no colour-scheme; the server adds it). */
+export const LIGHT_THEME_CSS = path.join('web', 'builtin', 'themes', 'light.css')
+
+export function generateLightThemeCss(doc) {
+  const tokens = readTokens(doc)
+  const byPath = new Map(tokens.map(t => [t.path, t]))
+  const lines = tokens.filter(t => t.scope === 'theme').map(t => `  ${t.name}: ${cssValue(t, byPath)};`)
+  return [
+    '/* Generated from web/sdk/tokens.json by `npm run tokens`. Do not edit; a test fails when it is stale. */',
+    '/* The light theme. The host keeps the same values as defaults, so the UI is styled even when no theme loads. */',
+    ':root {',
+    ...lines,
+    '}',
+    '',
+  ].join('\n')
+}
+
 export function readTokensJson(root = process.cwd()) {
   return JSON.parse(fs.readFileSync(path.join(root, TOKENS_JSON), 'utf8'))
 }

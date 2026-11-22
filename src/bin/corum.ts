@@ -320,9 +320,10 @@ pluginCmd
   .command('init <id>')
   .description('Scaffold a working plugin (plugin.yaml, index.js)')
   .option('--dir <path>', 'Target directory (default: ./<id>)')
+  .option('--theme', 'Also contribute a starter theme (theme.css, a contributes.themes entry)')
   .action((id: string, opts) => {
     const dir = opts.dir ?? id
-    const result = scaffoldPlugin(id, dir, version)
+    const result = scaffoldPlugin(id, dir, version, { theme: opts.theme === true })
     if (!result.ok) {
       for (const error of result.errors) process.stderr.write(`[ERROR] ${error}\n`)
       process.exit(1)

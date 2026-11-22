@@ -458,7 +458,10 @@ describe('architecture: stylesheet tokens', () => {
   }
 
   const allRules = cssFiles.flatMap(parseRules)
-  const isTheme = (rule: Rule) => rule.selector.includes('data-theme')
+  // Theme definitions: `data-theme` selectors (the generated host defaults) and the theme files contributed by the
+  // built-in themes plugin (ADR-011 section 3). Nothing else may carry colour values.
+  const THEME_FILE_DIR = 'web/builtin/themes/'
+  const isTheme = (rule: Rule) => rule.selector.includes('data-theme') || rule.file.startsWith(THEME_FILE_DIR)
   const nonTheme = allRules.filter(rule => !isTheme(rule))
   const decls = nonTheme.flatMap(rule => rule.decls.map(d => ({ ...d, file: rule.file })))
   const fmt = (items: { file: string; line: number; prop: string; value: string }[]) =>
@@ -484,24 +487,33 @@ describe('architecture: stylesheet tokens', () => {
     assert.equal(bad.length, 0, `Use var(--radius-sm|--radius|--radius-lg):\n${fmt(bad)}`)
   })
 
-  const themeTokens = (selectorTest: (selector: string) => boolean) => {
+  // The built-in themes plugin's files, plus the host's generated default (light) block in tokens.css.
+  const themeFiles = cssFiles.filter(file => rel(file).startsWith(THEME_FILE_DIR))
+  const tokensIn = (rules: Rule[]) => {
     const tokens = new Set<string>()
-    for (const rule of allRules.filter(r => isTheme(r) && selectorTest(r.selector))) {
-      for (const d of rule.decls) if (d.prop.startsWith('--') && !HOST_OWNED.has(d.prop)) tokens.add(d.prop)
+    for (const rule of rules) {
+      // `--c-*` are a theme file's private primitives, not tokens.
+      for (const d of rule.decls) if (d.prop.startsWith('--') && !d.prop.startsWith('--c-') && !HOST_OWNED.has(d.prop)) tokens.add(d.prop)
     }
     return tokens
   }
-  const light = themeTokens(s => !s.includes('dark'))
-  const dark = themeTokens(s => s.includes('dark'))
+  const hostDefaults = tokensIn(allRules.filter(r => r.selector.includes('data-theme')))
 
-  it('every token has a value in both light and dark', () => {
-    assert.deepEqual([...light].filter(t => !dark.has(t)), [], 'tokens missing from the dark theme')
-    assert.deepEqual([...dark].filter(t => !light.has(t)), [], 'tokens missing from the light theme')
+  it('the built-in themes plugin ships light, dark and high-contrast', () => {
+    assert.deepEqual(themeFiles.map(file => path.basename(file)).sort(), ['dark.css', 'high-contrast.css', 'light.css'])
   })
 
-  it('theme tokens match the documented tokens in web/sdk/tokens.json', () => {
-    assert.deepEqual([...light].filter(t => !SETTABLE_TOKENS.has(t)).sort(), [], 'theme blocks set tokens that web/sdk/tokens.json does not document as theme-settable')
-    assert.deepEqual(THEME_TOKENS.filter(t => !light.has(t)).sort(), [], 'documented theme tokens missing from the light theme (run `npm run tokens`)')
-    assert.deepEqual(THEME_TOKENS.filter(t => !dark.has(t)).sort(), [], 'documented theme tokens missing from the dark theme in web/style.css')
+  for (const file of themeFiles) {
+    const rules = allRules.filter(r => r.file === rel(file))
+    it(`${path.basename(file)} sets every documented theme token and nothing undocumented`, () => {
+      const tokens = tokensIn(rules)
+      assert.deepEqual([...tokens].filter(t => !SETTABLE_TOKENS.has(t)).sort(), [], 'sets tokens that web/sdk/tokens.json does not document as theme-settable')
+      assert.deepEqual(THEME_TOKENS.filter(t => !tokens.has(t)).sort(), [], 'documented theme tokens missing (run `npm run tokens` for light.css)')
+    })
+  }
+
+  it('host default tokens match the documented tokens in web/sdk/tokens.json', () => {
+    assert.deepEqual([...hostDefaults].filter(t => !SETTABLE_TOKENS.has(t)).sort(), [], 'host defaults set tokens that web/sdk/tokens.json does not document as theme-settable')
+    assert.deepEqual(THEME_TOKENS.filter(t => !hostDefaults.has(t)).sort(), [], 'documented theme tokens missing from the host defaults (run `npm run tokens`)')
   })
 })

@@ -4,6 +4,7 @@ import { BUILTIN_PLUGIN_DIR } from '../web/plugins/builtin-dir.js'
 import { discoverPlugins } from '../web/plugins/discover.js'
 import { parsePluginManifest } from '../web/plugins/manifest.js'
 import { resolvePluginStatuses } from '../web/plugins/status.js'
+import { sanitiseThemeCss } from '../web/plugins/themes.js'
 import { lintPluginStyles } from './style-lints.js'
 
 export type ValidationResult = {
@@ -42,6 +43,16 @@ export function validatePluginDir(dir: string, graphTemplates: Set<string>, coru
   if (!existsSync(path.join(root, ...parsed.manifest.main.split('/')))) {
     warnings.push(`${root}: main "${parsed.manifest.main}" does not exist`)
   }
-  warnings.push(...lintPluginStyles(root))
+  for (const theme of parsed.manifest.contributes.themes) {
+    const file = path.join(root, ...theme.css.split('/'))
+    if (!existsSync(file) || !statSync(file).isFile()) {
+      errors.push(`${root}: theme "${theme.id}": css "${theme.css}" does not exist`)
+      continue
+    }
+    const checked = sanitiseThemeCss(readFileSync(file, 'utf8'))
+    for (const message of checked.errors) errors.push(`${file}: theme "${theme.id}": ${message}`)
+    for (const message of checked.warnings) warnings.push(`${file}: theme "${theme.id}": ${message}`)
+  }
+  warnings.push(...lintPluginStyles(root, parsed.manifest.contributes.themes.map(theme => theme.css)))
   return { exitCode: errors.length > 0 ? 1 : 0, errors, warnings }
 }

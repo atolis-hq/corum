@@ -174,7 +174,7 @@ function SettingsMenu({ debugMode, onDebugMode }) {
     restoreFocus();
   }
 
-  const themeOptions = [{ id: 'system', label: 'System' }, ...theme.THEMES];
+  const themeOptions = [{ id: 'system', label: 'System' }, ...theme.getThemes()];
 
   return (
     <div className="settings" ref={wrapRef}>
@@ -187,7 +187,10 @@ function SettingsMenu({ debugMode, onDebugMode }) {
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         title="Settings"
-        onClick={() => (open ? restoreFocus() : setOpen(true))}
+        onClick={() => {
+          if (open) restoreFocus();
+          else { setChoice(theme.getChoice()); setOpen(true); }
+        }}
         onKeyDown={event => {
           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
             event.preventDefault();

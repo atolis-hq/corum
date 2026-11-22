@@ -1,0 +1,41 @@
+/* Generated from web/sdk/tokens.json by `npm run tokens`. Do not edit; a test fails when it is stale. */
+/* The light theme. The host keeps the same values as defaults, so the UI is styled even when no theme loads. */
+:root {
+  --background: #ffffff;
+  --card: #f7f7f8;
+  --muted: #eeeef1;
+  --foreground: #141519;
+  --secondary-foreground: #3a3c43;
+  --muted-foreground: #6c6f78;
+  --subtle-foreground: #a8acb5;
+  --border: #e4e6ea;
+  --border-strong: #cdd0d6;
+  --accent: #e8614a;
+  --accent-soft: #fde6e0;
+  --accent-text: #b3422e;
+  --success: #3b9a66;
+  --warning: var(--accent);
+  --ring: var(--accent);
+  --destructive: #cc4444;
+  --info: #3b6fb3;
+  --on-accent: #ffffff;
+  --on-solid: #ffffff;
+  --scrim: rgba(0, 0, 0, 0.4);
+  --overlay-secondary: #5c7aa8;
+  --edge-default: #6c6f78;
+  --kind-1: #2f6fb0;
+  --kind-2: #b0562f;
+  --kind-3: #4a8a3c;
+  --kind-4: #8a3c7a;
+  --kind-5: #b08a2f;
+  --kind-6: #2f8a8a;
+  --kind-7: #7a3c3c;
+  --kind-8: #5a5ab0;
+  --shadow-sm: 0 1px 4px 0 rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 2px 8px 0 rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 4px 16px 0 rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 8px 40px 0 rgba(0, 0, 0, 0.25), 0 2px 8px 0 rgba(0, 0, 0, 0.1);
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 10px;
+}
