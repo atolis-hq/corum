@@ -358,6 +358,20 @@ describe('graph queries', () => {
       assert.ok(!result.nodes.some(n => n.id.includes('.fields.')))
     })
 
+    it('default edge types never pull in fields from a root start (downstream and both)', () => {
+      for (const direction of ['downstream', 'both'] as const) {
+        const result = getLineage(graph, ['orders.APIEndpoint.complete-order'], { direction, depth: 3 })
+        assert.ok(!result.nodes.some(n => n.id.includes('.fields.')), `${direction}: no field nodes`)
+        assert.ok(!result.edges.some(e => e.type === 'maps-to'), `${direction}: no maps-to edges`)
+      }
+    })
+
+    it('resolves a maps-to endpoint that references a retired field ID to the live field', () => {
+      const renamed = createRenamedLinkedFieldsGraph()
+      const result = getLineage(renamed, ['api.Schema.request.fields.email'], { edgeTypes: ['maps-to'], depth: 1 })
+      assert.ok(result.nodes.some(n => n.id === 'orders.Schema.order.fields.email'))
+    })
+
     it('terminates on a maps-to cycle', () => {
       const back = createEdge(`${toField}__maps-to__${fromField}`, toField, fromField)
       back.type = 'maps-to'

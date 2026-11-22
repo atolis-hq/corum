@@ -644,12 +644,16 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
       : getStructuralNodeTemplates(graph)
 
   const usingDefaultExclusion = !useAllowlist && !options.excludeNodeTypes?.length
+  // Field-level lineage is opt-in: the caller must list maps-to explicitly
+  // (to seed a root's fields) or start directly at a field. Default edge
+  // types never pull fields in.
+  const mapsToExplicit = options.edgeTypes?.includes('maps-to') ?? false
 
   function isIncluded(node: Node, viaEdgeType?: string): boolean {
     if (allowedTemplates) return allowedTemplates.has(node.template)
     // maps-to endpoints are fields, which are structural by role; include them
     // under the default exclusion so field-level lineage is reachable.
-    if (usingDefaultExclusion && viaEdgeType === 'maps-to' && templateHasRole(graph.templates, node.template, 'field')) return true
+    if (usingDefaultExclusion && viaEdgeType === 'maps-to' && (mapsToExplicit || startsAtField) && templateHasRole(graph.templates, node.template, 'field')) return true
     if (excludedTemplates) return !excludedTemplates.has(node.template)
     return true
   }
@@ -692,11 +696,13 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
 
   const validStartIds = [...new Set(startNodeIds.map(resolveLive))].filter(id => graph.nodesById.has(id))
   const startSet = new Set(validStartIds)
+  const startsAtField = validStartIds.some(id =>
+    templateHasRole(graph.templates, (graph.nodesById.get(id) as Node).template, 'field'))
 
   // When maps-to is traversed, a non-field start also seeds its owned fields
   // (roots reach fields only via structural has-field, which lineage skips).
   const seedFields: Array<{ id: string; originId: string }> = []
-  if (edgeTypeSet.has('maps-to')) {
+  if (mapsToExplicit) {
     for (const startId of validStartIds) {
       const startNode = graph.nodesById.get(startId)
       if (!startNode || templateHasRole(graph.templates, startNode.template, 'field')) continue
