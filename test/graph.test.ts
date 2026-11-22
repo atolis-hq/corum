@@ -319,6 +319,56 @@ describe('graph queries', () => {
     })
   })
 
+  describe('field-level lineage and field filter', () => {
+    const fromField = 'orders.APIEndpoint.complete-order.schemas.order-response.fields.createdAt'
+    const toField = 'orders.ReadModel.order-detail.schemas.order-detail.fields.createdAt'
+
+    it('getLinkedFields field filter narrows by name and full ID; unknown is empty', () => {
+      const all = getLinkedFields(graph, 'orders.ReadModel.order-detail')
+      const byName = getLinkedFields(graph, 'orders.ReadModel.order-detail', { field: 'createdAt' })
+      assert.ok(byName.edges.length > 0 && byName.edges.length < all.edges.length)
+      assert.ok(byName.edges.some(e => e.to === toField))
+      const byId = getLinkedFields(graph, 'orders.ReadModel.order-detail', { field: toField })
+      assert.deepEqual(byId.edges.map(e => e.id), byName.edges.map(e => e.id))
+      assert.deepEqual(getLinkedFields(graph, 'orders.ReadModel.order-detail', { field: 'noSuchField' }).edges, [])
+    })
+
+    it('field-start maps-to traversal returns field nodes and edges', () => {
+      const result = getLineage(graph, [fromField], { edgeTypes: ['maps-to'], depth: 1 })
+      assert.ok(result.nodes.some(n => n.id === toField && n.depth === 1 && n.via_edge_type === 'maps-to'))
+      assert.ok(result.edges.some(e => e.from === fromField && e.to === toField))
+    })
+
+    it('upstream field-start traversal works', () => {
+      const result = getLineage(graph, [toField], { edgeTypes: ['maps-to'], direction: 'upstream', depth: 1 })
+      assert.ok(result.nodes.some(n => n.id === fromField))
+    })
+
+    it('root-start with maps-to reaches the fields getLinkedFields links', () => {
+      const root = 'orders.APIEndpoint.complete-order'
+      const lineage = getLineage(graph, [root], { edgeTypes: ['maps-to'], depth: 1 })
+      const linked = getLinkedFields(graph, root)
+      const downstreamIds = new Set(linked.edges.filter(e => e.from.startsWith(root + '.')).map(e => e.to))
+      assert.ok(downstreamIds.size > 0)
+      for (const id of downstreamIds) assert.ok(lineage.nodes.some(n => n.id === id), id)
+    })
+
+    it('without maps-to a root start is unchanged (no field nodes)', () => {
+      const result = getLineage(graph, ['orders.APIEndpoint.complete-order'], { edgeTypes: ['calls'], depth: 1 })
+      assert.ok(!result.nodes.some(n => n.id.includes('.fields.')))
+    })
+
+    it('terminates on a maps-to cycle', () => {
+      const back = createEdge(`${toField}__maps-to__${fromField}`, toField, fromField)
+      back.type = 'maps-to'
+      const g: Graph = { ...graph, edgesByFrom: new Map(graph.edgesByFrom), edgesByTo: new Map(graph.edgesByTo) }
+      g.edgesByFrom.set(toField, [...(g.edgesByFrom.get(toField) ?? []), back])
+      g.edgesByTo.set(fromField, [...(g.edgesByTo.get(fromField) ?? []), back])
+      const result = getLineage(g, [fromField], { edgeTypes: ['maps-to'], depth: 6 })
+      assert.ok(result.nodes.some(n => n.id === toField))
+    })
+  })
+
   describe('getGraphSummary', () => {
     it('returns correct node and component counts', () => {
       const summary = getGraphSummary(graph)

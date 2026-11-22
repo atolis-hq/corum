@@ -331,17 +331,25 @@ export function expandExternalNodes(graph: Graph, externalIds: Iterable<string>)
     .filter((node): node is Node => node !== undefined)
 }
 
-export function getLinkedFields(graph: Graph, nodeId: string): LinkedFieldsResult {
+export function getLinkedFields(graph: Graph, nodeId: string, options: { field?: string } = {}): LinkedFieldsResult {
   const resolveLive = createAliasResolver(graph)
   const rootId = resolveLive(nodeId)
   const root = graph.nodesById.get(rootId)
   if (!root) throw new QueryError(`Node not found: ${nodeId}`)
 
-  const ownedFieldIds = new Set(
+  let ownedFieldIds = new Set(
     [...graph.nodesById.entries()]
       .filter(([id, node]) => isOwnedDescendant(graph, id, rootId) && templateHasRole(graph.templates, node.template, 'field'))
       .map(([id]) => id),
   )
+
+  // Optional field filter: exact owned field name (last ID segment) or a full
+  // field node ID (alias-resolved). Unknown fields match nothing.
+  if (options.field) {
+    const wanted = options.field
+    const wantedLive = resolveLive(wanted)
+    ownedFieldIds = new Set([...ownedFieldIds].filter(id => id === wantedLive || id.split('.').pop() === wanted))
+  }
 
   const edges: Edge[] = []
   const nodeIds = new Set<string>()
@@ -635,8 +643,13 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
       ? new Set(options.excludeNodeTypes)
       : getStructuralNodeTemplates(graph)
 
-  function isIncluded(node: Node): boolean {
+  const usingDefaultExclusion = !useAllowlist && !options.excludeNodeTypes?.length
+
+  function isIncluded(node: Node, viaEdgeType?: string): boolean {
     if (allowedTemplates) return allowedTemplates.has(node.template)
+    // maps-to endpoints are fields, which are structural by role; include them
+    // under the default exclusion so field-level lineage is reachable.
+    if (usingDefaultExclusion && viaEdgeType === 'maps-to' && templateHasRole(graph.templates, node.template, 'field')) return true
     if (excludedTemplates) return !excludedTemplates.has(node.template)
     return true
   }
@@ -680,9 +693,29 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
   const validStartIds = [...new Set(startNodeIds.map(resolveLive))].filter(id => graph.nodesById.has(id))
   const startSet = new Set(validStartIds)
 
+  // When maps-to is traversed, a non-field start also seeds its owned fields
+  // (roots reach fields only via structural has-field, which lineage skips).
+  const seedFields: Array<{ id: string; originId: string }> = []
+  if (edgeTypeSet.has('maps-to')) {
+    for (const startId of validStartIds) {
+      const startNode = graph.nodesById.get(startId)
+      if (!startNode || templateHasRole(graph.templates, startNode.template, 'field')) continue
+      for (const [id, node] of graph.nodesById) {
+        if (!startSet.has(id) && isOwnedDescendant(graph, id, startId) && templateHasRole(graph.templates, node.template, 'field')) {
+          seedFields.push({ id, originId: startId })
+        }
+      }
+    }
+  }
+  const seedFieldIds = new Set(seedFields.map(f => f.id))
+  const initialQueue = (): Array<{ id: string; originId: string; distance: number }> => [
+    ...validStartIds.map(id => ({ id, originId: id, distance: 0 })),
+    ...seedFields.map(f => ({ id: f.id, originId: f.originId, distance: 0 })),
+  ]
+
   function runDownstream(): void {
-    const visited = new Set<string>(startSet)
-    const queue = validStartIds.map(id => ({ id, originId: id, distance: 0 }))
+    const visited = new Set<string>([...startSet, ...seedFieldIds])
+    const queue = initialQueue()
 
     while (queue.length > 0) {
       const current = queue.shift()
@@ -693,7 +726,7 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
         if (!isLiveEdge(edge) || !edgeTypeSet.has(edge.type)) continue
         const toId = resolveLive(edge.to)
         const node = graph.nodesById.get(toId)
-        if (!node || !isIncluded(node)) continue
+        if (!node || !isIncluded(node, edge.type)) continue
         if (visited.has(toId)) {
           originSets.get(toId)?.add(current.originId)
           continue
@@ -706,8 +739,8 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
   }
 
   function runUpstream(): void {
-    const visited = new Set<string>(startSet)
-    const queue = validStartIds.map(id => ({ id, originId: id, distance: 0 }))
+    const visited = new Set<string>([...startSet, ...seedFieldIds])
+    const queue = initialQueue()
 
     while (queue.length > 0) {
       const current = queue.shift()
@@ -718,7 +751,7 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
         if (!isLiveEdge(edge) || !inboundTypeSet.has(edge.type)) continue
         const fromId = resolveLive(edge.from)
         const node = graph.nodesById.get(fromId)
-        if (!node || !isIncluded(node)) continue
+        if (!node || !isIncluded(node, edge.type)) continue
         if (visited.has(fromId)) {
           originSets.get(fromId)?.add(current.originId)
           continue
@@ -747,7 +780,7 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
   if (direction === 'upstream' || direction === 'both') runUpstream()
 
   const resultNodeIds = new Set(annotations.keys())
-  const combinedSet = new Set([...startSet, ...resultNodeIds])
+  const combinedSet = new Set([...startSet, ...seedFieldIds, ...resultNodeIds])
   const edges: Edge[] = []
   const seenEdgeIds = new Set<string>()
   const nodesWithEdges = new Set<string>()
