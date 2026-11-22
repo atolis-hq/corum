@@ -724,7 +724,9 @@ button {
     flex-direction: row;
     width: 100%;
     min-width: 0;
-    min-height: 64px;
+    padding: 4px 8px;
+    gap: 4px;
+    align-items: stretch;
     border-right: none;
     border-bottom: 1px solid var(--border-strong);
     overflow-x: auto;
@@ -737,6 +739,9 @@ button {
   .nav-rail-item {
     flex: 0 0 72px;
     width: 72px;
+    min-height: 44px;
+    gap: 2px;
+    padding: 4px;
   }
 
   .settings {
@@ -747,6 +752,11 @@ button {
     right: 0;
     z-index: 1;
     background: var(--card);
+  }
+
+  /* Settings trigger fills the stretched wrapper so it matches its siblings. */
+  .settings > .settings-trigger {
+    flex: 1 1 auto;
   }
 
   /* Bottom sheet: always fully on-screen regardless of rail scroll. */
