@@ -118,6 +118,130 @@ function pluginSectionId(page) {
   return `plugin:${page.pluginId}/${page.id}`;
 }
 
+const SETTINGS_ITEM = '[role="menuitemradio"], [role="menuitemcheckbox"], [role="menuitem"]';
+
+function SettingsMenu({ debugMode, onDebugMode }) {
+  const theme = window.CorumHost.theme;
+  const [open, setOpen] = useState(false);
+  const [choice, setChoice] = useState(() => theme.getChoice());
+  const wrapRef = React.useRef(null);
+  const triggerRef = React.useRef(null);
+  const menuId = React.useId();
+  const items = () => [...(wrapRef.current?.querySelectorAll(SETTINGS_ITEM) ?? [])];
+  const restoreFocus = () => {
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
+
+  React.useLayoutEffect(() => {
+    if (!open) return;
+    const entries = items();
+    (entries.find(el => el.getAttribute('aria-checked') === 'true') ?? entries[0])?.focus();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = event => {
+      if (wrapRef.current && !wrapRef.current.contains(event.target)) setOpen(false);
+    };
+    const onKey = event => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        restoreFocus();
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  function onMenuKey(event) {
+    const entries = items();
+    const index = entries.indexOf(document.activeElement);
+    let next;
+    if (event.key === 'ArrowDown') next = (index + 1) % entries.length;
+    else if (event.key === 'ArrowUp') next = (index - 1 + entries.length) % entries.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = entries.length - 1;
+    else if (event.key === 'Tab') {
+      restoreFocus();
+      return;
+    } else return;
+    event.preventDefault();
+    entries[next]?.focus();
+  }
+
+  function pickTheme(id) {
+    setChoice(theme.setChoice(id));
+    restoreFocus();
+  }
+
+  const themeOptions = [{ id: 'system', label: 'System' }, ...theme.THEMES];
+
+  return (
+    <div className="settings" ref={wrapRef}>
+      <button
+        type="button"
+        className={`nav-rail-item settings-trigger${open ? ' active' : ''}`}
+        ref={triggerRef}
+        id={`${menuId}-trigger`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        title="Settings"
+        onClick={() => (open ? restoreFocus() : setOpen(true))}
+        onKeyDown={event => {
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+      >
+        <Icon name="gear" size={16} />
+        <span>Settings</span>
+      </button>
+      {open && (
+        <div className="settings-menu" role="menu" id={menuId} aria-labelledby={`${menuId}-trigger`} onKeyDown={onMenuKey}>
+          <div className="settings-menu-label label-xs" role="presentation" id={`${menuId}-theme`}>Theme</div>
+          <div role="group" aria-labelledby={`${menuId}-theme`}>
+            {themeOptions.map(option => (
+              <button
+                key={option.id}
+                type="button"
+                className="settings-menu-item"
+                role="menuitemradio"
+                aria-checked={choice === option.id}
+                tabIndex={-1}
+                onClick={() => pickTheme(option.id)}
+              >
+                <span className="settings-menu-mark" aria-hidden="true" />
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <div className="settings-menu-sep" role="separator" />
+          <button
+            type="button"
+            className="settings-menu-item"
+            role="menuitemcheckbox"
+            aria-checked={debugMode}
+            tabIndex={-1}
+            title="Show fully qualified names"
+            onClick={onDebugMode}
+          >
+            <span className="settings-menu-switch" aria-hidden="true" />
+            Debug mode
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NavRail({ activeSection, onSection, pluginPages = [], debugMode, onDebugMode }) {
   const items = [
     { id: 'dashboard', icon: 'grip', label: 'Dashboard' },
@@ -143,19 +267,7 @@ function NavRail({ activeSection, onSection, pluginPages = [], debugMode, onDebu
           <span>{item.label}</span>
         </button>
       ))}
-      <button
-        className="nav-rail-item"
-        onClick={onDebugMode}
-        title="Debug mode: show fully qualified names"
-        type="button"
-        style={{
-          marginTop: 'auto',
-          ...(debugMode ? { background: 'var(--muted)', color: 'var(--foreground)', borderColor: 'var(--border-strong)' } : {}),
-        }}
-      >
-        <Icon name="code" size={16} />
-        <span>Debug</span>
-      </button>
+      <SettingsMenu debugMode={debugMode} onDebugMode={onDebugMode} />
     </div>
   );
 }

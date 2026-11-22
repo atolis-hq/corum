@@ -3,6 +3,7 @@ import * as sdk from 'corum:ui'
 import * as sdkReact from 'corum:ui/react'
 import { loadPlugins, pluginsChanged } from './plugin-loader.js'
 import { createPluginContext } from './context.js'
+import * as theme from './theme.js'
 
 const registry = sdk.createRegistry()
 
@@ -46,5 +47,7 @@ function createContext(identity, state, onError) {
   }, state, onError)
 }
 
-const host = { sdk, sdkReact, registry, ready, createContext, pluginsChangedOnServer, pluginsFailed: false }
+theme.watchSystem()
+
+const host = { sdk, sdkReact, registry, theme, ready, createContext, pluginsChangedOnServer, pluginsFailed: false }
 window.CorumHost = host
