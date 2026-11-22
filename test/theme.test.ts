@@ -8,6 +8,16 @@ import { pathToFileURL } from 'node:url'
 const WEB = path.join(process.cwd(), 'web')
 const theme = await import(pathToFileURL(path.join(WEB, 'host', 'theme.js')).href)
 
+// The registry the host builds from /api/plugins: here the built-in light and dark themes.
+theme.registerThemes([{
+  id: 'themes',
+  status: 'enabled',
+  manifest: { contributes: { themes: [
+    { id: 'light', label: 'Light', colorScheme: 'light' },
+    { id: 'dark', label: 'Dark', colorScheme: 'dark' },
+  ] } },
+}])
+
 function fakeWindow(stored: unknown, dark: boolean, opts: { throwStorage?: boolean } = {}) {
   const attrs: Record<string, string> = {}
   const listeners: Array<() => void> = []
@@ -29,7 +39,7 @@ function fakeWindow(stored: unknown, dark: boolean, opts: { throwStorage?: boole
 }
 
 describe('theme module (ADR-011 section 8)', () => {
-  it('honours stored light and dark; everything else is system', () => {
+  it('honours a stored registered theme; everything else is system', () => {
     for (const value of ['light', 'dark']) assert.equal(theme.readChoice(fakeWindow(value, false).win.localStorage), value)
     for (const value of [undefined, '', 'system', 'solarized', '{"a":1}']) {
       assert.equal(theme.readChoice(fakeWindow(value, false).win.localStorage), 'system', String(value))
@@ -74,7 +84,7 @@ describe('theme module (ADR-011 section 8)', () => {
     assert.equal(f.attrs['data-theme'], 'dark')
   })
 
-  it('inline first-paint script agrees with the module', () => {
+  it('inline first-paint script agrees with the module (an unregistered stored id is applied until the registry loads)', () => {
     const html = fs.readFileSync(path.join(WEB, 'index.html'), 'utf8')
     const match = html.match(/<script id="theme-boot">([\s\S]*?)<\/script>/)
     assert.ok(match, 'inline theme-boot script present before first paint')
@@ -88,7 +98,10 @@ describe('theme module (ADR-011 section 8)', () => {
             matchMedia: f.win.matchMedia,
             document: f.win.document,
           })
-          const expected = theme.resolveTheme(theme.getChoice(f.win), dark)
+          // The registry is unknown at first paint: a stored id (a plugin theme, say) is applied as is; host/boot.js
+          // corrects it after the plugin list loads.
+          const keepsId = !throwStorage && stored !== undefined && stored !== 'system'
+          const expected = keepsId ? stored : theme.resolveTheme(theme.getChoice(f.win), dark)
           assert.equal(f.attrs['data-theme'], expected, `stored=${stored} dark=${dark} throw=${throwStorage}`)
         }
       }

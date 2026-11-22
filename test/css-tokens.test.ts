@@ -35,6 +35,7 @@ describe('css tokens (ADR-011 section 1)', () => {
     assert.ok(html.indexOf('href="tokens.css"') >= 0 && html.indexOf('href="tokens.css"') < html.indexOf('href="style.css"'), 'tokens.css must load before style.css')
     assert.doesNotMatch(css, /body\[data-theme/)
     assert.doesNotMatch(css, /--corum-tokens-version/, 'the contract version is generated into tokens.css from tokens.json')
-    assert.match(css, /\[data-theme="dark"\]\s*\{[^}]*color-scheme:\s*dark/)
+    assert.doesNotMatch(css, /\[data-theme=/, 'themes are contributed by plugins (web/builtin/themes), not defined in style.css')
+    assert.ok(html.indexOf('href="/api/themes.css"') > html.indexOf('href="style.css"'), 'the plugin themes stylesheet loads in the head, after the host styles')
   })
 })

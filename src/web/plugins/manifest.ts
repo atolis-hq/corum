@@ -31,6 +31,21 @@ export type PluginNodeAction = {
   quick?: QuickSurface[]
 }
 
+export const THEME_COLOR_SCHEMES = ['light', 'dark'] as const
+export type ThemeColorScheme = (typeof THEME_COLOR_SCHEMES)[number]
+
+/** A theme contributed by a plugin (ADR-011 section 3): a CSS file of documented token values for one colour scheme. */
+export type PluginTheme = {
+  id: string
+  label: string
+  colorScheme: ThemeColorScheme
+  /** Plugin-relative path of the CSS file. */
+  css: string
+}
+
+/** Reserved: the Settings choice that follows prefers-color-scheme. */
+export const SYSTEM_THEME_ID = 'system'
+
 export const QUICK_SURFACES = ['header', 'relations'] as const
 export type QuickSurface = (typeof QUICK_SURFACES)[number]
 
@@ -40,7 +55,7 @@ export type PluginManifest = {
   engines: { corum: string }
   requires: { templates: string[] }
   main: string
-  contributes: { pages: PluginPage[]; nodeActions: PluginNodeAction[] }
+  contributes: { pages: PluginPage[]; nodeActions: PluginNodeAction[]; themes: PluginTheme[] }
 }
 
 const PLUGIN_ID = /^[a-z0-9-]+$/
@@ -198,6 +213,36 @@ export function parsePluginManifest(yamlText: string): { manifest: PluginManifes
     })
   }
 
+  const themes: PluginTheme[] = []
+  const rawThemes = contributesRec.themes ?? []
+  if (!Array.isArray(rawThemes)) {
+    errors.push('contributes.themes must be a list')
+  } else {
+    const seen = new Set<string>()
+    rawThemes.forEach((raw, index) => {
+      const label = `contributes.themes[${index}]`
+      if (!isRecord(raw)) {
+        errors.push(`${label} must be a mapping`)
+        return
+      }
+      let ok = true
+      const fail = (message: string) => { errors.push(message); ok = false }
+      if (!isNonEmptyString(raw.id)) fail(`${label}.id is required`)
+      else if (!PLUGIN_ID.test(raw.id)) fail(`${label}.id "${raw.id}" must match ^[a-z0-9-]+$`)
+      else if (raw.id === SYSTEM_THEME_ID) fail(`${label}.id "${SYSTEM_THEME_ID}" is reserved for the Settings choice that follows the operating system`)
+      else if (seen.has(raw.id)) fail(`${label}.id "${raw.id}" is duplicated`)
+      else seen.add(raw.id)
+      if (!isNonEmptyString(raw.label)) fail(`${label}.label is required`)
+      if (!THEME_COLOR_SCHEMES.includes(raw.colorScheme as ThemeColorScheme)) fail(`${label}.colorScheme must be one of ${THEME_COLOR_SCHEMES.join(', ')}`)
+      if (!isNonEmptyString(raw.css)) fail(`${label}.css is required`)
+      else if (!isSafeRelativePath(raw.css)) fail(`${label}.css "${raw.css}" must be a relative path inside the plugin directory`)
+      else if (!/\.css$/.test(raw.css)) fail(`${label}.css "${raw.css}" must be a .css file`)
+      if (ok) {
+        themes.push({ id: raw.id as string, label: (raw.label as string).trim(), colorScheme: raw.colorScheme as ThemeColorScheme, css: raw.css as string })
+      }
+    })
+  }
+
   if (errors.length > 0) return { manifest: null, errors }
   return {
     manifest: {
@@ -206,7 +251,7 @@ export function parsePluginManifest(yamlText: string): { manifest: PluginManifes
       engines: { corum: corumRange as string },
       requires: { templates },
       main: main as string,
-      contributes: { pages, nodeActions },
+      contributes: { pages, nodeActions, themes },
     },
     errors: [],
   }

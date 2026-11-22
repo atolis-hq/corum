@@ -1,0 +1,40 @@
+/* The dark theme. Documented tokens only (web/sdk/tokens.json); the server scopes this to html[data-theme="dark"]. */
+:root {
+  --background: #15171c;
+  --card: #1c1f25;
+  --muted: #262a33;
+  --foreground: #f2f3f5;
+  --secondary-foreground: #d4d6dc;
+  --muted-foreground: #9498a2;
+  --subtle-foreground: #5f636d;
+  --border: #2c2f38;
+  --border-strong: #3d414c;
+  --accent: #f27561;
+  --accent-soft: #3a221c;
+  --accent-text: #ffa796;
+  --success: #5bbd85;
+  --warning: var(--accent);
+  --ring: var(--accent);
+  --destructive: #e87070;
+  --info: #7aa7e0;
+  --on-accent: #15171c;
+  --on-solid: #ffffff;
+  --scrim: rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 8px 40px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.1);
+  --overlay-secondary: #8fb0dc;
+  --edge-default: #9498a2;
+  --kind-1: #6fa3dc;
+  --kind-2: #d98a5f;
+  --kind-3: #7fc16e;
+  --kind-4: #c37ab5;
+  --kind-5: #d6b45e;
+  --kind-6: #62c2c2;
+  --kind-7: #c97f7f;
+  --kind-8: #9a9ae0;
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 10px;
+}

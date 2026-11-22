@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { BUILTIN_PLUGIN_DIR } from '../web/plugins/builtin-dir.js'
 import { discoverPlugins } from '../web/plugins/discover.js'
@@ -13,7 +13,24 @@ export function enginesRangeFor(corumVersion: string): string {
   return `>=${match[1]}.${match[2]}.0 <${match[1]}.${Number(match[2]) + 1}.0`
 }
 
-export function manifestTemplate(id: string, corumVersion: string): string {
+export const THEME_FILE = 'theme.css'
+
+/** A starting theme: a copy of the built-in light theme's documented tokens, with authoring notes. */
+export function themeTemplate(): string {
+  const light = readFileSync(path.join(BUILTIN_PLUGIN_DIR, 'themes', 'light.css'), 'utf8')
+  const values = light.slice(light.indexOf(':root'))
+  return `/* A Corum theme. Set documented tokens only (docs/styling.md): anything else is reported by \`corum plugin validate\`
+   and ignored. Keep text on --background and --card at 4.5:1 or better. Corum scopes this file to
+   html[data-theme="<id>"]; no selectors, @import or url() are allowed. Private primitives (--c-*) are fine. */
+${values}`
+}
+
+export function manifestTemplate(id: string, corumVersion: string, theme = false): string {
+  const themes = theme
+    ? `  themes:
+    - { id: ${JSON.stringify(id)}, label: ${JSON.stringify(id)}, colorScheme: light, css: ./${THEME_FILE} }
+`
+    : ''
   return `id: ${JSON.stringify(id)}
 version: "0.1.0"
 engines:
@@ -31,7 +48,7 @@ contributes:
       label: ${JSON.stringify(`Open ${id}`)}
       appliesTo: ["*"]
       page: home
-`
+${themes}`
 }
 
 export function entryTemplate(id: string): string {
@@ -82,8 +99,8 @@ export function entryTemplate(id: string): string {
 }
 
 /** Write a working plugin into `dir`. Writes nothing when the id is invalid or the directory is not empty. */
-export function scaffoldPlugin(id: string, dir: string, corumVersion: string): ScaffoldResult {
-  const manifest = manifestTemplate(id, corumVersion)
+export function scaffoldPlugin(id: string, dir: string, corumVersion: string, options: { theme?: boolean } = {}): ScaffoldResult {
+  const manifest = manifestTemplate(id, corumVersion, options.theme === true)
   const { errors } = parsePluginManifest(manifest)
   if (errors.length > 0 || !/^[a-z0-9-]+$/.test(id)) {
     return { ok: false, errors: errors.length > 0 ? errors : [`id "${id}" must match ^[a-z0-9-]+$`] }
@@ -101,5 +118,10 @@ export function scaffoldPlugin(id: string, dir: string, corumVersion: string): S
   mkdirSync(target, { recursive: true })
   writeFileSync(path.join(target, 'plugin.yaml'), manifest, { flag: 'wx' })
   writeFileSync(path.join(target, 'index.js'), entryTemplate(id), { flag: 'wx' })
-  return { ok: true, dir: target, files: ['plugin.yaml', 'index.js'] }
+  const files = ['plugin.yaml', 'index.js']
+  if (options.theme === true) {
+    writeFileSync(path.join(target, THEME_FILE), themeTemplate(), { flag: 'wx' })
+    files.push(THEME_FILE)
+  }
+  return { ok: true, dir: target, files }
 }

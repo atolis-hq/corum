@@ -19,11 +19,13 @@
     }
   </script>
   <script id="theme-boot">
-    /* First paint: keep in agreement with resolveTheme/readChoice in host/theme.js (test/theme.test.ts). */
+    /* First paint: keep in agreement with resolveTheme/readChoice in host/theme.js (test/theme.test.ts). The registry is
+       not known yet, so a stored theme id is applied as is (its CSS is already in the page: /api/themes.css below) and
+       host/boot.js corrects it once the plugin list is in (a theme of a disabled plugin falls back to System). */
     (function () {
       var t = 'system';
       try { t = localStorage.getItem('corum:theme'); } catch (e) {}
-      if (t !== 'light' && t !== 'dark') {
+      if (typeof t !== 'string' || t === 'system' || !/^[a-z0-9-]+$/.test(t)) {
         t = 'light';
         try { if (matchMedia('(prefers-color-scheme: dark)').matches) t = 'dark'; } catch (e) {}
       }
@@ -35,6 +37,7 @@
   <link rel="stylesheet" href="/vendor/fonts.css" />
   <link rel="stylesheet" href="tokens.css" />
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="/api/themes.css" />
   <link rel="stylesheet" href="/vendor/fontawesome.css" />
   <link rel="stylesheet" href="/vendor/solid.css" />
   <link rel="stylesheet" href="/vendor/reactflow.css" />

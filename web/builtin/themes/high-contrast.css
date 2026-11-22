@@ -1,0 +1,47 @@
+/* High contrast (light): the worked example for theme authors (docs/plugins.md). Documented tokens only; the server
+   scopes this to html[data-theme="high-contrast"]. Primitives (--c-*) are private to this file. */
+:root {
+  --c-ink: #000000;
+  --c-paper: #ffffff;
+  --c-blue: #00418a;
+  --c-red: #a30000;
+  --c-green: #005a1e;
+
+  --background: var(--c-paper);
+  --card: #f2f2f2;
+  --muted: #e4e4e4;
+  --foreground: var(--c-ink);
+  --secondary-foreground: #1a1a1a;
+  --muted-foreground: #333333;
+  --subtle-foreground: #595959;
+  --border: #595959;
+  --border-strong: var(--c-ink);
+  --accent: #b00020;
+  --accent-soft: #ffe0e0;
+  --accent-text: #8a0018;
+  --success: var(--c-green);
+  --warning: #8a4b00;
+  --ring: var(--c-blue);
+  --destructive: var(--c-red);
+  --info: var(--c-blue);
+  --on-accent: var(--c-paper);
+  --on-solid: var(--c-paper);
+  --scrim: rgba(0, 0, 0, 0.6);
+  --shadow-sm: 0 0 0 1px #595959;
+  --shadow-md: 0 0 0 1px #595959;
+  --shadow-lg: 0 0 0 2px #000000;
+  --shadow-xl: 0 0 0 2px #000000;
+  --overlay-secondary: #274b7a;
+  --edge-default: #333333;
+  --kind-1: #003f8a;
+  --kind-2: #8a2e00;
+  --kind-3: #005a1e;
+  --kind-4: #6b0059;
+  --kind-5: #6b4e00;
+  --kind-6: #005a5a;
+  --kind-7: #7a0000;
+  --kind-8: #3a2a9a;
+  --radius-sm: 2px;
+  --radius: 3px;
+  --radius-lg: 4px;
+}

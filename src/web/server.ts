@@ -37,6 +37,7 @@ import { createGitPluginState, type GitPluginState } from './plugins/git-runtime
 import { ifNoneMatchSatisfied, resolvePluginAsset } from './plugins/assets.js'
 import { BUILTIN_PLUGIN_DIR } from './plugins/builtin-dir.js'
 import { createPluginRuntime, type PluginRuntime } from './plugins/runtime.js'
+import { buildThemesCss } from './plugins/themes.js'
 import { createGraphRuntimeConfig } from '../source/config.js'
 import { FileGraphSource } from '../source/file-source.js'
 import type { GraphSource } from '../source/index.js'
@@ -456,7 +457,8 @@ export function createApp(
     const match = /^\/v\/([^/?]+)(\/[^?]*)?(\?.*)?$/.exec(req.url)
     if (!match) { next(); return }
     const rest = match[2] ?? '/'
-    if (match[1] !== encodeURIComponent(version) || /^\/(api|v)(\/|$)/.test(rest)) {
+    // The page links /api/themes.css as a first-party asset, so it is the one API path served under the version prefix.
+    if (match[1] !== encodeURIComponent(version) || (/^\/(api|v)(\/|$)/.test(rest) && rest !== '/api/themes.css')) {
       res.status(404).json({ error: 'Not found' })
       return
     }
@@ -795,6 +797,40 @@ export function createApp(
       }
       res.setHeader('Cache-Control', 'no-cache')
       res.json(pluginRuntime.statuses())
+    } catch (error) { next(error) }
+  })
+
+  // The stylesheet of every registered theme (ADR-011 section 3): sanitised and scoped to html[data-theme="<id>"].
+  let lastThemeDiagnostics = ''
+  app.get('/api/themes.css', async (_req, res, next) => {
+    try {
+      const request = gitPlugins ? await gitPlugins.current() : null
+      const statuses = request ? request.statuses : pluginRuntime.statuses()
+      const read = async (pluginId: string, file: string): Promise<string | null> => {
+        if (request) {
+          const plugin = request.enabledPlugin(pluginId)
+          if (!plugin) return null
+          if (plugin.origin !== 'builtin' && plugin.origin !== 'dev') {
+            const asset = await request.asset(plugin, file.replace(/^(\.\/)+/, ''))
+            return asset ? asset.bytes.toString('utf8') : null
+          }
+          const local = resolvePluginAsset(plugin.dir, file.replace(/^(\.\/)+/, ''))
+          return local ? readFileSync(local.file, 'utf8') : null
+        }
+        const dir = pluginRuntime.enabledDir(pluginId)
+        const local = dir ? resolvePluginAsset(dir, file.replace(/^(\.\/)+/, '')) : null
+        return local ? readFileSync(local.file, 'utf8') : null
+      }
+      const built = await buildThemesCss(statuses, read)
+      const signature = built.diagnostics.join('\n')
+      if (signature !== lastThemeDiagnostics) {
+        lastThemeDiagnostics = signature
+        for (const message of built.diagnostics) console.error(`[corum] theme: ${message}`)
+      }
+      res.setHeader('Cache-Control', 'no-cache')
+      res.setHeader('Content-Type', 'text/css; charset=utf-8')
+      res.setHeader('X-Content-Type-Options', 'nosniff')
+      res.send(built.css)
     } catch (error) { next(error) }
   })
 

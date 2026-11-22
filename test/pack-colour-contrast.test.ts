@@ -1,7 +1,7 @@
 /*
  * ADR-011 section 5: pack colours are derived per theme with CSS color-mix(). This test evaluates the derivation
- * expressions found in web/style.css (no browser needed) for every pack colour in the repo's packs, in both themes,
- * and fails when derived text or border colours fall below the minimum ratios recorded here.
+ * expressions found in web/style.css (no browser needed) for every pack colour in the repo's packs, in every
+ * registered theme (each in its own colour scheme), and fails when derived text or border colours fall below the minimum ratios recorded here.
  */
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
@@ -10,9 +10,13 @@ import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { CORE_EDGE_TYPES } from '../src/loader/constants.js'
 import type { PackColour } from '../src/schema/index.js'
+import { BUILTIN_PLUGIN_DIR } from '../src/web/plugins/builtin-dir.js'
+import { discoverPlugins } from '../src/web/plugins/discover.js'
+import { registerThemes, sanitiseThemeCss } from '../src/web/plugins/themes.js'
 
 const ROOT = process.cwd()
-// The light theme is generated into tokens.css (from web/sdk/tokens.json); the dark theme and derivations live in style.css.
+// The host's default (light) values are generated into tokens.css (from web/sdk/tokens.json); the derivations live in style.css.
+// Themes are plugin contributions (web/builtin/themes) resolved over those defaults.
 const CSS = ['tokens.css', 'style.css'].map(file => fs.readFileSync(path.join(ROOT, 'web', file), 'utf8')).join('\n')
 const PACKS = path.join(ROOT, '.corum', 'packs')
 
@@ -41,13 +45,37 @@ export const contrast = (a: Rgb, b: Rgb) => {
 
 const mix = (a: Rgb, pct: number, b: Rgb): Rgb => a.map((v, i) => (v * pct + b[i] * (100 - pct)) / 100) as Rgb
 
-/** Token declarations (`--name: #rrggbb`) of the theme block for one scheme. */
-function themeTokens(scheme: Scheme): Map<string, string> {
-  const block = new RegExp(`(?:\\[data-theme="${scheme}"\\])\\s*\\{([^}]*)\\}`).exec(CSS)
-  assert.ok(block, `no ${scheme} theme block in web/style.css`)
+/** Token values of the host's default (light) theme: the fallback every theme inherits for tokens it does not set. */
+function hostDefaults(): Map<string, string> {
+  const block = /:root,\s*\[data-theme="light"\]\s*\{([^}]*)\}/.exec(CSS)
+  assert.ok(block, 'no default theme block in web/tokens.css')
   const tokens = new Map<string, string>()
   for (const m of block[1].matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) tokens.set(m[1], m[2].trim())
   return tokens
+}
+
+/** Every registered theme (ADR-011 section 3): the enabled built-in plugins' themes, in registration order. */
+function registeredThemes() {
+  const { plugins } = discoverPlugins({ builtinDir: BUILTIN_PLUGIN_DIR, graphDir: null, graphYaml: null, packPluginDirs: [] })
+  const { themes } = registerThemes(plugins.map(plugin => ({ id: plugin.manifest.id, status: 'enabled' as const, manifest: plugin.manifest })))
+  const dirs = new Map(plugins.map(plugin => [plugin.manifest.id, plugin.dir]))
+  return themes.map(theme => ({ theme, dir: dirs.get(theme.pluginId)! }))
+}
+
+/**
+ * The resolved token values of one theme: its sanitised declarations over the host defaults, with var() references
+ * (to its private primitives or other tokens) followed to a final value.
+ */
+function themeTokens(dir: string, file: string): Map<string, string> {
+  const declared = sanitiseThemeCss(fs.readFileSync(path.join(dir, ...file.split('/')), 'utf8'))
+  assert.ok(declared.declarations, `${file}: ${declared.errors.join('; ')}`)
+  const raw = new Map(hostDefaults())
+  for (const d of declared.declarations) raw.set(d.name, d.value)
+  const resolve = (value: string, depth = 0): string => {
+    assert.ok(depth < 10, `var() cycle in ${value}`)
+    return value.replace(/var\((--[\w-]+)\)/g, (_, name: string) => resolve(raw.get(name) ?? assert.fail(`${file}: ${name} is not defined`), depth + 1))
+  }
+  return new Map([...raw].map(([name, value]) => [name, resolve(value)]))
 }
 
 interface Derivation { token: string; colour: string; pct: number; other: string }
@@ -112,9 +140,14 @@ describe('pack colour contrast (ADR-011 section 5)', () => {
     assert.equal(resolveColour({ light: '#111111', dark: '#eeeeee' }, 'light'), '#111111')
   })
 
-  for (const scheme of ['light', 'dark'] as const) {
-    describe(`${scheme} theme`, () => {
-      const tokens = themeTokens(scheme)
+  it('covers every registered theme, including the built-in light, dark and high-contrast', () => {
+    assert.deepEqual(registeredThemes().map(entry => entry.theme.id), ['light', 'dark', 'high-contrast'])
+  })
+
+  for (const { theme, dir } of registeredThemes()) {
+    const scheme: Scheme = theme.colorScheme
+    describe(`${theme.id} theme (${scheme})`, () => {
+      const tokens = themeTokens(dir, theme.css)
       const surface = (name: string): Rgb => hexToRgb(tokens.get(name) ?? assert.fail(`theme token ${name} is missing or not a hex colour`))
 
       /** The derived colour of `token` for a pack colour, for both node-* and edge-* tokens. */

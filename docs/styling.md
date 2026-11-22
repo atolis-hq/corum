@@ -7,8 +7,9 @@ documented, versioned, tested surface that plugin and pack authors can rely on:
 |----------|------|
 | `web/sdk/tokens.json` | Every public token in [W3C DTCG](https://www.designtokens.org/) format, and the contract version. The source of truth. |
 | `web/sdk/classes.json` | The standard CSS classes (markup) a plugin may use. |
-| `web/tokens.css` | The default (light) theme, generated from `tokens.json` by `npm run tokens`. Committed; a test fails when it is stale. |
-| `web/style.css` | The dark theme, the standard classes and the host styles. |
+| `web/tokens.css` | The host's default (light) token values, generated from `tokens.json` by `npm run tokens`. Committed; a test fails when it is stale. |
+| `web/builtin/themes/` | The built-in `themes` plugin: `light.css` (generated), `dark.css` and `high-contrast.css`. |
+| `web/style.css` | The standard classes and the host styles. |
 | `test/fixtures/styling-contract.snapshot.json` | Snapshot of the version, token names and class names with their `since`. |
 
 The contract version is `$extensions.corum.version` in `tokens.json` (currently **2**), exposed at runtime as
@@ -181,16 +182,30 @@ html`<span className="tag edge-type-tag edge-coloured" style=${edgeTypeStyle(edg
 
 ## Themes
 
-A theme sets tokens and nothing else: a selector containing `data-theme` whose declarations are only documented
-tokens (scope *theme* or *optional*) and `color-scheme`. `--corum-tokens-version` is host-owned and never set by a
-theme. Every theme must give every scope-*theme* token a value, so no page ever falls back to a missing token; a test
-checks this for the shipped light and dark themes. Never set `input` or `derived` tokens in a theme.
+A theme is a plugin contribution (`contributes.themes` in `plugin.yaml`, see [plugins](plugins.md#themes)) and sets
+tokens and nothing else. Light, dark and `high-contrast` ship the same way, in the built-in `themes` plugin
+(`web/builtin/themes`). The theme file holds a single `:root { ... }` block (or bare declarations) of documented tokens
+(scope *theme* or *optional*). The server serves a sanitised copy scoped to `html[data-theme="<id>"]`, with
+`color-scheme` taken from the manifest's `colorScheme`.
 
-The default theme is generated:
+- **Public namespace.** Any custom property that is not a documented token and does not start with `--c-` is reported and
+  ignored (the rest of the theme still applies). `--c-*` primitives are a theme file's private palette: use them to
+  name colours and reference them from tokens with `var(--c-name)`. `--corum-tokens-version`, `input` and `derived`
+  tokens, and anything that is not a custom property (`color-scheme` included) are ignored too.
+- **No selectors, imports or URLs.** A file with any other selector, an at-rule such as `@import`, `url()` or an escape
+  is rejected whole. There is no JavaScript in themes, and no per-graph theme default.
+- **Partial themes** are allowed: tokens a theme leaves out inherit the host's default (light) values, and validation
+  warns. Give every scope-*theme* token a value, so no page falls back to a value from another scheme.
+- **Contrast.** `test/pack-colour-contrast.test.ts` checks pack-colour derivations (text 4.5:1, borders 3:1) in every
+  registered theme, each in its own `colorScheme`.
+- **Fallback.** The host keeps the default (light) token values in `web/tokens.css`, so the UI is styled even if no
+  theme loads. A stored theme whose plugin is disabled or removed behaves as **System**.
+
+The default values are generated:
 
 1. Edit `web/sdk/tokens.json` (`$value` is the default value, written as a DTCG value; `{color.accent}` is an alias).
-2. Run `npm run tokens` to regenerate `web/tokens.css`, and commit it.
-3. Give the dark theme in `web/style.css` the same token.
+2. Run `npm run tokens` to regenerate `web/tokens.css` and the built-in `light.css`, and commit both.
+3. Give `dark.css` and `high-contrast.css` in `web/builtin/themes` the same token (a test fails if one is missing).
 4. Add the token to this page, set `since` to the current version, and run `npm run styling:snapshot`.
 
 ## Pack colours

@@ -118,6 +118,16 @@ function SettingsMenu({ debugMode, onDebugMode }) {
   const theme = window.CorumHost.theme;
   const [open, setOpen] = useState(false);
   const [choice, setChoice] = useState(() => theme.getChoice());
+  const [themes, setThemes] = useState(() => theme.getThemes());
+  // The registry fills once the plugin list loads; follow it so the menu never lists a stale (empty) set.
+  useEffect(() => {
+    const sync = () => {
+      setThemes(theme.getThemes());
+      setChoice(theme.getChoice());
+    };
+    sync(); // the registry may have filled between the first render and this effect
+    return theme.subscribeThemes(sync);
+  }, []);
   const wrapRef = React.useRef(null);
   const triggerRef = React.useRef(null);
   const menuId = React.useId();
@@ -174,7 +184,7 @@ function SettingsMenu({ debugMode, onDebugMode }) {
     restoreFocus();
   }
 
-  const themeOptions = [{ id: 'system', label: 'System' }, ...theme.THEMES];
+  const themeOptions = [{ id: 'system', label: 'System' }, ...themes];
 
   return (
     <div className="settings" ref={wrapRef}>
@@ -187,7 +197,10 @@ function SettingsMenu({ debugMode, onDebugMode }) {
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         title="Settings"
-        onClick={() => (open ? restoreFocus() : setOpen(true))}
+        onClick={() => {
+          if (open) restoreFocus();
+          else { setChoice(theme.getChoice()); setOpen(true); }
+        }}
         onKeyDown={event => {
           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
             event.preventDefault();
@@ -216,6 +229,11 @@ function SettingsMenu({ debugMode, onDebugMode }) {
                 {option.label}
               </button>
             ))}
+            {themes.length === 0 && (
+              <div className="settings-menu-label label-xs" role="presentation">
+                {window.CorumHost.pluginsFailed ? 'Themes unavailable (plugins failed to load)' : 'Loading themes…'}
+              </div>
+            )}
           </div>
           <div className="settings-menu-sep" role="separator" />
           <button

@@ -19,7 +19,7 @@ it('serves Git plugins from a pinned default commit with secure assets and curre
   }
   const manifest = (id: string, templates: string[] = []) => JSON.stringify({
     id, version: '1.0.0', engines: { corum: '*' }, main: './index.js',
-    requires: { templates }, contributes: { pages: [], nodeActions: [] },
+    requires: { templates }, contributes: { pages: [], nodeActions: [], themes: [] },
   })
   const commit = () => { git('add', '-A'); git('commit', '-qm', 'fixture'); return git('rev-parse', 'HEAD') }
   let server: WebServerHandle | undefined
@@ -124,7 +124,7 @@ it('keeps built-ins working and shares state per commit when the default branch 
   }
   const manifest = (id: string, templates: string[] = []) => JSON.stringify({
     id, version: '1.0.0', engines: { corum: '*' }, main: './index.js',
-    requires: { templates }, contributes: { pages: [], nodeActions: [] },
+    requires: { templates }, contributes: { pages: [], nodeActions: [], themes: [] },
   })
   try {
     git('init', '-b', 'main')
@@ -186,7 +186,7 @@ it('logs plugin errors once per commit and falls back to built-ins when the sour
     write('bad/plugin.yaml', 'not: [valid')
     write('builtins/core/plugin.yaml', JSON.stringify({
       id: 'core', version: '1.0.0', engines: { corum: '*' }, main: './index.js',
-      requires: { templates: [] }, contributes: { pages: [], nodeActions: [] },
+      requires: { templates: [] }, contributes: { pages: [], nodeActions: [], themes: [] },
     }))
     git('add', '-A')
     git('commit', '-qm', 'fixture')
@@ -216,7 +216,7 @@ it('recovers from a failed first build and retries a failed poll reload without 
   }
   const manifest = (id: string) => JSON.stringify({
     id, version: '1.0.0', engines: { corum: '*' }, main: './index.js',
-    requires: { templates: [] }, contributes: { pages: [], nodeActions: [] },
+    requires: { templates: [] }, contributes: { pages: [], nodeActions: [], themes: [] },
   })
   let server: WebServerHandle | undefined
   try {
@@ -273,7 +273,7 @@ it('keeps missing declaration paths separate from manifest IDs', async () => {
   }
   const manifest = (id: string) => JSON.stringify({
     id, version: '1.0.0', engines: { corum: '*' }, main: './index.js',
-    requires: { templates: [] }, contributes: { pages: [], nodeActions: [] },
+    requires: { templates: [] }, contributes: { pages: [], nodeActions: [], themes: [] },
   })
   try {
     git('init', '-b', 'main')

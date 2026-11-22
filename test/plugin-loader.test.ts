@@ -20,7 +20,7 @@ function status(id: string, main = './index.js', extra: Record<string, unknown> 
       id,
       version: '1.0.0',
       main,
-      contributes: { pages: [{ id: 'home', title: id, mount: 'mount', opens: [] }], nodeActions: [] },
+      contributes: { pages: [{ id: 'home', title: id, mount: 'mount', opens: [] }], nodeActions: [], themes: [] },
     },
     ...extra,
   }

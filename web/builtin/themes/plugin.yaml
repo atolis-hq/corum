@@ -1,0 +1,11 @@
+id: themes
+version: 0.1.0
+engines: { corum: ">=0.1.0" }
+main: ./index.js
+contributes:
+  themes:
+    # light.css is generated from web/sdk/tokens.json (`npm run tokens`), so it cannot drift from the host defaults.
+    - { id: light, label: Light, colorScheme: light, css: ./light.css }
+    - { id: dark, label: Dark, colorScheme: dark, css: ./dark.css }
+    # The worked example in docs/plugins.md.
+    - { id: high-contrast, label: High contrast, colorScheme: light, css: ./high-contrast.css }

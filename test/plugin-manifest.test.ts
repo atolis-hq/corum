@@ -56,7 +56,46 @@ describe('parsePluginManifest', () => {
     const { manifest, errors } = parsePluginManifest('id: a\nversion: 1.0.0\nengines: { corum: "*" }\nmain: index.js\n')
     assert.deepEqual(errors, [])
     assert.deepEqual(manifest?.requires.templates, [])
-    assert.deepEqual(manifest?.contributes, { pages: [], nodeActions: [] })
+    assert.deepEqual(manifest?.contributes, { pages: [], nodeActions: [], themes: [] })
+  })
+
+  describe('contributes.themes', () => {
+    const themes = (entries: string) => `${valid}  themes:\n${entries}\n`
+    const ok = '    - { id: high-contrast, label: High contrast, colorScheme: light, css: ./themes/high-contrast.css }'
+
+    it('parses valid theme entries', () => {
+      const { manifest, errors } = parsePluginManifest(themes(`${ok}\n    - { id: night, label: Night, colorScheme: dark, css: night.css }`))
+      assert.deepEqual(errors, [])
+      assert.deepEqual(manifest?.contributes.themes, [
+        { id: 'high-contrast', label: 'High contrast', colorScheme: 'light', css: './themes/high-contrast.css' },
+        { id: 'night', label: 'Night', colorScheme: 'dark', css: 'night.css' },
+      ])
+    })
+
+    const bad: Array<[string, string, RegExp]> = [
+      ['invalid id', '    - { id: Night_Mode, label: N, colorScheme: dark, css: n.css }', /id "Night_Mode"/],
+      ['the reserved system id', '    - { id: system, label: N, colorScheme: dark, css: n.css }', /reserved/],
+      ['missing id', '    - { label: N, colorScheme: dark, css: n.css }', /id is required/],
+      ['missing label', '    - { id: n, colorScheme: dark, css: n.css }', /label is required/],
+      ['unknown colorScheme', '    - { id: n, label: N, colorScheme: sepia, css: n.css }', /colorScheme must be one of light, dark/],
+      ['missing css', '    - { id: n, label: N, colorScheme: dark }', /css is required/],
+      ['escaping css path', '    - { id: n, label: N, colorScheme: dark, css: ../n.css }', /css "..\/n.css" must be a relative path/],
+      ['absolute css path', '    - { id: n, label: N, colorScheme: dark, css: /etc/n.css }', /relative path/],
+      ['non-css file', '    - { id: n, label: N, colorScheme: dark, css: n.js }', /must be a \.css file/],
+      ['duplicate ids in one plugin', `${ok}\n${ok}`, /"high-contrast" is duplicated/],
+    ]
+    for (const [name, entries, pattern] of bad) {
+      it(`rejects ${name}`, () => {
+        const { manifest, errors } = parsePluginManifest(themes(entries))
+        assert.equal(manifest, null)
+        assert.ok(errors.some(error => pattern.test(error)), errors.join('; '))
+      })
+    }
+
+    it('rejects a non-list', () => {
+      const { errors } = parsePluginManifest(`${valid}  themes: nope\n`)
+      assert.ok(errors.some(error => error.includes('contributes.themes must be a list')))
+    })
   })
 
   for (const menu of [true, false]) {

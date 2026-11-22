@@ -22,6 +22,12 @@ const ready = loadPlugins({
 }).then(statuses => {
   loadedStatuses = statuses
   host.pluginsFailed = statuses === null
+  /* Themes come from the enabled plugins; re-apply now that the registry is known (a stored choice whose plugin is
+     disabled or gone falls back to System, without rewriting what is stored). */
+  /* When the list could not be loaded (null) the registry is empty: Settings says so and the UI stays on the host's
+     default (light) values rather than guessing at themes. */
+  theme.registerThemes(statuses ?? [])
+  theme.applyTheme(theme.getChoice())
 })
 
 /* After a graph reload: true when the server's plugin list differs from what this page booted with. */
