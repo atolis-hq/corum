@@ -331,3 +331,125 @@ describe('architecture: ratchets', () => {
       + `Lines:\n${report(scan(files, HEX).slice(0, 40))}`)
   })
 })
+
+describe('architecture: stylesheet tokens', () => {
+  // ADR-011: every colour in web/ stylesheets comes from a semantic token. Hard zero (not a ratchet).
+  // Theme blocks (selectors containing `data-theme`) are where token values are defined, so they are exempt from the
+  // literal rules but are checked for light/dark parity and against the documented list below.
+  const cssFiles = walk(WEB, file => file.endsWith('.css') && !file.split(path.sep).includes('vendor'))
+
+  // Plain list of the documented tokens (web/sdk/tokens.json does not exist yet). Adding a token requires updating it.
+  const DOCUMENTED_TOKENS = [
+    '--background', '--card', '--muted', '--foreground', '--secondary-foreground', '--muted-foreground',
+    '--subtle-foreground', '--border', '--border-strong', '--accent', '--accent-soft', '--accent-text',
+    '--success', '--warning', '--ring', '--destructive', '--info',
+    '--on-accent', '--scrim', '--shadow-sm', '--shadow-md', '--shadow-lg', '--shadow-xl', '--overlay-secondary',
+    '--edge-triggers', '--edge-triggers-soft', '--edge-produces', '--edge-produces-soft',
+    '--edge-calls', '--edge-calls-soft', '--edge-implements', '--edge-implements-soft',
+    '--edge-reads', '--edge-reads-soft',
+    '--radius-sm', '--radius', '--radius-lg',
+  ]
+  const HOST_OWNED = new Set(['--corum-tokens-version'])
+
+  const COLOUR_LITERAL = /#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b|\b(?:rgba?|hsla?)\(/
+  const NAMED_COLOURS = new Set(('aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown '
+    + 'burlywood cadetblue chartreuse chocolate coral cornflowerblue cornsilk crimson cyan darkblue darkcyan darkgoldenrod darkgray '
+    + 'darkgreen darkgrey darkkhaki darkmagenta darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen darkslateblue '
+    + 'darkslategray darkslategrey darkturquoise darkviolet deeppink deepskyblue dimgray dimgrey dodgerblue firebrick floralwhite '
+    + 'forestgreen fuchsia gainsboro ghostwhite gold goldenrod gray green greenyellow grey honeydew hotpink indianred indigo ivory '
+    + 'khaki lavender lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan lightgoldenrodyellow lightgray lightgreen '
+    + 'lightgrey lightpink lightsalmon lightseagreen lightskyblue lightslategray lightslategrey lightsteelblue lightyellow lime '
+    + 'limegreen linen magenta maroon mediumaquamarine mediumblue mediumorchid mediumpurple mediumseagreen mediumslateblue '
+    + 'mediumspringgreen mediumturquoise mediumvioletred midnightblue mintcream mistyrose moccasin navajowhite navy oldlace olive '
+    + 'olivedrab orange orangered orchid palegoldenrod palegreen paleturquoise palevioletred papayawhip peachpuff peru pink plum '
+    + 'powderblue purple rebeccapurple red rosybrown royalblue saddlebrown salmon sandybrown seagreen seashell sienna silver skyblue '
+    + 'slateblue slategray slategrey snow springgreen steelblue tan teal thistle tomato turquoise violet wheat white whitesmoke '
+    + 'yellow yellowgreen').split(' '))
+
+  interface Rule { file: string; selector: string; decls: { line: number; prop: string; value: string }[] }
+
+  /** Minimal CSS reader: yields flat rule blocks with their selector (nested at-rules are descended into). */
+  function parseRules(file: string): Rule[] {
+    const text = read(file).replace(/\/\*[\s\S]*?\*\//g, m => m.replace(/[^\n]/g, ' '))
+    const rules: Rule[] = []
+    const stack: { selector: string; rule?: Rule }[] = []
+    let buf = ''
+    let line = 1
+    let bufLine = 1
+    for (const ch of text) {
+      if (ch === '{') {
+        const selector = buf.trim()
+        const isAt = selector.startsWith('@') && /^@(media|supports|layer|container)\b/.test(selector)
+        const entry: { selector: string; rule?: Rule } = { selector }
+        if (!isAt) { entry.rule = { file: rel(file), selector, decls: [] }; rules.push(entry.rule) }
+        stack.push(entry)
+        buf = ''
+      } else if (ch === '}') {
+        const top = stack.pop()
+        if (top?.rule && buf.trim()) addDecl(top.rule, buf, bufLine)
+        buf = ''
+      } else if (ch === ';') {
+        const top = stack[stack.length - 1]
+        if (top?.rule) addDecl(top.rule, buf, bufLine)
+        buf = ''
+      } else {
+        if (!buf.trim()) bufLine = line
+        buf += ch
+      }
+      if (ch === '\n') line++
+    }
+    return rules
+  }
+  function addDecl(rule: Rule, raw: string, line: number) {
+    const idx = raw.indexOf(':')
+    if (idx < 0) return
+    rule.decls.push({ line, prop: raw.slice(0, idx).trim(), value: raw.slice(idx + 1).trim() })
+  }
+
+  const allRules = cssFiles.flatMap(parseRules)
+  const isTheme = (rule: Rule) => rule.selector.includes('data-theme')
+  const nonTheme = allRules.filter(rule => !isTheme(rule))
+  const decls = nonTheme.flatMap(rule => rule.decls.map(d => ({ ...d, file: rule.file })))
+  const fmt = (items: { file: string; line: number; prop: string; value: string }[]) =>
+    items.map(d => `${d.file}:${d.line}  ${d.prop}: ${d.value}`).join('\n')
+
+  it('finds the stylesheet(s) to check', () => {
+    assert.ok(cssFiles.length > 0)
+    assert.ok(nonTheme.length > 100)
+  })
+
+  it('no colour literals (hex, rgb(), hsl()) outside theme definitions', () => {
+    const bad = decls.filter(d => COLOUR_LITERAL.test(d.value))
+    assert.equal(bad.length, 0, `Colour literals must come from semantic tokens (ADR-011):\n${fmt(bad)}`)
+  })
+
+  it('no named colour keywords outside theme definitions', () => {
+    const bad = decls.filter(d => !d.prop.startsWith('--') && d.value.split(/[^a-zA-Z-]+/).some(word => NAMED_COLOURS.has(word.toLowerCase())))
+    assert.equal(bad.length, 0, `Named colours must come from semantic tokens (ADR-011):\n${fmt(bad)}`)
+  })
+
+  it('no literal 4px/6px/10px radii where a radius token exists', () => {
+    const bad = decls.filter(d => d.prop.startsWith('border') && d.prop.endsWith('radius') && /(^|[\s(])(4|6|10)px\b/.test(d.value))
+    assert.equal(bad.length, 0, `Use var(--radius-sm|--radius|--radius-lg):\n${fmt(bad)}`)
+  })
+
+  const themeTokens = (selectorTest: (selector: string) => boolean) => {
+    const tokens = new Set<string>()
+    for (const rule of allRules.filter(r => isTheme(r) && selectorTest(r.selector))) {
+      for (const d of rule.decls) if (d.prop.startsWith('--') && !HOST_OWNED.has(d.prop)) tokens.add(d.prop)
+    }
+    return tokens
+  }
+  const light = themeTokens(s => !s.includes('dark'))
+  const dark = themeTokens(s => s.includes('dark'))
+
+  it('every token has a value in both light and dark', () => {
+    assert.deepEqual([...light].filter(t => !dark.has(t)), [], 'tokens missing from the dark theme')
+    assert.deepEqual([...dark].filter(t => !light.has(t)), [], 'tokens missing from the light theme')
+  })
+
+  it('theme tokens match the documented token list', () => {
+    assert.deepEqual([...light].sort(), [...DOCUMENTED_TOKENS].sort(),
+      'Update DOCUMENTED_TOKENS (and the contract docs) in the same change that adds or removes a token')
+  })
+})

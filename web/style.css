@@ -22,6 +22,23 @@
   --ring: var(--accent);
   --destructive: #c44;
   --info: #3b6fb3;
+  --on-accent: #ffffff;
+  --scrim: rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 8px 40px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.1);
+  --overlay-secondary: #5c7aa8;
+  --edge-triggers: #b45309;
+  --edge-triggers-soft: #fef3c7;
+  --edge-produces: #0f766e;
+  --edge-produces-soft: #ccfbf1;
+  --edge-calls: #6d28d9;
+  --edge-calls-soft: #ede9fe;
+  --edge-implements: #475569;
+  --edge-implements-soft: #f1f5f9;
+  --edge-reads: #1d4ed8;
+  --edge-reads-soft: #dbeafe;
   --radius-sm: 4px;
   --radius: 6px;
   --radius-lg: 10px;
@@ -46,6 +63,23 @@
   --ring: var(--accent);
   --destructive: #e87070;
   --info: #7aa7e0;
+  --on-accent: #15171c;
+  --scrim: rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 8px 40px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.1);
+  --overlay-secondary: #8fb0dc;
+  --edge-triggers: #fcd34d;
+  --edge-triggers-soft: #3a2e12;
+  --edge-produces: #5eead4;
+  --edge-produces-soft: #12332f;
+  --edge-calls: #c4b5fd;
+  --edge-calls-soft: #2a2347;
+  --edge-implements: #cbd5e1;
+  --edge-implements-soft: #2a303a;
+  --edge-reads: #93c5fd;
+  --edge-reads-soft: #172a4a;
   --radius-sm: 4px;
   --radius: 6px;
   --radius-lg: 10px;
@@ -107,7 +141,7 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #fff;
+  color: var(--on-accent);
   font-family: 'Space Grotesk', system-ui, sans-serif;
   font-size: 18px;
   font-weight: 600;
@@ -230,7 +264,7 @@ button {
   gap: 8px;
   padding: 6px 10px;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--secondary-foreground);
   font: inherit;
@@ -269,7 +303,7 @@ button {
   width: 22px;
   height: 12px;
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: var(--muted);
 }
 
@@ -314,8 +348,8 @@ button {
 .ns-kind-pill {
   display: inline-block;
   padding: 1px 8px;
-  border-radius: 10px;
-  color: #fff;
+  border-radius: var(--radius-lg);
+  color: var(--on-accent);
   font-size: 11px;
   font-weight: 600;
 }
@@ -367,7 +401,7 @@ button {
   margin: 1px 0;
   padding: 6px 8px 6px 30px;
   overflow: hidden;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--secondary-foreground);
   cursor: pointer;
   font-size: 12px;
@@ -479,7 +513,7 @@ button {
 
 .template-badge {
   border-color: transparent;
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .table-scroll {
@@ -812,7 +846,7 @@ button {
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 11px;
   font-family: var(--font-mono, 'JetBrains Mono', monospace);
   cursor: pointer;
@@ -902,7 +936,7 @@ button {
 
 .branch-seg-item.active {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 600;
 }
 
@@ -921,8 +955,8 @@ button {
   z-index: 100;
   background: var(--background);
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
   min-width: 320px;
   overflow: hidden;
 }
@@ -994,7 +1028,7 @@ button {
 }
 
 .signal-dot-0 { background: var(--accent); }
-.signal-dot-1 { background: #5c7aa8; }
+.signal-dot-1 { background: var(--overlay-secondary); }
 
 .field-row.mapping-meta .name {
   color: var(--muted-foreground);
@@ -1016,13 +1050,13 @@ button {
 }
 
 .overlay-stripe-1 {
-  border-left: 3px solid #5c7aa8;
+  border-left: 3px solid var(--overlay-secondary);
   background: color-mix(in oklch, var(--foreground) 8%, var(--background));
 }
 
 .overlay-conflict {
-  border-left: 3px solid #c44;
-  background: color-mix(in oklch, #c44 5%, var(--background));
+  border-left: 3px solid var(--destructive);
+  background: color-mix(in oklch, var(--destructive) 5%, var(--background));
 }
 
 .overlay-legend {
@@ -1062,7 +1096,7 @@ button {
 .topbar-search-icon {
   position: absolute;
   left: 10px;
-  color: rgba(255, 255, 255, 0.65);
+  color: color-mix(in srgb, var(--on-accent) 65%, transparent);
   pointer-events: none;
   font-size: 11px;
 }
@@ -1070,10 +1104,10 @@ button {
 .topbar-search {
   width: 220px;
   padding: 5px 36px 5px 28px;
-  background: rgba(255, 255, 255, 0.18);
-  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: color-mix(in srgb, var(--on-accent) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--on-accent) 28%, transparent);
   border-radius: var(--radius);
-  color: #fff;
+  color: var(--on-accent);
   font: inherit;
   font-size: 12px;
   outline: none;
@@ -1081,17 +1115,17 @@ button {
 }
 
 .topbar-search::placeholder {
-  color: rgba(255, 255, 255, 0.6);
+  color: color-mix(in srgb, var(--on-accent) 60%, transparent);
 }
 
 .topbar-search:hover {
-  background: rgba(255, 255, 255, 0.22);
+  background: color-mix(in srgb, var(--on-accent) 22%, transparent);
 }
 
 .topbar-search-hint {
   position: absolute;
   right: 8px;
-  color: rgba(255, 255, 255, 0.5);
+  color: color-mix(in srgb, var(--on-accent) 50%, transparent);
   font-size: 11px;
   pointer-events: none;
   user-select: none;
@@ -1100,7 +1134,7 @@ button {
 .search-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--scrim);
   z-index: 1000;
   animation: search-fade-in 0.12s ease;
 }
@@ -1118,8 +1152,8 @@ button {
   width: 560px;
   max-width: calc(100vw - 40px);
   background: var(--background);
-  border-radius: 10px;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
   overflow: hidden;
 }
 
@@ -1157,7 +1191,7 @@ button {
   align-items: center;
   gap: 8px;
   padding: 7px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius);
   cursor: pointer;
 }
 
@@ -1273,7 +1307,7 @@ button {
 .graph-toolbar-btn {
   padding: 3px 10px;
   border: 1px solid var(--border-strong);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--background);
   color: var(--secondary-foreground);
   cursor: pointer;
@@ -1283,7 +1317,7 @@ button {
 }
 
 .graph-toolbar-btn:hover { background: var(--card); }
-.graph-toolbar-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.graph-toolbar-btn.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 
 .graph-depth-ctrl {
   display: flex;
@@ -1326,7 +1360,7 @@ button {
 .graph-focus-search-input {
   padding: 4px 10px;
   border: 1px solid var(--border-strong);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--background);
   color: var(--foreground);
   font: inherit;
@@ -1344,8 +1378,8 @@ button {
   z-index: 100;
   background: var(--background);
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
   min-width: 280px;
   overflow: hidden;
 }
@@ -1381,13 +1415,13 @@ button {
   border: 1.5px solid var(--border-strong);
   border-radius: 8px;
   cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  box-shadow: var(--shadow-sm);
   transition: box-shadow 0.15s, border-color 0.15s;
 }
 
 .graph-component-card:hover {
   border-color: var(--accent);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: var(--shadow-md);
 }
 
 .graph-component-card-name {
@@ -1465,7 +1499,7 @@ button {
   transition: box-shadow 0.12s;
 }
 
-.graph-node-card:hover { box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+.graph-node-card:hover { box-shadow: var(--shadow-md); }
 
 .graph-node-card-bar {
   width: 3px;
@@ -1555,7 +1589,7 @@ button {
 }
 
 .graph-component-card:hover {
-  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  box-shadow: var(--shadow-md);
   border-color: var(--subtle-foreground);
 }
 
@@ -1632,7 +1666,7 @@ button {
   background: var(--background);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  box-shadow: var(--shadow-lg);
   z-index: 100;
   overflow: hidden;
 }
@@ -1704,7 +1738,7 @@ button {
   background: var(--background);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  box-shadow: var(--shadow-lg);
   padding: 10px;
   display: flex;
   flex-direction: column;
@@ -1779,7 +1813,7 @@ button {
   width: 100%;
   height: 100%;
   border: 1.5px dashed var(--subtle-foreground);
-  background: rgba(0, 0, 0, 0.02);
+  background: color-mix(in srgb, var(--foreground) 2%, transparent);
   border-radius: var(--radius);
   box-sizing: border-box;
   padding: 6px 10px;
@@ -1997,11 +2031,11 @@ button {
 }
 
 /* Edge-type tags of the Explorer namespace page (the colours were inline styles in the host). */
-.edge-type-tag[data-edge-type="triggers"] { background: #fef3c7; color: #b45309; }
-.edge-type-tag[data-edge-type="produces"] { background: #ccfbf1; color: #0f766e; }
-.edge-type-tag[data-edge-type="calls"] { background: #ede9fe; color: #6d28d9; }
-.edge-type-tag[data-edge-type="implements"] { background: #f1f5f9; color: #475569; }
-.edge-type-tag[data-edge-type="reads"] { background: #dbeafe; color: #1d4ed8; }
+.edge-type-tag[data-edge-type="triggers"] { background: var(--edge-triggers-soft); color: var(--edge-triggers); }
+.edge-type-tag[data-edge-type="produces"] { background: var(--edge-produces-soft); color: var(--edge-produces); }
+.edge-type-tag[data-edge-type="calls"] { background: var(--edge-calls-soft); color: var(--edge-calls); }
+.edge-type-tag[data-edge-type="implements"] { background: var(--edge-implements-soft); color: var(--edge-implements); }
+.edge-type-tag[data-edge-type="reads"] { background: var(--edge-reads-soft); color: var(--edge-reads); }
 
 /* Node header and connection-row "Open in" menus (plugin destinations and node actions) */
 .connections-card {
@@ -2051,14 +2085,14 @@ button {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   background: var(--background);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
 }
 
 .open-in-item {
   padding: 6px 10px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--secondary-foreground);
   font-size: 12px;
   text-decoration: none;
