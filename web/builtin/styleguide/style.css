@@ -1,0 +1,93 @@
+/* Style guide plugin. Only public tokens; classes are standard or prefixed styleguide-. Swatches and samples receive
+   their value through a custom property (--swatch, --sample) so no script sets a visual inline style. */
+
+.styleguide-section {
+  margin-bottom: 24px;
+}
+
+.styleguide-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.styleguide-token {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.styleguide-token > div {
+  min-width: 0;
+}
+
+.styleguide-swatch {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--swatch);
+}
+
+.styleguide-value {
+  overflow-wrap: anywhere;
+}
+
+.styleguide-radius {
+  width: 64px;
+  height: 40px;
+  border: 1px solid var(--border-strong);
+  background: var(--card);
+  border-radius: var(--sample);
+}
+
+.styleguide-shadow {
+  width: 80px;
+  height: 48px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+  box-shadow: var(--sample);
+}
+
+.styleguide-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.styleguide-row-label {
+  flex: none;
+  width: 96px;
+}
+
+.styleguide-derivation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.styleguide-chain {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.styleguide-menu-demo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+/* The menus are fixed or absolute in the product; here they sit in the flow so the guide can show them open. */
+.styleguide-menu-demo .settings-menu,
+.styleguide-menu-demo .open-in-menu {
+  position: static;
+}

@@ -17,12 +17,14 @@ test('keyboard: focus in on open, arrows wrap, Escape returns focus', async ({ p
   await expect(system).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(page.getByRole('menuitemradio', { name: 'Light' })).toBeFocused();
-  await page.keyboard.press('End');
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown');
   await expect(page.getByRole('menuitemcheckbox', { name: 'Debug mode' })).toBeFocused();
+  await page.keyboard.press('End');
+  await expect(page.getByRole('menuitem', { name: 'Style guide' })).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(system).toBeFocused();
   await page.keyboard.press('ArrowUp');
-  await expect(page.getByRole('menuitemcheckbox', { name: 'Debug mode' })).toBeFocused();
+  await expect(page.getByRole('menuitem', { name: 'Style guide' })).toBeFocused();
   await page.keyboard.press('Home');
   await expect(system).toBeFocused();
   await page.keyboard.press('Escape');

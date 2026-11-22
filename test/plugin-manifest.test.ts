@@ -159,6 +159,21 @@ describe('parsePluginManifest', () => {
       for (const key of ['nav', 'sidebar', 'nodeSidebar', 'detail', 'legacyPaths']) assert.ok(!(key in parsed), key)
     })
 
+    it('parses a settings label and omits it when absent', () => {
+      const { manifest, errors } = parsePluginManifest(page('settings: { label: Style guide }'))
+      assert.deepEqual(errors, [])
+      assert.deepEqual(manifest!.contributes.pages[0].settings, { label: 'Style guide' })
+      assert.ok(!('settings' in parsePluginManifest(valid).manifest!.contributes.pages[0]))
+    })
+
+    it('rejects a settings entry that is not a mapping with a non-empty label', () => {
+      for (const value of ['Style guide', '{ label: "" }', '{ label: 3 }', '{}']) {
+        const { manifest, errors } = parsePluginManifest(page(`settings: ${value}`))
+        assert.equal(manifest, null, value)
+        assert.ok(errors.some(error => error.includes('settings must be a mapping with a non-empty label')), errors.join('; '))
+      }
+    })
+
     it('rejects non-boolean flags', () => {
       for (const flag of ['nav', 'nodeSidebar', 'detail']) {
         const { manifest, errors } = parsePluginManifest(page(`${flag}: yes-please`))
