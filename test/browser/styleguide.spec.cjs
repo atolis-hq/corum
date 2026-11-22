@@ -18,8 +18,10 @@ const SENTINEL = [255, 0, 255];
 const URL = '/#/p/styleguide/home';
 const THEMES = ['Light', 'Dark', 'High contrast'];
 
-// Tall enough that the whole guide is in view, so the element screenshot is the whole page.
-test.use({ viewport: { width: 1280, height: 6000 } });
+// Pages are opened at desktop size, like the other specs. openGuide then grows the viewport so the whole guide is in it:
+// the element screenshot is the whole page, and axe can resolve backgrounds for every element (it cannot below the fold).
+test.use({ viewport: { width: 1280, height: 800 } });
+const TALL = { width: 1280, height: 9000 };
 
 const readJson = (...parts) => JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', ...parts), 'utf8'));
 
@@ -57,8 +59,25 @@ async function openGuide(page, themeLabel) {
     await settings(page).getByRole('menuitemradio', { name: themeLabel }).click();
   }
   await expect(page.locator(GUIDE)).toBeVisible();
+  await page.setViewportSize(TALL);
   await expect(page.locator('[data-testid="styleguide-vocabulary"]')).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
+}
+
+/** Puts one hover sample under the pointer and one focus sample in keyboard focus, so the checks that follow see those states. */
+async function exerciseStates(page) {
+  await page.locator('[data-state="hover"]').first().hover();
+  await page.evaluate(() => document.querySelector('[data-state="focus"]').focus({ focusVisible: true }));
+}
+
+/** axe colour-contrast on a selector: violations, plus every node axe could not judge (incomplete). */
+async function contrast(page, selector) {
+  await page.addScriptTag({ path: require.resolve('axe-core') }).catch(() => {});
+  return page.evaluate(async (sel) => {
+    const out = await window.axe.run(document.querySelector(sel), { runOnly: ['color-contrast'] });
+    const nodes = list => list.flatMap(v => v.nodes.map(n => ({ target: n.target.join(' '), summary: n.failureSummary ?? v.help })));
+    return { violations: nodes(out.violations), incomplete: nodes(out.incomplete) };
+  }, selector);
 }
 
 test('the guide is hidden from the rail and reachable from the Settings menu and by URL', async ({ page }) => {
@@ -95,14 +114,40 @@ for (const label of THEMES) {
       expect(offenders).toEqual([]);
     });
 
-    test('has no axe colour-contrast violations', async ({ page }) => {
+    test('has no axe colour-contrast violations, and nothing axe cannot judge', async ({ page }) => {
       await openGuide(page, label);
-      await page.addScriptTag({ path: require.resolve('axe-core') });
-      const violations = await page.evaluate(async (selector) => {
-        const out = await window.axe.run(document.querySelector(selector), { runOnly: ['color-contrast'] });
-        return out.violations.flatMap(v => v.nodes.map(n => ({ rule: v.id, target: n.target.join(' '), summary: n.failureSummary })));
-      }, GUIDE);
+      await exerciseStates(page);
+      const { violations, incomplete } = await contrast(page, GUIDE);
       expect(violations).toEqual([]);
+      // Elements axe cannot evaluate (for example colours it cannot resolve) must not pass silently.
+      expect(incomplete).toEqual([]);
+    });
+
+    test('hover and focus states change the sample and stay legible', async ({ page }) => {
+      await openGuide(page, label);
+      const look = el => {
+        const style = getComputedStyle(el);
+        return [style.color, style.backgroundColor, style.borderTopColor, style.textDecorationLine, style.outlineStyle, style.boxShadow].join('|');
+      };
+      const rows = page.locator('[data-state]');
+      const count = await rows.count();
+      expect(count).toBeGreaterThanOrEqual(8);
+      for (let i = 0; i < count; i++) {
+        const sample = rows.nth(i);
+        const state = await sample.getAttribute('data-state');
+        const card = sample.locator('xpath=ancestor::div[contains(@class, \"card-body\")][1]');
+        const baseline = await card.locator('[data-testid=\"state-default\"] > :not(.styleguide-row-label)').first().locator('xpath=descendant-or-self::*[self::a or self::button]').first().evaluate(look);
+        if (state === 'hover') await sample.hover();
+        else await sample.evaluate(el => el.focus({ focusVisible: true }));
+        const during = await sample.evaluate(look);
+        expect(during, 'sample ' + i + ' (' + state + ') looks the same as default').not.toEqual(baseline);
+        const row = await sample.evaluate(el => { el.closest('[data-testid]').setAttribute('data-checking', 'true'); return true; });
+        expect(row).toBe(true);
+        const { violations, incomplete } = await contrast(page, '[data-checking=\"true\"]');
+        await sample.evaluate(el => el.closest('[data-testid]').removeAttribute('data-checking'));
+        expect(violations).toEqual([]);
+        expect(incomplete).toEqual([]);
+      }
     });
 
     test('shows a visible --ring focus indicator on every focusable sample', async ({ page }) => {
@@ -131,6 +176,7 @@ for (const label of THEMES) {
 
     test('matches the visual baseline', async ({ page }) => {
       await openGuide(page, label);
+      await exerciseStates(page);
       await expect(page.locator(GUIDE)).toHaveScreenshot(`styleguide-${label.toLowerCase().replace(/\s+/g, '-')}.png`, {
         animations: 'disabled',
         maxDiffPixelRatio: 0.002,

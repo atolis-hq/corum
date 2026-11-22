@@ -411,8 +411,6 @@ button {
 .tag.state-removed { text-decoration: line-through; color: var(--muted-foreground); }
 .tag.state-disabled { background: transparent; border-style: dashed; color: var(--muted-foreground); }
 .tag.state-error { background: transparent; border-color: var(--destructive); color: var(--destructive); }
-.state-disabled { color: var(--muted-foreground); cursor: not-allowed; }
-.state-error { border-color: var(--destructive); color: var(--destructive); }
 .tag.stability-stable { background: transparent; }
 .tag.stability-unstable { border-style: dashed; color: var(--muted-foreground); }
 .tag.stability-deprecated { color: var(--muted-foreground); text-decoration: line-through; }
@@ -1650,6 +1648,8 @@ button {
 
 .quick-link:hover { color: var(--foreground); background: var(--card); }
 
+.node-ref-link:hover { color: var(--foreground); }
+
 .quick-link:focus-visible,
 .node-ref-link:focus-visible {
   outline: 2px solid var(--ring);
@@ -2195,3 +2195,9 @@ button {
   margin: 4px 0;
   background: var(--border);
 }
+
+/* Generic state modifiers. Last in the file so they win over the single-class colour of the components they modify. */
+.state-disabled,
+.state-disabled:hover { color: var(--muted-foreground); cursor: not-allowed; }
+.state-error,
+.state-error:hover { border-color: var(--destructive); color: var(--destructive); }

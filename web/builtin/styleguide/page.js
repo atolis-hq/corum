@@ -297,29 +297,56 @@ function StateRow({ label, children }) {
   `
 }
 
+/* Hover and focus cannot be forced by a class, so those samples are live and carry data-state for the browser spec,
+   which hovers and focuses them before the contrast and visual checks. */
 function States() {
+  const trigger = (label, extra, attrs) => html`
+    <span className="open-in"><button type="button" className=${extra ? `open-in-trigger ${extra}` : 'open-in-trigger'} aria-label=${`Open in (${label})`} ...${attrs}><${Icon} name="arrow-up-right-from-square" size=${12} /></button></span>
+  `
   return html`
     <${Section} id="states" title="States" intro="Default, hover, focus, active, disabled and error. Hover and focus are live: point at or tab to the sample.">
       <div className="card">
         <div className="card-head">Open in trigger</div>
         <div className="card-body content">
-          <${StateRow} label="Default"><span className="open-in"><button type="button" className="open-in-trigger" aria-label="Open in (default)"><${Icon} name="arrow-up-right-from-square" size=${12} /></button></span><//>
-          <${StateRow} label="Hover"><span className="open-in"><button type="button" className="open-in-trigger" aria-label="Open in (hover me)"><${Icon} name="arrow-up-right-from-square" size=${12} /></button></span><span className="label-sm">hover me</span><//>
-          <${StateRow} label="Focus"><span className="open-in"><button type="button" className="open-in-trigger" aria-label="Open in (focus me)"><${Icon} name="arrow-up-right-from-square" size=${12} /></button></span><span className="label-sm">tab to me</span><//>
-          <${StateRow} label="Active"><span className="open-in"><button type="button" className="open-in-trigger active" aria-expanded="true" aria-label="Open in (active)"><${Icon} name="arrow-up-right-from-square" size=${12} /></button></span><//>
-          <${StateRow} label="Disabled"><span className="open-in"><button type="button" className="open-in-trigger state-disabled" disabled aria-label="Open in (disabled)"><${Icon} name="arrow-up-right-from-square" size=${12} /></button></span><//>
-          <${StateRow} label="Error"><span className="open-in"><button type="button" className="open-in-trigger state-error" aria-label="Open in (error)"><${Icon} name="arrow-up-right-from-square" size=${12} /></button></span><//>
+          <${StateRow} label="Default">${trigger('default', '', {})}<//>
+          <${StateRow} label="Hover">${trigger('hover', '', { 'data-state': 'hover' })}<span className="label-sm">hover me</span><//>
+          <${StateRow} label="Focus">${trigger('focus', '', { 'data-state': 'focus' })}<span className="label-sm">tab to me</span><//>
+          <${StateRow} label="Active">${trigger('active', 'active', { 'aria-expanded': 'true' })}<//>
+          <${StateRow} label="Disabled">${trigger('disabled', 'state-disabled', { disabled: true })}<//>
+          <${StateRow} label="Error">${trigger('error', 'state-error', {})}<//>
         </div>
       </div>
       <div className="card">
         <div className="card-head">Menu item</div>
         <div className="card-body content">
           <${StateRow} label="Default"><button type="button" className="settings-menu-item">Menu item</button><//>
-          <${StateRow} label="Hover"><button type="button" className="settings-menu-item">Menu item</button><span className="label-sm">hover me</span><//>
-          <${StateRow} label="Focus"><button type="button" className="settings-menu-item">Menu item</button><span className="label-sm">tab to me</span><//>
+          <${StateRow} label="Hover"><button type="button" className="settings-menu-item" data-state="hover">Menu item</button><span className="label-sm">hover me</span><//>
+          <${StateRow} label="Focus"><button type="button" className="settings-menu-item" data-state="focus">Menu item</button><span className="label-sm">tab to me</span><//>
           <${StateRow} label="Active"><button type="button" className="settings-menu-item selected">Selected item</button><//>
           <${StateRow} label="Disabled"><button type="button" className="settings-menu-item state-disabled" disabled>Disabled item</button><//>
           <${StateRow} label="Error"><button type="button" className="settings-menu-item state-error">Error item</button><//>
+        </div>
+      </div>
+      <div className="card">
+        <div className="card-head">Quick link</div>
+        <div className="card-body content">
+          <${StateRow} label="Default"><a className="quick-link" href="#/p/styleguide/home" aria-label="Quick link (default)"><${Icon} name="link" size=${12} /></a><//>
+          <${StateRow} label="Hover"><a className="quick-link" href="#/p/styleguide/home" aria-label="Quick link (hover)" data-state="hover"><${Icon} name="link" size=${12} /></a><span className="label-sm">hover me</span><//>
+          <${StateRow} label="Focus"><a className="quick-link" href="#/p/styleguide/home" aria-label="Quick link (focus)" data-state="focus"><${Icon} name="link" size=${12} /></a><span className="label-sm">tab to me</span><//>
+          <${StateRow} label="Active"><a className="quick-link active" href="#/p/styleguide/home" aria-label="Quick link (active)"><${Icon} name="link" size=${12} /></a><//>
+          <${StateRow} label="Disabled"><a className="quick-link state-disabled" aria-disabled="true" aria-label="Quick link (disabled)"><${Icon} name="link" size=${12} /></a><//>
+          <${StateRow} label="Error"><a className="quick-link state-error" href="#/p/styleguide/home" aria-label="Quick link (error)"><${Icon} name="link" size=${12} /></a><//>
+        </div>
+      </div>
+      <div className="card">
+        <div className="card-head">Node reference link</div>
+        <div className="card-body content">
+          <${StateRow} label="Default"><a className="node-ref-link" href="#/p/styleguide/home">orders.DomainModel.order</a><//>
+          <${StateRow} label="Hover"><a className="node-ref-link" href="#/p/styleguide/home" data-state="hover">orders.DomainModel.order</a><span className="label-sm">hover me</span><//>
+          <${StateRow} label="Focus"><a className="node-ref-link" href="#/p/styleguide/home" data-state="focus">orders.DomainModel.order</a><span className="label-sm">tab to me</span><//>
+          <${StateRow} label="Active"><a className="node-ref-link active" href="#/p/styleguide/home">orders.DomainModel.order</a><//>
+          <${StateRow} label="Disabled"><a className="node-ref-link state-disabled" aria-disabled="true">orders.DomainModel.order</a><//>
+          <${StateRow} label="Error"><a className="node-ref-link state-error" href="#/p/styleguide/home">orders.DomainModel.order</a><//>
         </div>
       </div>
     <//>
