@@ -1,6 +1,5 @@
 /* Pure builders for the three graph levels: component map, component interior, node focus. */
 import { getDisplayName, kindColour } from 'corum:ui'
-import { EDGE_STYLES } from './constants.js'
 import { buildNamespaceMap, filterByKind, applyEdgeTypeFilter, filterThreadScope, filterOwnerScope } from './graph-helpers.js'
 import { makeRFEdge, buildRFNodesForNodes, buildRFEdgesForEdges } from './rf-builders.js'
 
@@ -19,7 +18,7 @@ export function buildComponentLevel({ graphData, visibleEdgeTypes, kindFilter, n
   const rfE = filteredCmEdges.map(e => {
     const repType = e.types.find(t => visibleEdgeTypes.has(t)) ?? e.types[0]
     return {
-      ...makeRFEdge({ ...e, type: repType }, EDGE_STYLES),
+      ...makeRFEdge({ ...e, type: repType }),
       label: e.types.join(', '),
     }
   })
@@ -84,7 +83,7 @@ export function buildInteriorLevel({ graphData, selectedComponent, availableEdge
   const rfN = buildRFNodesForNodes(visibleNodes, templateMap, navToFocus, openNode, externalNodeIds, kindByNamespace)
   const rfE = buildRFEdgesForEdges(visibleEdges, visibleEdgeTypes).map(e => {
     const isCross = crossEdges.some(ce => ce.id === e.id)
-    return isCross ? { ...e, style: { ...e.style, opacity: 0.45 }, labelStyle: { ...e.labelStyle, opacity: 0.45 } } : e
+    return isCross ? { ...e, className: `${e.className} graph-edge-cross` } : e
   })
   return { rfN, rfE, scopeOptions, scopeInfo }
 }

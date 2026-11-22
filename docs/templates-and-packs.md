@@ -119,6 +119,28 @@ do); the default is `bidirectional`. Core types cannot be overridden. The catego
 decides how tools treat the type: summary counts, lineage defaults and
 collapse filtering.
 
+An edge type may also set a display `colour` and a `line` style for the web UI:
+
+```yaml
+edge-types:
+  publishes:
+    category: semantic
+    colour: "#0f766e"            # or { light: "#0f766e", dark: "#5eead4" }
+    line:
+      dash: "5 5"                # optional SVG dash pattern
+```
+
+Edge types without a colour use the theme's `--edge-default`. See
+[Pack colours](styling.md#pack-colours).
+
+### Template colours
+
+`ui.colour` on a template is either one `#rrggbb` string used in every theme, or
+`{ light: "#rrggbb", dark: "#rrggbb" }` to choose per colour scheme. A string
+works everywhere. The UI derives tinted backgrounds, borders and readable text
+from the colour for each theme; use the object form when one colour cannot meet
+contrast in both. The linter warns about malformed colours.
+
 ### Custom kinds
 
 Every namespace (the first segment of a node ID) has one **kind**, which

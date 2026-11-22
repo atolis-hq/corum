@@ -3,6 +3,7 @@ import type { ContentMap } from '../source/index.js'
 import type { Diagnostic, EdgeCategory, EdgeTypeDef } from '../schema/index.js'
 import { listYamlKeys, readYaml } from '../source/content-utils.js'
 import { CORE_EDGE_TYPES } from './constants.js'
+import { describePackColourProblem } from './colour.js'
 
 const VALID_CATEGORIES = new Set<string>(['structural', 'semantic', 'lineage'])
 
@@ -72,6 +73,30 @@ export function loadEdgeTypes(
         }
       }
 
+      let colour: EdgeTypeDef['colour']
+      if (def.colour !== undefined) {
+        const problem = describePackColourProblem(def.colour)
+        if (problem) {
+          diagnostics.push({ severity: 'warning', file: key, message: `edge type '${name}': ${problem}` })
+        } else {
+          colour = def.colour as EdgeTypeDef['colour']
+        }
+      }
+
+      let line: EdgeTypeDef['line']
+      if (def.line !== undefined) {
+        const dash = (def.line as { dash?: unknown } | null)?.dash
+        if (typeof dash === 'string' && /^[0-9]+(?:[ ,]+[0-9]+)*$/.test(dash)) {
+          line = { dash }
+        } else {
+          diagnostics.push({
+            severity: 'warning',
+            file: key,
+            message: `edge type '${name}': line.dash must be a dash pattern of numbers such as '5 5'`,
+          })
+        }
+      }
+
       const existing = edgeTypes.get(name)
       if (existing) {
         diagnostics.push({
@@ -91,6 +116,8 @@ export function loadEdgeTypes(
         }),
         ...(def.hidden === true && { hidden: true }),
         ...(traversal !== undefined && { traversal }),
+        ...(colour !== undefined && { colour }),
+        ...(line !== undefined && { line }),
       })
     }
   }

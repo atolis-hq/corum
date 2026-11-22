@@ -32,7 +32,7 @@ describe('css tokens (ADR-011 section 1)', () => {
     const css = fs.readFileSync(path.join(WEB, 'style.css'), 'utf8')
     assert.match(fs.readFileSync(path.join(WEB, 'index.html'), 'utf8'), /<html[^>]*\sdata-theme="light"/)
     assert.doesNotMatch(css, /body\[data-theme/)
-    assert.match(css, /--corum-tokens-version:\s*1;/)
+    assert.match(css, /--corum-tokens-version:\s*2;/)
     assert.match(css, /\[data-theme="dark"\]\s*\{[^}]*color-scheme:\s*dark/)
   })
 })

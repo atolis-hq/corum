@@ -1,21 +1,22 @@
 /* Build React Flow node and edge objects from graph API data. */
 import { MarkerType } from 'reactflow'
-import { getDisplayName, kindColour } from 'corum:ui'
-import { EDGE_STYLES } from './constants.js'
+import { getDisplayName, kindColour, edgeTypeStyle } from 'corum:ui'
 import { applyEdgeTypeFilter } from './graph-helpers.js'
 
-
-export function makeRFEdge(edge, edgeStyles) {
-  const style = edgeStyles[edge.type] || { stroke: '#a8acb5', strokeWidth: 1.5 }
+/* Edge appearance comes from the shared edge-type helper as custom properties; stroke, dash, label colour and
+   opacity are applied by the `.graph-edge` rules in web/style.css. The arrowhead lives in a shared <defs> outside
+   the edge, so it takes the `--pack-edge-*` reference (defined on :root), which the helper's value already is. */
+export function makeRFEdge(edge) {
+  const style = edgeTypeStyle(edge.type)
   return {
     id: edge.id,
     source: edge.from,
     target: edge.to,
     label: edge.type,
-    labelStyle: { fontSize: 10, fill: style.stroke },
-    labelBgStyle: { fill: 'var(--background)', fillOpacity: 0.85 },
-    style: { stroke: style.stroke, strokeWidth: style.strokeWidth, strokeDasharray: style.strokeDasharray },
-    markerEnd: { type: MarkerType.ArrowClosed, color: style.stroke, width: 14, height: 14 },
+    className: 'graph-edge',
+    labelStyle: style,
+    style,
+    markerEnd: { type: MarkerType.ArrowClosed, color: style['--edge-colour'], width: 14, height: 14 },
     type: 'default',
   }
 }
@@ -23,7 +24,6 @@ export function makeRFEdge(edge, edgeStyles) {
 export function buildRFNodesForNodes(graphNodes, templateMap, onNodeClick, onOpenNode, fadedIds, kindByNamespace) {
   return graphNodes.map(n => {
     const tmpl = templateMap.get(n.template)
-    const colour = tmpl?.ui?.colour ?? 'var(--subtle-foreground)'
     const parentLabel = n.parentId ? getDisplayName(n.parentId) : null
     return {
       id: n.id,
@@ -35,7 +35,7 @@ export function buildRFNodesForNodes(graphNodes, templateMap, onNodeClick, onOpe
         component: n.namespace,
         kindColour: kindColour(n.kind ?? kindByNamespace?.get(n.namespace)),
         templateLabel: tmpl?.ui?.displayName ?? n.template,
-        colour,
+        template: n.template,
         state: n.state,
         stability: n.stability,
         onClick: () => onNodeClick(n.id),
@@ -49,5 +49,5 @@ export function buildRFNodesForNodes(graphNodes, templateMap, onNodeClick, onOpe
 }
 
 export function buildRFEdgesForEdges(edges, visibleEdgeTypes) {
-  return applyEdgeTypeFilter(edges, visibleEdgeTypes).map(e => makeRFEdge(e, EDGE_STYLES))
+  return applyEdgeTypeFilter(edges, visibleEdgeTypes).map(e => makeRFEdge(e))
 }

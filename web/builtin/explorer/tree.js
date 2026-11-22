@@ -1,6 +1,6 @@
 /* Explorer tree: namespaces grouped by kind, then node types, then nodes. Mounted in the host's list pane. */
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { html, EmptyState, Icon, getDisplayName, hrefForExplorerView } from 'corum:ui'
+import { html, EmptyState, Icon, getDisplayName, hrefForExplorerView, templateColourStyle } from 'corum:ui'
 import { useApi, useCtx } from 'corum:ui/react'
 import { buildNavTree, buildOverlayIndicatorIds, groupNamespacesByKind } from './nav.js'
 
@@ -18,15 +18,16 @@ function OverlayDot() {
   return html`<span className="signal-dots"><span className="signal-dot signal-dot-0" /></span>`
 }
 
-function NodeItem({ node, activeNodeId, colour, child, onNode, overlayIds }) {
+/* `colourTemplates`: template names whose pack colour marks the active item (first with a colour wins). */
+function NodeItem({ node, activeNodeId, colourTemplates, child, onNode, overlayIds }) {
   const isActive = node.id === activeNodeId
   return html`
     <div
-      className=${`nav-node-item${child ? ' nav-node-child' : ''}${isActive ? ' active' : ''}`}
+      className=${`nav-node-item${child ? ' nav-node-child' : ''}${isActive ? ' active node-coloured' : ''}`}
       role="button" tabIndex=${0} aria-current=${isActive ? 'true' : undefined}
       onClick=${() => onNode(node.id)}
       title=${node.id}
-      style=${isActive ? { '--nav-node-active-bg': colour } : undefined}
+      style=${isActive ? templateColourStyle(...colourTemplates) : undefined}
     >
       ${getDisplayName(node.id)}
       ${overlayIds.has(node.id) && html`<${OverlayDot} />`}
@@ -38,17 +39,17 @@ function GroupEntry({ entry, open, onToggle, ...rest }) {
   return html`
     <div>
       <div className="nav-template-head" role="button" tabIndex=${0} aria-expanded=${open} onClick=${onToggle} style=${{ cursor: 'pointer' }}>
-        ${entry.icon && html`<i className=${`fa-solid fa-${entry.icon}`} style=${{ fontSize: 12, width: 14, textAlign: 'center', flexShrink: 0 }} />`}
+        ${entry.icon && html`<i className=${`fa-solid fa-${entry.icon} icon-sized icon-fixed`} style=${{ '--icon-size': '12px' }} />`}
         <span>${entry.label}</span>
         <${Icon} name=${open ? 'chevron-down' : 'chevron-right'} size=${10} />
       </div>
       ${open && entry.children.map(child => html`
         <div key=${child.templateName}>
           <div className="nav-subtype-head">
-            ${child.icon && html`<i className=${`fa-solid fa-${child.icon}`} style=${{ fontSize: 11, width: 14, textAlign: 'center', flexShrink: 0 }} />`}
+            ${child.icon && html`<i className=${`fa-solid fa-${child.icon} icon-sized icon-fixed`} style=${{ '--icon-size': '11px' }} />`}
             <span>${child.label}</span>
           </div>
-          ${child.nodes.map(node => html`<${NodeItem} key=${node.id} node=${node} colour=${child.colour} ...${rest} />`)}
+          ${child.nodes.map(node => html`<${NodeItem} key=${node.id} node=${node} colourTemplates=${child.colourTemplates} ...${rest} />`)}
         </div>
       `)}
     </div>
@@ -56,17 +57,17 @@ function GroupEntry({ entry, open, onToggle, ...rest }) {
 }
 
 function TemplateEntry({ entry, template, templateMap, open, onToggle, openGroupKeys, setOpenGroupKeys, ...rest }) {
-  const colour = template?.ui?.colour ?? 'var(--subtle-foreground)'
+  const colourTemplates = [entry.templateName]
   return html`
     <div>
       <div className="nav-template-head" role="button" tabIndex=${0} aria-expanded=${open} onClick=${onToggle} style=${{ cursor: 'pointer' }}>
-        <i className=${`fa-solid fa-${template?.ui?.icon ?? 'circle'}`} style=${{ fontSize: 12, width: 14, textAlign: 'center', flexShrink: 0 }} />
+        <i className=${`fa-solid fa-${template?.ui?.icon ?? 'circle'} icon-sized icon-fixed`} style=${{ '--icon-size': '12px' }} />
         <span>${templateLabel(template)}</span>
         <${Icon} name=${open ? 'chevron-down' : 'chevron-right'} size=${10} />
       </div>
       ${open && entry.nodes.map(node => html`
         <div key=${node.id}>
-          <${NodeItem} node=${node} colour=${colour} ...${rest} />
+          <${NodeItem} node=${node} colourTemplates=${colourTemplates} ...${rest} />
           ${(node.navChildren ?? []).map(group => {
             const groupKey = `${node.id}:${group.label}`
             const groupOpen = openGroupKeys.has(groupKey)
@@ -84,7 +85,7 @@ function TemplateEntry({ entry, template, templateMap, open, onToggle, openGroup
                 ${groupOpen && group.nodes.map(child => html`
                   <${NodeItem}
                     key=${child.id} node=${child} child=${true}
-                    colour=${templateMap.get(child.template)?.ui?.colour ?? colour} ...${rest}
+                    colourTemplates=${[child.template, ...colourTemplates]} ...${rest}
                   />
                 `)}
               </div>

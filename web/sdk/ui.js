@@ -1,4 +1,5 @@
 import { html } from './html.js'
+import { templateColourStyle } from './pack-colours.js'
 
 export function navigate(path) {
   window.location.hash = path
@@ -27,8 +28,8 @@ export function BrandMark({ size = 24, color = 'currentColor' }) {
 }
 
 export function Icon({ name, size }) {
-  const style = size ? { fontSize: size } : undefined
-  return html`<i className=${`fa-solid fa-${name}`} style=${style} aria-hidden="true"></i>`
+  const style = size ? { '--icon-size': `${size}px` } : undefined
+  return html`<i className=${`fa-solid fa-${name}${size ? ' icon-sized' : ''}`} style=${style} aria-hidden="true"></i>`
 }
 
 export function StateTag({ state }) {
@@ -43,7 +44,7 @@ export function Chip({ children, title }) {
   return html`<span className="chip" title=${title}>${children}</span>`
 }
 
-export function TemplateBadge({ name, colour }) {
-  const style = colour ? { background: colour } : { background: 'var(--subtle-foreground)' }
-  return html`<span className="template-badge" style=${style}>${name}</span>`
+/* `template` is the template name whose pack colour tints the badge; `name` is the label shown. */
+export function TemplateBadge({ name, template }) {
+  return html`<span className="template-badge node-coloured" style=${templateColourStyle(template)}>${name}</span>`
 }

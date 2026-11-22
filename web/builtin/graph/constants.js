@@ -1,27 +1,5 @@
 /* Graph view constants and persisted UI preferences. */
 
-export const EDGE_STYLES = {
-  'triggers':     { stroke: '#b45309', strokeWidth: 1.5 },
-  'produces':     { stroke: '#0f766e', strokeWidth: 1.5 },
-  'calls':        { stroke: '#6d28d9', strokeWidth: 1.5 },
-  'implements':   { stroke: '#475569', strokeWidth: 1.5 },
-  'reads':        { stroke: '#1d4ed8', strokeWidth: 1.5 },
-  'uses-type':    { stroke: '#0891b2', strokeWidth: 1.5 },
-  'maps-to':      { stroke: '#be185d', strokeWidth: 1.5 },
-  'derived-from': { stroke: '#6b7280', strokeWidth: 1.5, strokeDasharray: '5,5' },
-}
-
-export const EDGE_PILL_STYLES = {
-  'triggers':     { background: '#fef3c7', color: '#b45309' },
-  'produces':     { background: '#ccfbf1', color: '#0f766e' },
-  'calls':        { background: '#ede9fe', color: '#6d28d9' },
-  'implements':   { background: '#f1f5f9', color: '#475569' },
-  'reads':        { background: '#dbeafe', color: '#1d4ed8' },
-  'uses-type':    { background: '#cffafe', color: '#0891b2' },
-  'maps-to':      { background: '#fce7f3', color: '#be185d' },
-  'derived-from': { background: '#f3f4f6', color: '#6b7280' },
-}
-
 const LEGACY_EDGE_TYPES = ['triggers', 'produces', 'reads', 'uses-type', 'calls', 'implements', 'maps-to', 'derived-from']
 export const DEPTH_STEPS = [1, 2, 3, 4, 5, Infinity]
 

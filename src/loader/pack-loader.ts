@@ -2,6 +2,7 @@ import { parse as parseYaml } from 'yaml'
 import type { ContentMap } from '../source/index.js'
 import type { Diagnostic, Template } from '../schema/index.js'
 import { listYamlKeys, readYaml } from '../source/content-utils.js'
+import { describePackColourProblem } from './colour.js'
 
 function topoSortTemplates(templates: Map<string, Template>): Template[] {
   const sorted: Template[] = []
@@ -67,6 +68,13 @@ export function loadPacks(
     }
 
     const template = templateRecord as Template
+    if (template.ui?.colour !== undefined) {
+      const problem = describePackColourProblem(template.ui.colour)
+      if (problem) {
+        diagnostics.push({ severity: 'warning', file: key, message: `template '${template.name}': ui.${problem}` })
+        delete template.ui.colour
+      }
+    }
     if (template.name === 'base') {
       base = template
     } else {

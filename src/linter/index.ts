@@ -4,6 +4,7 @@ import { getNamespaces } from '../graph/index.js'
 import { getEdgeTypeConstraints } from '../graph/roles.js'
 import { CORE_EDGE_TYPE_MAP } from '../loader/constants.js'
 import { validateNodeId } from '../loader/id-grammar.js'
+import { describePackColourProblem } from '../loader/colour.js'
 import { getTemplateSchema } from '../loader/template-props.js'
 
 /**
@@ -45,7 +46,21 @@ export function lintGraph(graph: Graph): Diagnostic[] {
   lintHiddenEdgeLiveEnds(graph, diagnostics)
   lintInlineStandaloneSchemaCollisions(graph, diagnostics)
   lintKindExpectedTemplates(graph, diagnostics)
+  lintPackColours(graph, diagnostics)
   return diagnostics
+}
+
+/** Template `ui.colour` and edge-type `colour` are a #rrggbb string or `{ light, dark }` (ADR-011 section 5). */
+function lintPackColours(graph: Graph, diagnostics: Diagnostic[]): void {
+  for (const template of graph.templates.values()) {
+    const colour = template.ui?.colour
+    const problem = colour === undefined ? undefined : describePackColourProblem(colour)
+    if (problem) diagnostics.push({ severity: 'warning', file: `template:${template.name}`, message: `ui.${problem}` })
+  }
+  for (const def of getEdgeTypeDefs(graph).values()) {
+    const problem = def.colour === undefined ? undefined : describePackColourProblem(def.colour)
+    if (problem) diagnostics.push({ severity: 'warning', file: `edge-type:${def.name}`, message: problem })
+  }
 }
 
 /**

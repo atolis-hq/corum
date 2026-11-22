@@ -199,7 +199,7 @@ export function GhostFieldRows({
         title=${`From ${field.sourceRef}`}
       >
         <div className="gutter">
-          ${isConflict && html`<span style=${{ color: '#c44', fontWeight: 700 }}>!</span>`}
+          ${isConflict && html`<span className="conflict-mark">!</span>`}
         </div>
         <div className="name">${name}</div>
         <div className="type">${type}</div>
@@ -207,11 +207,11 @@ export function GhostFieldRows({
         <div className="req">-</div>
         <div className="state">
           ${isConflict
-            ? html`<span className="tag" style=${{ background: '#c4422222', color: '#c44' }}>conflict</span>`
+            ? html`<span className="tag conflict-tag">conflict</span>`
             : html`<${StateTag} state=${field.node.state} />`}
         </div>
         <div className="lineage">
-          <span className="mono" style=${{ fontSize: 10.5, opacity: 0.7 }}>${field.sourceRef}</span>
+          <span className="mono mono-meta dim">${field.sourceRef}</span>
         </div>
       </div>
     `
@@ -220,18 +220,17 @@ export function GhostFieldRows({
 
 export function OverlayLegend({ overlayRefs }) {
   if (!overlayRefs || overlayRefs.length === 0) return null;
-  const colours = ['var(--accent)', '#5c7aa8'];
   return html`
     <div className="overlay-legend">
       <span className="label-xs">Incoming:</span>
       ${overlayRefs.map((ref, index) => html`
         <span key=${ref} className="overlay-legend-item">
-          <span className="overlay-legend-swatch" style=${{ background: colours[index % colours.length] }}></span>
-          <span className="mono" style=${{ fontSize: 10.5 }}>${ref}</span>
+          <span className=${`overlay-legend-swatch overlay-swatch-${index % 2}`}></span>
+          <span className="mono mono-meta">${ref}</span>
         </span>
       `)}
-      <span className="overlay-legend-item" style=${{ color: '#c44' }}>
-        <span className="overlay-legend-swatch" style=${{ background: '#c44' }}></span>
+      <span className="overlay-legend-item overlay-legend-conflict">
+        <span className="overlay-legend-swatch overlay-swatch-conflict"></span>
         conflict
       </span>
     </div>

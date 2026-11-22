@@ -11,6 +11,9 @@ export type Stability = 'unstable' | 'stable' | 'deprecated'
  */
 export type EdgeType = string
 
+/** A pack colour: one hex string for every theme, or separate hex strings per colour scheme. */
+export type PackColour = string | { light: string; dark: string }
+
 export type EdgeCategory = 'structural' | 'semantic' | 'lineage'
 
 export interface EdgeTypeDef {
@@ -26,6 +29,10 @@ export interface EdgeTypeDef {
    * are not followed backwards from the target. Default 'bidirectional'.
    */
   traversal?: 'bidirectional' | 'outbound-only'
+  /** Optional display colour for this edge type (UI). Falls back to the `--edge-default` token. */
+  colour?: PackColour
+  /** Optional line style (UI). `dash` is an SVG dash pattern such as `5 5`. */
+  line?: { dash?: string }
 }
 
 export interface NodeCorumIdentity {
@@ -89,7 +96,7 @@ export interface Template {
   }
   ui?: {
     icon?: string
-    colour?: string
+    colour?: PackColour
     displayName?: string
     displayProperties?: string[]
     badge?: string

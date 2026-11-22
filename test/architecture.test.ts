@@ -6,6 +6,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import semver from 'semver'
@@ -199,8 +200,8 @@ describe('architecture: manifests and SDK surface', () => {
   // Adding or removing an SDK export is a compatibility promise to every plugin author.
   const SDK_UI_EXPORTS = [
     'BrandMark', 'Chip', 'EmptyState', 'ErrorPanel', 'Icon', 'LoadingPanel', 'PropertiesTable', 'PropertyValue', 'SchemaCard', 'StabilityTag', 'StateTag', 'TemplateBadge',
-    'createRegistry', 'getDisplayName', 'hrefForAction', 'hrefForExplorerView', 'hrefForNode', 'html', 'isPageAvailable', 'kindColour', 'matchKeysFor',
-    'navigate', 'owningRoot', 'resolveNodeTarget',
+    'createRegistry', 'edgeTypeStyle', 'getDisplayName', 'hrefForAction', 'hrefForExplorerView', 'hrefForNode', 'html', 'isPageAvailable', 'kindColour', 'matchKeysFor',
+    'navigate', 'owningRoot', 'resolveNodeTarget', 'templateColourStyle',
   ]
   const SDK_REACT_EXPORTS = ['CtxProvider', 'NodeLinks', 'OpenInMenu', 'QuickLinks', 'mountReact', 'useApi', 'useCtx']
   const UPDATE_HINT = 'Adding or removing an SDK export is a compatibility promise to plugin authors: update the snapshot in test/architecture.test.ts, '
@@ -317,18 +318,65 @@ describe('architecture: manifests and SDK surface', () => {
   })
 })
 
-describe('architecture: ratchets', () => {
-  // Hard-coded hex colour literals in JS/JSX under web/. The theming epic
-  // (project/superpowers/plans/2026-11-21-theming-and-styling-epic-notes.md) should lower this; it may only go down.
-  const HEX_COLOUR_BASELINE = 52
+describe('architecture: script colours and inline styles', () => {
+  // ADR-011 section 5: scripts never carry colour values. Pack colours are data injected as custom properties, and
+  // every other colour is a theme token. Hard zero (the former ratchet is gone).
   const HEX = /#(?:[0-9a-fA-F]{3}){1,2}\b/
+  const files = walk(WEB, isSource)
 
-  it('hard-coded hex colour literals in web scripts do not grow', () => {
-    const files = walk(WEB, isSource)
-    const count = files.reduce((total, file) => total + (read(file).match(new RegExp(HEX, 'g'))?.length ?? 0), 0)
-    assert.ok(count <= HEX_COLOUR_BASELINE,
-      `Found ${count} hex colour literals in web/ scripts (baseline ${HEX_COLOUR_BASELINE}). Use CSS variables / theme tokens instead of new hard-coded colours. `
-      + `Lines:\n${report(scan(files, HEX).slice(0, 40))}`)
+  it('there are no hex colour literals in web scripts', () => {
+    const hits = files.flatMap(file => read(file).split(/\r?\n/).flatMap((text, index) =>
+      HEX.test(text) ? [{ file: rel(file), line: index + 1, text: text.trim() }] : []))
+    expectNone(hits, 'Use a semantic token (var(--...)) or a pack colour custom property instead of a colour literal (ADR-011).')
+  })
+
+  // Visual properties may not be set inline. Layout-dynamic properties (width, transform, offsets, grid templates, gap,
+  // padding, margin, cursor, ...) and custom-property assignment (`--x`) are allowed.
+  const VISUAL_PROP = /^(?:color|background\w*|border\w*|font\w*|boxShadow|textShadow|opacity|outline\w*|fill\w*|stroke\w*|textDecoration\w*)$/
+  const VISUAL_CSS = /^(?:color|background[\w-]*|border[\w-]*|font[\w-]*|box-shadow|text-shadow|opacity|outline[\w-]*|fill[\w-]*|stroke[\w-]*|text-decoration[\w-]*)$/
+
+  function visualInlineStyles(file: string): Hit[] {
+    const text = codeLines(file).join('\n')
+    const hits: Hit[] = []
+    const lineAt = (index: number) => text.slice(0, index).split('\n').length
+    const add = (index: number, what: string) => hits.push({ file: rel(file), line: lineAt(index), text: what })
+
+    for (const match of text.matchAll(/\b(?:style|labelStyle|labelBgStyle|innerStyle)\s*[=:]\s*\$?\{/g)) {
+      const open = match.index! + match[0].length - 1
+      let depth = 0
+      let end = open
+      for (; end < text.length; end++) {
+        if (text[end] === '{') depth++
+        else if (text[end] === '}' && --depth === 0) break
+      }
+      const body = text.slice(open + 1, end)
+      for (const key of body.matchAll(/(?:^|[{,\s])(['"]?)([A-Za-z-][\w-]*)\1\s*:(?!:)/g)) {
+        if (!key[2].startsWith('--') && VISUAL_PROP.test(key[2])) add(match.index! + match[0].length + (key.index ?? 0), `style sets ${key[2]}`)
+      }
+    }
+    for (const match of text.matchAll(/\.style\.(\w+)\s*=/g)) {
+      if (match[1] === 'cssText' || VISUAL_PROP.test(match[1])) add(match.index!, `element.style.${match[1]}`)
+    }
+    for (const match of text.matchAll(/\.style\.setProperty\(\s*['"]([^'"]+)['"]/g)) {
+      if (!match[1].startsWith('--') && VISUAL_CSS.test(match[1])) add(match.index!, `style.setProperty(${match[1]})`)
+    }
+    return hits
+  }
+
+  it('no inline style or element.style assignment sets a visual property', () => {
+    expectNone(files.flatMap(visualInlineStyles),
+      'Move visual styling into web/style.css (a class) or pass a custom property (e.g. --node-colour) instead of an inline visual property.')
+  })
+
+  it('the inline-style check is not vacuous', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-inline-style-'))
+    const probe = path.join(dir, 'probe.js')
+    fs.writeFileSync(probe, "html`<span style=${{ color: 'red', '--x': 1, padding: 4 }}></span>`; el.style.background = 'x'; el.style.cssText = 'a'")
+    try {
+      assert.deepEqual(visualInlineStyles(probe).map(hit => hit.text).sort(), ['element.style.background', 'element.style.cssText', 'style sets color'])
+    } finally {
+      fs.rmSync(dir, { recursive: true })
+    }
   })
 })
 
@@ -344,9 +392,7 @@ describe('architecture: stylesheet tokens', () => {
     '--subtle-foreground', '--border', '--border-strong', '--accent', '--accent-soft', '--accent-text',
     '--success', '--warning', '--ring', '--destructive', '--info',
     '--on-accent', '--on-solid', '--scrim', '--shadow-sm', '--shadow-md', '--shadow-lg', '--shadow-xl', '--overlay-secondary',
-    '--edge-triggers', '--edge-triggers-soft', '--edge-produces', '--edge-produces-soft',
-    '--edge-calls', '--edge-calls-soft', '--edge-implements', '--edge-implements-soft',
-    '--edge-reads', '--edge-reads-soft',
+    '--edge-default', '--kind-1', '--kind-2', '--kind-3', '--kind-4', '--kind-5', '--kind-6', '--kind-7', '--kind-8',
     '--radius-sm', '--radius', '--radius-lg',
   ]
   const HOST_OWNED = new Set(['--corum-tokens-version'])

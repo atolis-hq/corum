@@ -166,7 +166,7 @@ function makeTestGraph(): Graph {
   ])
   const edgeTypes = new Map([
     ['maps-to', { name: 'maps-to', category: 'lineage' as const }],
-    ['precedes', { name: 'precedes', category: 'semantic' as const }],
+    ['precedes', { name: 'precedes', category: 'semantic' as const, colour: { light: '#0f766e', dark: '#5eead4' }, line: { dash: '5 5' } }],
   ])
 
   return { nodesById, edgesByFrom, edgesByTo, templates, edgeTypes, diagnostics: [] }
@@ -672,6 +672,17 @@ describe('web server', () => {
       const body = await res.json() as Array<{ name: string; role?: string }>
       const withRole = body.filter(t => t.role !== undefined)
       assert.ok(withRole.length > 0, 'at least one fixture template declares a role')
+    })
+
+    it('GET /api/edge-types carries each edge type\'s colour and line style (additive)', async () => {
+      const res = await fetch(`http://localhost:${handle.port}/api/edge-types`)
+      assert.equal(res.status, 200)
+      const body = await res.json() as Array<{ name: string; category: string; hidden: boolean; colour?: unknown; line?: { dash?: string } }>
+      assert.deepEqual(body.find(t => t.name === 'precedes')?.colour, { light: '#0f766e', dark: '#5eead4' })
+      assert.deepEqual(body.find(t => t.name === 'precedes')?.line, { dash: '5 5' })
+      assert.equal(body.find(t => t.name === 'maps-to')?.colour, undefined)
+      assert.equal(body.find(t => t.name === 'maps-to')?.hidden, false)
+      assert.deepEqual(body.map(t => t.name), ['maps-to', 'precedes'])
     })
 
     it('includes ui config in response', async () => {
@@ -1681,7 +1692,7 @@ describe('web server', () => {
 
     it('app: templateDisplayName resolves ui.displayName and is used for labels', () => {
       assert.match(app, /function templateDisplayName\(template\) \{\s*return template\?\.ui\?\.displayName \?\? template\?\.name \?\? '';\s*\}/)
-      assert.match(app, /<TemplateBadge name=\{templateDisplayName\(template\)\} colour=\{colour\} \/>/)
+      assert.match(app, /<TemplateBadge name=\{templateDisplayName\(template\)\} template=\{root\.template\} \/>/)
       assert.match(explorer, /const templateLabel = template => template\?\.ui\?\.displayName \?\? template\?\.name \?\? ''/)
       assert.match(explorer, /<span>\$\{templateLabel\(template\)\}<\/span>/)
     })
@@ -1811,12 +1822,12 @@ describe('web server', () => {
     })
 
     it('graph: node cards render status beside stability in the footer, not in the header', () => {
-      assert.doesNotMatch(graph, /<div className="graph-node-card-header">\s*<\$\{TemplateBadge\} name=\$\{data\.templateLabel\} colour=\$\{colour\} \/>\s*<\/div>/)
+      assert.doesNotMatch(graph, /<div className="graph-node-card-header">\s*<\$\{TemplateBadge\} name=\$\{data\.templateLabel\} template=\$\{data\.template\} \/>\s*<\/div>/)
       assert.match(graph, /<div className="graph-node-card-footer">[\s\S]*<\$\{StabilityTag\} stability=\$\{data\.stability\} \/>[\s\S]*<\$\{StateTag\} state=\$\{data\.state\} \/>/)
     })
 
     it('graph: node card titles use a dedicated wrapped block instead of single-line truncation', () => {
-      assert.match(graph, /<div className="graph-node-card-body">\s*<div className="graph-node-card-text">\s*<div className="graph-node-card-name" title=\$\{data\.nodeId\}>\$\{data\.label\}<\/div>\s*<div className="graph-node-card-component" style=\$\{\{ color: data\.kindColour \}\}>\$\{data\.component\}<\/div>\s*<\/div>\s*<div className="graph-node-card-type">\s*<\$\{TemplateBadge\} name=\$\{data\.templateLabel\} colour=\$\{colour\} \/>\s*<\/div>\s*<\/div>/)
+      assert.match(graph, /<div className="graph-node-card-body">\s*<div className="graph-node-card-text">\s*<div className="graph-node-card-name" title=\$\{data\.nodeId\}>\$\{data\.label\}<\/div>\s*<div className="graph-node-card-component node-coloured" style=\$\{\{ '--node-colour': data\.kindColour \}\}>\$\{data\.component\}<\/div>\s*<\/div>\s*<div className="graph-node-card-type">\s*<\$\{TemplateBadge\} name=\$\{data\.templateLabel\} template=\$\{data\.template\} \/>\s*<\/div>\s*<\/div>/)
       assert.match(styles, /\.graph-node-card-text\s*\{[^}]*min-height:\s*calc\(\(1\.25em \* 2\) \+ 12px\);/s)
       assert.match(styles, /\.graph-node-card-name\s*\{[^}]*white-space:\s*normal;[^}]*overflow:\s*visible;[^}]*text-overflow:\s*clip;[^}]*line-height:\s*1\.25;/s)
       assert.match(styles, /\.graph-node-card-type\s*\{[^}]*margin-top:\s*6px;/)

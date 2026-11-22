@@ -27,7 +27,7 @@ export function InlineObjectValue({ value }) {
     <span>
       ${parts.map(([k, v], i) => html`
         <${React.Fragment} key=${k}>
-          ${i > 0 && html`<span style=${{ margin: '0 6px', opacity: 0.4 }}>|</span>`}
+          ${i > 0 && html`<span className="pipe-sep">|</span>`}
           <span className="prop-key-label prop-key-label--inline mono">${k}:</span>${' '}${String(v)}
         <//>
       `)}

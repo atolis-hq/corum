@@ -497,6 +497,23 @@ export function createApp(
     res.json(templates)
   })
 
+  app.get('/api/edge-types', async (req, res) => {
+    let targetGraph = graph
+    if (typeof req.query.ref === 'string' && multiCache) {
+      targetGraph = await getGraphForRef(req.query.ref, multiCache, graph)
+    }
+    const defs = targetGraph.edgeTypes ?? new Map(Object.entries(CORE_EDGE_TYPES))
+    res.json([...defs.values()]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(def => ({
+        name: def.name,
+        category: def.category,
+        hidden: def.hidden ?? false,
+        ...(def.colour !== undefined && { colour: def.colour }),
+        ...(def.line !== undefined && { line: def.line }),
+      })))
+  })
+
   app.get('/api/nodes', async (req, res) => {
     const { namespace, kind, state, stability } = req.query
     const includeCore = req.query.includeCore === 'true'
