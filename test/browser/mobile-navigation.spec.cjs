@@ -2,10 +2,10 @@ const { test, expect } = require('@playwright/test');
 
 async function openList(page) {
   await page.goto('/#/p/explorer/namespaces');
-  await page.locator('.nav-section-head').filter({ hasText: 'orders' }).click();
-  const template = page.locator('.nav-template-head').filter({ hasText: 'Domain' }).first();
+  await page.locator('.explorer-nav-section-head').filter({ hasText: 'orders' }).click();
+  const template = page.locator('.explorer-nav-template-head').filter({ hasText: 'Domain' }).first();
   await template.click();
-  await expect(page.locator('.nav-node-item').first()).toBeVisible();
+  await expect(page.locator('.explorer-nav-node-item').first()).toBeVisible();
 }
 
 async function expectDetail(page) {
@@ -17,7 +17,7 @@ async function expectDetail(page) {
 
 async function expectList(page) {
   await expect(page).toHaveURL(/\/p\/explorer\/namespaces$/);
-  await expect(page.locator('.nav-node-item.active')).toBeFocused();
+  await expect(page.locator('.explorer-nav-node-item.active')).toBeFocused();
   await expect(page.locator('.detail-pane')).toHaveAttribute('inert', '');
   await expect(page.locator('.list-pane')).not.toHaveAttribute('inert');
 }
@@ -32,9 +32,9 @@ test('keyboard drill-down, Back, browser history, retained list and resizing', a
     }))) });
   });
   await openList(page);
-  expect((await page.locator('.nav-tree').boundingBox()).height).toBeGreaterThan(500);
+  expect((await page.locator('.explorer-nav-tree').boundingBox()).height).toBeGreaterThan(500);
   expect(await page.locator('.detail-pane').evaluate(el => getComputedStyle(el).transitionDuration)).toContain('0.22s');
-  const item = page.locator('.nav-node-item').first();
+  const item = page.locator('.explorer-nav-node-item').first();
   const title = await item.getAttribute('title');
   await item.focus();
   await item.press('Enter');
@@ -43,20 +43,20 @@ test('keyboard drill-down, Back, browser history, retained list and resizing', a
   expect((await back.boundingBox()).height).toBeGreaterThanOrEqual(44);
   await back.click();
   await expectList(page);
-  await expect(page.locator('.nav-node-item.active')).toHaveAttribute('title', title);
-  const scroll = await page.locator('.nav-tree').evaluate(el => { el.scrollTop = 30; return el.scrollTop; });
+  await expect(page.locator('.explorer-nav-node-item.active')).toHaveAttribute('title', title);
+  const scroll = await page.locator('.explorer-nav-tree').evaluate(el => { el.scrollTop = 30; return el.scrollTop; });
   expect(scroll).toBeGreaterThan(0);
-  await page.locator('.nav-node-item.active').press('Enter');
+  await page.locator('.explorer-nav-node-item.active').press('Enter');
   await expectDetail(page);
   await page.goBack();
   await expectList(page);
-  expect(await page.locator('.nav-tree').evaluate(el => el.scrollTop)).toBe(scroll);
+  expect(await page.locator('.explorer-nav-tree').evaluate(el => el.scrollTop)).toBe(scroll);
   await page.goForward();
   await expectDetail(page);
   await page.setViewportSize({ width: 1100, height: 800 });
   await expect(page.locator('.list-pane')).not.toHaveAttribute('inert');
   await expect(back).toBeHidden();
-  await expect(page.locator('.nav-node-item.active')).toHaveAttribute('title', title);
+  await expect(page.locator('.explorer-nav-node-item.active')).toHaveAttribute('title', title);
   await page.setViewportSize({ width: 780, height: 375 });
   await expectDetail(page);
   await back.click();
@@ -88,7 +88,7 @@ test('reduced motion, landscape, dashboard and graph', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 667, height: 375 });
   await openList(page);
-  await page.locator('.nav-node-item').first().click();
+  await page.locator('.explorer-nav-node-item').first().click();
   await expectDetail(page);
   expect(await page.locator('.detail-pane').evaluate(el => getComputedStyle(el).transitionDuration)).toBe('0s');
   await page.getByRole('button', { name: 'Back to models' }).click();

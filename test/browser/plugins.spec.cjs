@@ -390,12 +390,12 @@ test.describe('explorer view bypass (view=explorer)', () => {
 
   test('clicking a claimed event in the Explorer tree stays on the Explorer node page', async ({ page }) => {
     await page.goto('/#/p/explorer/namespaces');
-    const item = page.locator(`.nav-node-item[title="${EVENT}"]`);
-    const orders = page.locator('.nav-section-head', { hasText: /^orders$/i });
+    const item = page.locator(`.explorer-nav-node-item[title="${EVENT}"]`);
+    const orders = page.locator('.explorer-nav-section-head', { hasText: /^orders$/i });
     await expect(orders).toBeVisible();
     if ((await orders.getAttribute('aria-expanded')) !== 'true') await orders.click();
     // Expand collapsed template groups until the event shows.
-    for (const head of await page.locator('.nav-template-head[aria-expanded="false"]').all()) {
+    for (const head of await page.locator('.explorer-nav-template-head[aria-expanded="false"]').all()) {
       if (await item.count()) break;
       await head.click();
     }

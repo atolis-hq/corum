@@ -1,50 +1,6 @@
-/* Host-owned: themes must not set this. */
-:root {
-  --corum-tokens-version: 2;
-}
-
-:root,
-[data-theme="light"] {
-  --background: #ffffff;
-  --card: #f7f7f8;
-  --muted: #eeeef1;
-  --foreground: #141519;
-  --secondary-foreground: #3a3c43;
-  --muted-foreground: #6c6f78;
-  --subtle-foreground: #a8acb5;
-  --border: #e4e6ea;
-  --border-strong: #cdd0d6;
-  --accent: #e8614a;
-  --accent-soft: #fde6e0;
-  --accent-text: #b3422e;
-  --success: #3b9a66;
-  --warning: var(--accent);
-  --ring: var(--accent);
-  --destructive: #c44;
-  --info: #3b6fb3;
-  --on-accent: #ffffff;
-  --on-solid: #ffffff;
-  --scrim: rgba(0, 0, 0, 0.4);
-  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.12);
-  --shadow-xl: 0 8px 40px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.1);
-  --overlay-secondary: #5c7aa8;
-  --edge-default: #6c6f78;
-  --kind-1: #2f6fb0;
-  --kind-2: #b0562f;
-  --kind-3: #4a8a3c;
-  --kind-4: #8a3c7a;
-  --kind-5: #b08a2f;
-  --kind-6: #2f8a8a;
-  --kind-7: #7a3c3c;
-  --kind-8: #5a5ab0;
-  --radius-sm: 4px;
-  --radius: 6px;
-  --radius-lg: 10px;
-  color-scheme: light;
-}
-
+/* The default (light) theme and the contract version are generated into tokens.css from sdk/tokens.json
+   (`npm run tokens`); tokens.css loads before this file. The dark theme below is the other half of the contract:
+   every token in tokens.json with the default `theme` scope needs a value here too (test/architecture.test.ts). */
 [data-theme="dark"] {
   --background: #15171c;
   --card: #1c1f25;
@@ -328,7 +284,7 @@ button {
   background: var(--background);
 }
 
-.nav-tree {
+.explorer-nav-tree {
   width: 280px;
   min-width: 280px;
   padding: 12px 10px 24px;
@@ -337,7 +293,7 @@ button {
   border-right: 1px solid var(--border);
 }
 
-.nav-kind-head {
+.explorer-nav-kind-head {
   padding: 10px 6px 2px;
   color: var(--foreground);
   font-size: 13px;
@@ -345,7 +301,7 @@ button {
   border-bottom: 1px solid var(--border-strong);
 }
 
-.ns-kind-pill {
+.explorer-kind-pill {
   display: inline-block;
   padding: 1px 8px;
   border-radius: var(--radius-lg);
@@ -359,7 +315,7 @@ button {
   padding: 3px 6px;
 }
 
-.nav-section-head {
+.explorer-nav-section-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -373,7 +329,7 @@ button {
   cursor: pointer;
 }
 
-.nav-template-head {
+.explorer-nav-template-head {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -385,7 +341,7 @@ button {
   text-transform: uppercase;
 }
 
-.nav-subtype-head {
+.explorer-nav-subtype-head {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -397,7 +353,7 @@ button {
   text-transform: uppercase;
 }
 
-.nav-node-item {
+.explorer-nav-node-item {
   margin: 1px 0;
   padding: 6px 8px 6px 30px;
   overflow: hidden;
@@ -409,21 +365,21 @@ button {
   white-space: nowrap;
 }
 
-.nav-node-item:hover {
+.explorer-nav-node-item:hover {
   background: var(--card);
 }
 
-.nav-node-item.active {
+.explorer-nav-node-item.active {
   background: var(--node-tint, var(--muted));
   color: var(--node-on-tint, var(--foreground));
   box-shadow: inset 3px 0 0 var(--node-border, var(--foreground));
 }
 
-.nav-child-group {
+.explorer-nav-child-group {
   margin: 1px 0 4px;
 }
 
-.nav-child-head {
+.explorer-nav-child-head {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -434,7 +390,7 @@ button {
   text-transform: uppercase;
 }
 
-.nav-node-child {
+.explorer-nav-node-child {
   padding-left: 50px;
 }
 
@@ -807,7 +763,7 @@ button {
     min-height: 44px;
   }
 
-  .nav-tree {
+  .explorer-nav-tree {
     width: 100%;
     min-width: 0;
     min-height: 0;
@@ -1025,22 +981,22 @@ button {
   overflow-wrap: anywhere;
 }
 
-.signal-dots {
+.explorer-signal-dots {
   display: inline-flex;
   align-items: center;
   gap: 2px;
   margin-left: 4px;
 }
 
-.signal-dot {
+.explorer-signal-dot {
   width: 5px;
   height: 5px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
-.signal-dot-0 { background: var(--accent); }
-.signal-dot-1 { background: var(--overlay-secondary); }
+.explorer-signal-dot-0 { background: var(--accent); }
+.explorer-signal-dot-1 { background: var(--overlay-secondary); }
 
 .field-row.mapping-meta .name {
   color: var(--muted-foreground);
@@ -1303,7 +1259,7 @@ button {
   transition: opacity 0.15s;
 }
 
-.graph-edge-pill.inactive {
+.graph-edge-pill.graph-inactive {
   background: var(--muted) !important;
   color: var(--subtle-foreground) !important;
   opacity: 0.6;
@@ -1624,7 +1580,7 @@ button {
   white-space: nowrap;
 }
 
-.graph-edge-pill.inactive {
+.graph-edge-pill.graph-inactive {
   background: transparent !important;
   color: var(--muted-foreground) !important;
   border-color: var(--border-strong) !important;
@@ -1723,12 +1679,12 @@ button {
 }
 
 /* External (cross-component) node cards, faded to de-emphasise */
-.graph-node-card.faded {
+.graph-node-card.graph-faded {
   opacity: 0.5;
 }
 
 /* Focal node highlight: solid outline with a gentle glowing pulse */
-.graph-node-card.focal {
+.graph-node-card.graph-focal {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   animation: graph-focal-glow 2.4s ease-in-out infinite;
@@ -2064,7 +2020,7 @@ button {
   color: var(--edge-on-tint);
 }
 
-.ns-kind-pill.node-coloured {
+.explorer-kind-pill.node-coloured {
   background: var(--node-tint);
   border: 1px solid var(--node-border);
   color: var(--node-on-tint);

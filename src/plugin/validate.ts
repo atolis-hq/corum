@@ -4,6 +4,7 @@ import { BUILTIN_PLUGIN_DIR } from '../web/plugins/builtin-dir.js'
 import { discoverPlugins } from '../web/plugins/discover.js'
 import { parsePluginManifest } from '../web/plugins/manifest.js'
 import { resolvePluginStatuses } from '../web/plugins/status.js'
+import { lintPluginStyles } from './style-lints.js'
 
 export type ValidationResult = {
   /** 0 valid, 1 plugin errors, 2 setup failure. */
@@ -41,5 +42,6 @@ export function validatePluginDir(dir: string, graphTemplates: Set<string>, coru
   if (!existsSync(path.join(root, ...parsed.manifest.main.split('/')))) {
     warnings.push(`${root}: main "${parsed.manifest.main}" does not exist`)
   }
+  warnings.push(...lintPluginStyles(root))
   return { exitCode: errors.length > 0 ? 1 : 0, errors, warnings }
 }

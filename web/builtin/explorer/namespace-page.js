@@ -76,7 +76,7 @@ export function NamespacePage() {
     <div className="content">
       <div style=${{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
         <h1 style=${{ margin: 0 }}>${namespace}</h1>
-        <span className="ns-kind-pill node-coloured" style=${{ '--node-colour': kindColour(kind) }}>${kindLabel}</span>
+        <span className="explorer-kind-pill node-coloured" style=${{ '--node-colour': kindColour(kind) }}>${kindLabel}</span>
       </div>
       <div className="label-sm" style=${{ marginBottom: 16 }}>Namespace · ${owned.length} ${owned.length === 1 ? 'node' : 'nodes'}</div>
 

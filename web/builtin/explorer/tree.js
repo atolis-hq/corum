@@ -15,7 +15,7 @@ const toggled = (set, key) => {
 }
 
 function OverlayDot() {
-  return html`<span className="signal-dots"><span className="signal-dot signal-dot-0" /></span>`
+  return html`<span className="explorer-signal-dots"><span className="explorer-signal-dot explorer-signal-dot-0" /></span>`
 }
 
 /* `colourTemplates`: template names whose pack colour marks the active item (first with a colour wins). */
@@ -23,7 +23,7 @@ function NodeItem({ node, activeNodeId, colourTemplates, child, onNode, overlayI
   const isActive = node.id === activeNodeId
   return html`
     <div
-      className=${`nav-node-item${child ? ' nav-node-child' : ''}${isActive ? ' active node-coloured' : ''}`}
+      className=${`explorer-nav-node-item${child ? ' explorer-nav-node-child' : ''}${isActive ? ' active node-coloured' : ''}`}
       role="button" tabIndex=${0} aria-current=${isActive ? 'true' : undefined}
       onClick=${() => onNode(node.id)}
       title=${node.id}
@@ -38,14 +38,14 @@ function NodeItem({ node, activeNodeId, colourTemplates, child, onNode, overlayI
 function GroupEntry({ entry, open, onToggle, ...rest }) {
   return html`
     <div>
-      <div className="nav-template-head" role="button" tabIndex=${0} aria-expanded=${open} onClick=${onToggle} style=${{ cursor: 'pointer' }}>
+      <div className="explorer-nav-template-head" role="button" tabIndex=${0} aria-expanded=${open} onClick=${onToggle} style=${{ cursor: 'pointer' }}>
         ${entry.icon && html`<i className=${`fa-solid fa-${entry.icon} icon-sized icon-fixed`} style=${{ '--icon-size': '12px' }} />`}
         <span>${entry.label}</span>
         <${Icon} name=${open ? 'chevron-down' : 'chevron-right'} size=${10} />
       </div>
       ${open && entry.children.map(child => html`
         <div key=${child.templateName}>
-          <div className="nav-subtype-head">
+          <div className="explorer-nav-subtype-head">
             ${child.icon && html`<i className=${`fa-solid fa-${child.icon} icon-sized icon-fixed`} style=${{ '--icon-size': '11px' }} />`}
             <span>${child.label}</span>
           </div>
@@ -60,7 +60,7 @@ function TemplateEntry({ entry, template, templateMap, open, onToggle, openGroup
   const colourTemplates = [entry.templateName]
   return html`
     <div>
-      <div className="nav-template-head" role="button" tabIndex=${0} aria-expanded=${open} onClick=${onToggle} style=${{ cursor: 'pointer' }}>
+      <div className="explorer-nav-template-head" role="button" tabIndex=${0} aria-expanded=${open} onClick=${onToggle} style=${{ cursor: 'pointer' }}>
         <i className=${`fa-solid fa-${template?.ui?.icon ?? 'circle'} icon-sized icon-fixed`} style=${{ '--icon-size': '12px' }} />
         <span>${templateLabel(template)}</span>
         <${Icon} name=${open ? 'chevron-down' : 'chevron-right'} size=${10} />
@@ -72,9 +72,9 @@ function TemplateEntry({ entry, template, templateMap, open, onToggle, openGroup
             const groupKey = `${node.id}:${group.label}`
             const groupOpen = openGroupKeys.has(groupKey)
             return html`
-              <div className="nav-child-group" key=${group.label}>
+              <div className="explorer-nav-child-group" key=${group.label}>
                 <div
-                  className="nav-child-head"
+                  className="explorer-nav-child-head"
                   role="button" tabIndex=${0} aria-expanded=${groupOpen}
                   style=${{ cursor: 'pointer' }}
                   onClick=${() => setOpenGroupKeys(prev => toggled(prev, groupKey))}
@@ -194,23 +194,23 @@ export function ExplorerTree() {
 
   if (nodes === null) return null
   if (navTree.size === 0) {
-    return html`<div className="nav-tree"><${EmptyState}>No graph nodes loaded.<//></div>`
+    return html`<div className="explorer-nav-tree"><${EmptyState}>No graph nodes loaded.<//></div>`
   }
 
   const itemProps = { activeNodeId, onNode, overlayIds }
   return html`
-    <div className="nav-tree" onKeyDown=${event => {
+    <div className="explorer-nav-tree" onKeyDown=${event => {
       if ((event.key === 'Enter' || event.key === ' ') && event.target.getAttribute('role') === 'button') {
         event.preventDefault()
         event.target.click()
       }
     }}>
       ${kindSections.map(section => html`
-        <div key=${section.kind} className="nav-kind-section" data-kind=${section.kind}>
-          ${kindSections.length > 1 && html`<div className="nav-kind-head">${section.label}</div>`}
+        <div key=${section.kind} className="explorer-nav-kind-section" data-kind=${section.kind}>
+          ${kindSections.length > 1 && html`<div className="explorer-nav-kind-head">${section.label}</div>`}
           ${section.namespaces.map(component => html`
             <div key=${component}>
-              <div className="nav-section-head" role="button" tabIndex=${0} aria-expanded=${openComponent === component} onClick=${() => toggleComponent(component, section.kind)}>
+              <div className="explorer-nav-section-head" role="button" tabIndex=${0} aria-expanded=${openComponent === component} onClick=${() => toggleComponent(component, section.kind)}>
                 <span>${component}</span>
                 <${Icon} name=${openComponent === component ? 'chevron-down' : 'chevron-right'} size=${12} />
               </div>

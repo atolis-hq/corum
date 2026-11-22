@@ -191,7 +191,7 @@ export function GraphToolbar({ edgeTypes, visibleEdgeTypes, onToggleEdgeType, sh
         return html`
           <span
             key=${type}
-            className=${`graph-edge-pill${active ? ' edge-coloured' : ' inactive'}`}
+            className=${`graph-edge-pill${active ? ' edge-coloured' : ' graph-inactive'}`}
             style=${edgeTypeStyle(type)}
             onClick=${() => onToggleEdgeType(type)}
           >
