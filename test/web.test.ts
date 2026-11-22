@@ -1757,10 +1757,10 @@ describe('web server', () => {
     })
 
     it('style: non-conflict ghost rows use a stronger neutral grey background while conflicts stay red', () => {
-      assert.match(styles, /\.field-row\.overlay-ghost\s*\{[^}]*background:\s*color-mix\(in oklch,\s*var\(--ink\)\s*6%,\s*var\(--paper\)\);/)
-      assert.match(styles, /\.overlay-stripe-0\s*\{[^}]*background:\s*color-mix\(in oklch,\s*var\(--ink\)\s*8%,\s*var\(--paper\)\);/)
-      assert.match(styles, /\.overlay-stripe-1\s*\{[^}]*background:\s*color-mix\(in oklch,\s*var\(--ink\)\s*8%,\s*var\(--paper\)\);/)
-      assert.match(styles, /\.overlay-conflict\s*\{[^}]*background:\s*color-mix\(in oklch,\s*#c44\s*5%,\s*var\(--paper\)\);/)
+      assert.match(styles, /\.field-row\.overlay-ghost\s*\{[^}]*background:\s*color-mix\(in oklch,\s*var\(--foreground\)\s*6%,\s*var\(--background\)\);/)
+      assert.match(styles, /\.overlay-stripe-0\s*\{[^}]*background:\s*color-mix\(in oklch,\s*var\(--foreground\)\s*8%,\s*var\(--background\)\);/)
+      assert.match(styles, /\.overlay-stripe-1\s*\{[^}]*background:\s*color-mix\(in oklch,\s*var\(--foreground\)\s*8%,\s*var\(--background\)\);/)
+      assert.match(styles, /\.overlay-conflict\s*\{[^}]*background:\s*color-mix\(in oklch,\s*#c44\s*5%,\s*var\(--background\)\);/)
     })
 
     it('app: primary nav and page heading say Explorer; dashboard card stays Namespaces', () => {

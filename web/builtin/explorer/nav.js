@@ -95,7 +95,7 @@ export function buildNavTree(nodes, templates) {
             templateName,
             label: childTemplate?.ui?.displayName ?? templateName,
             icon: childTemplate?.ui?.icon,
-            colour: childTemplate?.ui?.colour ?? groupTemplate?.ui?.colour ?? 'var(--ink-4)',
+            colour: childTemplate?.ui?.colour ?? groupTemplate?.ui?.colour ?? 'var(--subtle-foreground)',
             nodes: nodeList,
           })
         }
@@ -105,7 +105,7 @@ export function buildNavTree(nodes, templates) {
           groupTemplateName,
           label: groupTemplate?.ui?.displayName ?? groupTemplateName,
           icon: groupTemplate?.ui?.icon,
-          colour: groupTemplate?.ui?.colour ?? 'var(--ink-4)',
+          colour: groupTemplate?.ui?.colour ?? 'var(--subtle-foreground)',
           children,
         })
       }

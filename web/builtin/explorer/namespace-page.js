@@ -29,7 +29,7 @@ function EdgeList({ title, edges, endpoint, graph, error, linkProps }) {
       <div className="card-head">${title} (${edges.length})</div>
       <div className="card-body" style=${{ padding: '12px 16px' }}>
         ${graph === null && !error && html`<div className="label-sm">Loading…</div>`}
-        ${error && html`<div style=${{ color: 'var(--warn)' }}>Error loading edges: ${error}</div>`}
+        ${error && html`<div style=${{ color: 'var(--warning)' }}>Error loading edges: ${error}</div>`}
         ${graph !== null && edges.length === 0 && html`<div className="label-sm">None.</div>`}
         ${edges.map(edge => html`
           <div key=${edge.id} style=${{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0' }}>
