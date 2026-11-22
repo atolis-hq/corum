@@ -201,9 +201,12 @@ button {
   position: fixed;
   inset: 0;
   z-index: 1000;
+  /* Desktop: clicks pass through to the page; the document mousedown handler closes the menu. */
+  pointer-events: none;
 }
 
 .settings-menu {
+  pointer-events: auto;
   position: fixed;
   left: 76px;
   bottom: 10px;
@@ -759,6 +762,7 @@ button {
   /* Top-level overlay: scrimmed backdrop like search, panel always fully on-screen. */
   .settings-backdrop {
     background: var(--scrim);
+    pointer-events: auto;
   }
 
   .settings-menu {
