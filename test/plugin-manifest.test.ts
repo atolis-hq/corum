@@ -166,6 +166,15 @@ describe('parsePluginManifest', () => {
       assert.ok(!('settings' in parsePluginManifest(valid).manifest!.contributes.pages[0]))
     })
 
+    it('parses settings.debugOnly and rejects a non-boolean value', () => {
+      const ok = parsePluginManifest(page('settings: { label: Style guide, debugOnly: true }'))
+      assert.deepEqual(ok.errors, [])
+      assert.deepEqual(ok.manifest!.contributes.pages[0].settings, { label: 'Style guide', debugOnly: true })
+      const bad = parsePluginManifest(page('settings: { label: Style guide, debugOnly: maybe }'))
+      assert.equal(bad.manifest, null)
+      assert.ok(bad.errors.some(error => error.includes('settings.debugOnly must be a boolean')))
+    })
+
     it('rejects a settings entry that is not a mapping with a non-empty label', () => {
       for (const value of ['Style guide', '{ label: "" }', '{ label: 3 }', '{}']) {
         const { manifest, errors } = parsePluginManifest(page(`settings: ${value}`))

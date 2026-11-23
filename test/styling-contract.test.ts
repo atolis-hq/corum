@@ -256,7 +256,7 @@ describe('styling contract: style guide plugin', () => {
   it('declares a hidden page that is linked from the Settings menu', () => {
     const manifest = read(path.join(GUIDE, 'plugin.yaml'))
     assert.match(manifest, /nav: false/)
-    assert.match(manifest, /settings: \{ label: Style guide \}/)
+    assert.match(manifest, /settings: \{ label: Style guide, debugOnly: true \}/)
   })
 })
 

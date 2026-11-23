@@ -4,6 +4,8 @@ const trigger = page => page.getByRole('button', { name: 'Settings' });
 const html = page => page.locator('html');
 
 test('keyboard: focus in on open, arrows wrap, Escape returns focus', async ({ page }) => {
+  // The Style guide entry is only listed in Debug mode, so start with it on.
+  await page.addInitScript(() => localStorage.setItem('corum:debugMode', 'true'));
   await page.goto('/');
   await trigger(page).focus();
   await page.keyboard.press('Enter');

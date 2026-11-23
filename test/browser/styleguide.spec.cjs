@@ -82,12 +82,21 @@ async function contrast(page, selector) {
   }, selector);
 }
 
-test('the guide is hidden from the rail and reachable from the Settings menu and by URL', async ({ page }) => {
+test('the guide is hidden from the rail, listed in Settings only in Debug mode, and reachable by URL', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/');
   await expect(page.locator('.nav-rail').getByText('Style guide')).toHaveCount(0);
   await settings(page).getByRole('button', { name: 'Settings' }).click();
-  await menu(page).getByRole('menuitem', { name: 'Style guide' }).click();
+  const entry = menu(page).getByRole('menuitem', { name: 'Style guide' });
+  const debug = menu(page).getByRole('menuitemcheckbox', { name: 'Debug mode' });
+  await expect(debug).toBeVisible();
+  await expect(entry).toHaveCount(0);
+  await debug.click();
+  await expect(entry).toBeVisible();
+  await debug.click();
+  await expect(entry).toHaveCount(0);
+  await debug.click();
+  await entry.click();
   await expect(page).toHaveURL(/#.*\/p\/styleguide\/home/);
   await expect(page.locator(GUIDE)).toBeVisible();
   await page.goto(URL);

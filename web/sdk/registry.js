@@ -41,7 +41,7 @@ function buildPageEntry(plugin, page) {
     sidebar: page.sidebar ?? null,
     nodeSidebar: Boolean(page.sidebar && page.nodeSidebar),
     detail: Boolean(page.sidebar && page.detail),
-    settings: page.settings?.label ? { label: page.settings.label } : null,
+    settings: page.settings?.label ? { label: page.settings.label, debugOnly: page.settings.debugOnly === true } : null,
     mount(el, ctx) {
       return mountExport(plugin, page.id, page.mount, el, ctx)
     },
