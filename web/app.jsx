@@ -203,6 +203,7 @@ function SettingsMenu({ debugMode, onDebugMode, pages = [], onOpenPage }) {
     restoreFocus();
   }
 
+  const visiblePages = pages.filter(page => debugMode || !page.settings?.debugOnly);
   const themeOptions = [{ id: 'system', label: 'System' }, ...themes];
 
   return (
@@ -287,8 +288,8 @@ function SettingsMenu({ debugMode, onDebugMode, pages = [], onOpenPage }) {
             <span className="settings-menu-switch" aria-hidden="true" />
             Debug mode
           </button>
-          {pages.length > 0 && <div className="settings-menu-sep" role="separator" />}
-          {pages.map(page => (
+          {visiblePages.length > 0 && <div className="settings-menu-sep" role="separator" />}
+          {visiblePages.map(page => (
             <button
               key={pluginSectionId(page)}
               type="button"

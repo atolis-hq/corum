@@ -426,7 +426,9 @@ Optional page fields for master-detail screens such as the Explorer:
   layout: on narrow screens it replaces the panel, with a Back button.
 - `settings: { label: "..." }` adds an entry with that label to the host's Settings
   menu that opens the page. Use it for secondary pages such as the built-in style
-  guide, usually together with `nav: false`.
+  guide, usually together with `nav: false`. Add `debugOnly: true` (optional,
+  default `false`) to list the entry only while the user's Debug mode is on; the
+  page itself stays reachable by URL.
 - `legacyPaths` lists retired host routes that redirect to this page, keeping
   the branch and query parameters, while the plugin is enabled. Only the retired
   Explorer routes `/namespaces` and `/namespace` are accepted; host routes such
