@@ -97,6 +97,10 @@ whether to trust a pack.
 | `messaging` | `Event`, `DomainEvent`, `IntegrationEvent` | AsyncAPI |
 | `extract` | Interchange format schema (not installed by default) | `corum` interchange files |
 
+The domain pack also provides the semantic `writes` edge type, from a state-changing
+command to a read model. Its bidirectional traversal supports finding a read model’s
+writers. Read models can own `DomainOperation` entries in an `operations` section.
+
 ### Installing and listing
 
 ```bash

@@ -1,18 +1,28 @@
 import { it } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { stringify } from 'yaml'
+import { installPackFiles } from '../src/pack/installer.js'
 import { loadGraph } from '../src/loader/index.js'
 import { getLineage } from '../src/graph/index.js'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
-it('shipped packs support extracted projection operations and actor-to-target relationships', async () => {
+it('installed shipped packs support extracted projection operations and actor-to-target relationships', async () => {
   const graphPath = await mkdtemp(path.join(tmpdir(), 'corum-extracted-'))
   try {
+    const packsPath = path.join(graphPath, 'packs')
+    const baseUrl = 'https://packs.example.test/'
+    const fetchPack: typeof fetch = async input => {
+      const relativePath = String(input).slice(baseUrl.length)
+      return new Response(await readFile(path.join(repoRoot, '.corum/packs', relativePath), 'utf8'))
+    }
+    for (const pack of ['core', 'domain', 'rest', 'messaging']) {
+      await installPackFiles(baseUrl + pack, path.join(packsPath, pack), fetchPack)
+    }
     await mkdir(path.join(graphPath, 'nodes'))
     await mkdir(path.join(graphPath, 'edges'))
     const clusters = [
@@ -45,7 +55,7 @@ it('shipped packs support extracted projection operations and actor-to-target re
         from, type, to, state: 'proposed', stability: 'unstable',
       })),
     }))
-    const graph = await loadGraph({ graphPath, packsPath: path.join(repoRoot, '.corum/packs') })
+    const graph = await loadGraph({ graphPath, packsPath })
     assert.deepEqual(graph.diagnostics, [])
     assert.equal(graph.edgeTypes?.get('writes')?.category, 'semantic')
     assert.equal(graph.edgeTypes?.get('writes')?.traversal, 'bidirectional')

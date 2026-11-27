@@ -10,3 +10,5 @@ templates:
   - ReadModel
   - ValueObject
   - Invariant
+files:
+  - edge-types.yaml
