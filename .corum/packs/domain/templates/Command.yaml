@@ -11,6 +11,7 @@ edge-types:
   outgoing:
     - triggers
     - calls
+    - writes
   incoming:
     - produces
     - triggers

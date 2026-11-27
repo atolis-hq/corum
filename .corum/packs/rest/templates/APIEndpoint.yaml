@@ -132,6 +132,7 @@ edge-types:
     - triggers
   incoming:
     - triggers
+    - calls
 
 ui:
   icon: plug
