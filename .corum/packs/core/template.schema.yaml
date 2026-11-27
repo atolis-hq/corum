@@ -158,15 +158,4 @@ additionalProperties:
 $defs:
   EdgeType:
     type: string
-    enum:
-      - triggers
-      - produces
-      - reads
-      - uses-type
-      - calls
-      - implements
-      - maps-to
-      - derived-from
-      - renamed-from
-      - has-field
-      - has-value
+    pattern: "^[a-z][a-z0-9-]*$"

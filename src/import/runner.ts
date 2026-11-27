@@ -86,6 +86,7 @@ export async function runImport(
     const result = await adapter.import(resolvedEntry, {
       packConfig,
       templates: graph.templates,
+      edgeTypes: graph.edgeTypes,
       componentNameReplacements: config.componentNameReplacements ?? [],
       existingSchemas,
     })

@@ -1,3 +1,4 @@
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { getNamespaces } from '../../src/graph/index.js'
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
@@ -161,6 +162,63 @@ edges:
       assert.ok(result.diagnostics.some(d => d.severity === 'warning' && d.message.includes('Skipping unused schema') && d.message.includes('NeverUsed')))
     } finally {
       cleanup()
+    }
+  })
+})
+
+describe('corum import — pack edge vocabulary', () => {
+  it('persists custom edges, skips unknown types, and retains endpoint lint constraints', async () => {
+    const { graphDir, cleanup } = await setupGraphDir()
+    try {
+      const packDir = path.join(graphDir, 'custom-pack')
+      fs.mkdirSync(path.join(packDir, 'templates'), { recursive: true })
+      fs.writeFileSync(path.join(packDir, 'pack.yaml'), 'name: custom\nversion: "1.0.0"\nrequires: [core]\ntemplates: [Worker]\n')
+      fs.writeFileSync(path.join(packDir, 'edge-types.yaml'), 'edge-types:\n  updates:\n    category: semantic\n')
+      fs.writeFileSync(path.join(packDir, 'templates/Worker.yaml'), 'name: Worker\ninfo:\n  version: "1.0.0"\nedge-types:\n  incoming: [updates]\n  outgoing: [updates]\n')
+      const graphYamlPath = path.join(graphDir, 'graph.yaml')
+      const graphYaml = parseYaml(fs.readFileSync(graphYamlPath, 'utf8'))
+      graphYaml.templatePacks.push({ name: 'custom', path: './custom-pack' })
+      fs.writeFileSync(graphYamlPath, stringifyYaml(graphYaml))
+      const specPath = path.join(graphDir, 'custom.corum.yaml')
+      fs.writeFileSync(specPath, stringifyYaml({
+        corum: '1.0',
+        nodes: {
+          'custom.Worker.source': { type: 'Worker' },
+          'custom.Worker.target': { type: 'Worker' },
+          'custom.ReadModel.target': { type: 'ReadModel' },
+        },
+        edges: [
+          { type: 'updates', from: 'custom.Worker.source', to: 'custom.Worker.target' },
+          { type: 'updates', from: 'custom.Worker.source', to: 'custom.ReadModel.target' },
+          { type: 'undeclared', from: 'custom.Worker.source', to: 'custom.Worker.target' },
+        ],
+      }))
+      const result = await runImport({ imports: [{ adapter: 'corum', spec: specPath }] }, makeRuntimeConfig(graphDir))
+      assert.ok(!result.diagnostics.some(d => d.severity === 'error'), JSON.stringify(result.diagnostics))
+      assert.ok(!result.diagnostics.some(d => d.message.includes("Unknown edge type 'updates'")))
+      assert.ok(result.diagnostics.some(d => d.severity === 'warning' && d.message.includes("Unknown edge type 'undeclared'")))
+      const graph = await loadGraph({ graphPath: graphDir })
+      const edges = graph.edgesByFrom.get('custom.Worker.source') ?? []
+      assert.equal(edges.filter(e => e.type === 'updates').length, 2)
+      assert.ok(!edges.some(e => e.type === 'undeclared'))
+      assert.ok(!graph.diagnostics.some(d => d.nodeId === 'custom.Worker.target' && d.message.includes('updates')))
+      assert.ok(graph.diagnostics.some(d => d.nodeId === 'custom.ReadModel.target' && d.message.includes("edge type 'updates' is not declared as incoming")))
+    } finally {
+      cleanup()
+    }
+  })
+})
+
+describe('edge type schema contracts', () => {
+  it('allows pack names while enforcing the edge name grammar in both schemas', () => {
+    const interchange = parseYaml(fs.readFileSync(path.join(repoRoot, '.corum/packs/extract/interchange.schema.yaml'), 'utf8'))
+    const template = parseYaml(fs.readFileSync(path.join(repoRoot, '.corum/packs/core/template.schema.yaml'), 'utf8'))
+    for (const schema of [interchange.properties.edges.items.properties.type, template.$defs.EdgeType]) {
+      assert.equal(schema.type, 'string')
+      assert.equal(schema.enum, undefined)
+      const pattern = new RegExp(schema.pattern)
+      for (const name of ['updates', 'custom-edge2', 'calls']) assert.ok(pattern.test(name), name)
+      for (const name of ['', 'Updates', 'has_field', 'two.words', '1edge']) assert.ok(!pattern.test(name), name)
     }
   })
 })

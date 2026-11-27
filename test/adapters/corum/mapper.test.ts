@@ -833,3 +833,18 @@ describe('mapDocument — explicit ownership', () => {
     assert.equal(diagnostics[0].severity, 'warning')
   })
 })
+
+describe('mapDocument — edge vocabulary fallback', () => {
+  it('uses the core vocabulary only when no vocabulary is supplied', () => {
+    const doc = makeDoc({ edges: [
+      { type: 'calls', from: 'a.Worker.one', to: 'a.Worker.two' },
+      { type: 'updates', from: 'a.Worker.one', to: 'a.Worker.two' },
+    ] })
+    const fallback = mapDocument(doc, SPEC_PATH)
+    assert.deepEqual(fallback.edges.map(e => e.type), ['calls'])
+    assert.ok(fallback.diagnostics.some(d => d.message.includes("Unknown edge type 'updates'")))
+    const supplied = mapDocument(doc, SPEC_PATH, undefined, new Map([['updates', { name: 'updates', category: 'semantic' }]]))
+    assert.deepEqual(supplied.edges.map(e => e.type), ['updates'])
+    assert.ok(supplied.diagnostics.some(d => d.message.includes("Unknown edge type 'calls'")))
+  })
+})
