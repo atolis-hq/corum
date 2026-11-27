@@ -129,16 +129,7 @@ properties:
       properties:
         type:
           type: string
-          enum:
-            - triggers
-            - produces
-            - reads
-            - uses-type
-            - calls
-            - implements
-            - maps-to
-            - derived-from
-            - renamed-from
+          pattern: "^[a-z][a-z0-9-]*$"
           description: Edge type.
         from:
           type: string

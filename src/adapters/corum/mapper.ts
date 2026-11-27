@@ -1,11 +1,8 @@
-import type { Diagnostic, Edge, EdgeType, Node } from '../../schema/index.js'
+import type { Diagnostic, Edge, EdgeType, EdgeTypeDef, Node } from '../../schema/index.js'
 import type { CorumInterchangeDocument, CorumInterchangeEdge, CorumInterchangeProvenance } from './parser.js'
+import { CORE_EDGE_TYPE_MAP } from '../../loader/constants.js'
 import { shapeDriftDiagnostic } from '../shared/schema-reuse.js'
 
-const VALID_EDGE_TYPES = new Set<string>([
-  'triggers', 'produces', 'reads', 'uses-type', 'calls', 'implements',
-  'maps-to', 'derived-from', 'renamed-from', 'has-field', 'has-value',
-])
 const UNRESOLVED_COMPONENT = '_unresolved'
 
 export interface MapResult {
@@ -29,6 +26,7 @@ export function mapDocument(
   document: CorumInterchangeDocument,
   specPath: string,
   existingSchemas: Map<string, Set<string>> = new Map(),
+  edgeTypes: ReadonlyMap<string, EdgeTypeDef> = CORE_EDGE_TYPE_MAP,
 ): MapResult {
   const nodes: Node[] = []
   const edges: Edge[] = []
@@ -123,7 +121,7 @@ export function mapDocument(
   )
 
   for (const raw of document.edges ?? []) {
-    if (!VALID_EDGE_TYPES.has(raw.type)) {
+    if (!edgeTypes.has(raw.type)) {
       diagnostics.push({
         severity: 'warning',
         file: specPath,

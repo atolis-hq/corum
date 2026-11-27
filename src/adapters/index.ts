@@ -1,4 +1,4 @@
-import type { Diagnostic, Edge, Node, Template } from '../schema/index.js'
+import type { Diagnostic, Edge, EdgeTypeDef, Node, Template } from '../schema/index.js'
 import type { ImportEntry, ComponentNameReplacement } from '../import/config.js'
 
 export interface AdapterPackConfig {
@@ -17,6 +17,7 @@ export interface ConstructMapping {
 export interface AdapterContext {
   packConfig: AdapterPackConfig
   templates: Map<string, Template>
+  edgeTypes?: ReadonlyMap<string, EdgeTypeDef>
   componentNameReplacements: ComponentNameReplacement[]
   /**
    * ADR-009b rule 1: existing standalone schemas (`{component}.Schema.{name}`)
