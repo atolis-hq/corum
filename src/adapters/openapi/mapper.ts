@@ -1,6 +1,6 @@
 import type { OpenAPIV3 } from 'openapi-types'
 import type { Node, Edge, Diagnostic } from '../../schema/index.js'
-import type { AdapterPackConfig } from '../index.js'
+import type { AdapterPackConfig, SourceId } from '../index.js'
 import type { ComponentMapping, OpenAPIImportEntry, ComponentNameReplacement } from '../../import/config.js'
 import { applyComponentNameReplacements } from '../../import/config.js'
 import { sanitizeIdSegment } from '../../loader/id-grammar.js'
@@ -10,6 +10,7 @@ export interface MapResult {
   nodes: Node[]
   edges: Edge[]
   diagnostics: Diagnostic[]
+  sourceIds?: SourceId[]
 }
 
 export function deriveComponent(path: string, mapping: ComponentMapping): string | undefined {
@@ -79,6 +80,7 @@ export function mapDocument(
   const sharedSchemas = new Map<string, string>()
   const sourceSchemas = new Map<string, OpenAPIV3.SchemaObject>()
   const reusedSchemaNames = new Set<string>()
+  const sourceIds: SourceId[] = []
 
   for (const [name, schema] of Object.entries(document.components?.schemas ?? {})) {
     if (!isRefSchema(schema)) sourceSchemas.set(name, schema as OpenAPIV3.SchemaObject)
@@ -192,6 +194,10 @@ export function mapDocument(
         ...(operation.summary && { description: operation.summary }),
       }
       nodes.push(endpointNode)
+      sourceIds.push({
+        id: `openapi:${component}/op/${operation.operationId ?? `${method.toUpperCase()} ${urlPath}`}`,
+        target: endpointId,
+      })
 
       const parameters = extractParameters(pathItem, operation, packConfig, entry.spec, diagnostics)
       if (parameters) endpointNode.properties.parameters = parameters
@@ -227,7 +233,45 @@ export function mapDocument(
     }
   }
 
-  return { nodes, edges, diagnostics }
+  registerSchemaSourceIds(document, entry, componentNameReplacements, sharedSchemas, nodes, sourceIds)
+
+  return { nodes, edges, diagnostics, sourceIds }
+}
+
+/**
+ * Registers `openapi:{component}/schema/{Name}` and `.../{property}` IDs taken
+ * from the spec. The component is the one the adapter assigned and the name is
+ * the spec's schema name, so the IDs hold whether the schema is inlined under
+ * an operation or standalone.
+ */
+function registerSchemaSourceIds(
+  document: OpenAPIV3.Document,
+  entry: OpenAPIImportEntry,
+  componentNameReplacements: ComponentNameReplacement[],
+  sharedSchemas: Map<string, string>,
+  nodes: Node[],
+  sourceIds: SourceId[],
+): void {
+  const nodeIds = new Set(nodes.map(n => n.id))
+  for (const [name, schema] of Object.entries(document.components?.schemas ?? {})) {
+    if (isRefSchema(schema)) continue
+    const component = deriveComponentForSchema(name, document, entry, componentNameReplacements)
+    if (!component) continue
+    let target = sharedSchemas.get(name)
+    if (!target) {
+      const suffix = `.schemas.${sanitizeIdSegment(name)}`
+      const inlined = nodes.filter(n => n.parentId !== undefined && n.id.endsWith(suffix) && n.id.startsWith(`${component}.`))
+      if (inlined.length === 1) target = inlined[0].id
+    }
+    if (!target) continue
+    sourceIds.push({ id: `openapi:${component}/schema/${name}`, target })
+    const s = schema as OpenAPIV3.SchemaObject
+    for (const property of Object.keys(s.properties ?? {})) {
+      const fieldId = deriveNodeId('field', undefined, property, target, 'fields')
+      // Reused standalone schemas are not re-emitted, so their fields are not in this run's nodes.
+      if (nodeIds.has(fieldId) || !nodeIds.has(target)) sourceIds.push({ id: `openapi:${component}/schema/${name}/${property}`, target: fieldId })
+    }
+  }
 }
 
 // Structural walk of $ref values — visits every object/array reachable from the

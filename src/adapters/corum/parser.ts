@@ -16,6 +16,8 @@ export interface CorumInterchangeNodeEntry {
   title?: string
   schema?: { $ref: string }
   'x-aka'?: string[]
+  /** Extra source-native IDs (e.g. `clr:Orders.Contracts.Foo`) that ID maps can link to other sources. */
+  ids?: string[]
   provenance?: CorumInterchangeProvenance
 }
 
@@ -81,6 +83,14 @@ export function parseSpec(specPath: string): ParseResult {
   }
 
   for (const [nodeId, entry] of Object.entries(doc.nodes)) {
+    if (entry && typeof entry === 'object' && entry.ids !== undefined
+      && (!Array.isArray(entry.ids) || !entry.ids.every(id => typeof id === 'string' && id !== ''))) {
+      diagnostics.push({
+        severity: 'error',
+        file: specPath,
+        message: `Node '${nodeId}' ids must be an array of non-empty strings`,
+      })
+    }
     if (entry && typeof entry === 'object' && 'parentId' in entry
       && entry.parentId !== null && typeof entry.parentId !== 'string') {
       diagnostics.push({
