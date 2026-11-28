@@ -3,6 +3,9 @@ import assert from 'node:assert/strict'
 import { mapDocument } from '../../../src/adapters/corum/mapper.js'
 import type { CorumInterchangeDocument } from '../../../src/adapters/corum/parser.js'
 
+import type { Template } from '../../../src/schema/index.js'
+import { loadGraph } from '../../../src/loader/index.js'
+
 const SPEC_PATH = '/fake/output.corum.yaml'
 
 function makeDoc(overrides: Partial<CorumInterchangeDocument> = {}): CorumInterchangeDocument {
@@ -847,4 +850,61 @@ describe('mapDocument — edge vocabulary fallback', () => {
     assert.deepEqual(supplied.edges.map(e => e.type), ['updates'])
     assert.ok(supplied.diagnostics.some(d => d.message.includes("Unknown edge type 'calls'")))
   })
+})
+
+describe('mapDocument — template schema reference destination', () => {
+  const doc = (type: string) => makeDoc({
+    nodes: { ['orders.' + type + '.Created']: {
+      type, title: 'Created', 'x-aka': ['OldCreated'],
+      schema: { $ref: '#/components/schemas/Created' },
+    } },
+    components: { schemas: { Created: { type: 'object', properties: { id: { type: 'string' } } } } },
+    edges: [{ from: 'orders.' + type + '.Created', to: '#/components/schemas/Created/properties/id', type: 'reads' }],
+  })
+
+  it('uses inherited Event payload and preserves DomainModel schema with loaded packs', async () => {
+    const graph = await loadGraph({ graphPath: 'fixtures/sample-graph' })
+    for (const type of ['IntegrationEvent', 'DomainEvent', 'DomainModel']) {
+      const { nodes, edges, diagnostics } = mapDocument(doc(type), SPEC_PATH, undefined, undefined, graph.templates)
+      assert.deepEqual(nodes[0].properties, {
+        [type === 'DomainModel' ? 'schema' : 'payload']: 'Created', 'x-aka': ['OldCreated'],
+      })
+      assert.ok(nodes.some(n => n.id === 'orders.' + type + '.Created.schemas.Created.fields.id'))
+      assert.equal(edges.find(e => e.type === 'reads')?.to, 'orders.' + type + '.Created.schemas.Created.fields.id')
+      assert.deepEqual(diagnostics, [])
+    }
+  })
+
+  for (const [label, candidates, expected] of [
+    ['unique custom property', ['body'], 'body'],
+    ['schema preferred over payload', ['payload', 'other', 'schema'], 'schema'],
+    ['payload preferred over other refs', ['other', 'payload'], 'payload'],
+    ['ambiguous references', ['key-ref', '$ref'], undefined],
+    ['known template without candidates', [], 'schema'],
+    ['unavailable template', null, 'schema'],
+  ] as const) {
+    it(label, () => {
+      const templates = new Map<string, Template>()
+      if (candidates) templates.set('Custom', {
+        name: 'Custom', info: { version: '1' },
+        properties: { properties: {
+          nested: { type: 'object', properties: { ignored: { format: 'node-ref' } } },
+          ...Object.fromEntries(candidates.map(name => [name, { type: 'string', format: 'node-ref' }])),
+        } },
+      })
+      const { nodes, edges, diagnostics } = mapDocument(doc('Custom'), SPEC_PATH, undefined, undefined, templates)
+      assert.deepEqual(nodes[0].properties, {
+        ...(expected ? { [expected]: 'Created' } : {}), 'x-aka': ['OldCreated'],
+      })
+      assert.ok(nodes.some(n => n.id.endsWith('.schemas.Created.fields.id')))
+      assert.ok(edges.some(e => e.type === 'reads' && e.to.endsWith('.schemas.Created.fields.id')))
+      if (expected) assert.deepEqual(diagnostics, [])
+      else {
+        assert.equal(diagnostics.length, 1)
+        assert.equal(diagnostics[0].severity, 'warning')
+        assert.equal(diagnostics[0].file, SPEC_PATH)
+        assert.match(diagnostics[0].message, /orders.Custom.Created.*Custom.*ambiguous/)
+      }
+    })
+  }
 })

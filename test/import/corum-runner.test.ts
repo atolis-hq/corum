@@ -88,6 +88,12 @@ describe('corum import — basic fixture', () => {
 
       assert.equal(fs.readFileSync(declarationPath, 'utf8'), declaration)
       assert.equal(getNamespaces(await loadGraph({ graphPath: graphDir })).get('orders')?.kind, 'journey')
+      const imported = await loadGraph({ graphPath: graphDir })
+      const event = imported.nodesById.get('orders.DomainEvent.OrderPlacedDomainEvent')!
+      assert.equal(event.properties.payload, 'OrderPlacedDomainEvent')
+      assert.ok(imported.nodesById.has('orders.DomainEvent.OrderPlacedDomainEvent.schemas.OrderPlacedDomainEvent.fields.OrderId'))
+      assert.equal(event.properties.schema, undefined)
+      assert.ok(!imported.diagnostics.some(d => d.message.includes("unknown property 'schema'") && d.message.includes('DomainEvent')))
       assertMatchesExpected(graphDir, 'basic')
     } finally {
       cleanup()
