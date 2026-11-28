@@ -331,7 +331,7 @@ export function expandExternalNodes(graph: Graph, externalIds: Iterable<string>)
     .filter((node): node is Node => node !== undefined)
 }
 
-export function getLinkedFields(graph: Graph, nodeId: string, options: { field?: string } = {}): LinkedFieldsResult {
+export function getLinkedFields(graph: Graph, nodeId: string, options: { field?: string; edgeTypes?: string[] } = {}): LinkedFieldsResult {
   const resolveLive = createAliasResolver(graph)
   const rootId = resolveLive(nodeId)
   const root = graph.nodesById.get(rootId)
@@ -354,13 +354,15 @@ export function getLinkedFields(graph: Graph, nodeId: string, options: { field?:
   const edges: Edge[] = []
   const nodeIds = new Set<string>()
   const seen = new Set<string>()
+  // maps-to is a copy, derived-from a computation; both are field links.
+  const linkTypes = new Set<string>(options.edgeTypes ?? ['maps-to', 'derived-from'])
 
-  // Scan maps-to edges with alias-resolved endpoints (design §5): an edge
+  // Scan maps-to / derived-from edges with alias-resolved endpoints (design §5): an edge
   // still referencing a retired field ID links to the live field rather than
   // dangling. Edges are returned as authored; node IDs are the live ones.
   for (const edgeList of graph.edgesByFrom.values()) {
     for (const edge of edgeList) {
-      if (edge.type !== 'maps-to' || !isLiveEdge(edge) || seen.has(edge.id)) continue
+      if (!linkTypes.has(edge.type) || !isLiveEdge(edge) || seen.has(edge.id)) continue
       const from = resolveLive(edge.from)
       const to = resolveLive(edge.to)
       if (!ownedFieldIds.has(from) && !ownedFieldIds.has(to)) continue
@@ -647,13 +649,15 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
   // Field-level lineage is opt-in: the caller must list maps-to explicitly
   // (to seed a root's fields) or start directly at a field. Default edge
   // types never pull fields in.
+  // Root seeding stays tied to maps-to so root-level derived-from lineage is
+  // unchanged; list both types to follow field derivations from a root.
   const mapsToExplicit = options.edgeTypes?.includes('maps-to') ?? false
 
   function isIncluded(node: Node, viaEdgeType?: string): boolean {
     if (allowedTemplates) return allowedTemplates.has(node.template)
     // maps-to endpoints are fields, which are structural by role; include them
     // under the default exclusion so field-level lineage is reachable.
-    if (usingDefaultExclusion && viaEdgeType === 'maps-to' && (mapsToExplicit || startsAtField) && templateHasRole(graph.templates, node.template, 'field')) return true
+    if (usingDefaultExclusion && (viaEdgeType === 'maps-to' || viaEdgeType === 'derived-from') && (mapsToExplicit || startsAtField) && templateHasRole(graph.templates, node.template, 'field')) return true
     if (excludedTemplates) return !excludedTemplates.has(node.template)
     return true
   }
@@ -719,6 +723,17 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
     ...seedFields.map(f => ({ id: f.id, originId: f.originId, distance: 0 })),
   ]
 
+  function isFieldId(id: string): boolean {
+    const n = graph.nodesById.get(id)
+    return n !== undefined && templateHasRole(graph.templates, n.template, 'field')
+  }
+  // derived-from points computed -> input, against data flow. Field-to-field
+  // edges are therefore walked in reverse; other derived-from edges keep
+  // their authored direction.
+  function isFieldDerivation(edge: Edge): boolean {
+    return edge.type === 'derived-from' && isFieldId(resolveLive(edge.from)) && isFieldId(resolveLive(edge.to))
+  }
+
   function runDownstream(): void {
     const visited = new Set<string>([...startSet, ...seedFieldIds])
     const queue = initialQueue()
@@ -729,7 +744,7 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
       if (current.distance >= depth) continue
 
       for (const edge of graph.edgesByFrom.get(current.id) ?? []) {
-        if (!isLiveEdge(edge) || !edgeTypeSet.has(edge.type)) continue
+        if (!isLiveEdge(edge) || !edgeTypeSet.has(edge.type) || isFieldDerivation(edge)) continue
         const toId = resolveLive(edge.to)
         const node = graph.nodesById.get(toId)
         if (!node || !isIncluded(node, edge.type)) continue
@@ -740,6 +755,23 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
         visited.add(toId)
         tryRecord(toId, current.originId, current.distance + 1, edge.type, current.id, 'downstream')
         queue.push({ id: toId, originId: current.originId, distance: current.distance + 1 })
+      }
+
+      // Reverse field derivations: fields computed from the current field.
+      if (edgeTypeSet.has('derived-from') && isFieldId(current.id)) {
+        for (const edge of graph.edgesByTo.get(current.id) ?? []) {
+          if (!isLiveEdge(edge) || !isFieldDerivation(edge)) continue
+          const computedId = resolveLive(edge.from)
+          const node = graph.nodesById.get(computedId)
+          if (!node || !isIncluded(node, edge.type)) continue
+          if (visited.has(computedId)) {
+            originSets.get(computedId)?.add(current.originId)
+            continue
+          }
+          visited.add(computedId)
+          tryRecord(computedId, current.originId, current.distance + 1, edge.type, current.id, 'downstream')
+          queue.push({ id: computedId, originId: current.originId, distance: current.distance + 1 })
+        }
       }
     }
   }
@@ -754,7 +786,7 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
       if (current.distance >= depth) continue
 
       for (const edge of graph.edgesByTo.get(current.id) ?? []) {
-        if (!isLiveEdge(edge) || !inboundTypeSet.has(edge.type)) continue
+        if (!isLiveEdge(edge) || !inboundTypeSet.has(edge.type) || isFieldDerivation(edge)) continue
         const fromId = resolveLive(edge.from)
         const node = graph.nodesById.get(fromId)
         if (!node || !isIncluded(node, edge.type)) continue
@@ -765,6 +797,23 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
         visited.add(fromId)
         tryRecord(fromId, current.originId, current.distance + 1, edge.type, current.id, 'upstream')
         queue.push({ id: fromId, originId: current.originId, distance: current.distance + 1 })
+      }
+
+      // Field inputs this field is computed from (authored outbound edges).
+      if (edgeTypeSet.has('derived-from') && isFieldId(current.id)) {
+        for (const edge of graph.edgesByFrom.get(current.id) ?? []) {
+          if (!isLiveEdge(edge) || !isFieldDerivation(edge)) continue
+          const inputId = resolveLive(edge.to)
+          const node = graph.nodesById.get(inputId)
+          if (!node || !isIncluded(node, edge.type)) continue
+          if (visited.has(inputId)) {
+            originSets.get(inputId)?.add(current.originId)
+            continue
+          }
+          visited.add(inputId)
+          tryRecord(inputId, current.originId, current.distance + 1, edge.type, current.id, 'upstream')
+          queue.push({ id: inputId, originId: current.originId, distance: current.distance + 1 })
+        }
       }
 
       const parentId = findParent(graph, current.id)
