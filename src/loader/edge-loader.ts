@@ -64,6 +64,8 @@ export function loadEdges(
       }
       if (unresolvedEndpoint) continue
 
+      const corum = edgeRecord.corum as Edge['corum'] | undefined
+      const ownershipSource = corum?.ownership?.source
       const properties = edgeRecord.properties
       const id = `${edgeRecord.from}__${edgeRecord.type}__${edgeRecord.to}`
       const firstSource = generatedEdgeIds.has(id) ? 'generated' : seen.get(id)
@@ -83,6 +85,7 @@ export function loadEdges(
         type: edgeRecord.type as EdgeType,
         state: resolveState(edgeRecord.state, diagnostics, key),
         stability: resolveStability(edgeRecord.stability, diagnostics, key),
+        ...(typeof ownershipSource === 'string' && { corum: { ownership: { source: ownershipSource } } }),
         notes: typeof edgeRecord.notes === 'string' ? edgeRecord.notes : undefined,
         ...(typeof edgeRecord.extractedFrom === 'string' && { extractedFrom: edgeRecord.extractedFrom }),
         ...(typeof edgeRecord.lastModifiedAt === 'string' && { lastModifiedAt: edgeRecord.lastModifiedAt }),

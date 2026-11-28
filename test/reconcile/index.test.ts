@@ -1,6 +1,6 @@
 ﻿import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { detectPossibleRenames, diffNodes, resolveIncomingAliases } from '../../src/reconcile/index.js'
+import { reconcileEdges, detectPossibleRenames, diffNodes, resolveIncomingAliases } from '../../src/reconcile/index.js'
 import type { Edge, Graph, Node } from '../../src/schema/index.js'
 
 function makeNode(id: string, overrides: Partial<Node> = {}): Node {
@@ -328,5 +328,25 @@ describe('detectPossibleRenames', () => {
       './specs/orders.yaml',
     )
     assert.equal(diagnostics.length, 0)
+  })
+})
+
+describe('reconcileEdges', () => {
+  it('preserves collisions, generated edges and both adjacency indexes', () => {
+    const owned = makeEdge('a', 'maps-to', 'b', { corum: { ownership: { source: 'spec.yaml' } } })
+    const manual = makeEdge('a', 'calls', 'b')
+    const other = makeEdge('a', 'reads', 'b', { corum: { ownership: { source: 'other.yaml' } } })
+    const structural = makeEdge('a', 'has-field', 'b', { corum: owned.corum })
+    const generated = makeEdge('a', 'uses-type', 'b', { corum: owned.corum, generated: true })
+    const graph = makeGraph([], [owned, manual, other, structural, generated])
+    reconcileEdges(graph, [manual, other], 'spec.yaml')
+    for (const edge of [manual, other, structural, generated]) {
+      assert.equal(graph.edgesByFrom.get('a')!.find(e => e.id === edge.id), edge)
+    }
+    const removed = graph.edgesByFrom.get('a')!.find(e => e.id === owned.id)!
+    assert.equal(removed.state, 'removed')
+    assert.equal(graph.edgesByTo.get('b')!.find(e => e.id === owned.id), removed)
+    reconcileEdges(graph, [owned], 'spec.yaml')
+    assert.equal(graph.edgesByFrom.get('a')!.find(e => e.id === owned.id)!.state, 'proposed')
   })
 })

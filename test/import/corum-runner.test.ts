@@ -1,5 +1,5 @@
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import { getNamespaces } from '../../src/graph/index.js'
+import { getLinkedFields, getNamespaces } from '../../src/graph/index.js'
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -94,6 +94,58 @@ describe('corum import — basic fixture', () => {
       check(imported)
       await saveGraph(imported, { sourceGraphPath: graphDir, outputGraphPath: graphDir })
       check(await loadGraph({ graphPath: graphDir }))
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('removes and restores only source-owned edges across reloads', async () => {
+    const { graphDir, cleanup } = await setupGraphDir()
+    try {
+      const spec = path.join(graphDir, 'ownership.corum.yaml')
+      const document = parseYaml(fs.readFileSync(path.join(specsDir, 'basic.corum.yaml'), 'utf8'))
+      const raw = document.edges[0]
+      raw.type = 'maps-to'
+      raw.from = 'orders.APIEndpoint.complete-order.schemas.order-response.fields.createdAt'
+      raw.to = 'orders.ReadModel.order-detail.schemas.order-detail.fields.customerId'
+      raw.provenance = { extractedFrom: 'src/workflow.ts:42' }
+      const write = () => fs.writeFileSync(spec, stringifyYaml(document))
+      const run = async (source = spec) => {
+        const result = await runImport({ imports: [{ adapter: 'corum', spec: source }] }, makeRuntimeConfig(graphDir))
+        assert.ok(!result.diagnostics.some(d => d.severity === 'error'), JSON.stringify(result.diagnostics))
+        return loadGraph({ graphPath: graphDir })
+      }
+      const id = raw.from + '__' + raw.type + '__' + raw.to
+      const find = (graph: Awaited<ReturnType<typeof loadGraph>>) => graph.edgesByFrom.get(raw.from)!.find(e => e.id === id)!
+      write()
+      let graph = await run()
+      assert.equal(find(graph).corum?.ownership?.source, spec)
+      assert.equal(find(graph).extractedFrom, 'src/workflow.ts:42')
+      // Persist unowned and other-source relationships alongside this import's edge.
+      const original = find(graph)
+      const protectedEdges = [
+        { ...original, type: 'calls', id: raw.from + '__calls__' + raw.to, corum: undefined },
+        { ...original, type: 'reads', id: raw.from + '__reads__' + raw.to, corum: { ownership: { source: 'other.yaml' } } },
+      ]
+      graph.edgesByFrom.get(raw.from)!.push(...protectedEdges)
+      graph.edgesByTo.get(raw.to)!.push(...protectedEdges)
+      await saveGraph(graph, { sourceGraphPath: graphDir, outputGraphPath: graphDir })
+      document.edges = []
+      write()
+      graph = await run(path.join(graphDir, 'redundant', '..', 'ownership.corum.yaml'))
+      assert.equal(find(graph).state, 'removed')
+      assert.ok(!getLinkedFields(graph, 'orders.APIEndpoint.complete-order').edges.some(e => e.id === id))
+      assert.equal(graph.edgesByTo.get(raw.to)!.find(e => e.id === id)!.state, 'removed')
+      for (const edge of protectedEdges) {
+        assert.equal(graph.edgesByFrom.get(raw.from)!.find(e => e.id === edge.id)!.state, edge.state)
+      }
+      document.edges = [raw]
+      write()
+      graph = await run()
+      assert.equal(find(graph).state, 'implemented')
+      assert.ok(getLinkedFields(graph, 'orders.APIEndpoint.complete-order').edges.some(e => e.id === id))
+      assert.equal(find(graph).extractedFrom, 'src/workflow.ts:42')
+      assert.equal(find(graph).corum?.ownership?.source, spec)
     } finally {
       cleanup()
     }

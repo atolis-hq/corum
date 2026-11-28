@@ -4,7 +4,7 @@ import { loadGraph } from '../loader/index.js'
 import { isStructuralEdgeType } from '../graph/index.js'
 import { serializeGraph } from '../writer/graph-writer.js'
 import { getAdapter } from '../adapters/index.js'
-import { diffNodes, detectPossibleRenames, resolveIncomingAliases } from '../reconcile/index.js'
+import { reconcileEdges, diffNodes, detectPossibleRenames, resolveIncomingAliases } from '../reconcile/index.js'
 import { buildAliasMap } from '../mutate/alias.js'
 import { deduplicateResults } from './dedup.js'
 import type { EntryResult } from './dedup.js'
@@ -141,20 +141,16 @@ export async function runImport(
     }
   }
 
+  const edgesBySource = new Map<string, typeof entryResults[number]['edges']>()
   for (const er of entryResults) {
-    let edgesToAppend = er.edges.filter(edge => !isStructuralEdgeType(graph, edge.type))
+    let edges = er.edges.filter(edge => !isStructuralEdgeType(graph, edge.type))
     if (config.edgeCasing === 'match') {
-      edgesToAppend = resolveEdgeCasing(graph, edgesToAppend, allDiagnostics)
+      edges = resolveEdgeCasing(graph, edges, allDiagnostics)
     }
-
-    for (const edge of edgesToAppend) {
-      const existing = graph.edgesByFrom.get(edge.from) ?? []
-      if (!existing.some(e => e.id === edge.id)) {
-        graph.edgesByFrom.set(edge.from, [...existing, edge])
-        const byTo = graph.edgesByTo.get(edge.to) ?? []
-        graph.edgesByTo.set(edge.to, [...byTo, edge])
-      }
-    }
+    edgesBySource.set(er.specPath, [...(edgesBySource.get(er.specPath) ?? []), ...edges])
+  }
+  for (const [specPath, edges] of edgesBySource) {
+    reconcileEdges(graph, edges, specPath)
   }
 
   // ADR-009b rule 4: mechanically rewrite edges when a schema was promoted
