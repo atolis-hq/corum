@@ -27,6 +27,8 @@ export interface AdapterContext {
    * later entries in the same run see it too.
    */
   existingSchemas?: Map<string, Set<string>>
+  /** Standalone schema IDs owned by this source; emit rather than reuse. */
+  ownedSchemaIds?: ReadonlySet<string>
   /**
    * Current non-removed node IDs in the target graph plus the rename-trail
    * alias map, so adapters can link to existing nodes by ID without
