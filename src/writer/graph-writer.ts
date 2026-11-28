@@ -280,6 +280,7 @@ function toEdgeDocument(graph: Graph, edge: Edge): Record<string, unknown> {
   if (edge.stability !== 'unstable') doc.stability = edge.stability
   if (edge.corum !== undefined) doc.corum = edge.corum
   if (edge.notes !== undefined) doc.notes = edge.notes
+  if (edge.sources !== undefined) doc.sources = edge.sources
   if (edge.extractedFrom !== undefined) doc.extractedFrom = edge.extractedFrom
   if (edge.derivation !== undefined) doc.derivation = edge.derivation
   if (edge.derivedBy !== undefined) doc.derivedBy = edge.derivedBy

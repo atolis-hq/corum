@@ -27,10 +27,18 @@ match them to nodes from other adapters (for example a controller class and an
 OpenAPI operation), and provenance saying where each came from. The envelope is
 defined by `.corum/packs/extract/interchange.schema.yaml`.
 
-Edges may carry `notes` explaining the relationship and `provenance.extractedFrom`
-identifying its source (for example, `src/workflow.ts:42`). Both are retained
-on import and when the graph is saved and reloaded. MCP edge responses include
-source locators when `include_provenance: true` is requested.
+Edges may carry `notes` and `provenance.sources`, an ordered array of opaque
+source IDs (for example, `['orders-service:src/CreateOrderHandler.cs#Handle']`).
+Strings, order, and duplicates survive import and save/reload. MCP includes sources
+only with `include_provenance: true`. Legacy `provenance.extractedFrom` remains
+accepted as one source and retains its scalar output. When both forms appear,
+`sources` is the complete list and takes precedence.
+
+Re-import replaces a supplied list only for edges owned by that import source.
+Omission preserves it; `sources: []` explicitly clears it. Edge identity and
+interchange version 1.0 are unchanged. Prefer stable file-and-symbol IDs over
+line numbers, which shift with unrelated edits and cause unnecessary rewrites.
+Corum does not parse IDs or turn them into links.
 
 Each node entry may set `parentId` to another node ID in the same document,
 or to `null` to declare an independent root. Explicit ownership takes precedence

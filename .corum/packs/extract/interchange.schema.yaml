@@ -145,7 +145,14 @@ properties:
           type: string
           description: Explanation or evidence for the relationship.
         provenance:
-          $ref: '#/$defs/provenance'
+          allOf:
+            - $ref: '#/$defs/provenance'
+          properties:
+            sources:
+              type: array
+              description: Complete ordered opaque source IDs; takes precedence over extractedFrom.
+              items:
+                type: string
 
   gaps:
     type: array

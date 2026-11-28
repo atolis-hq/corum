@@ -70,6 +70,42 @@ function assertMatchesExpected(graphDir: string, goldenSubdir: string): void {
 }
 
 describe('corum import — basic fixture', () => {
+  it('replaces opaque source lists, preserves omissions, and clears explicitly across reloads', async () => {
+    const { graphDir, cleanup } = await setupGraphDir()
+    try {
+      const spec = path.join(graphDir, 'sources.corum.yaml')
+      const document = parseYaml(fs.readFileSync(path.join(specsDir, 'basic.corum.yaml'), 'utf8'))
+      const raw = document.edges[0]
+      const sources = ['service:path#symbol', ' opaque : # id ', 'service:path#symbol']
+      raw.provenance = { sources, extractedFrom: 'legacy' }
+      const run = async () => {
+        fs.writeFileSync(spec, stringifyYaml(document))
+        const result = await runImport({ imports: [{ adapter: 'corum', spec }] }, makeRuntimeConfig(graphDir))
+        assert.ok(!result.diagnostics.some(d => d.severity === 'error'), JSON.stringify(result.diagnostics))
+        const graph = await loadGraph({ graphPath: graphDir })
+        return graph.edgesByFrom.get(raw.from)!.find(e => e.to === raw.to && e.type === raw.type)!
+      }
+      const first = await run()
+      assert.deepEqual(first.sources, sources)
+      assert.equal(first.extractedFrom, 'legacy')
+      assert.equal(first.corum?.ownership?.source, spec)
+      raw.provenance = { sources: sources.slice(0, 2) }
+      assert.deepEqual((await run()).sources, sources.slice(0, 2))
+      delete raw.provenance
+      assert.deepEqual((await run()).sources, sources.slice(0, 2))
+      raw.provenance = { sources: [] }
+      assert.deepEqual((await run()).sources, [])
+      raw.provenance = { extractedFrom: 'legacy-only' }
+      assert.deepEqual((await run()).sources, ['legacy-only'])
+      raw.provenance = { sources: [42] }
+      fs.writeFileSync(spec, stringifyYaml(document))
+      const invalid = await runImport({ imports: [{ adapter: 'corum', spec }] }, makeRuntimeConfig(graphDir))
+      assert.ok(invalid.diagnostics.some(d => d.severity === 'error' && d.message.includes('sources')))
+    } finally {
+      cleanup()
+    }
+  })
+
   it('persists edge notes and extraction sources through import and another save/load', async () => {
     const { graphDir, cleanup } = await setupGraphDir()
     try {

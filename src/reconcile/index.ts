@@ -256,7 +256,7 @@ export function reconcileEdges(graph: Graph, incoming: Edge[], specPath: string)
     if (!returning && edge.state !== 'removed') put({ ...edge, state: 'removed' })
     else if (returning) {
       const refreshed = { ...edge, state: edge.state === 'removed' ? returning.state : edge.state }
-      const fields = returning[edgeSourceFields] ?? ['notes', 'extractedFrom', 'derivation', 'derivedBy'] as const
+      const fields = returning[edgeSourceFields] ?? ['notes', 'sources', 'extractedFrom', 'derivation', 'derivedBy'] as const
       for (const field of fields) {
         const value = returning[field]
         if (value !== undefined) Object.assign(refreshed, { [field]: value })

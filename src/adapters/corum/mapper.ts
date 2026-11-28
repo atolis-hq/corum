@@ -825,6 +825,7 @@ function mapEdge(raw: CorumInterchangeEdge): Edge {
   return {
     [edgeSourceFields]: [
       ...(raw.notes !== undefined ? ['notes' as const] : []),
+      ...(raw.provenance?.sources !== undefined || raw.provenance?.extractedFrom !== undefined ? ['sources' as const] : []),
       ...(raw.provenance?.extractedFrom !== undefined ? ['extractedFrom' as const] : []),
       ...(raw.provenance?.derivation !== undefined ? ['derivation' as const] : []),
       ...(raw.provenance?.derivedBy !== undefined ? ['derivedBy' as const] : []),
@@ -834,6 +835,8 @@ function mapEdge(raw: CorumInterchangeEdge): Edge {
     to: raw.to,
     type: raw.type as EdgeType,
     notes: raw.notes,
+    ...(raw.provenance?.sources !== undefined || raw.provenance?.extractedFrom !== undefined
+      ? { sources: raw.provenance.sources ?? [raw.provenance.extractedFrom!] } : {}),
     extractedFrom: raw.provenance?.extractedFrom,
     state: 'implemented',
     stability: 'unstable',
