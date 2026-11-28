@@ -66,6 +66,11 @@ export async function runImport(
   const priorNodes = new Map(graph.nodesById)
   const existingSchemas = buildExistingSchemaIndex(graph)
 
+  const nodeRefs = {
+    ids: new Set([...graph.nodesById.values()].filter(n => n.state !== 'removed').map(n => n.id)),
+    aliases: buildAliasMap(graph),
+  }
+
   const entryResults: EntryResult[] = []
 
   for (const entry of config.imports) {
@@ -89,6 +94,7 @@ export async function runImport(
       edgeTypes: graph.edgeTypes,
       componentNameReplacements: config.componentNameReplacements ?? [],
       existingSchemas,
+      nodeRefs,
     })
     allDiagnostics.push(...result.diagnostics)
 
