@@ -65,3 +65,63 @@ describe('corum import — node-ID $ref to existing nodes', () => {
     }
   })
 })
+
+for (const earlier of [true, false]) {
+  it(`resolves direct IDs only from earlier successful entries (earlier=${earlier})`, async () => {
+    const graphDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corum-ordered-ref-'))
+    try {
+      // Start with packs but no nodes, as on a freshly initialized graph.
+      await saveGraph(await loadGraph({ graphPath: fixtureGraphDir }), { sourceGraphPath: fixtureGraphDir, outputGraphPath: graphDir })
+      fs.rmSync(path.join(graphDir, 'nodes'), { recursive: true, force: true })
+      fs.rmSync(path.join(graphDir, 'edges'), { recursive: true, force: true })
+      const runtime = createGraphRuntimeConfig({ CORUM_GRAPH_PATH: graphDir })
+      const spec = path.join(graphDir, 'api.json')
+      const linked = path.join(graphDir, 'linked.json')
+      const schemaId = 'orders.Schema.Address'
+      const fieldId = `${schemaId}.fields.line1`
+      const missingId = 'orders.Schema.Missing'
+      fs.writeFileSync(spec, JSON.stringify({
+        openapi: '3.0.3', info: { title: 'Orders', version: '1' },
+        components: { schemas: { Address: { type: 'object', properties: { line1: { type: 'string' } } } } },
+        paths: Object.fromEntries(['first', 'second'].map(name => [`/orders/${name}`, {
+          post: { operationId: name, requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Address' } } } }, responses: { '200': { description: 'ok' } } },
+        }])),
+      }))
+      fs.writeFileSync(linked, JSON.stringify({
+        corum: '1.0',
+        nodes: { 'orders.DomainEvent.Linked': { type: 'DomainEvent', schema: { $ref: '#/components/schemas/Linked' } } },
+        components: { schemas: { Linked: { type: 'object', properties: {
+          address: { $ref: schemaId }, line: { $ref: fieldId }, missing: { $ref: missingId },
+        } } } },
+        edges: [{ type: 'maps-to', from: fieldId, to: 'orders.DomainEvent.Linked.schemas.Linked.fields.line' }],
+      }))
+      const apiEntry = { adapter: 'openapi' as const, spec, componentMapping: { strategy: 'hardcoded' as const, component: 'orders' } }
+      const linkedEntry = { adapter: 'corum' as const, spec: linked }
+      const imports = earlier ? [apiEntry, linkedEntry] : [linkedEntry, apiEntry]
+      const result = await runImport({ imports }, runtime)
+      assert.deepEqual(result.diagnostics.filter(d => d.severity === 'error'), [])
+      for (const id of [schemaId, fieldId]) {
+        assert.equal(result.diagnostics.some(d => d.message.includes(`references '${id}'`)), !earlier)
+      }
+      assert.ok(result.diagnostics.some(d => d.message.includes(`references '${missingId}'`)))
+      const graph = await loadGraph({ graphPath: graphDir })
+      const owner = 'orders.DomainEvent.Linked.schemas.Linked.fields.'
+      assert.equal(graph.nodesById.get(owner + 'address')?.properties.$ref, earlier ? schemaId : undefined)
+      assert.equal(graph.nodesById.get(owner + 'line')?.properties.$ref, earlier ? fieldId : undefined)
+      assert.equal(graph.nodesById.get(owner + 'missing')?.properties.type, 'string')
+      assert.ok([...graph.edgesByFrom.values()].flat().some(e => e.from === fieldId && e.to === owner + 'line' && e.type === 'maps-to'))
+      if (earlier) {
+        const snapshot = () => Object.fromEntries(fs.readdirSync(graphDir, { recursive: true })
+          .map(String).filter(p => p.endsWith('.yaml')).sort()
+          .map(p => [p, fs.readFileSync(path.join(graphDir, p), 'utf8')]))
+        const before = snapshot()
+        await runImport({ imports }, runtime)
+        assert.deepEqual(snapshot(), before)
+        const after = await loadGraph({ graphPath: graphDir })
+        for (const id of [schemaId, fieldId]) assert.equal(after.nodesById.get(id)?.state, 'implemented')
+      }
+    } finally {
+      fs.rmSync(graphDir, { recursive: true, force: true })
+    }
+  })
+}

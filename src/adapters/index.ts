@@ -32,7 +32,7 @@ export interface AdapterContext {
   /**
    * Current non-removed node IDs in the target graph plus the rename-trail
    * alias map, so adapters can link to existing nodes by ID without
-   * re-declaring them. Excludes nodes created earlier in the same run.
+   * re-declaring them. Includes nodes emitted by earlier successful entries.
    */
   nodeRefs?: { ids: ReadonlySet<string>; aliases: ReadonlyMap<string, string> }
 }
