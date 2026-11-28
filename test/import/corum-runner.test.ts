@@ -390,7 +390,10 @@ describe('corum import — deduplicated field references', () => {
           AddressDto: { type: 'object', properties: { Line1: { type: 'string' }, postcode: { type: 'string' }, InternalNote: { type: 'string' } } },
           CreateOrderCommand: { type: 'object', properties: { Postcode: { type: 'string' } } },
         } },
-        edges: sources.map(from => ({ type: 'derived-from', from, to: target })),
+        edges: [
+          ...sources.map(from => ({ type: 'derived-from', from, to: target })),
+          { type: 'maps-to', from: '#/components/schemas/AddressDto/properties/postcode', to: target },
+        ],
       }))
       const result = await runImport({
         deduplication: [{ primary: 'openapi', secondary: 'corum' }],
@@ -400,13 +403,16 @@ describe('corum import — deduplicated field references', () => {
         ],
       }, makeRuntimeConfig(graphDir))
       assert.ok(!result.diagnostics.some(d => d.severity === 'error'), JSON.stringify(result.diagnostics))
+      assert.equal(result.diagnostics.filter(d => d.message.includes('Deduplication dropped edge')).length, 2)
       for (const source of sources.slice(1)) {
         assert.ok(result.diagnostics.some(d => d.severity === 'warning' && d.message.includes(source) && d.message.includes('derived-from')))
       }
       const graph = await loadGraph({ graphPath: graphDir })
       assert.ok(!graph.nodesById.has('orders.Schema.AddressDto'))
       const edges = [...graph.edgesByFrom.values()].flat()
-      assert.ok(edges.some(e => e.from === 'orders.Schema.Address.fields.postcode' && e.to === target))
+      for (const type of ['derived-from', 'maps-to']) {
+        assert.ok(edges.some(e => e.type === type && e.from === 'orders.Schema.Address.fields.postcode' && e.to === target))
+      }
       for (const edge of edges) {
         assert.ok(graph.nodesById.has(edge.from), edge.id)
         assert.ok(graph.nodesById.has(edge.to), edge.id)

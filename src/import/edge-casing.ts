@@ -1,9 +1,9 @@
 import type { Diagnostic, Edge, Graph } from '../schema/index.js'
 
 /**
- * Optional casing resolution for edges that survive deduplication. Dedup
- * reconciles removed subtrees first with exact matching and warning-and-drop;
- * it does not leave unmatched field edges for this pass to repair.
+ * Optional case-insensitive endpoint resolution against the final merged graph.
+ * Deduplication also honors this opt-in for removed subtrees, while dropping
+ * missing or ambiguous primary field matches with actionable warnings.
  *
  * This resolves those edges against the final merged node set: an endpoint
  * that fails an exact match is retried case-insensitively, and rewritten to

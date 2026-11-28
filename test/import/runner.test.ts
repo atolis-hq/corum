@@ -541,7 +541,7 @@ describe('import runner — edgeCasing (cross-source field-casing drift)', () =>
     return { graphDir, cleanup, result }
   }
 
-  for (const edgeCasing of ['preserve', 'match'] as const) {
+  for (const edgeCasing of ['preserve'] as const) {
     it(`warns and drops deduplicated case-mismatched fields with edgeCasing: ${edgeCasing}`, async () => {
       const { graphDir, cleanup, result } = await runMoneyImport(edgeCasing)
       try {
@@ -558,6 +558,25 @@ describe('import runner — edgeCasing (cross-source field-casing drift)', () =>
       }
     })
   }
+
+  it('with edgeCasing: match, the corum edge is rewritten to the surviving camelCase field', async () => {
+    const { graphDir, cleanup, result } = await runMoneyImport('match')
+    try {
+      assert.ok(!result.diagnostics.some(d => d.severity === 'error'), `expected no errors: ${JSON.stringify(result.diagnostics)}`)
+
+      const graph = await loadGraph({ graphPath: graphDir })
+      assert.ok(
+        !graph.diagnostics.some(d => d.message.includes('unresolved node') && d.message.includes('Money')),
+        `expected no dangling Money field refs, got: ${JSON.stringify(graph.diagnostics)}`,
+      )
+
+      const rewritten = (graph.edgesByTo.get('orders.Schema.Money.fields.amount') ?? []).filter(e => e.type === 'maps-to')
+      assert.equal(rewritten.length, 1)
+      assert.equal(rewritten[0].from, 'orders.DomainModel.order.schemas.order.fields.id')
+    } finally {
+      cleanup()
+    }
+  })
 })
 
 describe('import runner — invalid spec', () => {

@@ -394,3 +394,66 @@ describe('deduplicateResults — expanded field endpoints', () => {
     assert.ok(diagnostics[0].message.includes(edge.id))
   })
 })
+
+describe('deduplicateResults — recursive and expanded ownership', () => {
+  for (const reverse of [false, true]) {
+    it(`resolves nested implicit fields regardless of edge order (${reverse})`, () => {
+      const alias = makeNode('orders.Schema.alias', 'corum', { 'x-aka': ['canonical'] })
+      const primary = makeNode('orders.Schema.canonical', 'openapi')
+      const geo = makeNode(primary.id + '.fields.geo', 'openapi')
+      const lat = makeNode(geo.id + '.fields.lat', 'openapi')
+      const deep = makeEdge(alias.id + '.fields.geo.fields.lat', primary.id)
+      const missing = makeEdge(alias.id + '.fields.missing.fields.lat', primary.id)
+      const shallow = makeEdge(alias.id + '.fields.geo', primary.id)
+      const edges = [deep, missing, shallow]
+      const { results, diagnostics } = deduplicateResults([
+        makeResult('corum', [alias], reverse ? edges.reverse() : edges),
+        makeResult('openapi', [primary, geo, lat]),
+      ], [{ primary: 'openapi', secondary: 'corum' }])
+      assert.equal(results[0].edges.length, 2)
+      assert.ok(results[0].edges.some(edge => edge.from === lat.id))
+      assert.ok(results[0].edges.some(edge => edge.from === geo.id))
+      assert.equal(diagnostics.length, 1)
+      assert.ok(diagnostics[0].message.includes(missing.id))
+    })
+  }
+
+  it('matches expanded schema fields and silently discards internal structural edges', () => {
+    const alias = makeNode('orders.Schema.alias', 'corum', { 'x-aka': ['canonical'] })
+    const schema = { ...makeNode(alias.id + '.schemas.alias', 'corum'), template: alias.template }
+    const field = makeNode(schema.id + '.fields.postcode', 'corum')
+    const missing = makeNode(schema.id + '.fields.InternalNote', 'corum')
+    const primary = makeNode('orders.Schema.canonical', 'openapi')
+    const target = makeNode(primary.id + '.fields.postcode', 'openapi')
+    const semantic = makeEdge(field.id, primary.id, 'derived-from')
+    const unmatched = makeEdge(missing.id, primary.id, 'derived-from')
+    const { results, diagnostics } = deduplicateResults([
+      makeResult('corum', [alias, schema, field, missing], [
+        makeEdge(alias.id, schema.id, 'has-field'),
+        makeEdge(schema.id, field.id, 'has-field'),
+        makeEdge(schema.id, missing.id, 'has-field'),
+        semantic, unmatched,
+      ]),
+      makeResult('openapi', [primary, target]),
+    ], [{ primary: 'openapi', secondary: 'corum' }])
+    assert.deepEqual(results[0].nodes, [])
+    assert.deepEqual(results[0].edges, [makeEdge(target.id, primary.id, 'derived-from')])
+    assert.equal(diagnostics.length, 1)
+    assert.ok(diagnostics[0].message.includes(unmatched.id))
+  })
+
+  for (const ambiguous of [false, true]) {
+    it(`opt-in casing matching ${ambiguous ? 'rejects ambiguous' : 'accepts unique'} primary fields`, () => {
+      const alias = makeNode('orders.Schema.alias', 'corum', { 'x-aka': ['canonical'] })
+      const primary = makeNode('orders.Schema.canonical', 'openapi')
+      const fields = ['postcode', ...(ambiguous ? ['POSTCODE'] : [])].map(name => makeNode(primary.id + '.fields.' + name, 'openapi'))
+      const edge = makeEdge(alias.id + '.fields.Postcode', primary.id)
+      const { results, diagnostics } = deduplicateResults([
+        makeResult('corum', [alias], [edge]), makeResult('openapi', [primary, ...fields]),
+      ], [{ primary: 'openapi', secondary: 'corum' }], { edgeCasing: 'match' })
+      assert.equal(results[0].edges.length, ambiguous ? 0 : 1)
+      assert.equal(diagnostics.length, ambiguous ? 1 : 0)
+      if (!ambiguous) assert.equal(results[0].edges[0].from, fields[0].id)
+    })
+  }
+})
