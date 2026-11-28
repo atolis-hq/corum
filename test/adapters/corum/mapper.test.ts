@@ -483,12 +483,13 @@ describe('mapDocument — edges', () => {
       provenance: { extractedFrom: 'src/workflow.ts:42', derivation: 'inferred', derivedBy: 'extractor:workflow' },
     }] }), SPEC_PATH)
     assert.deepEqual(edges[0], {
-      [edgeSourceFields]: ['notes', 'extractedFrom', 'derivation', 'derivedBy'],
+      [edgeSourceFields]: ['notes', 'sources', 'extractedFrom', 'derivation', 'derivedBy'],
       id: 'orders.DomainModel.OrderAggregate.operations.Place__produces__orders.DomainEvent.OrderPlaced',
       from: 'orders.DomainModel.OrderAggregate.operations.Place',
       to: 'orders.DomainEvent.OrderPlaced',
       type: 'produces',
       notes: 'Parent workflow -> child workflow -> publish activity',
+      sources: ['src/workflow.ts:42'],
       extractedFrom: 'src/workflow.ts:42',
       state: 'implemented',
       stability: 'unstable',

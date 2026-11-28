@@ -24,7 +24,7 @@ export interface CorumInterchangeEdge {
   type: string
   from: string
   to: string
-  provenance?: CorumInterchangeProvenance
+  provenance?: CorumInterchangeProvenance & { sources?: string[] }
 }
 
 export interface CorumInterchangeDocument {
@@ -73,6 +73,12 @@ export function parseSpec(specPath: string): ParseResult {
   }
 
   const doc = raw as CorumInterchangeDocument
+  for (const edge of doc.edges ?? []) {
+    const sources = edge.provenance?.sources
+    if (sources !== undefined && (!Array.isArray(sources) || !sources.every(source => typeof source === 'string'))) {
+      diagnostics.push({ severity: 'error', file: specPath, message: 'Edge provenance.sources must be an array of strings' })
+    }
+  }
 
   for (const [nodeId, entry] of Object.entries(doc.nodes)) {
     if (entry && typeof entry === 'object' && 'parentId' in entry

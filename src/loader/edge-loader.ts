@@ -87,6 +87,7 @@ export function loadEdges(
         stability: resolveStability(edgeRecord.stability, diagnostics, key),
         ...(typeof ownershipSource === 'string' && { corum: { ownership: { source: ownershipSource } } }),
         notes: typeof edgeRecord.notes === 'string' ? edgeRecord.notes : undefined,
+        ...(Array.isArray(edgeRecord.sources) && edgeRecord.sources.every(source => typeof source === 'string') && { sources: edgeRecord.sources as string[] }),
         ...(typeof edgeRecord.extractedFrom === 'string' && { extractedFrom: edgeRecord.extractedFrom }),
         ...(['determined', 'inferred', 'manual'].includes(edgeRecord.derivation as string) && {
           derivation: edgeRecord.derivation as Edge['derivation'],

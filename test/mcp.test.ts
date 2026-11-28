@@ -365,6 +365,7 @@ describe('MCP handlers', () => {
       const localGraph = await loadGraph({ graphPath: fixtureGraphDir })
       const edge = [...localGraph.edgesByFrom.values()].flat().find(e => e.type === 'produces')!
       edge.extractedFrom = 'src/publish.ts:12'
+      edge.sources = ['service:file#one', 'service:file#two', 'service:file#three']
       edge.notes = 'Publication site'
       const handlers = createMcpHandlers(localGraph)
       for (const includeProvenance of [false, true]) {
@@ -376,6 +377,7 @@ describe('MCP handlers', () => {
         const output = cluster.edges.find((e: { from: string; to: string; type: string }) =>
           e.from === edge.from && e.to === edge.to && e.type === edge.type)
         assert.ok(output)
+        assert.deepEqual(output.sources, includeProvenance ? edge.sources : undefined)
         assert.equal(output.notes, edge.notes)
         assert.equal(output.extractedFrom, includeProvenance ? edge.extractedFrom : undefined)
         assert.equal('extractedFrom' in output, includeProvenance)
