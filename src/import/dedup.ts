@@ -99,10 +99,28 @@ export function deduplicateResults(
           const rewritten = primaryId + node.id.slice(current.id.length)
           const targetExists = primaryNodes.has(rewritten)
             && (node.id === current.id || isOwnedDescendant(primaryGraph, rewritten, primaryId))
-          endpointRedirects.set(node.id, primaryId === current.id || targetExists ? rewritten : null)
+          endpointRedirects.set(node.id, targetExists ? rewritten : null)
           break
         }
         current = current.parentId === undefined ? undefined : secondaryGraph.nodesById.get(current.parentId)
+      }
+    }
+
+    // Resolve unmaterialized direct field references through their known owner.
+    // Existing nodes take precedence over coincidental ID prefixes.
+    for (const r of results) {
+      for (const edge of r.edges) {
+        for (const endpoint of [edge.from, edge.to]) {
+          if (endpointRedirects.has(endpoint) || secondaryGraph.nodesById.has(endpoint)) continue
+          const field = /^(.*)\.fields\.([^.]+)$/.exec(endpoint)
+          if (!field) continue
+          const ownerRedirect = endpointRedirects.get(field[1])
+          if (ownerRedirect === undefined) continue
+          const candidate = ownerRedirect === null ? undefined : ownerRedirect + '.fields.' + field[2]
+          const target = candidate === undefined ? undefined : primaryNodes.get(candidate)
+          endpointRedirects.set(endpoint,
+            target && target.parentId === ownerRedirect ? target.id : null)
+        }
       }
     }
 
@@ -110,7 +128,16 @@ export function deduplicateResults(
       r.edges = r.edges.flatMap(edge => {
         const from = endpointRedirects.has(edge.from) ? endpointRedirects.get(edge.from)! : edge.from
         const to = endpointRedirects.has(edge.to) ? endpointRedirects.get(edge.to)! : edge.to
-        if (from === null || to === null) return []
+        if (from === null || to === null) {
+          const unresolved = [from === null ? edge.from : undefined, to === null ? edge.to : undefined]
+            .filter(endpoint => endpoint !== undefined)
+          diagnostics.push({
+            severity: 'warning',
+            file: r.specPath,
+            message: `Deduplication dropped edge ${edge.id} (${edge.from} — ${edge.type} → ${edge.to}): no matching primary node for ${unresolved.join(', ')}`,
+          })
+          return []
+        }
         if (from === edge.from && to === edge.to) return [edge]
         return [{ ...edge, from, to, id: `${from}__${edge.type}__${to}` }]
       })

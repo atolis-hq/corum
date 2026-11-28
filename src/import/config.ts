@@ -60,9 +60,9 @@ export interface ImportConfig {
    * final merged node set. 'preserve' (default) leaves it untouched — it
    * surfaces as an "unresolved node" diagnostic at load time, as today.
    * 'match' retries case-insensitively and rewrites to the exact surviving
-   * casing when the match is unambiguous — fixes cross-source field-casing
-   * drift (e.g. a secondary adapter's `fields.Amount` edge after dedup kept
-   * the primary adapter's `fields.amount` node).
+   * casing when the match is unambiguous. Deduplication runs first and drops
+   * unmatched field edges with warnings using exact, case-sensitive matching;
+   * this option applies only to edges that survive deduplication.
    */
   edgeCasing?: EdgeCasingMode
   imports: ImportEntry[]

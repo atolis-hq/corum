@@ -346,3 +346,51 @@ describe('deduplicateResults — interchange explicit ownership', () => {
     assert.equal(results[1].nodes[1].parentId, results[1].nodes[0].id)
   })
 })
+
+describe('deduplicateResults — expanded field endpoints', () => {
+  for (const sameId of [false, true]) {
+    it(`reconciles both endpoints across results (${sameId ? 'same ID' : 'alias'})`, () => {
+      const secondaryId = 'orders.Schema.AddressDto'
+      const primaryId = sameId ? secondaryId : 'orders.Schema.Address'
+      const secondary = makeNode(secondaryId, 'corum', sameId ? {} : { 'x-aka': ['Address'] })
+      const primary = makeNode(primaryId, 'openapi')
+      const postcode = makeNode(primaryId + '.fields.postcode', 'openapi')
+      const line1 = makeNode(primaryId + '.fields.line1', 'openapi')
+      const matched = makeEdge(secondaryId + '.fields.postcode', secondaryId + '.fields.postcode', 'derived-from')
+      const mismatched = makeEdge(secondaryId + '.fields.Line1', secondaryId + '.fields.InternalNote', 'derived-from')
+      const missing = makeEdge(primaryId, secondaryId + '.fields.InternalNote', 'derived-from')
+      const unrelated = makeEdge('other.Schema.Address.fields.postcode', primaryId)
+      const { results, diagnostics } = deduplicateResults([
+        makeResult('openapi', [primary, postcode, line1], [matched]),
+        makeResult('corum', [secondary]),
+        makeResult('third', [], [mismatched, missing, unrelated]),
+      ], [{ primary: 'openapi', secondary: 'corum' }])
+      assert.deepEqual(results[1].nodes, [])
+      assert.deepEqual(results[0].edges, [makeEdge(postcode.id, postcode.id, 'derived-from')])
+      assert.deepEqual(results[2].edges, [unrelated])
+      const dropped = diagnostics.filter(d => d.message.includes('dropped edge'))
+      assert.equal(dropped.length, 2)
+      for (const edge of [mismatched, missing]) {
+        const warning = dropped.find(d => d.message.includes(edge.id))!
+        assert.equal(warning.severity, 'warning')
+        assert.equal(warning.file, '/fake/third.yaml')
+        assert.ok(warning.message.includes(edge.to))
+      }
+      assert.ok(dropped[0].message.includes(mismatched.from))
+    })
+  }
+
+  it('requires ownership for an implicit field target', () => {
+    const secondary = makeNode('orders.Schema.alias', 'corum', { 'x-aka': ['canonical'] })
+    const primary = makeNode('orders.Schema.canonical', 'openapi')
+    const independent = { ...makeNode(primary.id + '.fields.id', 'openapi'), parentId: undefined }
+    const edge = makeEdge(secondary.id + '.fields.id', primary.id)
+    const { results, diagnostics } = deduplicateResults([
+      makeResult('corum', [secondary], [edge]),
+      makeResult('openapi', [primary, independent]),
+    ], [{ primary: 'openapi', secondary: 'corum' }])
+    assert.deepEqual(results[0].edges, [])
+    assert.equal(diagnostics.length, 1)
+    assert.ok(diagnostics[0].message.includes(edge.id))
+  })
+})

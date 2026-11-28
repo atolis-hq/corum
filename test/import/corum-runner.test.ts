@@ -363,3 +363,57 @@ describe('edge type schema contracts', () => {
     }
   })
 })
+
+describe('corum import — deduplicated field references', () => {
+  it('warns and drops unmatched fields while persisting exact primary field redirects', async () => {
+    const { graphDir, cleanup } = await setupGraphDir()
+    try {
+      const openapiPath = path.join(graphDir, 'address.openapi.json')
+      const corumPath = path.join(graphDir, 'address.corum.yaml')
+      const address = { type: 'object', properties: { line1: { type: 'string' }, postcode: { type: 'string' } } }
+      fs.writeFileSync(openapiPath, JSON.stringify({
+        openapi: '3.0.3', info: { title: 'Orders', version: '1' },
+        components: { schemas: { Address: address } },
+        paths: Object.fromEntries(['create', 'update'].map(name => ['/orders/' + name, {
+          post: { operationId: name, requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Address' } } } }, responses: {} },
+        }])),
+      }))
+      const target = 'orders.Command.CreateOrderCommand.schemas.CreateOrderCommand.fields.Postcode'
+      const sources = ['postcode', 'Line1', 'InternalNote'].map(name => 'orders.Schema.AddressDto.fields.' + name)
+      fs.writeFileSync(corumPath, stringifyYaml({
+        corum: '1.0', info: { title: 'Orders', packs: ['domain', 'rest'] },
+        nodes: {
+          'orders.Schema.AddressDto': { type: 'Schema', 'x-aka': ['Address'], schema: { $ref: '#/components/schemas/AddressDto' } },
+          'orders.Command.CreateOrderCommand': { type: 'Command', schema: { $ref: '#/components/schemas/CreateOrderCommand' } },
+        },
+        components: { schemas: {
+          AddressDto: { type: 'object', properties: { Line1: { type: 'string' }, postcode: { type: 'string' }, InternalNote: { type: 'string' } } },
+          CreateOrderCommand: { type: 'object', properties: { Postcode: { type: 'string' } } },
+        } },
+        edges: sources.map(from => ({ type: 'derived-from', from, to: target })),
+      }))
+      const result = await runImport({
+        deduplication: [{ primary: 'openapi', secondary: 'corum' }],
+        imports: [
+          { adapter: 'openapi', spec: openapiPath, componentMapping: { strategy: 'hardcoded', component: 'orders' } },
+          { adapter: 'corum', spec: corumPath },
+        ],
+      }, makeRuntimeConfig(graphDir))
+      assert.ok(!result.diagnostics.some(d => d.severity === 'error'), JSON.stringify(result.diagnostics))
+      for (const source of sources.slice(1)) {
+        assert.ok(result.diagnostics.some(d => d.severity === 'warning' && d.message.includes(source) && d.message.includes('derived-from')))
+      }
+      const graph = await loadGraph({ graphPath: graphDir })
+      assert.ok(!graph.nodesById.has('orders.Schema.AddressDto'))
+      const edges = [...graph.edgesByFrom.values()].flat()
+      assert.ok(edges.some(e => e.from === 'orders.Schema.Address.fields.postcode' && e.to === target))
+      for (const edge of edges) {
+        assert.ok(graph.nodesById.has(edge.from), edge.id)
+        assert.ok(graph.nodesById.has(edge.to), edge.id)
+      }
+      assert.ok(!graph.diagnostics.some(d => d.message.includes('unresolved node')))
+    } finally {
+      cleanup()
+    }
+  })
+})
