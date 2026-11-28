@@ -1089,7 +1089,7 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
     },
     {
       name: 'get_lineage',
-      description: 'BFS traversal from origin node(s); returns reachable nodes annotated with depth and the edge/node they arrived via. Batch multiple node_ids in one call — results merge and dedupe. Lean by default; scope with direction, depth, and edge_types. Field-level lineage: pass a field node ID, or a root with edge_types ["maps-to"] and/or ["derived-from"], to follow field edges across roots (raise depth to follow the thread). maps-to is a copy; derived-from is a computation and is followed against its authored direction (downstream reaches fields computed from the origin). Use ["maps-to"] for copies only.',
+      description: 'BFS traversal from origin node(s); returns reachable nodes annotated with depth and the edge/node they arrived via. Batch multiple node_ids in one call — results merge and dedupe. Lean by default; scope with direction, depth, and edge_types. Field-level lineage: pass a field node ID, or a root with edge_types ["maps-to"] (add "derived-from" too to follow computations; derived-from alone from a root does not seed its fields), to follow field edges across roots (raise depth to follow the thread). maps-to is a copy; derived-from is a computation and is followed against its authored direction (downstream reaches fields computed from the origin). Use ["maps-to"] for copies only.',
       inputSchema: {
         type: 'object',
         required: ['node_ids'],

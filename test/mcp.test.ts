@@ -518,6 +518,14 @@ describe('MCP handlers', () => {
       assert.equal((await call({ field: 'nope' })).edges.length, 0)
     })
 
+    it('edge_types is passed through to the query', async () => {
+      const handlers = createMcpHandlers(graph)
+      const call = async (edge_types: string[]) =>
+        JSON.parse((await handlers.get_linked_fields({ node_id: 'orders.DomainModel.order', format: 'json', edge_types })).content[0].text)
+      assert.equal((await call(['maps-to'])).edges.length, 23)
+      assert.equal((await call(['derived-from'])).edges.filter((e: { type: string }) => e.type !== 'derived-from').length, 0)
+    })
+
     it('includes linked field node provenance when requested', async () => {
       const handlers = createMcpHandlers(graph)
       const result = await handlers.get_linked_fields({

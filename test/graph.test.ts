@@ -212,11 +212,54 @@ describe('derived-from field lineage', () => {
     assert.deepEqual(getLineage(g, [amount], { edgeTypes: ['maps-to'], depth: 2 }).nodes, [])
   })
 
-  it('a root with derived-from listed explicitly seeds its fields', () => {
-    const result = getLineage(g, ['orders.Schema.source'], { edgeTypes: ['derived-from'], depth: 2 })
-    // Owned fields are seeded, so they are the origin set; their derivation edges are returned.
-    assert.equal(result.edges.length, 2)
-    assert.ok(result.edges.every(e => e.type === 'derived-from'))
+  describe('across roots', () => {
+    const fieldTemplate: Template = { name: 'Field', info: { version: '1.0', role: 'field' } }
+    const mk = (id: string, template: string, parentId?: string): Node => ({ ...createNode(id), template, ...(parentId ? { parentId } : {}) })
+    const src = mk('orders.Schema.src', 'Schema')
+    const dst = mk('orders.Schema.dst', 'Schema')
+    const srcX = mk('orders.Schema.src.fields.x', 'Field', src.id)
+    const srcY = mk('orders.Schema.src.fields.y', 'Field', src.id)
+    const dstX = mk('orders.Schema.dst.fields.x', 'Field', dst.id)
+    const edge = (from: Node, to: Node, type: string): Edge => ({ ...createEdge(`${from.id}__${type}__${to.id}`, from.id, to.id), type })
+    const edges = [
+      edge(src, dst, 'derived-from'), // root level
+      edge(srcX, dstX, 'derived-from'), // field level: src.x computed from dst.x
+      edge(dstX, srcY, 'maps-to'), // copy: dst.x -> src.y
+    ]
+    const byFrom = new Map<string, Edge[]>()
+    const byTo = new Map<string, Edge[]>()
+    for (const e of edges) {
+      byFrom.set(e.from, [...(byFrom.get(e.from) ?? []), e])
+      byTo.set(e.to, [...(byTo.get(e.to) ?? []), e])
+    }
+    const cg: Graph = {
+      nodesById: new Map([src, dst, srcX, srcY, dstX].map(n => [n.id, n])),
+      edgesByFrom: byFrom,
+      edgesByTo: byTo,
+      templates: new Map([[fieldTemplate.name, fieldTemplate]]),
+      diagnostics: [],
+    }
+
+    it('root-level derived-from lineage ignores field-level edges', () => {
+      for (const direction of ['upstream', 'downstream', 'both'] as const) {
+        const result = getLineage(cg, [src.id], { edgeTypes: ['derived-from'], direction, depth: 3 })
+        assert.ok(result.nodes.every(n => n.id === dst.id), `${direction}: only the root-level target`)
+        assert.ok(result.edges.every(e => e.id === `${src.id}__derived-from__${dst.id}`), `${direction}: only the root edge`)
+      }
+    })
+
+    it('listing both types from a root reaches fields in another root', () => {
+      const result = getLineage(cg, [dst.id], { edgeTypes: ['maps-to', 'derived-from'], depth: 3 })
+      assert.ok(result.nodes.some(n => n.id === srcX.id && n.via_edge_type === 'derived-from'))
+      assert.ok(result.nodes.some(n => n.id === srcY.id && n.via_edge_type === 'maps-to'))
+    })
+
+    it('a copy followed by a computation reports the edge type of each hop', () => {
+      const result = getLineage(cg, [dstX.id], { depth: 2 })
+      const byId = new Map(result.nodes.map(n => [n.id, n]))
+      assert.equal(byId.get(srcY.id)?.via_edge_type, 'maps-to')
+      assert.equal(byId.get(srcX.id)?.via_edge_type, 'derived-from')
+    })
   })
 
   it('getLinkedFields returns derived-from edges and honours edgeTypes', () => {

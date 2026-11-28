@@ -649,7 +649,9 @@ export function getLineage(graph: Graph, startNodeIds: string[], options: GetLin
   // Field-level lineage is opt-in: the caller must list maps-to explicitly
   // (to seed a root's fields) or start directly at a field. Default edge
   // types never pull fields in.
-  const mapsToExplicit = !!(options.edgeTypes?.includes('maps-to') || options.edgeTypes?.includes('derived-from'))
+  // Root seeding stays tied to maps-to so root-level derived-from lineage is
+  // unchanged; list both types to follow field derivations from a root.
+  const mapsToExplicit = options.edgeTypes?.includes('maps-to') ?? false
 
   function isIncluded(node: Node, viaEdgeType?: string): boolean {
     if (allowedTemplates) return allowedTemplates.has(node.template)
