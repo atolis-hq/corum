@@ -62,6 +62,8 @@ Lint also runs on every load and before `commit_changes`.
 ```bash
 corum pack install <name>          # latest tag
 corum pack install <name>@<ref>    # specific tag, e.g. domain@v0.1.5
+corum pack install ./packs/my-pack # copy a local pack
+corum pack install my-pack --path ./packs/my-pack
 corum pack list                    # installed packs, versions, install dates
 ```
 
@@ -105,3 +107,5 @@ mapping options are needed. It requires the `extract` pack
 (`corum pack install extract`).
 
 More on strategies and config files in [Importing](importing.md).
+
+Local pack installs copy the directory into `.corum/packs/<name>` and record its resolved absolute source path in `.corum/packs.yaml`. Reinstalling replaces the installed copy; source edits take effect only after reinstalling. The source must contain `pack.yaml` with a `templates` array and the declared files. Symbolic links and overlapping source/destination directories are rejected.

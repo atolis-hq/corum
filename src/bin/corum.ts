@@ -12,7 +12,7 @@ import { loadGraph } from '../loader/index.js'
 import { startMcpServer } from '../mcp/index.js'
 import { parseGitHubRepo, toPackRawBaseUrl } from '../pack/github-urls.js'
 import { registerPackInGraph } from '../pack/graph-yaml.js'
-import { installPackFiles } from '../pack/installer.js'
+import { installLocalPackFiles, installPackFiles } from '../pack/installer.js'
 import { readManifest, upsertPack } from '../pack/manifest.js'
 import { fetchRegistry, findPack, resolveRef } from '../pack/registry.js'
 import { createGraphRuntimeConfig } from '../source/config.js'
@@ -285,10 +285,11 @@ const packCmd = program.command('pack').description('Manage template packs')
 
 packCmd
   .command('install <name>')
-  .description('Install a pack from the registry (e.g. core, domain@v0.1.5)')
-  .action(async (name: string) => {
+  .description('Install a registry pack or a local pack directory')
+  .option('--path <dir>', 'Copy a local pack directory using the explicit name')
+  .action(async (name: string, opts: { path?: string }) => {
     try {
-      await installPack(name)
+      await installPack(name, process.cwd(), opts.path)
     } catch (err) {
       process.stderr.write(`[ERROR] ${err instanceof Error ? err.message : String(err)}\n`)
       process.exit(1)
@@ -306,7 +307,7 @@ packCmd
         return
       }
       for (const p of manifest.packs) {
-        process.stdout.write(`${p.name}@${p.ref}  (${p.installedAt})\n`)
+        process.stdout.write(`${p.sourcePath ? `${p.name} (local: ${p.sourcePath})` : `${p.name}@${p.ref}`}  (${p.installedAt})\n`)
       }
     } catch (err) {
       process.stderr.write(`[ERROR] ${err instanceof Error ? err.message : String(err)}\n`)
@@ -397,7 +398,20 @@ async function readPackRegistryUrl(cwd: string): Promise<string> {
   return config.pack_registry
 }
 
-export async function installPack(nameWithRef: string, cwd: string = process.cwd()): Promise<void> {
+export async function installPack(nameWithRef: string, cwd: string = process.cwd(), sourcePath?: string): Promise<void> {
+  const isLocal = sourcePath !== undefined || path.isAbsolute(nameWithRef) || /[\\/]/.test(nameWithRef) || nameWithRef === '.' || nameWithRef === '..'
+  if (isLocal) {
+    const source = path.resolve(cwd, sourcePath ?? nameWithRef)
+    const name = sourcePath !== undefined ? nameWithRef : path.basename(source)
+    if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new Error(`Invalid pack name: ${name}`)
+    const resolvedSource = await installLocalPackFiles(source, path.join(cwd, '.corum', 'packs', name))
+    await registerPackInGraph(path.join(cwd, '.corum', 'graph', 'graph.yaml'), name, `../packs/${name}`)
+    await upsertPack(path.join(cwd, '.corum', 'packs.yaml'), {
+      name, sourcePath: resolvedSource, installedAt: new Date().toISOString(),
+    })
+    process.stdout.write(`Installed local pack: ${name} (${resolvedSource})\n`)
+    return
+  }
   const atIdx = nameWithRef.indexOf('@')
   const name = atIdx >= 0 ? nameWithRef.slice(0, atIdx) : nameWithRef
   const specifiedRef = atIdx >= 0 ? nameWithRef.slice(atIdx + 1) : undefined
