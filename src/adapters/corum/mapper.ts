@@ -774,6 +774,8 @@ function mapEdge(raw: CorumInterchangeEdge): Edge {
     from: raw.from,
     to: raw.to,
     type: raw.type as EdgeType,
+    notes: raw.notes,
+    extractedFrom: raw.provenance?.extractedFrom,
     state: 'implemented',
     stability: 'unstable',
     derivation: raw.provenance?.derivation === 'inferred' ? 'inferred' : 'determined',

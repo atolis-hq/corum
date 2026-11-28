@@ -20,6 +20,7 @@ export interface CorumInterchangeNodeEntry {
 }
 
 export interface CorumInterchangeEdge {
+  notes?: string
   type: string
   from: string
   to: string

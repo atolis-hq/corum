@@ -66,6 +66,35 @@ function assertMatchesExpected(graphDir: string, goldenSubdir: string): void {
 }
 
 describe('corum import — basic fixture', () => {
+  it('persists edge notes and extraction sources through import and another save/load', async () => {
+    const { graphDir, cleanup } = await setupGraphDir()
+    try {
+      const specPath = path.join(graphDir, 'evidence.corum.yaml')
+      const document = parseYaml(fs.readFileSync(path.join(specsDir, 'basic.corum.yaml'), 'utf8'))
+      const rawEdge = document.edges[0]
+      rawEdge.notes = 'Copied by the publishing activity\nvia a child workflow'
+      rawEdge.provenance = { extractedFrom: 'src/workflow.ts:42', derivation: 'inferred', derivedBy: 'extractor:workflow' }
+      fs.writeFileSync(specPath, stringifyYaml(document))
+      const result = await runImport({ imports: [{ adapter: 'corum', spec: specPath }] }, makeRuntimeConfig(graphDir))
+      assert.ok(!result.diagnostics.some(d => d.severity === 'error'))
+      const edgeId = rawEdge.from + '__' + rawEdge.type + '__' + rawEdge.to
+      const check = (graph: Awaited<ReturnType<typeof loadGraph>>) => {
+        const edge = graph.edgesByFrom.get(rawEdge.from)?.find(e => e.id === edgeId)
+        assert.ok(edge)
+        assert.equal(edge.notes, rawEdge.notes)
+        assert.equal(edge.extractedFrom, 'src/workflow.ts:42')
+        assert.equal(edge.state, 'implemented')
+        assert.equal(edge.stability, 'unstable')
+      }
+      const imported = await loadGraph({ graphPath: graphDir })
+      check(imported)
+      await saveGraph(imported, { sourceGraphPath: graphDir, outputGraphPath: graphDir })
+      check(await loadGraph({ graphPath: graphDir }))
+    } finally {
+      cleanup()
+    }
+  })
+
   it('imports nodes and produces edge from basic.corum.yaml', async () => {
     const { graphDir, cleanup } = await setupGraphDir()
     try {

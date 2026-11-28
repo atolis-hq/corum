@@ -84,6 +84,7 @@ export function loadEdges(
         state: resolveState(edgeRecord.state, diagnostics, key),
         stability: resolveStability(edgeRecord.stability, diagnostics, key),
         notes: typeof edgeRecord.notes === 'string' ? edgeRecord.notes : undefined,
+        ...(typeof edgeRecord.extractedFrom === 'string' && { extractedFrom: edgeRecord.extractedFrom }),
         ...(typeof edgeRecord.lastModifiedAt === 'string' && { lastModifiedAt: edgeRecord.lastModifiedAt }),
         ...(typeof properties === 'object' && properties !== null && !Array.isArray(properties) && {
           properties: properties as Record<string, unknown>,

@@ -137,6 +137,9 @@ properties:
         to:
           type: string
           description: Target node ID.
+        notes:
+          type: string
+          description: Explanation or evidence for the relationship.
         provenance:
           $ref: '#/$defs/provenance'
 

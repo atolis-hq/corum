@@ -474,6 +474,28 @@ describe('mapDocument — schema expansion', () => {
 })
 
 describe('mapDocument — edges', () => {
+  it('preserves notes and source locators without changing edge identity or defaults', () => {
+    const { edges } = mapDocument(makeDoc({ edges: [{
+      from: 'orders.DomainModel.OrderAggregate.operations.Place',
+      to: 'orders.DomainEvent.OrderPlaced',
+      type: 'produces',
+      notes: 'Parent workflow -> child workflow -> publish activity',
+      provenance: { extractedFrom: 'src/workflow.ts:42', derivation: 'inferred', derivedBy: 'extractor:workflow' },
+    }] }), SPEC_PATH)
+    assert.deepEqual(edges[0], {
+      id: 'orders.DomainModel.OrderAggregate.operations.Place__produces__orders.DomainEvent.OrderPlaced',
+      from: 'orders.DomainModel.OrderAggregate.operations.Place',
+      to: 'orders.DomainEvent.OrderPlaced',
+      type: 'produces',
+      notes: 'Parent workflow -> child workflow -> publish activity',
+      extractedFrom: 'src/workflow.ts:42',
+      state: 'implemented',
+      stability: 'unstable',
+      derivation: 'inferred',
+      derivedBy: 'extractor:workflow',
+    })
+  })
+
   it('constructs edge ID as from__type__to', () => {
     const doc = makeDoc({
       edges: [{
@@ -489,6 +511,9 @@ describe('mapDocument — edges', () => {
     assert.equal(edges[0].state, 'implemented')
     assert.equal(edges[0].derivation, 'determined')
     assert.equal(edges[0].derivedBy, 'adapter:corum')
+    assert.equal(edges[0].stability, 'unstable')
+    assert.equal(edges[0].notes, undefined)
+    assert.equal(edges[0].extractedFrom, undefined)
   })
 
   it('emits a warning and skips edges with unknown type', () => {
