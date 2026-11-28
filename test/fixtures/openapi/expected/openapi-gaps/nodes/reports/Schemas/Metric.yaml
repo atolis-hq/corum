@@ -10,6 +10,9 @@ metadata:
   derivation: determined
   derivedBy: adapter:openapi
 corum:
+  identity:
+    sourceIds:
+      - openapi:reports/schema/Metric
   ownership:
     importedProperties: []
 fields:
@@ -17,6 +20,9 @@ fields:
     type: string
     nullable: true
     corum:
+      identity:
+        sourceIds:
+          - openapi:reports/schema/Metric/label
       ownership:
         importedProperties:
           - nullable
@@ -25,6 +31,9 @@ fields:
     type: decimal
     nullable: true
     corum:
+      identity:
+        sourceIds:
+          - openapi:reports/schema/Metric/value
       ownership:
         importedProperties:
           - nullable

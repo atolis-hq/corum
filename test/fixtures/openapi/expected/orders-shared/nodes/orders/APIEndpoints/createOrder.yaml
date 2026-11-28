@@ -10,6 +10,9 @@ metadata:
   derivation: determined
   derivedBy: adapter:openapi
 corum:
+  identity:
+    sourceIds:
+      - openapi:orders/op/createOrder
   ownership:
     importedProperties:
       - method
@@ -38,6 +41,9 @@ schemas:
               - type
   OrderSummary:
     corum:
+      identity:
+        sourceIds:
+          - openapi:orders/schema/OrderSummary
       ownership:
         importedProperties: []
     fields:
@@ -45,6 +51,9 @@ schemas:
         type: uuid
         nullable: false
         corum:
+          identity:
+            sourceIds:
+              - openapi:orders/schema/OrderSummary/orderId
           ownership:
             importedProperties:
               - nullable
@@ -53,6 +62,9 @@ schemas:
         $ref: orders.EnumDefinition.OrderStatus
         nullable: false
         corum:
+          identity:
+            sourceIds:
+              - openapi:orders/schema/OrderSummary/status
           ownership:
             importedProperties:
               - $ref

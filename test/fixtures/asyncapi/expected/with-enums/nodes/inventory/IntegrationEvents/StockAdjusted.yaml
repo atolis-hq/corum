@@ -10,6 +10,10 @@ metadata:
   derivation: determined
   derivedBy: adapter:asyncapi
 corum:
+  identity:
+    sourceIds:
+      - asyncapi:inventory/channel/inventory.stock-adjusted
+      - asyncapi:inventory/message/StockAdjusted
   ownership:
     importedProperties:
       - payload

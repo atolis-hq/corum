@@ -10,6 +10,10 @@ metadata:
   derivation: determined
   derivedBy: adapter:asyncapi
 corum:
+  identity:
+    sourceIds:
+      - asyncapi:subscriptions/channel/subscriptions.subscription-renewed
+      - asyncapi:subscriptions/message/SubscriptionRenewed
   ownership:
     importedProperties:
       - payload

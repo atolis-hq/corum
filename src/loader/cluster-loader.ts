@@ -253,6 +253,8 @@ function extractCorum(corumValue: unknown, propertySource?: unknown): Node['coru
       previousIds: propertySource.previousNames.filter((value): value is string => typeof value === 'string'),
     }
   }
+  const sourceIds = extractSourceIds(corumValue)
+  if (sourceIds !== undefined) corum.identity = { ...(corum.identity ?? {}), sourceIds }
   if (isRecord(corumValue) && isRecord(corumValue.ownership) && Array.isArray(corumValue.ownership.importedProperties)) {
     corum.ownership = {
       importedProperties: corumValue.ownership.importedProperties.filter((value): value is string => typeof value === 'string'),
@@ -266,6 +268,14 @@ function extractPreviousIds(corumValue: unknown): string[] | undefined {
   const identity = corumValue.identity
   if (!isRecord(identity) || !Array.isArray(identity.previousIds)) return undefined
   return identity.previousIds.filter((value): value is string => typeof value === 'string')
+}
+
+function extractSourceIds(corumValue: unknown): string[] | undefined {
+  if (!isRecord(corumValue)) return undefined
+  const identity = corumValue.identity
+  if (!isRecord(identity) || !Array.isArray(identity.sourceIds)) return undefined
+  const ids = identity.sourceIds.filter((value): value is string => typeof value === 'string')
+  return ids.length > 0 ? ids : undefined
 }
 
 function addNode(result: ClusterResult, node: Node, file: string, diagnostics: Diagnostic[]): void {

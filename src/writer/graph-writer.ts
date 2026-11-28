@@ -279,6 +279,7 @@ function toEdgeDocument(graph: Graph, edge: Edge): Record<string, unknown> {
   if (edge.state !== 'proposed') doc.state = edge.state
   if (edge.stability !== 'unstable') doc.stability = edge.stability
   if (edge.corum !== undefined) doc.corum = edge.corum
+  if (edge.pending !== undefined) doc.pending = edge.pending
   if (edge.notes !== undefined) doc.notes = edge.notes
   if (edge.sources !== undefined) doc.sources = edge.sources
   if (edge.extractedFrom !== undefined) doc.extractedFrom = edge.extractedFrom

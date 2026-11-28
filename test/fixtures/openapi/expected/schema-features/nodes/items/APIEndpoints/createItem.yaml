@@ -10,6 +10,9 @@ metadata:
   derivation: determined
   derivedBy: adapter:openapi
 corum:
+  identity:
+    sourceIds:
+      - openapi:items/op/createItem
   ownership:
     importedProperties:
       - method

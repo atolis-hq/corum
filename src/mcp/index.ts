@@ -144,6 +144,7 @@ function mapEdge(edge: Edge, options: EdgeOutputOptions = {}): Record<string, un
   out.to = edge.to
   out.type = edge.type
   if (edge.notes !== undefined) out.notes = edge.notes
+  if (edge.pending !== undefined) out.pending = edge.pending
   if (options.includeProvenance) {
     if (edge.sources !== undefined) out.sources = edge.sources
     if (edge.extractedFrom !== undefined) out.extractedFrom = edge.extractedFrom

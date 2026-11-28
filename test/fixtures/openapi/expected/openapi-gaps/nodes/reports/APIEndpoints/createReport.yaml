@@ -10,6 +10,9 @@ metadata:
   derivation: determined
   derivedBy: adapter:openapi
 corum:
+  identity:
+    sourceIds:
+      - openapi:reports/op/createReport
   ownership:
     importedProperties:
       - method

@@ -125,3 +125,18 @@ code or source-location provenance. Re-import soft-deletes missing edges only fo
 that owner and restores returning edges to their incoming state. Existing edge IDs
 retain their owner and content; unowned legacy or manual edges are not adopted.
 Generated structural edges are excluded. Ownership is singular, not multi-source.
+
+## Amendment: Persisted source IDs and pending edges
+
+`corum.identity.sourceIds` (sorted list of strings) records the source-native and declared IDs
+(`openapi:...`, `clr:...`) an import registered against the node. Imports rebuild their source-ID
+index from it, so references resolve against nodes whose files are not part of the run. A re-import
+replaces the list for the nodes it re-imports. It is bookkeeping and does not count as a content
+change.
+
+An explicit edge whose endpoint resolves to no node is kept with `pending: {from?, to?}`, holding the
+reference as written for each unresolved endpoint. The edge ID is built from the as-written strings.
+The marker is derived on load for any dangling endpoint (including legacy hand-written edges) and
+removed when a later import resolves the endpoint, at which point the edge ID is recomputed and the
+edge keeps its notes, provenance and ownership. If the resolved ID already exists the existing edge
+wins.

@@ -202,7 +202,7 @@ describe('ID maps — single run, fresh graph', () => {
       await t.run()
       const after = edgeKeys(await t.load())
       assert.ok(after.includes('orders.DomainModel.OrderAggregate__uses-type__orders.Schema.CreateOrderRequest'), after.join('\n'))
-      assert.ok(!after.some(k => k.includes('clr:')))
+      assert.deepEqual(after.filter(k => k.includes('clr:')), [])
     } finally {
       t.cleanup()
     }

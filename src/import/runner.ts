@@ -12,11 +12,12 @@ import { buildExistingSchemaIndex, detectSchemaPromotions, rewritePromotedSchema
 import { resolveEdgeCasing } from './edge-casing.js'
 import { specKey } from './spec-key.js'
 import { IdResolver, loadIdMaps } from './id-map.js'
+import { resolvePendingEdges } from './pending.js'
 import type { IdMapSummary } from './id-map.js'
 import type { DeferredRef } from '../adapters/index.js'
 import type { ImportConfig } from './config.js'
 import type { AdapterPackConfig } from '../adapters/index.js'
-import type { Diagnostic } from '../schema/index.js'
+import type { Diagnostic, Edge, Node } from '../schema/index.js'
 import type { ContentMap } from '../source/index.js'
 import type { GraphRuntimeConfig } from '../source/config.js'
 
@@ -88,6 +89,9 @@ export async function runImport(
   // Source-native and declared IDs registered this run (not persisted). The
   // resolver reads these and `liveIds` lazily, so it sees the state at call time.
   const sourceIdIndex = new Map<string, Set<string>>()
+  // The subset registered by this run's entries: persisted onto the nodes they identify.
+  const runSourceIds = new Map<string, Set<string>>()
+  let runIdsByTarget = new Map<string, Set<string>>()
   let liveIds: ReadonlySet<string> = nodeRefs.ids
   const idAliases = buildAliasMap(graph)
   const idResolver = new IdResolver({
@@ -135,10 +139,29 @@ export async function runImport(
       const targets = sourceIdIndex.get(sid.id) ?? new Set<string>()
       targets.add(sid.target)
       sourceIdIndex.set(sid.id, targets)
+      runSourceIds.set(sid.id, new Set([...(runSourceIds.get(sid.id) ?? []), sid.target]))
     }
     // Only successful earlier entries contribute identities to later adapters.
     for (const node of nodes) {
       if (node.state !== 'removed') nodeRefs.ids.add(node.id)
+    }
+  }
+
+  // Source IDs persisted on nodes by earlier imports, so a reference can resolve
+  // against nodes this run's files don't touch. Nodes re-imported now are
+  // covered by this run's own registrations.
+  {
+    const runNodeIds = new Set(entryResults.flatMap(er => er.nodes.map(n => n.id)))
+    const runSpecs = new Set(entryResults.map(er => er.specPath))
+    for (const node of graph.nodesById.values()) {
+      if (node.state === 'removed' || runNodeIds.has(node.id)) continue
+      // Nodes of a spec imported now are covered by its fresh registrations; a stale one may be about to go.
+      if (node.extractedFrom !== undefined && runSpecs.has(specKey(node.extractedFrom))) continue
+      for (const id of node.corum?.identity?.sourceIds ?? []) {
+        // An ID this run registered afresh supersedes what an earlier run stored (e.g. after schema promotion).
+        if (runSourceIds.has(id)) continue
+        sourceIdIndex.set(id, new Set([...(sourceIdIndex.get(id) ?? []), node.id]))
+      }
     }
   }
 
@@ -185,18 +208,48 @@ export async function runImport(
       return cur
     }
     // Retarget registered IDs of nodes that dedup merged away.
-    for (const [id, targets] of sourceIdIndex) {
-      sourceIdIndex.set(id, new Set([...targets].map(followRedirect)))
+    for (const index of [sourceIdIndex, runSourceIds]) {
+      for (const [id, targets] of index) index.set(id, new Set([...targets].map(followRedirect)))
+    }
+    // Persist this run's registrations on the nodes they identify.
+    {
+      const idsByTarget = new Map<string, Set<string>>()
+      for (const [id, targets] of runSourceIds) {
+        for (const target of targets) idsByTarget.set(target, new Set([...(idsByTarget.get(target) ?? []), id]))
+      }
+      for (const er of entryResults) {
+        er.nodes = er.nodes.map(n => (n.state === 'removed' ? n : withSourceIds(n, idsByTarget.get(n.id))))
+      }
+      runIdsByTarget = idsByTarget
     }
     const reported = new Set<string>()
+    const ambiguousRefs = new Set<string>()
+    const unresolvedWarned = new Set<string>()
     const resolveRef = (ref: string, file: string, context: string): string | undefined => {
       const res = idResolver.resolve(ref)
       if (res.kind === 'resolved') return res.target
-      if (res.kind === 'ambiguous' && !reported.has(ref)) {
-        reported.add(ref)
-        allDiagnostics.push({ severity: 'warning', file, message: `Ambiguous reference ${context}: ${res.message}; not resolved` })
+      if (res.kind === 'ambiguous') {
+        ambiguousRefs.add(ref)
+        if (!reported.has(ref)) {
+          reported.add(ref)
+          allDiagnostics.push({ severity: 'warning', file, message: `Ambiguous reference ${context}: ${res.message}; not resolved` })
+        }
       }
       return undefined
+    }
+    const warnUnresolved = (edge: Edge, side: 'from' | 'to', ref: string, file: string) => {
+      const key = `${edge.id}|${side}`
+      if (unresolvedWarned.has(key) || ambiguousRefs.has(ref)) return
+      unresolvedWarned.add(key)
+      const hits = idResolver.candidatesFor(ref)
+      const detail = hits.length === 0
+        ? ''
+        : `; ${hits.map(h => `ID map rule ${h.rule.file}#${h.rule.index} ('${h.rule.from}' → '${h.rule.to}') produced '${h.candidate}'`).join('; ')}`
+      allDiagnostics.push({
+        severity: 'warning',
+        file,
+        message: `Edge ${edge.id} (${edge.type}): '${side}' endpoint '${ref}' does not resolve to any node${detail}; kept as pending and retried on later imports`,
+      })
     }
 
     for (const er of entryResults) {
@@ -229,7 +282,15 @@ export async function runImport(
         let { from, to } = edge
         if (!isLive(from)) from = resolveRef(from, er.specPath, `edge endpoint of ${edge.id}`) ?? from
         if (!isLive(to)) to = resolveRef(to, er.specPath, `edge endpoint of ${edge.id}`) ?? to
-        const next = from === edge.from && to === edge.to ? edge : { ...edge, from, to, id: `${from}__${edge.type}__${to}` }
+        const base = from === edge.from && to === edge.to ? edge : { ...edge, from, to, id: `${from}__${edge.type}__${to}` }
+        // Structural edges are filtered out later; hidden types legitimately point at retired IDs.
+        const tracked = !isStructuralEdgeType(graph, edge.type) && graph.edgeTypes?.get(edge.type)?.hidden !== true
+        const pending: NonNullable<Edge['pending']> = {}
+        if (tracked && !isLive(from)) pending.from = from
+        if (tracked && !isLive(to)) pending.to = to
+        const next = pending.from !== undefined || pending.to !== undefined ? { ...base, pending } : base
+        if (pending.from !== undefined) warnUnresolved(next, 'from', from, er.specPath)
+        if (pending.to !== undefined) warnUnresolved(next, 'to', to, er.specPath)
         if (seen.has(next.id)) return []
         seen.add(next.id)
         return [next]
@@ -256,6 +317,17 @@ export async function runImport(
     }
   }
 
+  // Targets of this run's source IDs that live outside its own nodes (e.g. a reused shared schema).
+  {
+    const runNodeIds = new Set(entryResults.flatMap(er => er.nodes.map(n => n.id)))
+    for (const [target, ids] of runIdsByTarget) {
+      const node = graph.nodesById.get(target)
+      if (node === undefined || node.state === 'removed' || runNodeIds.has(target)) continue
+      const merged = withSourceIds(node, new Set([...(node.corum?.identity?.sourceIds ?? []), ...ids]))
+      if (merged !== node) graph.nodesById.set(target, merged)
+    }
+  }
+
   const edgesBySource = new Map<string, typeof entryResults[number]['edges']>()
   for (const er of entryResults) {
     let edges = er.edges.filter(edge => !isStructuralEdgeType(graph, edge.type))
@@ -272,6 +344,13 @@ export async function runImport(
   // inline → standalone by this run.
   const promotions = detectSchemaPromotions(priorNodes, newlyCreatedSchemaIds)
   rewritePromotedSchemaEdges(graph, promotions, allDiagnostics)
+
+  // Retry every pending edge in the graph (all sources) now that this run's nodes and IDs are in.
+  {
+    const live = new Set([...graph.nodesById.values()].filter(n => n.state !== 'removed').map(n => n.id))
+    liveIds = live
+    resolvePendingEdges(graph, idResolver, live, allDiagnostics)
+  }
 
   // A non-strict load omits unparsable files, and the commit replaces graph
   // content, so committing would silently delete them. Leave the target untouched.
@@ -290,6 +369,22 @@ export async function runImport(
   )
 
   return { diagnostics: allDiagnostics, idMapSummary }
+}
+
+/** Set (or clear) the persisted `corum.identity.sourceIds` list, kept sorted. */
+function withSourceIds(node: Node, ids: ReadonlySet<string> | undefined): Node {
+  const sorted = ids === undefined ? [] : [...ids].sort()
+  const current = node.corum?.identity?.sourceIds
+  if (sorted.length === 0) {
+    if (current === undefined) return node
+    const { sourceIds: _drop, ...identity } = node.corum?.identity ?? {}
+    const { identity: _identity, ...corum } = node.corum ?? {}
+    const next = { ...corum, ...(Object.keys(identity).length > 0 && { identity }) }
+    const { corum: _c, ...rest } = node
+    return Object.keys(next).length > 0 ? { ...rest, corum: next } : rest
+  }
+  if (current !== undefined && current.length === sorted.length && current.every((v, i) => v === sorted[i])) return node
+  return { ...node, corum: { ...(node.corum ?? {}), identity: { ...(node.corum?.identity ?? {}), sourceIds: sorted } } }
 }
 
 async function loadPackAdapterConfig(runtimeConfig: GraphRuntimeConfig, adapterId: string): Promise<AdapterPackConfig | null> {
