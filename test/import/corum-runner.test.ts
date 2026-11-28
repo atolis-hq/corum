@@ -99,6 +99,56 @@ describe('corum import — basic fixture', () => {
     }
   })
 
+  it('persists supplied edge refreshes without applying omitted provenance defaults', async () => {
+    const { graphDir, cleanup } = await setupGraphDir()
+    try {
+      const spec = path.join(graphDir, 'refresh.corum.yaml')
+      const document = parseYaml(fs.readFileSync(path.join(specsDir, 'basic.corum.yaml'), 'utf8'))
+      const raw = document.edges[0]
+      raw.notes = 'first note'
+      raw.provenance = { derivation: 'inferred', derivedBy: 'extractor:x', extractedFrom: 'src/controller.ts:10' }
+      const id = raw.from + '__' + raw.type + '__' + raw.to
+      const find = (graph: Awaited<ReturnType<typeof loadGraph>>) => graph.edgesByFrom.get(raw.from)!.find(e => e.id === id)!
+      const run = async () => {
+        fs.writeFileSync(spec, stringifyYaml(document))
+        const result = await runImport({ imports: [{ adapter: 'corum', spec }] }, makeRuntimeConfig(graphDir))
+        assert.ok(!result.diagnostics.some(d => d.severity === 'error'), JSON.stringify(result.diagnostics))
+        return loadGraph({ graphPath: graphDir })
+      }
+      let graph = await run()
+      find(graph).state = 'proposed'
+      await saveGraph(graph, { sourceGraphPath: graphDir, outputGraphPath: graphDir })
+      raw.notes = 'second note'
+      raw.provenance = { extractedFrom: 'src/handler.ts:42' }
+      graph = await run()
+      const updated = find(graph)
+      assert.equal(updated.notes, 'second note')
+      assert.equal(updated.extractedFrom, 'src/handler.ts:42')
+      assert.equal(updated.derivation, 'inferred')
+      assert.equal(updated.derivedBy, 'extractor:x')
+      assert.equal(updated.state, 'proposed')
+      assert.equal(updated.corum?.ownership?.source, spec)
+      assert.deepEqual(find(await run()), updated)
+      delete raw.notes
+      delete raw.provenance
+      assert.deepEqual(find(await run()), updated)
+      raw.provenance = { derivation: 'determined', derivedBy: 'extractor:y' }
+      graph = await run()
+      assert.equal(find(graph).derivation, 'determined')
+      assert.equal(find(graph).derivedBy, 'extractor:y')
+      document.edges = []
+      assert.equal(find(await run()).state, 'removed')
+      raw.notes = 'returned note'
+      document.edges = [raw]
+      graph = await run()
+      assert.equal(find(graph).state, 'implemented')
+      assert.equal(find(graph).notes, 'returned note')
+      assert.equal(find(graph).extractedFrom, 'src/handler.ts:42')
+    } finally {
+      cleanup()
+    }
+  })
+
   it('removes and restores only source-owned edges across reloads', async () => {
     const { graphDir, cleanup } = await setupGraphDir()
     try {

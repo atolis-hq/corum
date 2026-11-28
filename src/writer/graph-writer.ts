@@ -281,6 +281,8 @@ function toEdgeDocument(graph: Graph, edge: Edge): Record<string, unknown> {
   if (edge.corum !== undefined) doc.corum = edge.corum
   if (edge.notes !== undefined) doc.notes = edge.notes
   if (edge.extractedFrom !== undefined) doc.extractedFrom = edge.extractedFrom
+  if (edge.derivation !== undefined) doc.derivation = edge.derivation
+  if (edge.derivedBy !== undefined) doc.derivedBy = edge.derivedBy
   if (edge.lastModifiedAt !== undefined) doc.lastModifiedAt = edge.lastModifiedAt
   if (edge.properties !== undefined && Object.keys(edge.properties).length > 0) {
     doc.properties = orderEdgeProperties(graph, edge)
