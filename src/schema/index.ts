@@ -67,6 +67,13 @@ export interface Node {
   properties: Record<string, unknown>
 }
 
+export interface EdgeCorum {
+  ownership?: {
+    /** Normalized importing spec path, distinct from source-location provenance. */
+    source?: string
+  }
+}
+
 export interface Edge {
   id: string
   from: string
@@ -79,6 +86,7 @@ export interface Edge {
   properties?: Record<string, unknown>
   derivation?: 'determined' | 'inferred' | 'manual'
   derivedBy?: string
+  corum?: EdgeCorum
   generated?: true
   /** Set when a mutation changes the edge (e.g. soft-delete cascade). */
   lastModifiedAt?: string

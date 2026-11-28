@@ -116,3 +116,12 @@ The implementation should:
 - ADR-003b: universal node properties and the distinction between metadata and template properties
 - ADR-005: MCP read/write surfaces that expose node identity history
 - ADR-006: lint rules for reserved sections and rename-history validation
+
+## Amendment: Import edge ownership
+
+Explicit edges created by an import record the normalized importing spec path in
+`corum.ownership.source`. This is engine bookkeeping, separate from `extractedFrom`
+code or source-location provenance. Re-import soft-deletes missing edges only for
+that owner and restores returning edges to their incoming state. Existing edge IDs
+retain their owner and content; unowned legacy or manual edges are not adopted.
+Generated structural edges are excluded. Ownership is singular, not multi-source.

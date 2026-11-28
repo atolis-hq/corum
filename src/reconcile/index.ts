@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from 'node:util'
 import type { Diagnostic, Edge, Graph, Node } from '../schema/index.js'
+import { isStructuralEdgeType } from '../graph/index.js'
 import { resolveAlias } from '../mutate/alias.js'
 
 export interface DiffResult {
@@ -232,4 +233,33 @@ export function detectPossibleRenames(diff: DiffResult, specPath: string): Diagn
   }
 
   return diagnostics
+}
+
+/** Reconcile explicit relationships owned by one successful import. Existing IDs keep their owner. */
+export function reconcileEdges(graph: Graph, incoming: Edge[], specPath: string): void {
+  const incomingById = new Map(incoming.map(edge => [edge.id, edge]))
+  const existingById = new Map<string, Edge>()
+  for (const edges of graph.edgesByFrom.values()) {
+    for (const edge of edges) existingById.set(edge.id, edge)
+  }
+  const put = (edge: Edge) => {
+    for (const [index, key] of [[graph.edgesByFrom, edge.from], [graph.edgesByTo, edge.to]] as const) {
+      const edges = index.get(key) ?? []
+      index.set(key, [...edges.filter(current => current.id !== edge.id), edge])
+    }
+  }
+  for (const edge of existingById.values()) {
+    if (edge.generated || isStructuralEdgeType(graph, edge.type)) continue
+    if (edge.corum?.ownership?.source !== specPath) continue
+    const returning = incomingById.get(edge.id)
+    if (!returning && edge.state !== 'removed') put({ ...edge, state: 'removed' })
+    else if (returning && edge.state === 'removed') put({ ...edge, state: returning.state })
+  }
+  for (const edge of incoming) {
+    if (!existingById.has(edge.id)) {
+      const owned = { ...edge, corum: { ...edge.corum, ownership: { source: specPath } } }
+      put(owned)
+      existingById.set(edge.id, owned)
+    }
+  }
 }
