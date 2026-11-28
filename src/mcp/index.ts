@@ -562,7 +562,10 @@ export function createMcpHandlers(graph: Graph, source?: GraphSource, cache?: Mu
 
     get_linked_fields(args) {
       const run = (targetGraph: Graph): ToolResult => {
-        const linked = getLinkedFields(targetGraph, String(args.node_id), typeof args.field === 'string' && args.field ? { field: args.field } : {})
+        const linkedOptions: { field?: string; edgeTypes?: string[] } = {}
+        if (typeof args.field === 'string' && args.field) linkedOptions.field = args.field
+        if (Array.isArray(args.edge_types) && args.edge_types.length > 0) linkedOptions.edgeTypes = args.edge_types.map(String)
+        const linked = getLinkedFields(targetGraph, String(args.node_id), linkedOptions)
         const incProv = includesProvenance(args)
         const edgeOptions = getEdgeOutputOptions(args)
         return formatResult({
@@ -1086,7 +1089,7 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
     },
     {
       name: 'get_lineage',
-      description: 'BFS traversal from origin node(s); returns reachable nodes annotated with depth and the edge/node they arrived via. Batch multiple node_ids in one call — results merge and dedupe. Lean by default; scope with direction, depth, and edge_types. Field-level lineage: pass a field node ID, or a root with edge_types ["maps-to"], to follow maps-to across roots (raise depth to follow the thread).',
+      description: 'BFS traversal from origin node(s); returns reachable nodes annotated with depth and the edge/node they arrived via. Batch multiple node_ids in one call — results merge and dedupe. Lean by default; scope with direction, depth, and edge_types. Field-level lineage: pass a field node ID, or a root with edge_types ["maps-to"] and/or ["derived-from"], to follow field edges across roots (raise depth to follow the thread). maps-to is a copy; derived-from is a computation and is followed against its authored direction (downstream reaches fields computed from the origin). Use ["maps-to"] for copies only.',
       inputSchema: {
         type: 'object',
         required: ['node_ids'],
@@ -1110,13 +1113,14 @@ export function getMcpToolDefinitions(): ToolDefinition[] {
     },
     {
       name: 'get_linked_fields',
-      description: 'maps-to edges touching fields owned by the given root node. Pass field to limit to one field and keep the payload small.',
+      description: 'Field edges touching fields owned by the given root node: maps-to (a copy) and derived-from (a computation; the edge points from the computed field to its input). Each edge keeps its type. Pass edge_types ["maps-to"] for copies only. Pass field to limit to one field and keep the payload small.',
       inputSchema: {
         type: 'object',
         required: ['node_id'],
         properties: {
           node_id: { type: 'string', description: 'Fully qualified root node ID.' },
           field: { type: 'string', description: 'Only edges touching this owned field: exact field name (e.g. PayFrequency; matches any schema under the root) or full field node ID. Unknown field returns empty.' },
+          edge_types: { type: 'array', items: { type: 'string' }, description: 'Field edge types to return. Default: ["maps-to", "derived-from"]. Use ["maps-to"] for copies only.' },
           include_edge_ids: EDGE_IDS_PARAM,
           include_provenance: PROVENANCE_PARAM,
           branch: BRANCH_READ_PARAM,
