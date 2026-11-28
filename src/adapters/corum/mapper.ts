@@ -40,7 +40,7 @@ export function mapDocument(
 }
 
 /**
- * Existing target-graph nodes a field `$ref` may point at by bare node ID.
+ * Target-graph and earlier successful import-entry nodes a field `$ref` may point at by bare node ID.
  * `ids` holds current non-removed node IDs; `aliases` maps retired IDs to the
  * node they were renamed to.
  */

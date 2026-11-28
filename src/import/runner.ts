@@ -105,6 +105,10 @@ export async function runImport(
 
     const nodes = result.nodes.map(n => (n.extractedFrom === absSpec ? { ...n, extractedFrom: specPath } : n))
     entryResults.push({ adapterId: entry.adapter, specPath, nodes, edges: result.edges })
+    // Only successful earlier entries contribute identities to later adapters.
+    for (const node of nodes) {
+      if (node.state !== 'removed') nodeRefs.ids.add(node.id)
+    }
   }
 
   // x-aka is transient: always stripped after import, even with no dedup rules.
