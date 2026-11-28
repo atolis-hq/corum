@@ -27,6 +27,12 @@ export interface AdapterContext {
    * later entries in the same run see it too.
    */
   existingSchemas?: Map<string, Set<string>>
+  /**
+   * Current non-removed node IDs in the target graph plus the rename-trail
+   * alias map, so adapters can link to existing nodes by ID without
+   * re-declaring them. Excludes nodes created earlier in the same run.
+   */
+  nodeRefs?: { ids: ReadonlySet<string>; aliases: ReadonlyMap<string, string> }
 }
 
 export interface AdapterResult {

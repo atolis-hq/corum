@@ -29,6 +29,47 @@ export function mapDocument(
   existingSchemas: Map<string, Set<string>> = new Map(),
   edgeTypes: ReadonlyMap<string, EdgeTypeDef> = CORE_EDGE_TYPE_MAP,
   templates: ReadonlyMap<string, Template> = new Map(),
+  nodeRefs: NodeRefResolver = { ids: new Set(), aliases: new Map() },
+): MapResult {
+  activeNodeRefs = nodeRefs
+  try {
+    return mapDocumentInner(document, specPath, existingSchemas, edgeTypes, templates)
+  } finally {
+    activeNodeRefs = undefined
+  }
+}
+
+/**
+ * Existing target-graph nodes a field `$ref` may point at by bare node ID.
+ * `ids` holds current non-removed node IDs; `aliases` maps retired IDs to the
+ * node they were renamed to.
+ */
+export interface NodeRefResolver {
+  ids: ReadonlySet<string>
+  aliases: ReadonlyMap<string, string>
+}
+
+// mapDocument is synchronous; this avoids threading the resolver through every helper.
+let activeNodeRefs: NodeRefResolver | undefined
+
+function resolveNodeRef(ref: string, ownerId: string, specPath: string, diagnostics: Diagnostic[]): string | undefined {
+  const refs = activeNodeRefs
+  if (refs?.ids.has(ref)) return ref
+  const aliased = refs?.aliases.get(ref)
+  if (aliased !== undefined && refs?.ids.has(aliased)) return aliased
+  diagnostics.push({
+    severity: 'warning', file: specPath,
+    message: `Field '${ownerId}' references '${ref}', which is not an existing node in the target graph; falling back to type string`,
+  })
+  return undefined
+}
+
+function mapDocumentInner(
+  document: CorumInterchangeDocument,
+  specPath: string,
+  existingSchemas: Map<string, Set<string>>,
+  edgeTypes: ReadonlyMap<string, EdgeTypeDef>,
+  templates: ReadonlyMap<string, Template>,
 ): MapResult {
   const nodes: Node[] = []
   const edges: Edge[] = []
@@ -611,6 +652,10 @@ function resolveFieldProperties(
       const refId = expandSchema(refName, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, refToNodeId, schemaComponents, existingSchemas, diagnostics)
       return { $ref: refId, nullable, collection: 'one' }
     }
+    if (!prop.$ref.startsWith('#/')) {
+      const target = resolveNodeRef(prop.$ref, `${schemaId}.fields.${fieldName}`, specPath, diagnostics)
+      if (target) return { $ref: target, nullable, collection: 'one' }
+    }
     return { type: 'string', nullable, collection: 'one' }
   }
 
@@ -623,6 +668,10 @@ function resolveFieldProperties(
       if (refName) {
         const refId = expandSchema(refName, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, refToNodeId, schemaComponents, existingSchemas, diagnostics)
         return { $ref: refId, nullable, collection: 'array' }
+      }
+      if (!items.$ref.startsWith('#/')) {
+        const target = resolveNodeRef(items.$ref, `${schemaId}.fields.${fieldName}`, specPath, diagnostics)
+        if (target) return { $ref: target, nullable, collection: 'array' }
       }
     }
     const itemType = mapScalar(
@@ -676,7 +725,9 @@ function createMapping(
       if (refName) {
         props.$ref = expandSchema(refName, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, refToNodeId, schemaComponents, existingSchemas, diagnostics)
       } else {
-        props.type = 'string'
+        const target = addl.$ref.startsWith('#/') ? undefined : resolveNodeRef(addl.$ref, mappingId, specPath, diagnostics)
+        if (target) props.$ref = target
+        else props.type = 'string'
       }
     } else if (addl.type === 'array') {
       props['value-collection'] = 'array'
@@ -686,7 +737,9 @@ function createMapping(
         if (refName) {
           props.$ref = expandSchema(refName, rootNodeId, allSchemas, nodes, edges, specPath, component, expanded, refToNodeId, schemaComponents, existingSchemas, diagnostics)
         } else {
-          props.type = 'string'
+          const target = items.$ref.startsWith('#/') ? undefined : resolveNodeRef(items.$ref as string, mappingId, specPath, diagnostics)
+          if (target) props.$ref = target
+          else props.type = 'string'
         }
       } else {
         props.type = mapScalar((items?.type as string) ?? 'string', items?.format as string | undefined)

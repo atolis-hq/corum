@@ -115,7 +115,11 @@ properties:
         description: |
           JSON Schema objects keyed by schema name. Referenced by node entries
           via schema.$ref. The importer expands each schema into Schema and
-          Field nodes under the referencing root node.
+          Field nodes under the referencing root node. A property's $ref (or an
+          array items / additionalProperties $ref) is either
+          '#/components/schemas/<Name>' (declared in this document) or the bare
+          node ID of an existing node in the target graph (for example
+          'orders.EnumDefinition.OrderStatus'), which must not be re-declared here.
         additionalProperties:
           type: object
 
