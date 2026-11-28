@@ -10,6 +10,9 @@ metadata:
   derivation: determined
   derivedBy: adapter:openapi
 corum:
+  identity:
+    sourceIds:
+      - openapi:shared/schema/ApiError
   ownership:
     importedProperties: []
 fields:
@@ -17,6 +20,9 @@ fields:
     type: integer
     nullable: false
     corum:
+      identity:
+        sourceIds:
+          - openapi:shared/schema/ApiError/code
       ownership:
         importedProperties:
           - nullable
@@ -25,6 +31,9 @@ fields:
     type: string
     nullable: false
     corum:
+      identity:
+        sourceIds:
+          - openapi:shared/schema/ApiError/message
       ownership:
         importedProperties:
           - nullable

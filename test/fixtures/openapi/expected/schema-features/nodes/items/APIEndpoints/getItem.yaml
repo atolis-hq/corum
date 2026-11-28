@@ -10,6 +10,9 @@ metadata:
   derivation: determined
   derivedBy: adapter:openapi
 corum:
+  identity:
+    sourceIds:
+      - openapi:items/op/getItem
   ownership:
     importedProperties:
       - method
@@ -45,6 +48,9 @@ schemas:
               - type
   ItemDetail:
     corum:
+      identity:
+        sourceIds:
+          - openapi:items/schema/ItemDetail
       ownership:
         importedProperties: []
     fields:
@@ -52,6 +58,9 @@ schemas:
         $ref: '#/schemas/address'
         nullable: true
         corum:
+          identity:
+            sourceIds:
+              - openapi:items/schema/ItemDetail/address
           ownership:
             importedProperties:
               - $ref
@@ -60,6 +69,9 @@ schemas:
         type: uuid
         nullable: false
         corum:
+          identity:
+            sourceIds:
+              - openapi:items/schema/ItemDetail/id
           ownership:
             importedProperties:
               - nullable
@@ -68,6 +80,9 @@ schemas:
         $ref: '#/mappings/metadata'
         nullable: true
         corum:
+          identity:
+            sourceIds:
+              - openapi:items/schema/ItemDetail/metadata
           ownership:
             importedProperties:
               - $ref
@@ -76,6 +91,9 @@ schemas:
         type: string
         nullable: false
         corum:
+          identity:
+            sourceIds:
+              - openapi:items/schema/ItemDetail/name
           ownership:
             importedProperties:
               - nullable
@@ -84,6 +102,9 @@ schemas:
         $ref: items.EnumDefinition.Status
         nullable: true
         corum:
+          identity:
+            sourceIds:
+              - openapi:items/schema/ItemDetail/status
           ownership:
             importedProperties:
               - $ref
@@ -93,6 +114,9 @@ schemas:
         nullable: true
         collection: array
         corum:
+          identity:
+            sourceIds:
+              - openapi:items/schema/ItemDetail/tags
           ownership:
             importedProperties:
               - collection

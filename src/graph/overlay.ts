@@ -202,7 +202,7 @@ function comparableCorum(node: Node): Node['corum'] | undefined {
   if (node.corum === undefined) return undefined
   const identity = node.corum.identity === undefined
     ? undefined
-    : Object.fromEntries(Object.entries(node.corum.identity).filter(([key]) => key !== 'previousIds'))
+    : Object.fromEntries(Object.entries(node.corum.identity).filter(([key]) => key !== 'previousIds' && key !== 'sourceIds'))
   const rest = Object.fromEntries(
     Object.entries(node.corum).filter(([key]) => key !== 'identity'),
   ) as Record<string, unknown>

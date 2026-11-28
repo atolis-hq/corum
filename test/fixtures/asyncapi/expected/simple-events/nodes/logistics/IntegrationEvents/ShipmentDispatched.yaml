@@ -10,6 +10,10 @@ metadata:
   derivation: determined
   derivedBy: adapter:asyncapi
 corum:
+  identity:
+    sourceIds:
+      - asyncapi:logistics/channel/logistics.shipment-dispatched
+      - asyncapi:logistics/message/ShipmentDispatched
   ownership:
     importedProperties:
       - payload

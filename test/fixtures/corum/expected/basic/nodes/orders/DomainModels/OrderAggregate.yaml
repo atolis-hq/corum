@@ -5,8 +5,8 @@ metadata:
   component: orders
   state: implemented
   stability: unstable
-  lastModifiedAt: 2026-06-25
-  extractedFrom: C:\git\atolis-hq\corum\test\fixtures\corum\specs\basic.corum.yaml
+  lastModifiedAt: <date>
+  extractedFrom: <spec>
   derivation: determined
   derivedBy: extractor:treesitter
 corum:

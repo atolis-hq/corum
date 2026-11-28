@@ -10,6 +10,10 @@ metadata:
   derivation: determined
   derivedBy: adapter:asyncapi
 corum:
+  identity:
+    sourceIds:
+      - asyncapi:notifications/channel/notifications.alert-sent
+      - asyncapi:notifications/message/AlertSent
   ownership:
     importedProperties:
       - headers

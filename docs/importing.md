@@ -221,16 +221,44 @@ adapters. Then its fields are matched through the map's field rules
 (`{declared id}#{field}`), falling back to identical names. Fields with no match
 are **kept**, carried over onto the target node, with a warning naming them.
 
-**Limits.** Source-native IDs are indexed per run and are not written to the
-graph, so a map entry whose target is a source ID (`openapi:...`) only resolves
-in a run that also imports that spec. Targets that are Corum node IDs resolve
-in any run. Because source IDs use the spec's names, they stay valid when a
-schema is promoted from inline to standalone.
+**Persisted source IDs.** Source-native and declared IDs are stored on the node
+they identify, as `corum.identity.sourceIds`. Every import reads them back, so a
+reference to `openapi:...` or a declared `clr:...` ID resolves even when the
+file that registered it isn't part of the run. Because source IDs use the
+spec's names, they stay valid when a schema is promoted from inline to
+standalone. ID map files are not stored in the graph: a rule only applies in
+runs whose config lists the map.
 
-**Diagnostics.** Unresolved references warn as before, ambiguous ones warn with
-all candidates, and rules that matched nothing warn. `corum import` prints how
-many references each rule and `exact` entry resolved (and how many a rule lost
-to an `exact` entry or left ambiguous).
+**Diagnostics.** Rules that matched nothing warn, and ambiguous references warn
+with all candidates. `corum import` prints how many references each rule and
+`exact` entry resolved (and how many a rule lost to an `exact` entry or left
+ambiguous).
+
+### Pending edges
+
+An edge endpoint that resolves to no node (by Corum ID, alias, source ID or ID
+map) doesn't drop the edge. The import warns, naming the edge, the endpoint and,
+when an ID map rule matched, the rule and the ID it produced. The edge is
+written with a `pending` marker holding the reference as written:
+
+```yaml
+- from: orders.DomainModel.OrderAggregate
+  to: clr:Orders.Contracts.Missing
+  type: derived-from
+  pending:
+    to: clr:Orders.Contracts.Missing
+```
+
+Every later import retries all pending edges, from every source, against the
+current nodes, persisted source IDs and the ID maps of that run. When an
+endpoint resolves, the edge is rewritten to point at the real node (its ID
+changes), the marker is removed, and notes, provenance and ownership are kept.
+If the resolved edge already exists, the existing edge is kept and the import
+warns. Only the import that writes an edge warns about it; edges still pending
+from other sources are retried silently. `corum lint` reports them as
+`edge pending resolution`, and MCP edge output includes `pending`.
+Nodes created through MCP write tools don't resolve pending edges until the
+next import.
 
 ## Git-backed graphs
 

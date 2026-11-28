@@ -425,6 +425,21 @@ describe('MCP handlers', () => {
       assert.ok('type' in cluster.edges[0])
     })
 
+    it('exposes pending on a pending edge and omits it otherwise', async () => {
+      const handlers = createMcpHandlers(graph)
+      const edge = graph.edgesByFrom.get('orders.APIEndpoint.create-order')?.find(e => e.type === 'reads')
+      assert.ok(edge, 'fixture has a reads edge from create-order')
+      const read = async () => JSON.parse((await handlers.get_cluster({ node_id: 'orders.APIEndpoint.create-order', format: 'json', include_edges: true })).content[0].text).edges
+      assert.ok((await read()).every((e: { pending?: unknown }) => e.pending === undefined))
+      edge.pending = { to: 'clr:Gone' }
+      try {
+        const edges = await read()
+        assert.equal(edges.filter((e: { pending?: unknown }) => e.pending !== undefined).length, 1)
+      } finally {
+        delete edge.pending
+      }
+    })
+
     it('includes edge ids when include_edge_ids: true', async () => {
       const handlers = createMcpHandlers(graph)
       const result = await handlers.get_cluster({ node_id: 'orders.DomainModel.order', format: 'json', include_edges: true, include_edge_ids: true })

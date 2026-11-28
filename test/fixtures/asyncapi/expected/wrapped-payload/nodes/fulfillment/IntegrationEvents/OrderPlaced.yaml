@@ -10,6 +10,10 @@ metadata:
   derivation: determined
   derivedBy: adapter:asyncapi
 corum:
+  identity:
+    sourceIds:
+      - asyncapi:fulfillment/channel/fulfillment.order-placed
+      - asyncapi:fulfillment/message/OrderPlaced
   ownership:
     importedProperties:
       - payload

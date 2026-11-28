@@ -10,6 +10,9 @@ metadata:
   derivation: determined
   derivedBy: adapter:openapi
 corum:
+  identity:
+    sourceIds:
+      - openapi:reports/schema/ReportSummary
   ownership:
     importedProperties: []
 fields:
@@ -17,6 +20,9 @@ fields:
     $ref: '#/mappings/groupedMetrics'
     nullable: true
     corum:
+      identity:
+        sourceIds:
+          - openapi:reports/schema/ReportSummary/groupedMetrics
       ownership:
         importedProperties:
           - $ref
@@ -25,6 +31,9 @@ fields:
     $ref: '#/mappings/labelsByGroup'
     nullable: true
     corum:
+      identity:
+        sourceIds:
+          - openapi:reports/schema/ReportSummary/labelsByGroup
       ownership:
         importedProperties:
           - $ref
@@ -33,6 +42,9 @@ fields:
     $ref: '#/schemas/location'
     nullable: true
     corum:
+      identity:
+        sourceIds:
+          - openapi:reports/schema/ReportSummary/location
       ownership:
         importedProperties:
           - $ref
@@ -42,6 +54,9 @@ fields:
     nullable: true
     collection: array
     corum:
+      identity:
+        sourceIds:
+          - openapi:reports/schema/ReportSummary/metricList
       ownership:
         importedProperties:
           - $ref
@@ -51,6 +66,9 @@ fields:
     $ref: '#/mappings/metricsByCategory'
     nullable: true
     corum:
+      identity:
+        sourceIds:
+          - openapi:reports/schema/ReportSummary/metricsByCategory
       ownership:
         importedProperties:
           - $ref
@@ -59,6 +77,9 @@ fields:
     $ref: '#/mappings/nestedMetrics'
     nullable: true
     corum:
+      identity:
+        sourceIds:
+          - openapi:reports/schema/ReportSummary/nestedMetrics
       ownership:
         importedProperties:
           - $ref
@@ -67,6 +88,9 @@ fields:
     $ref: '#/mappings/perPersonBreakdown'
     nullable: true
     corum:
+      identity:
+        sourceIds:
+          - openapi:reports/schema/ReportSummary/perPersonBreakdown
       ownership:
         importedProperties:
           - $ref
@@ -75,6 +99,9 @@ fields:
     type: string
     nullable: true
     corum:
+      identity:
+        sourceIds:
+          - openapi:reports/schema/ReportSummary/primaryMetric
       ownership:
         importedProperties:
           - nullable

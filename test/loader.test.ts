@@ -543,7 +543,7 @@ describe('edge loader', () => {
     assert.equal([...result.edgesByFrom.values()].flat().length, 0, 'edge must be dropped')
   })
 
-  it('keeps warn-and-drop behaviour for a non-hidden edge with a dangling to', () => {
+  it('keeps a non-hidden edge with a dangling to as pending, with a warning', () => {
     const nodes = new Map<string, Node>([
       ['a.DomainModel.a', { id: 'a.DomainModel.a', template: 'DomainModel', namespace: 'a', state: 'proposed', stability: 'unstable', schemaVersion: '1', lastModifiedAt: '2026-01-01', properties: {} }],
     ])
@@ -553,9 +553,11 @@ describe('edge loader', () => {
     const diagnostics: Diagnostic[] = []
     const result = loadEdges(content, nodes, diagnostics)
 
-    assert.ok(diagnostics.some(d => d.severity === 'warning' && d.message.includes('edge to unresolved node: a.DomainModel.gone')))
+    assert.ok(diagnostics.some(d => d.severity === 'warning' && d.message.includes('edge pending resolution: to a.DomainModel.gone')))
     assert.equal(diagnostics.filter(d => d.severity === 'error').length, 0)
-    assert.equal([...result.edgesByFrom.values()].flat().length, 0, 'non-hidden dangling edge is still dropped')
+    const edges = [...result.edgesByFrom.values()].flat()
+    assert.equal(edges.length, 1, 'dangling edge is kept')
+    assert.deepEqual(edges[0].pending, { to: 'a.DomainModel.gone' })
   })
 })
 

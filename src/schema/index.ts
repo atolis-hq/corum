@@ -37,6 +37,8 @@ export interface EdgeTypeDef {
 
 export interface NodeCorumIdentity {
   previousIds?: string[]
+  /** Source-native and declared IDs registered against this node by imports (sorted). */
+  sourceIds?: string[]
 }
 
 export interface NodeCorumOwnership {
@@ -94,6 +96,8 @@ export interface Edge {
   derivedBy?: string
   corum?: EdgeCorum
   generated?: true
+  /** Unresolved endpoints, each holding the reference as written. Re-derived on load. */
+  pending?: { from?: string; to?: string }
   /** Set when a mutation changes the edge (e.g. soft-delete cascade). */
   lastModifiedAt?: string
 }

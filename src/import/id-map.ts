@@ -314,6 +314,16 @@ export class IdResolver {
     return { kind: 'unresolved' }
   }
 
+  /** Rules that match `ref` and the IDs they produce (for explaining an unresolved reference). */
+  candidatesFor(ref: string): Array<{ rule: IdMapRule; candidate: string }> {
+    const hits: Array<{ rule: IdMapRule; candidate: string }> = []
+    for (const rule of this.rules) {
+      const candidate = applyRule(rule, ref)
+      if (candidate !== undefined) hits.push({ rule, candidate })
+    }
+    return hits
+  }
+
   /** Diagnostics collected so far plus warnings for rules that matched nothing. */
   finish(): { diagnostics: Diagnostic[]; summary: IdMapSummary } {
     const diagnostics = [...this.diagnostics]

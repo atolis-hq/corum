@@ -51,18 +51,25 @@ export function loadEdges(
       // but the `from` is the live end and MUST resolve (design §3/§11).
       const hidden = edgeTypes.get(edgeRecord.type)?.hidden === true
 
-      let unresolvedEndpoint = false
+      // Any other dangling endpoint keeps the edge as pending: a later import
+      // may add the node, and the reference as written is retained meanwhile.
+      const pending: NonNullable<Edge['pending']> = {}
       if (!nodes.has(edgeRecord.from)) {
-        diagnostics.push(hidden
-          ? { severity: 'error', file: key, message: `hidden edge type '${edgeRecord.type}' requires a live 'from' node: ${edgeRecord.from}` }
-          : { severity: 'warning', file: key, message: `edge from unresolved node: ${edgeRecord.from}` })
-        unresolvedEndpoint = true
+        if (hidden) {
+          diagnostics.push({ severity: 'error', file: key, message: `hidden edge type '${edgeRecord.type}' requires a live 'from' node: ${edgeRecord.from}` })
+          continue
+        }
+        pending.from = edgeRecord.from
       }
-      if (!hidden && !nodes.has(edgeRecord.to)) {
-        diagnostics.push({ severity: 'warning', file: key, message: `edge to unresolved node: ${edgeRecord.to}` })
-        unresolvedEndpoint = true
+      if (!hidden && !nodes.has(edgeRecord.to)) pending.to = edgeRecord.to
+      const isPending = pending.from !== undefined || pending.to !== undefined
+      if (isPending) {
+        const parts = [
+          pending.from !== undefined ? `from ${pending.from}` : undefined,
+          pending.to !== undefined ? `to ${pending.to}` : undefined,
+        ].filter(Boolean).join(', ')
+        diagnostics.push({ severity: 'warning', file: key, message: `edge pending resolution: ${parts}` })
       }
-      if (unresolvedEndpoint) continue
 
       const corum = edgeRecord.corum as Edge['corum'] | undefined
       const ownershipSource = corum?.ownership?.source
@@ -85,6 +92,7 @@ export function loadEdges(
         type: edgeRecord.type as EdgeType,
         state: resolveState(edgeRecord.state, diagnostics, key),
         stability: resolveStability(edgeRecord.stability, diagnostics, key),
+        ...(isPending && { pending }),
         ...(typeof ownershipSource === 'string' && { corum: { ownership: { source: ownershipSource } } }),
         notes: typeof edgeRecord.notes === 'string' ? edgeRecord.notes : undefined,
         ...(Array.isArray(edgeRecord.sources) && edgeRecord.sources.every(source => typeof source === 'string') && { sources: edgeRecord.sources as string[] }),
