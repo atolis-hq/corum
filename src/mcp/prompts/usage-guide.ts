@@ -81,6 +81,17 @@ When compact_keys is true these keys are shortened:
 - Field-level mappings: get_linked_fields for maps-to (copy) and derived-from (computation) edges on fields owned by a root node (pass field to scope to one field; edge_types ["maps-to"] for copies only). To trace a field across roots, call get_lineage with a field node ID (or a root) and edge_types ["maps-to", "derived-from"], raising depth; derived-from is followed in reverse so downstream finds fields computed from the origin.
 - Schema / field detail: get_cluster (collapse_schemas true, the default) returns each schema as a compact map of field name to { type?, $ref?, collection?, nullable?, edges? } — not child nodes. Local refs use $ref: '#/schemas/name' or '#/enums/name'. Map fields appear as { type: map, key, value }. Cross-cluster field edges (maps-to, derived-from) appear in the field's edges block. Set collapse_schemas false only to get the raw child nodes instead.
 
+## Impact through read models
+
+get_lineage defaults reads_outbound_only to true: upstream traversal skips inbound reads so a shared model does not pull in every consumer during ordinary lineage exploration. Keep the default for ordinary queries; opt into reads_outbound_only: false when finding consumers affected by a read model change. Shared models can expand results substantially.
+
+For a modeled writer → read model ← reader path, writes points from writer to model and reads points from reader to model. Check get_graph_metadata.edge_types_in_use first: writes is supplied by the domain pack, not a universal core edge type. When those edges are present, make these two get_lineage calls, replacing the example IDs with IDs from your graph:
+
+1. Discover read models: { "node_ids": ["orders.Command.updateOrder"], "direction": "downstream", "edge_types": ["writes"], "depth": 1 }.
+2. Use the discovered model IDs to find consumers: { "node_ids": ["orders.ReadModel.orderSummary"], "direction": "upstream", "edge_types": ["reads"], "depth": 1, "reads_outbound_only": false }. Batch multiple model IDs in node_ids.
+
+Direction "both" runs upstream and downstream traversals independently from the original start IDs; it cannot switch direction at the intermediate model in one writer query. Results cover modeled relationships only: missing edges do not prove absence of impact. Verify against the relevant clusters and source.
+
 ## Write workflow
 
 Mutations require an open session; no write tool works without one.

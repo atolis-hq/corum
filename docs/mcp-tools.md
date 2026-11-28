@@ -48,6 +48,37 @@ Accepts `node_ids` (pass several in one call), `depth`, `direction`,
 carry only `id`, `origin_id`, `depth`, `via_edge_type`, `via_node_id`) and
 omits edges.
 
+#### Impact through read models
+
+`get_lineage` defaults `reads_outbound_only` to `true`: upstream traversal skips
+inbound reads so a shared model does not pull in every consumer during ordinary
+lineage exploration. Keep the default for ordinary queries; opt into
+`reads_outbound_only: false` when finding consumers affected by a read model
+change. Shared models can expand results substantially.
+
+For a modeled writer → read model ← reader path, writes points from writer to
+model and reads points from reader to model. Check
+`get_graph_metadata.edge_types_in_use` first: writes is supplied by the domain
+pack, not a universal core edge type. When those edges are present, make these
+two `get_lineage` calls, replacing the example IDs with IDs from your graph:
+
+1. Discover read models:
+
+   ```json
+   { "node_ids": ["orders.Command.updateOrder"], "direction": "downstream", "edge_types": ["writes"], "depth": 1 }
+   ```
+
+2. Use the discovered model IDs to find consumers (batch multiple model IDs in `node_ids`):
+
+   ```json
+   { "node_ids": ["orders.ReadModel.orderSummary"], "direction": "upstream", "edge_types": ["reads"], "depth": 1, "reads_outbound_only": false }
+   ```
+
+Direction "both" runs upstream and downstream traversals independently from the
+original start IDs; it cannot switch direction at the intermediate model in one
+writer query. Results cover modeled relationships only: missing edges do not
+prove absence of impact. Verify against the relevant clusters and source.
+
 ### Tips
 
 - Use `search_nodes` for discovery and `list_nodes` only for full inventories.
