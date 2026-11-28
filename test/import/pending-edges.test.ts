@@ -39,12 +39,12 @@ async function setup() {
       nodes: { [FROM]: { type: 'DomainModel', title: 'OrderAggregate' } },
       edges,
     })
-    write('a.yaml', { ...(withMap ? { idMaps: ['./maps/map.yaml'] } : {}), imports: [{ adapter: 'corum', spec: path.join(dir, 'a.corum.yaml') }] })
+    write('a.yaml', { ...(withMap ? { idMaps: [path.join(dir, 'maps/map.yaml')] } : {}), imports: [{ adapter: 'corum', spec: path.join(dir, 'a.corum.yaml') }] })
     return runImport(loadImportConfig(path.join(dir, 'a.yaml')), createGraphRuntimeConfig())
   }
   const importB = (nodes: Record<string, unknown>) => {
     write('b.corum.yaml', { corum: '1.0', nodes })
-    write('b.yaml', { idMaps: ['./maps/map.yaml'], imports: [{ adapter: 'corum', spec: path.join(dir, 'b.corum.yaml') }] })
+    write('b.yaml', { idMaps: [path.join(dir, 'maps/map.yaml')], imports: [{ adapter: 'corum', spec: path.join(dir, 'b.corum.yaml') }] })
     return runImport(loadImportConfig(path.join(dir, 'b.yaml')), createGraphRuntimeConfig())
   }
   const load = (): Promise<Graph> => loadGraph({ graphPath: graphDir })
