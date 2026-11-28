@@ -24,7 +24,8 @@
     "mcp:write-smoke": "npm run build && node scripts/mcp-write-smoke.mjs",
     "web": "node dist/src/web/server.js",
     "test:web": "npm run build && playwright test",
-    "screenshots:publish": "node scripts/publish-screenshots.mjs"
+    "screenshots:publish": "node scripts/publish-screenshots.mjs",
+    "test:update-golden": "tsc && CORUM_UPDATE_GOLDEN=1 node --test dist/test/import/runner.test.js dist/test/import/asyncapi-runner.test.js dist/test/import/corum-runner.test.js"
   },
   "dependencies": {
     "@apidevtools/swagger-parser": "^12.1.0",

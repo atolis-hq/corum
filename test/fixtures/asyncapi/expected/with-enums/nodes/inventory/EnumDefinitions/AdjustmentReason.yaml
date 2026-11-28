@@ -9,10 +9,25 @@ metadata:
   extractedFrom: <spec>
   derivation: determined
   derivedBy: adapter:asyncapi
+corum:
+  ownership:
+    importedProperties: []
 values:
   damaged:
     name: damaged
+    corum:
+      ownership:
+        importedProperties:
+          - name
   recount:
     name: recount
+    corum:
+      ownership:
+        importedProperties:
+          - name
   returned:
     name: returned
+    corum:
+      ownership:
+        importedProperties:
+          - name

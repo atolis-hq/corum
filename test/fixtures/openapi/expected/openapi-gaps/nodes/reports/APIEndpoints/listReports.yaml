@@ -9,6 +9,12 @@ metadata:
   extractedFrom: <spec>
   derivation: determined
   derivedBy: adapter:openapi
+corum:
+  ownership:
+    importedProperties:
+      - method
+      - path
+      - responses
 properties:
   method: GET
   path: /reports

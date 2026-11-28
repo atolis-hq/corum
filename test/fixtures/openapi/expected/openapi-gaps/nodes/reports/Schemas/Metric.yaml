@@ -9,10 +9,23 @@ metadata:
   extractedFrom: <spec>
   derivation: determined
   derivedBy: adapter:openapi
+corum:
+  ownership:
+    importedProperties: []
 fields:
   label:
     type: string
     nullable: true
+    corum:
+      ownership:
+        importedProperties:
+          - nullable
+          - type
   value:
     type: decimal
     nullable: true
+    corum:
+      ownership:
+        importedProperties:
+          - nullable
+          - type

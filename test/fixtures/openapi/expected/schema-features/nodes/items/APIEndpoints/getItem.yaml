@@ -9,6 +9,12 @@ metadata:
   extractedFrom: <spec>
   derivation: determined
   derivedBy: adapter:openapi
+corum:
+  ownership:
+    importedProperties:
+      - method
+      - path
+      - responses
 properties:
   method: GET
   path: /items/{itemId}
@@ -17,34 +23,85 @@ properties:
     default: items.Schema.SharedError
 schemas:
   address:
+    corum:
+      ownership:
+        importedProperties: []
     fields:
       city:
         type: string
         nullable: true
+        corum:
+          ownership:
+            importedProperties:
+              - nullable
+              - type
       street:
         type: string
         nullable: true
+        corum:
+          ownership:
+            importedProperties:
+              - nullable
+              - type
   ItemDetail:
+    corum:
+      ownership:
+        importedProperties: []
     fields:
       address:
         $ref: '#/schemas/address'
         nullable: true
+        corum:
+          ownership:
+            importedProperties:
+              - $ref
+              - nullable
       id:
         type: uuid
         nullable: false
+        corum:
+          ownership:
+            importedProperties:
+              - nullable
+              - type
       metadata:
         $ref: '#/mappings/metadata'
         nullable: true
+        corum:
+          ownership:
+            importedProperties:
+              - $ref
+              - nullable
       name:
         type: string
         nullable: false
+        corum:
+          ownership:
+            importedProperties:
+              - nullable
+              - type
       status:
         $ref: items.EnumDefinition.Status
         nullable: true
+        corum:
+          ownership:
+            importedProperties:
+              - $ref
+              - nullable
       tags:
         type: string
         nullable: true
         collection: array
+        corum:
+          ownership:
+            importedProperties:
+              - collection
+              - nullable
+              - type
     mappings:
       metadata:
         type: string
+        corum:
+          ownership:
+            importedProperties:
+              - type

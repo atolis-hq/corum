@@ -9,6 +9,12 @@ metadata:
   extractedFrom: <spec>
   derivation: determined
   derivedBy: adapter:asyncapi
+corum:
+  ownership:
+    importedProperties:
+      - headers
+      - payload
+      - topic
 properties:
   topic: notifications.alert-sent
   payload: '#/schemas/AlertSent'
@@ -21,7 +27,15 @@ properties:
       required: false
 schemas:
   AlertSent:
+    corum:
+      ownership:
+        importedProperties: []
     fields:
       alertId:
         type: uuid
         nullable: false
+        corum:
+          ownership:
+            importedProperties:
+              - nullable
+              - type

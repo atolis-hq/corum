@@ -9,6 +9,12 @@ metadata:
   extractedFrom: <spec>
   derivation: determined
   derivedBy: adapter:openapi
+corum:
+  ownership:
+    importedProperties:
+      - method
+      - path
+      - responses
 properties:
   method: POST
   path: /payments/capture
@@ -17,7 +23,15 @@ properties:
     default: shared.Schema.ApiError
 schemas:
   capturePayment-response-200:
+    corum:
+      ownership:
+        importedProperties: []
     fields:
       paymentId:
         type: uuid
         nullable: false
+        corum:
+          ownership:
+            importedProperties:
+              - nullable
+              - type

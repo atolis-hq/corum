@@ -9,12 +9,25 @@ metadata:
   extractedFrom: <spec>
   derivation: determined
   derivedBy: adapter:asyncapi
+corum:
+  ownership:
+    importedProperties:
+      - payload
+      - topic
 properties:
   topic: subscriptions.subscription-renewed
   payload: '#/schemas/SubscriptionRenewed'
 schemas:
   SubscriptionRenewed:
+    corum:
+      ownership:
+        importedProperties: []
     fields:
       subscriptionId:
         type: uuid
         nullable: false
+        corum:
+          ownership:
+            importedProperties:
+              - nullable
+              - type

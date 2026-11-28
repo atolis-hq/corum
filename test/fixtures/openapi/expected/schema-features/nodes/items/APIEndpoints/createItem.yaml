@@ -9,6 +9,13 @@ metadata:
   extractedFrom: <spec>
   derivation: determined
   derivedBy: adapter:openapi
+corum:
+  ownership:
+    importedProperties:
+      - method
+      - path
+      - request
+      - responses
 properties:
   method: POST
   path: /items
@@ -17,7 +24,15 @@ properties:
     default: items.Schema.SharedError
 schemas:
   createItem-request:
+    corum:
+      ownership:
+        importedProperties: []
     fields:
       name:
         type: string
         nullable: true
+        corum:
+          ownership:
+            importedProperties:
+              - nullable
+              - type

@@ -9,12 +9,25 @@ metadata:
   extractedFrom: C:\git\atolis-hq\corum\test\fixtures\corum\specs\basic.corum.yaml
   derivation: determined
   derivedBy: extractor:treesitter
+corum:
+  ownership:
+    importedProperties:
+      - payload
 properties:
   payload: OrderPlacedDomainEvent
 schemas:
   OrderPlacedDomainEvent:
+    corum:
+      ownership:
+        importedProperties: []
     fields:
       OrderId:
         type: uuid
         nullable: false
         collection: one
+        corum:
+          ownership:
+            importedProperties:
+              - collection
+              - nullable
+              - type

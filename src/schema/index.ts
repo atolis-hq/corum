@@ -39,8 +39,14 @@ export interface NodeCorumIdentity {
   previousIds?: string[]
 }
 
+export interface NodeCorumOwnership {
+  /** Property keys a `derivation: determined` import supplied on its last run (system-owned). */
+  importedProperties?: string[]
+}
+
 export interface NodeCorum {
   identity?: NodeCorumIdentity
+  ownership?: NodeCorumOwnership
 }
 
 export interface Node {

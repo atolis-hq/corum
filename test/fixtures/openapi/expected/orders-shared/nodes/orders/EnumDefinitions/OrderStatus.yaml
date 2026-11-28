@@ -9,10 +9,25 @@ metadata:
   extractedFrom: <spec>
   derivation: determined
   derivedBy: adapter:openapi
+corum:
+  ownership:
+    importedProperties: []
 values:
   cancelled:
     name: cancelled
+    corum:
+      ownership:
+        importedProperties:
+          - name
   confirmed:
     name: confirmed
+    corum:
+      ownership:
+        importedProperties:
+          - name
   pending:
     name: pending
+    corum:
+      ownership:
+        importedProperties:
+          - name

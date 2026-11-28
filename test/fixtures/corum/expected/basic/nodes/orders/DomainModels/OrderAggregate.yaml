@@ -9,6 +9,10 @@ metadata:
   extractedFrom: C:\git\atolis-hq\corum\test\fixtures\corum\specs\basic.corum.yaml
   derivation: determined
   derivedBy: extractor:treesitter
+corum:
+  ownership:
+    importedProperties:
+      - description
 properties:
   description: OrderAggregate
 operations:

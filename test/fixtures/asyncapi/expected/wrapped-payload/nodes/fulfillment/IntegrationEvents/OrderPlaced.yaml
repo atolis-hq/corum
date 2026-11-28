@@ -9,15 +9,33 @@ metadata:
   extractedFrom: <spec>
   derivation: determined
   derivedBy: adapter:asyncapi
+corum:
+  ownership:
+    importedProperties:
+      - payload
+      - topic
 properties:
   topic: fulfillment.order-placed
   payload: '#/schemas/OrderPlaced'
 schemas:
   OrderPlaced:
+    corum:
+      ownership:
+        importedProperties: []
     fields:
       orderId:
         type: uuid
         nullable: false
+        corum:
+          ownership:
+            importedProperties:
+              - nullable
+              - type
       total:
         type: decimal
         nullable: true
+        corum:
+          ownership:
+            importedProperties:
+              - nullable
+              - type

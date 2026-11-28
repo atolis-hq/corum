@@ -9,6 +9,13 @@ metadata:
   extractedFrom: <spec>
   derivation: determined
   derivedBy: adapter:openapi
+corum:
+  ownership:
+    importedProperties:
+      - method
+      - path
+      - request
+      - responses
 properties:
   method: POST
   path: /orders/create
@@ -17,15 +24,36 @@ properties:
     '201': '#/schemas/OrderSummary'
 schemas:
   createOrder-request:
+    corum:
+      ownership:
+        importedProperties: []
     fields:
       customerId:
         type: uuid
         nullable: true
+        corum:
+          ownership:
+            importedProperties:
+              - nullable
+              - type
   OrderSummary:
+    corum:
+      ownership:
+        importedProperties: []
     fields:
       orderId:
         type: uuid
         nullable: false
+        corum:
+          ownership:
+            importedProperties:
+              - nullable
+              - type
       status:
         $ref: orders.EnumDefinition.OrderStatus
         nullable: false
+        corum:
+          ownership:
+            importedProperties:
+              - $ref
+              - nullable

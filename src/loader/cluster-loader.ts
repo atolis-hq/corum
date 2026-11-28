@@ -244,17 +244,21 @@ function stripLegacyBookkeeping(properties: Record<string, unknown>): Record<str
 }
 
 function extractCorum(corumValue: unknown, propertySource?: unknown): Node['corum'] | undefined {
+  const corum: NonNullable<Node['corum']> = {}
   const previousIds = extractPreviousIds(corumValue)
-  if (previousIds !== undefined) return { identity: { previousIds } }
-
-  if (isRecord(propertySource) && Array.isArray(propertySource.previousNames)) {
-    return {
-      identity: {
-        previousIds: propertySource.previousNames.filter((value): value is string => typeof value === 'string'),
-      },
+  if (previousIds !== undefined) {
+    corum.identity = { previousIds }
+  } else if (isRecord(propertySource) && Array.isArray(propertySource.previousNames)) {
+    corum.identity = {
+      previousIds: propertySource.previousNames.filter((value): value is string => typeof value === 'string'),
     }
   }
-  return undefined
+  if (isRecord(corumValue) && isRecord(corumValue.ownership) && Array.isArray(corumValue.ownership.importedProperties)) {
+    corum.ownership = {
+      importedProperties: corumValue.ownership.importedProperties.filter((value): value is string => typeof value === 'string'),
+    }
+  }
+  return corum.identity !== undefined || corum.ownership !== undefined ? corum : undefined
 }
 
 function extractPreviousIds(corumValue: unknown): string[] | undefined {

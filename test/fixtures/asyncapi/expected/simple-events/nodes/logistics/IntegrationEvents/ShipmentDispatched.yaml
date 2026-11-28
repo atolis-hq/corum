@@ -9,15 +9,33 @@ metadata:
   extractedFrom: <spec>
   derivation: determined
   derivedBy: adapter:asyncapi
+corum:
+  ownership:
+    importedProperties:
+      - payload
+      - topic
 properties:
   topic: logistics.shipment-dispatched
   payload: '#/schemas/ShipmentDispatched'
 schemas:
   ShipmentDispatched:
+    corum:
+      ownership:
+        importedProperties: []
     fields:
       notes:
         type: string
         nullable: true
+        corum:
+          ownership:
+            importedProperties:
+              - nullable
+              - type
       shipmentId:
         type: uuid
         nullable: false
+        corum:
+          ownership:
+            importedProperties:
+              - nullable
+              - type

@@ -324,6 +324,8 @@ describe('cluster loader', () => {
         '  identity:',
         '    previousIds:',
         '      - orders.Schema.invoice',
+        '  ownership:',
+        '    importedProperties: [description]',
       ].join('\n')],
     ])
 
@@ -331,6 +333,7 @@ describe('cluster loader', () => {
     const node = result.nodes.get('orders.Schema.bill')
     assert.ok(node)
     assert.deepEqual(node.corum?.identity?.previousIds, ['orders.Schema.invoice'])
+    assert.deepEqual(node.corum?.ownership?.importedProperties, ['description'])
     assert.equal(node.properties.previousNames, undefined)
   })
 
