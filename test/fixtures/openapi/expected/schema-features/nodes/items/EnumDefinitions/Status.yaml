@@ -9,8 +9,19 @@ metadata:
   extractedFrom: <spec>
   derivation: determined
   derivedBy: adapter:openapi
+corum:
+  ownership:
+    importedProperties: []
 values:
   active:
     name: active
+    corum:
+      ownership:
+        importedProperties:
+          - name
   inactive:
     name: inactive
+    corum:
+      ownership:
+        importedProperties:
+          - name

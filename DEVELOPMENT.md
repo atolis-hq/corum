@@ -31,6 +31,14 @@ npm test
 
 This compiles the project and runs the Node test runner against all `*.test.js` files under `dist/test/`. The fixture graph used by the tests is in `fixtures/sample-graph`. The tests verify that it loads as 45 nodes and 38 edges.
 
+Regenerate importer golden fixtures after an intentional output change:
+
+```bash
+npm run test:update-golden
+```
+
+Review the fixture diffs, then run `npm test` without update mode.
+
 Run a single test file:
 
 ```bash

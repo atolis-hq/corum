@@ -9,6 +9,13 @@ metadata:
   extractedFrom: <spec>
   derivation: determined
   derivedBy: adapter:openapi
+corum:
+  ownership:
+    importedProperties:
+      - description
+      - method
+      - parameters
+      - path
 properties:
   method: DELETE
   path: /items/{itemId}

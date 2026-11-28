@@ -9,15 +9,33 @@ metadata:
   extractedFrom: <spec>
   derivation: determined
   derivedBy: adapter:asyncapi
+corum:
+  ownership:
+    importedProperties:
+      - payload
+      - topic
 properties:
   topic: inventory.stock-adjusted
   payload: '#/schemas/StockAdjusted'
 schemas:
   StockAdjusted:
+    corum:
+      ownership:
+        importedProperties: []
     fields:
       itemId:
         type: uuid
         nullable: false
+        corum:
+          ownership:
+            importedProperties:
+              - nullable
+              - type
       reason:
         $ref: inventory.EnumDefinition.AdjustmentReason
         nullable: false
+        corum:
+          ownership:
+            importedProperties:
+              - $ref
+              - nullable

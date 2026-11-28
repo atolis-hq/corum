@@ -62,8 +62,9 @@ describe('diffNodes', () => {
   })
 
   it('identifies unchanged nodes as neither add nor update', () => {
-    const node = makeNode('orders.APIEndpoint.create')
-    const existing = new Map([[node.id, { ...node }]])
+    const node = makeNode('orders.APIEndpoint.create', { properties: { method: 'GET' } })
+    const stored = diffNodes([node], new Map(), './specs/orders.yaml').toAdd[0]
+    const existing = new Map([[node.id, stored]])
     const { toAdd, toUpdate } = diffNodes([node], existing, './specs/orders.yaml')
     assert.equal(toAdd.length, 0)
     assert.equal(toUpdate.length, 0)
@@ -110,13 +111,57 @@ describe('diffNodes', () => {
     assert.equal(toUpdate[0].derivation, 'determined')
   })
 
-  it('for determined nodes, incoming properties replace current â€” non-human current-only props are dropped', () => {
-    const original = makeNode('orders.APIEndpoint.create', { properties: { method: 'GET', displayName: 'Create Order' } })
+  it('for determined nodes, keys the import does not supply are preserved (legacy node, no record)', () => {
+    const original = makeNode('orders.APIEndpoint.create', { properties: { method: 'GET', description: 'Hand written' } })
     const incoming = makeNode('orders.APIEndpoint.create', { properties: { method: 'POST' } })
     const existing = new Map([[original.id, original]])
     const { toUpdate } = diffNodes([incoming], existing, './specs/orders.yaml')
     assert.equal(toUpdate[0].properties.method, 'POST')
-    assert.equal(toUpdate[0].properties.displayName, undefined)
+    assert.equal(toUpdate[0].properties.description, 'Hand written')
+  })
+
+  it('for determined nodes, supplied keys overwrite human edits', () => {
+    const original = makeNode('orders.APIEndpoint.create', {
+      properties: { method: 'GET', description: 'Edited by hand' },
+      corum: { ownership: { importedProperties: ['description', 'method'] } },
+    })
+    const incoming = makeNode('orders.APIEndpoint.create', { properties: { method: 'GET', description: 'From source' } })
+    const { toUpdate } = diffNodes([incoming], new Map([[original.id, original]]), './specs/orders.yaml')
+    assert.equal(toUpdate[0].properties.description, 'From source')
+  })
+
+  it('for determined nodes, keys a previous import supplied but this one does not are removed', () => {
+    const original = makeNode('orders.APIEndpoint.create', {
+      properties: { method: 'GET', parameters: { a: 1 }, description: 'Hand written' },
+      corum: { ownership: { importedProperties: ['method', 'parameters'] } },
+    })
+    const incoming = makeNode('orders.APIEndpoint.create', { properties: { method: 'GET' } })
+    const { toUpdate } = diffNodes([incoming], new Map([[original.id, original]]), './specs/orders.yaml')
+    assert.equal(toUpdate[0].properties.parameters, undefined)
+    assert.equal(toUpdate[0].properties.description, 'Hand written')
+    assert.deepEqual(toUpdate[0].corum?.ownership?.importedProperties, ['method'])
+  })
+
+  it('for determined nodes, re-importing unchanged input is idempotent', () => {
+    const incoming = makeNode('orders.APIEndpoint.create', { properties: { method: 'GET' } })
+    const first = diffNodes([incoming], new Map(), './specs/orders.yaml')
+    assert.equal(first.toAdd.length, 1)
+    const stored = { ...first.toAdd[0], properties: { ...first.toAdd[0].properties, description: 'Hand written' } }
+    const second = diffNodes([incoming], new Map([[stored.id, stored]]), './specs/orders.yaml')
+    assert.equal(second.toUpdate.length, 0)
+  })
+
+  it('records empty ownership after the source drops its last property', () => {
+    const incoming = makeNode('orders.APIEndpoint.create')
+    const original = makeNode(incoming.id, {
+      properties: { description: 'From source' },
+      corum: { ownership: { importedProperties: ['description'] } },
+    })
+    const stored = diffNodes([incoming], new Map([[original.id, original]]), './specs/orders.yaml').toUpdate[0]
+    assert.deepEqual(stored.properties, {})
+    assert.deepEqual(stored.corum?.ownership?.importedProperties, [])
+    const enriched = { ...stored, properties: { description: 'Now human-owned' } }
+    assert.equal(diffNodes([incoming], new Map([[enriched.id, enriched]]), './specs/orders.yaml').toUpdate.length, 0)
   })
 
   it('for determined nodes, parameters property is updated on re-import', () => {

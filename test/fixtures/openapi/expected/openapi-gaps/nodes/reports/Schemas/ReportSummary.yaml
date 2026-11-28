@@ -9,55 +9,142 @@ metadata:
   extractedFrom: <spec>
   derivation: determined
   derivedBy: adapter:openapi
+corum:
+  ownership:
+    importedProperties: []
 fields:
   groupedMetrics:
     $ref: '#/mappings/groupedMetrics'
     nullable: true
+    corum:
+      ownership:
+        importedProperties:
+          - $ref
+          - nullable
   labelsByGroup:
     $ref: '#/mappings/labelsByGroup'
     nullable: true
+    corum:
+      ownership:
+        importedProperties:
+          - $ref
+          - nullable
   location:
     $ref: '#/schemas/location'
     nullable: true
+    corum:
+      ownership:
+        importedProperties:
+          - $ref
+          - nullable
   metricList:
     $ref: reports.Schema.Metric
     nullable: true
     collection: array
+    corum:
+      ownership:
+        importedProperties:
+          - $ref
+          - collection
+          - nullable
   metricsByCategory:
     $ref: '#/mappings/metricsByCategory'
     nullable: true
+    corum:
+      ownership:
+        importedProperties:
+          - $ref
+          - nullable
   nestedMetrics:
     $ref: '#/mappings/nestedMetrics'
     nullable: true
+    corum:
+      ownership:
+        importedProperties:
+          - $ref
+          - nullable
   perPersonBreakdown:
     $ref: '#/mappings/perPersonBreakdown'
     nullable: true
+    corum:
+      ownership:
+        importedProperties:
+          - $ref
+          - nullable
   primaryMetric:
     type: string
     nullable: true
+    corum:
+      ownership:
+        importedProperties:
+          - nullable
+          - type
 mappings:
   groupedMetrics:
     $ref: reports.Schema.Metric
     value-collection: array
+    corum:
+      ownership:
+        importedProperties:
+          - $ref
+          - value-collection
   labelsByGroup:
     type: string
     value-collection: array
+    corum:
+      ownership:
+        importedProperties:
+          - type
+          - value-collection
   metricsByCategory:
     $ref: reports.Schema.Metric
+    corum:
+      ownership:
+        importedProperties:
+          - $ref
   nestedMetrics:
     $ref: reports.Schema.ReportSummary.mappings.nestedMetrics-values
+    corum:
+      ownership:
+        importedProperties:
+          - $ref
   nestedMetrics-values:
     $ref: reports.Schema.Metric
+    corum:
+      ownership:
+        importedProperties:
+          - $ref
   perPersonBreakdown:
     $ref: reports.Schema.ReportSummary.mappings.perPersonBreakdown-values
+    corum:
+      ownership:
+        importedProperties:
+          - $ref
   perPersonBreakdown-values:
     type: integer
+    corum:
+      ownership:
+        importedProperties:
+          - type
 schemas:
   location:
+    corum:
+      ownership:
+        importedProperties: []
     fields:
       lat:
         type: decimal
         nullable: true
+        corum:
+          ownership:
+            importedProperties:
+              - nullable
+              - type
       lng:
         type: decimal
         nullable: true
+        corum:
+          ownership:
+            importedProperties:
+              - nullable
+              - type

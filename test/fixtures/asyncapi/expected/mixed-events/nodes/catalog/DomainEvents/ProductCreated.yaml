@@ -9,12 +9,25 @@ metadata:
   extractedFrom: <spec>
   derivation: determined
   derivedBy: adapter:asyncapi
+corum:
+  ownership:
+    importedProperties:
+      - payload
+      - topic
 properties:
   topic: catalog.product-created
   payload: '#/schemas/ProductCreated'
 schemas:
   ProductCreated:
+    corum:
+      ownership:
+        importedProperties: []
     fields:
       productId:
         type: uuid
         nullable: false
+        corum:
+          ownership:
+            importedProperties:
+              - nullable
+              - type

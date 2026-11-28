@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util'
 import type { Diagnostic, Edge, Graph, Node } from '../schema/index.js'
 import { resolveAlias } from '../mutate/alias.js'
 
@@ -33,14 +34,14 @@ export function diffNodes(
   for (const node of incoming) {
     const current = existing.get(node.id)
     if (!current) {
-      toAdd.push(node)
+      toAdd.push(node.derivation === 'determined' ? { ...node, corum: withOwnership(node) } : node)
       continue
     }
 
     const merged: Node = {
       ...current,
-      properties: mergeProperties(current.properties, node.properties, node.derivation),
-      corum: mergeCorum(current.corum, node.corum, node.derivation),
+      properties: mergeProperties(current, node.properties, node.derivation),
+      corum: mergeCorum(current.corum, withOwnership(node), node.derivation),
       extractedFrom: node.extractedFrom,
       derivation: node.derivation,
       derivedBy: node.derivedBy,
@@ -64,22 +65,43 @@ export function diffNodes(
   return { toAdd, toUpdate, toRemove }
 }
 
+function importedKeys(properties: Record<string, unknown>): string[] {
+  return Object.keys(properties).filter(k => !PRESERVED_PROPERTIES.has(k)).sort()
+}
+
+/** Record which property keys a determined import supplied, so later imports can drop stale ones. */
+function withOwnership(node: Node): Node['corum'] | undefined {
+  if (node.derivation !== 'determined') return node.corum
+  const keys = importedKeys(node.properties)
+  return { ...(node.corum ?? {}), ownership: { importedProperties: keys } }
+}
+
+/**
+ * Determined re-import: keys the import supplies are overwritten; keys it does not supply are
+ * human-owned and kept, unless a previous determined import recorded them (then they are stale
+ * and removed). Nodes with no ownership record keep every unsupplied key.
+ */
 function mergeProperties(
-  current: Record<string, unknown>,
+  node: Node,
   incoming: Record<string, unknown>,
   derivation: string | undefined,
 ): Record<string, unknown> {
+  const current = node.properties
   if (derivation === 'determined') {
-    const preservedValues = Object.fromEntries(
-      Object.entries(current).filter(([k]) => PRESERVED_PROPERTIES.has(k)),
+    const stale = new Set(node.corum?.ownership?.importedProperties ?? [])
+    const kept = Object.fromEntries(
+      Object.entries(current).filter(([k]) => PRESERVED_PROPERTIES.has(k) || (!stale.has(k) && !(k in incoming))),
     )
-    return { ...incoming, ...preservedValues }
+    const supplied = Object.fromEntries(
+      Object.entries(incoming).filter(([k]) => !PRESERVED_PROPERTIES.has(k) || !(k in current)),
+    )
+    return { ...kept, ...supplied }
   }
   return { ...current, ...incoming }
 }
 
 function nodesEqual(a: Node, b: Node): boolean {
-  return JSON.stringify(a) === JSON.stringify(b)
+  return isDeepStrictEqual(a, b)
 }
 
 function mergeCorum(

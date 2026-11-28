@@ -9,6 +9,13 @@ metadata:
   extractedFrom: <spec>
   derivation: determined
   derivedBy: adapter:openapi
+corum:
+  ownership:
+    importedProperties:
+      - method
+      - path
+      - request
+      - responses
 properties:
   method: POST
   path: /payments/capture
@@ -17,15 +24,36 @@ properties:
     '200': '#/schemas/capturePayment-response-200'
 schemas:
   capturePayment-request:
+    corum:
+      ownership:
+        importedProperties: []
     fields:
       amount:
         type: decimal
         nullable: false
+        corum:
+          ownership:
+            importedProperties:
+              - nullable
+              - type
       orderId:
         type: uuid
         nullable: false
+        corum:
+          ownership:
+            importedProperties:
+              - nullable
+              - type
   capturePayment-response-200:
+    corum:
+      ownership:
+        importedProperties: []
     fields:
       paymentId:
         type: uuid
         nullable: false
+        corum:
+          ownership:
+            importedProperties:
+              - nullable
+              - type

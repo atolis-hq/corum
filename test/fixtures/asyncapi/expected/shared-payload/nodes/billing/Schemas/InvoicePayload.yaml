@@ -9,7 +9,15 @@ metadata:
   extractedFrom: <spec>
   derivation: determined
   derivedBy: adapter:asyncapi
+corum:
+  ownership:
+    importedProperties: []
 fields:
   invoiceId:
     type: uuid
     nullable: false
+    corum:
+      ownership:
+        importedProperties:
+          - nullable
+          - type

@@ -132,6 +132,15 @@ properties:
     additionalProperties: false
     description: Reserved Corum-owned bookkeeping namespace.
     properties:
+      ownership:
+        type: object
+        additionalProperties: false
+        properties:
+          importedProperties:
+            type: array
+            items:
+              type: string
+            description: Property keys supplied by the last determined import.
       identity:
         type: object
         additionalProperties: false

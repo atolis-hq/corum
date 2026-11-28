@@ -9,6 +9,11 @@ metadata:
   extractedFrom: <spec>
   derivation: determined
   derivedBy: adapter:asyncapi
+corum:
+  ownership:
+    importedProperties:
+      - payload
+      - topic
 properties:
   topic: billing.invoice-sent
   payload: billing.Schema.InvoicePayload

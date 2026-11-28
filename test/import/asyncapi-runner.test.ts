@@ -58,6 +58,10 @@ function assertMatchesExpected(graphDir: string, goldenSubdir: string): void {
   for (const [key, expected] of golden) {
     const actualPath = path.join(graphDir, key)
     assert.ok(fs.existsSync(actualPath), `expected ${key} to exist in graph output`)
+    if (process.env.CORUM_UPDATE_GOLDEN) {
+      fs.writeFileSync(path.join(goldenDir, key), normalizeYaml(fs.readFileSync(actualPath, 'utf-8')))
+      continue
+    }
     assert.equal(
       normalizeYaml(fs.readFileSync(actualPath, 'utf-8')),
       normalizeYaml(expected),

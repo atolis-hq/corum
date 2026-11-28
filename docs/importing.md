@@ -156,8 +156,12 @@ graph rather than starting over:
 
 - **New** nodes are added.
 - **Existing** nodes are updated from the source. For `determined` (contract- or
-  code-derived) imports, anything a human or agent set is kept: `state`,
-  `stability` and `notes` survive re-imports, as does rename history.
+  code-derived) imports, source-supplied properties overwrite existing values.
+  Unsupplied properties (such as hand-written descriptions) survive, along with
+  `state`, `stability`, `notes` and rename history. Corum records supplied keys
+  in `corum.ownership.importedProperties` and removes previously recorded keys
+  when the source stops supplying them. Legacy nodes without this record keep
+  all unsupplied properties.
 - **Missing** nodes are marked `removed` (a soft delete), but only those that
   were originally imported from the *same source file*. Nodes from other
   sources and hand-modelled nodes are left alone.
