@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from 'node:util'
+import { edgeSourceFields } from '../schema/index.js'
 import type { Diagnostic, Edge, Graph, Node } from '../schema/index.js'
 import { isStructuralEdgeType } from '../graph/index.js'
 import { resolveAlias } from '../mutate/alias.js'
@@ -253,11 +254,20 @@ export function reconcileEdges(graph: Graph, incoming: Edge[], specPath: string)
     if (edge.corum?.ownership?.source !== specPath) continue
     const returning = incomingById.get(edge.id)
     if (!returning && edge.state !== 'removed') put({ ...edge, state: 'removed' })
-    else if (returning && edge.state === 'removed') put({ ...edge, state: returning.state })
+    else if (returning) {
+      const refreshed = { ...edge, state: edge.state === 'removed' ? returning.state : edge.state }
+      const fields = returning[edgeSourceFields] ?? ['notes', 'extractedFrom', 'derivation', 'derivedBy'] as const
+      for (const field of fields) {
+        const value = returning[field]
+        if (value !== undefined) Object.assign(refreshed, { [field]: value })
+      }
+      if (refreshed.state !== edge.state || fields.some(field => refreshed[field] !== edge[field])) put(refreshed)
+    }
   }
   for (const edge of incoming) {
     if (!existingById.has(edge.id)) {
-      const owned = { ...edge, corum: { ...edge.corum, ownership: { source: specPath } } }
+      const { [edgeSourceFields]: _sourceFields, ...stored } = edge
+      const owned = { ...stored, corum: { ...edge.corum, ownership: { source: specPath } } }
       put(owned)
       existingById.set(edge.id, owned)
     }

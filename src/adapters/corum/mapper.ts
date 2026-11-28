@@ -1,4 +1,4 @@
-import type { Diagnostic, Edge, EdgeType, EdgeTypeDef, Node, Template } from '../../schema/index.js'
+import { edgeSourceFields, type Diagnostic, type Edge, type EdgeType, type EdgeTypeDef, type Node, type Template } from '../../schema/index.js'
 import { getTemplateSchema } from '../../loader/template-props.js'
 import type { CorumInterchangeDocument, CorumInterchangeEdge, CorumInterchangeProvenance } from './parser.js'
 import { CORE_EDGE_TYPE_MAP } from '../../loader/constants.js'
@@ -823,6 +823,12 @@ function makeHasValueEdge(from: string, to: string): Edge {
 
 function mapEdge(raw: CorumInterchangeEdge): Edge {
   return {
+    [edgeSourceFields]: [
+      ...(raw.notes !== undefined ? ['notes' as const] : []),
+      ...(raw.provenance?.extractedFrom !== undefined ? ['extractedFrom' as const] : []),
+      ...(raw.provenance?.derivation !== undefined ? ['derivation' as const] : []),
+      ...(raw.provenance?.derivedBy !== undefined ? ['derivedBy' as const] : []),
+    ],
     id: `${raw.from}__${raw.type}__${raw.to}`,
     from: raw.from,
     to: raw.to,

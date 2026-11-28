@@ -332,6 +332,30 @@ describe('detectPossibleRenames', () => {
 })
 
 describe('reconcileEdges', () => {
+  it('refreshes only supplied payload, preserves stored metadata and is idempotent', () => {
+    const original = makeEdge('a', 'maps-to', 'b', {
+      notes: 'first', extractedFrom: 'src/old.ts:10', derivation: 'inferred', derivedBy: 'extractor:x',
+      corum: { ownership: { source: 'spec.yaml' } }, stability: 'stable',
+      properties: { custom: true }, lastModifiedAt: '2026-01-01',
+    })
+    const graph = makeGraph([], [original])
+    const incoming = { ...original, notes: '', extractedFrom: 'src/new.ts:42', state: 'implemented' as const,
+      stability: 'unstable' as const, properties: {}, lastModifiedAt: '2026-02-01', corum: undefined }
+    reconcileEdges(graph, [incoming], 'spec.yaml')
+    const updated = graph.edgesByFrom.get('a')![0]
+    assert.deepEqual(updated, { ...original, notes: '', extractedFrom: 'src/new.ts:42' })
+    assert.equal(graph.edgesByTo.get('b')![0], updated)
+    reconcileEdges(graph, [incoming], 'spec.yaml')
+    assert.equal(graph.edgesByFrom.get('a')![0], updated)
+    reconcileEdges(graph, [makeEdge('a', 'maps-to', 'b')], 'spec.yaml')
+    assert.equal(graph.edgesByFrom.get('a')![0], updated)
+    reconcileEdges(graph, [], 'spec.yaml')
+    reconcileEdges(graph, [{ ...incoming, notes: 'returned', derivation: 'determined', derivedBy: 'extractor:y' }], 'spec.yaml')
+    assert.deepEqual(graph.edgesByFrom.get('a')![0], {
+      ...updated, state: 'implemented', notes: 'returned', derivation: 'determined', derivedBy: 'extractor:y',
+    })
+  })
+
   it('preserves collisions, generated edges and both adjacency indexes', () => {
     const owned = makeEdge('a', 'maps-to', 'b', { corum: { ownership: { source: 'spec.yaml' } } })
     const manual = makeEdge('a', 'calls', 'b')
@@ -339,7 +363,7 @@ describe('reconcileEdges', () => {
     const structural = makeEdge('a', 'has-field', 'b', { corum: owned.corum })
     const generated = makeEdge('a', 'uses-type', 'b', { corum: owned.corum, generated: true })
     const graph = makeGraph([], [owned, manual, other, structural, generated])
-    reconcileEdges(graph, [manual, other], 'spec.yaml')
+    reconcileEdges(graph, [manual, other, structural, generated].map(edge => ({ ...edge, notes: 'changed' })), 'spec.yaml')
     for (const edge of [manual, other, structural, generated]) {
       assert.equal(graph.edgesByFrom.get('a')!.find(e => e.id === edge.id), edge)
     }

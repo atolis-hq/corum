@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mapDocument } from '../../../src/adapters/corum/mapper.js'
 import type { CorumInterchangeDocument } from '../../../src/adapters/corum/parser.js'
 
-import type { Template } from '../../../src/schema/index.js'
+import { edgeSourceFields, type Template } from '../../../src/schema/index.js'
 import { loadGraph } from '../../../src/loader/index.js'
 
 const SPEC_PATH = '/fake/output.corum.yaml'
@@ -483,6 +483,7 @@ describe('mapDocument — edges', () => {
       provenance: { extractedFrom: 'src/workflow.ts:42', derivation: 'inferred', derivedBy: 'extractor:workflow' },
     }] }), SPEC_PATH)
     assert.deepEqual(edges[0], {
+      [edgeSourceFields]: ['notes', 'extractedFrom', 'derivation', 'derivedBy'],
       id: 'orders.DomainModel.OrderAggregate.operations.Place__produces__orders.DomainEvent.OrderPlaced',
       from: 'orders.DomainModel.OrderAggregate.operations.Place',
       to: 'orders.DomainEvent.OrderPlaced',
@@ -512,6 +513,7 @@ describe('mapDocument — edges', () => {
     assert.equal(edges[0].derivation, 'determined')
     assert.equal(edges[0].derivedBy, 'adapter:corum')
     assert.equal(edges[0].stability, 'unstable')
+    assert.deepEqual(edges[0][edgeSourceFields], [])
     assert.equal(edges[0].notes, undefined)
     assert.equal(edges[0].extractedFrom, undefined)
   })

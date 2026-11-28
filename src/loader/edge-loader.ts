@@ -88,6 +88,10 @@ export function loadEdges(
         ...(typeof ownershipSource === 'string' && { corum: { ownership: { source: ownershipSource } } }),
         notes: typeof edgeRecord.notes === 'string' ? edgeRecord.notes : undefined,
         ...(typeof edgeRecord.extractedFrom === 'string' && { extractedFrom: edgeRecord.extractedFrom }),
+        ...(['determined', 'inferred', 'manual'].includes(edgeRecord.derivation as string) && {
+          derivation: edgeRecord.derivation as Edge['derivation'],
+        }),
+        ...(typeof edgeRecord.derivedBy === 'string' && { derivedBy: edgeRecord.derivedBy }),
         ...(typeof edgeRecord.lastModifiedAt === 'string' && { lastModifiedAt: edgeRecord.lastModifiedAt }),
         ...(typeof properties === 'object' && properties !== null && !Array.isArray(properties) && {
           properties: properties as Record<string, unknown>,

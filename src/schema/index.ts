@@ -74,7 +74,12 @@ export interface EdgeCorum {
   }
 }
 
+/** Import-only field presence, carried through endpoint rewrites but never persisted. */
+export const edgeSourceFields: unique symbol = Symbol('edgeSourceFields')
+export type EdgeSourceField = 'notes' | 'extractedFrom' | 'derivation' | 'derivedBy'
+
 export interface Edge {
+  [edgeSourceFields]?: readonly EdgeSourceField[]
   id: string
   from: string
   to: string
