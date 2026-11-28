@@ -17,6 +17,7 @@ export interface DedupResult {
 export function deduplicateResults(
   results: EntryResult[],
   rules: DeduplicationRule[],
+  options: { edgeCasing?: 'preserve' | 'match'; isStructural?: (type: string) => boolean } = {},
 ): DedupResult {
   const diagnostics: Diagnostic[] = []
 
@@ -33,8 +34,6 @@ export function deduplicateResults(
         .filter(result => result.adapterId === rule.secondary)
         .flatMap(result => result.nodes.map(node => [node.id, node] as const))),
     }
-
-    const primaryGraph = { nodesById: primaryNodes }
 
     const redirects = new Map<string, string>()
 
@@ -86,31 +85,70 @@ export function deduplicateResults(
 
     if (redirects.size === 0) continue
 
-    // Build exact endpoint mappings from ownership before dropping secondary nodes.
-    // Prefix replacement derives the new spelling only after ownership is known.
     const endpointRedirects = new Map<string, string | null>()
-    for (const node of secondaryGraph.nodesById.values()) {
-      let current: Node | undefined = node
-      const seen = new Set<string>()
-      while (current && !seen.has(current.id)) {
-        seen.add(current.id)
-        const primaryId = redirects.get(current.id)
-        if (primaryId !== undefined) {
-          const rewritten = primaryId + node.id.slice(current.id.length)
-          const targetExists = primaryNodes.has(rewritten)
-            && (node.id === current.id || isOwnedDescendant(primaryGraph, rewritten, primaryId))
-          endpointRedirects.set(node.id, primaryId === current.id || targetExists ? rewritten : null)
-          break
+    const resolving = new Set<string>()
+    function ownedTarget(owner: string, suffix: string): string | null {
+      const candidate = owner + suffix
+      const target = primaryNodes.get(candidate)
+      if (target) return target.parentId === owner ? candidate : null
+      if (options.edgeCasing !== 'match') return null
+      const matches = [...primaryNodes.values()].filter(node => node.parentId === owner
+        && node.id.toLowerCase() === candidate.toLowerCase())
+      return matches.length === 1 ? matches[0].id : null
+    }
+
+    // Follow explicit ownership first. For absent endpoints, peel one section/name
+    // pair at a time until reaching a known owner. This is independent of edge order.
+    function resolve(endpoint: string): string | null | undefined {
+      if (endpointRedirects.has(endpoint)) return endpointRedirects.get(endpoint)!
+      if (redirects.has(endpoint)) return redirects.get(endpoint)!
+      if (resolving.has(endpoint)) return undefined
+      resolving.add(endpoint)
+      const node = secondaryGraph.nodesById.get(endpoint)
+      const parts = endpoint.split('.')
+      const owner = node ? node.parentId : parts.length > 4 ? parts.slice(0, -2).join('.') : undefined
+      let resolved: string | null | undefined
+      if (owner !== undefined) {
+        const parent = resolve(owner)
+        if (parent !== undefined) {
+          resolved = parent === null ? null : ownedTarget(parent, endpoint.slice(owner.length))
+          // Interchange schema refs expand the root's own contract into a
+          // same-named schema child. Its primary counterpart is the root itself.
+          const sourceOwner = secondaryGraph.nodesById.get(owner)
+          if (resolved === null && parent !== null && node && sourceOwner
+            && node.template === sourceOwner.template
+            && endpoint === owner + '.schemas.' + owner.split('.').at(-1)) {
+            resolved = parent
+          }
         }
-        current = current.parentId === undefined ? undefined : secondaryGraph.nodesById.get(current.parentId)
       }
+      resolving.delete(endpoint)
+      if (resolved !== undefined) endpointRedirects.set(endpoint, resolved)
+      return resolved
+    }
+    for (const node of secondaryGraph.nodesById.values()) {
+      const target = resolve(node.id)
+      if (target !== undefined) endpointRedirects.set(node.id, target)
     }
 
     for (const r of results) {
       r.edges = r.edges.flatMap(edge => {
-        const from = endpointRedirects.has(edge.from) ? endpointRedirects.get(edge.from)! : edge.from
-        const to = endpointRedirects.has(edge.to) ? endpointRedirects.get(edge.to)! : edge.to
-        if (from === null || to === null) return []
+        const fromResult = resolve(edge.from)
+        const toResult = resolve(edge.to)
+        const structural = options.isStructural?.(edge.type) ?? (edge.type === 'has-field' || edge.type === 'has-value')
+        if (structural && fromResult !== undefined && toResult !== undefined) return []
+        const from = fromResult === undefined ? edge.from : fromResult
+        const to = toResult === undefined ? edge.to : toResult
+        if (from === null || to === null) {
+          const unresolved = [from === null ? edge.from : undefined, to === null ? edge.to : undefined]
+            .filter(endpoint => endpoint !== undefined)
+          diagnostics.push({
+            severity: 'warning',
+            file: r.specPath,
+            message: `Deduplication dropped edge ${edge.id} (${edge.from} — ${edge.type} → ${edge.to}): no matching primary node for ${unresolved.join(', ')}`,
+          })
+          return []
+        }
         if (from === edge.from && to === edge.to) return [edge]
         return [{ ...edge, from, to, id: `${from}__${edge.type}__${to}` }]
       })

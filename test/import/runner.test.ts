@@ -541,29 +541,28 @@ describe('import runner — edgeCasing (cross-source field-casing drift)', () =>
     return { graphDir, cleanup, result }
   }
 
-  it('by default (preserve), the corum edge is left pointing at the dropped PascalCase field', async () => {
-    const { graphDir, cleanup, result } = await runMoneyImport()
-    try {
-      assert.ok(!result.diagnostics.some(d => d.severity === 'error'), `expected no errors: ${JSON.stringify(result.diagnostics)}`)
-
-      const graph = await loadGraph({ graphPath: graphDir })
-      assert.ok(graph.nodesById.has('orders.Schema.Money.fields.amount'), 'openapi field survives dedup')
-      assert.ok(!graph.nodesById.has('orders.Schema.Money.fields.Amount'), 'corum field was dropped by dedup')
-
-      assert.ok(
-        graph.diagnostics.some(d => d.message.includes('edge to unresolved node: orders.Schema.Money.fields.Amount')),
-        'the corum-authored edge should dangle without edgeCasing: match',
-      )
-    } finally {
-      cleanup()
-    }
-  })
+  for (const edgeCasing of ['preserve'] as const) {
+    it(`warns and drops deduplicated case-mismatched fields with edgeCasing: ${edgeCasing}`, async () => {
+      const { graphDir, cleanup, result } = await runMoneyImport(edgeCasing)
+      try {
+        assert.ok(!result.diagnostics.some(d => d.severity === 'error'), JSON.stringify(result.diagnostics))
+        assert.ok(result.diagnostics.some(d => d.severity === 'warning'
+          && d.message.includes('dropped edge') && d.message.includes('orders.Schema.Money.fields.Amount')))
+        const graph = await loadGraph({ graphPath: graphDir })
+        assert.ok(graph.nodesById.has('orders.Schema.Money.fields.amount'))
+        assert.ok(!graph.nodesById.has('orders.Schema.Money.fields.Amount'))
+        assert.ok(!graph.diagnostics.some(d => d.message.includes('unresolved node') && d.message.includes('Money')))
+        assert.equal((graph.edgesByTo.get('orders.Schema.Money.fields.amount') ?? []).filter(e => e.type === 'maps-to').length, 0)
+      } finally {
+        cleanup()
+      }
+    })
+  }
 
   it('with edgeCasing: match, the corum edge is rewritten to the surviving camelCase field', async () => {
     const { graphDir, cleanup, result } = await runMoneyImport('match')
     try {
       assert.ok(!result.diagnostics.some(d => d.severity === 'error'), `expected no errors: ${JSON.stringify(result.diagnostics)}`)
-      assert.ok(result.diagnostics.some(d => d.message.includes('[INFO] Resolved edge casing mismatch')))
 
       const graph = await loadGraph({ graphPath: graphDir })
       assert.ok(

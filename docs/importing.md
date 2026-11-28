@@ -145,7 +145,11 @@ imports:
 - Replacements apply in order; the first matching `from` wins.
 - Deduplication runs after every adapter finishes. It is meant for
   reconciling sources, e.g. keeping OpenAPI endpoints as canonical while
-  merging matching nodes from an extractor.
+  merging matching nodes from an extractor. Field endpoints match exactly,
+  including case, against the primary’s actual fields. Edges with no matching
+  primary endpoint are dropped with a warning naming the endpoint and edge.
+  With `edgeCasing: match`, a single unambiguous case-insensitive primary
+  field match is also accepted; missing or ambiguous matches still warn and drop.
 
 ## Git-backed graphs
 

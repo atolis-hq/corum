@@ -62,7 +62,8 @@ export interface ImportConfig {
    * 'match' retries case-insensitively and rewrites to the exact surviving
    * casing when the match is unambiguous — fixes cross-source field-casing
    * drift (e.g. a secondary adapter's `fields.Amount` edge after dedup kept
-   * the primary adapter's `fields.amount` node).
+   * the primary adapter's `fields.amount` node). Missing or ambiguous matches
+   * within deduplicated subtrees are dropped with warnings.
    */
   edgeCasing?: EdgeCasingMode
   imports: ImportEntry[]

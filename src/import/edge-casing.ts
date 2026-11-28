@@ -1,13 +1,9 @@
 import type { Diagnostic, Edge, Graph } from '../schema/index.js'
 
 /**
- * Import-time fix for cross-source field-casing drift: when dedup drops a
- * secondary adapter's node in favour of an exact-ID match from the primary
- * adapter (e.g. both define `orders.Schema.Money`), any nested children that
- * differ only in casing between the two sources (`fields.Amount` vs
- * `fields.amount`) are *not* considered a collision by dedup — the secondary's
- * child nodes are simply dropped, leaving the secondary's own edges pointing
- * at a field id that no longer exists.
+ * Optional case-insensitive endpoint resolution against the final merged graph.
+ * Deduplication also honors this opt-in for removed subtrees, while dropping
+ * missing or ambiguous primary field matches with actionable warnings.
  *
  * This resolves those edges against the final merged node set: an endpoint
  * that fails an exact match is retried case-insensitively, and rewritten to
