@@ -7,11 +7,20 @@ info:
     A derived query projection optimised for reads. It captures a view of
     domain data shaped for consumption rather than mutation.
 
+operations:
+  item-template: DomainOperation
+  description: |
+    Behaviours of the projection, such as applying an event. Each entry becomes
+    a DomainOperation node with ID {node-id}.operations.{key}.
+
 edge-types:
   incoming:
     - reads
+    - triggers
+    - writes
     - derived-from
   outgoing:
+    - produces
     - derived-from
 
 ui:

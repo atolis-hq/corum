@@ -1,0 +1,7 @@
+# State changes point from the actor to the data, like core reads.
+# Bidirectional traversal supports finding the writers of a projection or store.
+edge-types:
+  writes:
+    category: semantic
+    traversal: bidirectional
+    colour: "#9a3412"
