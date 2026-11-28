@@ -361,6 +361,27 @@ describe('MCP handlers', () => {
       assert.ok(!cluster.root.schemas['order']['id'].edges)
     })
 
+    it('returns edge source locators only when provenance is requested', async () => {
+      const localGraph = await loadGraph({ graphPath: fixtureGraphDir })
+      const edge = [...localGraph.edgesByFrom.values()].flat().find(e => e.type === 'produces')!
+      edge.extractedFrom = 'src/publish.ts:12'
+      edge.notes = 'Publication site'
+      const handlers = createMcpHandlers(localGraph)
+      for (const includeProvenance of [false, true]) {
+        const result = await handlers.get_cluster({
+          node_id: edge.from, include_edges: true, collapse_schemas: false,
+          include_provenance: includeProvenance, format: 'json',
+        })
+        const cluster = JSON.parse(result.content[0].text)
+        const output = cluster.edges.find((e: { from: string; to: string; type: string }) =>
+          e.from === edge.from && e.to === edge.to && e.type === edge.type)
+        assert.ok(output)
+        assert.equal(output.notes, edge.notes)
+        assert.equal(output.extractedFrom, includeProvenance ? edge.extractedFrom : undefined)
+        assert.equal('extractedFrom' in output, includeProvenance)
+      }
+    })
+
     it('includes cluster provenance when requested', async () => {
       const handlers = createMcpHandlers(graph)
       const result = await handlers.get_cluster({

@@ -69,6 +69,7 @@ export interface Edge {
   state: State
   stability: Stability
   notes?: string
+  extractedFrom?: string
   properties?: Record<string, unknown>
   derivation?: 'determined' | 'inferred' | 'manual'
   derivedBy?: string

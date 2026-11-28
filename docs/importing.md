@@ -27,6 +27,11 @@ match them to nodes from other adapters (for example a controller class and an
 OpenAPI operation), and provenance saying where each came from. The envelope is
 defined by `.corum/packs/extract/interchange.schema.yaml`.
 
+Edges may carry `notes` explaining the relationship and `provenance.extractedFrom`
+identifying its source (for example, `src/workflow.ts:42`). Both are retained
+on import and when the graph is saved and reloaded. MCP edge responses include
+source locators when `include_provenance: true` is requested.
+
 Each node entry may set `parentId` to another node ID in the same document,
 or to `null` to declare an independent root. Explicit ownership takes precedence
 over ID shape; an unknown explicit parent is an error. Node and parent IDs use
