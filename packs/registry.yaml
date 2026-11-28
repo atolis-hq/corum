@@ -16,3 +16,7 @@ packs:
     description: "Messaging templates (DomainEvent, IntegrationEvent)"
     repo: https://github.com/atolis-hq/corum
     path: .corum/packs/messaging
+  - name: extract
+    description: "Corum interchange import adapter and schema"
+    repo: https://github.com/atolis-hq/corum
+    path: .corum/packs/extract
