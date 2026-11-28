@@ -8,6 +8,7 @@ import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { buildAsyncAPIConfig, buildOpenAPIConfig, loadImportConfig } from '../import/config.js'
 import { runImport } from '../import/runner.js'
+import type { IdMapSummary } from '../import/id-map.js'
 import { loadGraph } from '../loader/index.js'
 import { startMcpServer } from '../mcp/index.js'
 import { parseGitHubRepo, toPackRawBaseUrl } from '../pack/github-urls.js'
@@ -198,6 +199,7 @@ const importCmd = program.command('import')
       const config = loadImportConfig(path.resolve(opts.config))
       const result = await runImport(config, runtimeConfig, { branch: opts.branch })
       reportDiagnostics(result.diagnostics)
+      if (result.idMapSummary) process.stdout.write(formatIdMapSummary(result.idMapSummary))
       if (result.diagnostics.some(d => d.severity === 'error')) process.exit(1)
     } catch (err) {
       process.stderr.write(`[ERROR] ${err instanceof Error ? err.message : String(err)}\n`)
@@ -378,6 +380,15 @@ function reportDiagnostics(diagnostics: { severity: string; file: string; messag
   const errors = diagnostics.filter(d => d.severity === 'error').length
   const warnings = diagnostics.filter(d => d.severity === 'warning').length
   process.stdout.write(`${label}. ${errors} error(s), ${warnings} warning(s).\n`)
+}
+
+function formatIdMapSummary(summary: IdMapSummary): string {
+  const lines = ['ID maps:']
+  for (const e of summary.exact) lines.push(`  exact ${e.from} → ${e.to} (${e.file}): ${e.resolved} resolved`)
+  for (const r of summary.rules) {
+    lines.push(`  rule ${r.file}#${r.index} ${r.from} → ${r.to}: ${r.resolved} resolved, ${r.overridden} overridden by exact, ${r.ambiguous} ambiguous`)
+  }
+  return `${lines.join('\n')}\n`
 }
 
 function reportGraphDiagnostics(diagnostics: { severity: string; file?: string; message: string }[]): void {

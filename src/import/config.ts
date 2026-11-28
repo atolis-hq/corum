@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
 
 export interface ComponentNameReplacement {
@@ -66,6 +67,13 @@ export interface ImportConfig {
    * within deduplicated subtrees are dropped with warnings.
    */
   edgeCasing?: EdgeCasingMode
+  /**
+   * ID map files (exact entries + naming rules) that link source-native IDs
+   * across sources. Paths resolve relative to the config file. Earlier files
+   * win for conflicting `exact` entries; `rules` are all evaluated and
+   * disagreeing targets are reported as ambiguous.
+   */
+  idMaps?: string[]
   imports: ImportEntry[]
 }
 
@@ -92,6 +100,13 @@ export function loadImportConfig(filePath: string): ImportConfig {
   }
   if (cfg.edgeCasing !== undefined && cfg.edgeCasing !== 'preserve' && cfg.edgeCasing !== 'match') {
     throw new Error(`Invalid import config: edgeCasing must be "preserve" or "match"`)
+  }
+  if (cfg.idMaps !== undefined) {
+    if (!Array.isArray(cfg.idMaps) || cfg.idMaps.some(p => typeof p !== 'string' || p === '')) {
+      throw new Error(`Invalid import config: idMaps must be a list of non-empty file paths`)
+    }
+    const base = path.dirname(path.resolve(filePath))
+    cfg.idMaps = cfg.idMaps.map(p => path.resolve(base, p))
   }
   return cfg
 }

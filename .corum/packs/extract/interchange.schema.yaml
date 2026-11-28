@@ -103,6 +103,15 @@ properties:
             an AsyncAPI channel message name.
           items:
             type: string
+        ids:
+          type: array
+          description: |
+            Extra source-native IDs for this node (e.g. `clr:Orders.Contracts.CreateOrderRequest`).
+            They are registered for the import run only, so edges and field `$ref`s can use them
+            and ID maps (`idMaps` in the import config) can link them to nodes from other sources.
+            Declaring an ID never merges nodes; only a `deduplication` rule does.
+          items:
+            type: string
         provenance:
           $ref: '#/$defs/provenance'
 

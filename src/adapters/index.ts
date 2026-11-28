@@ -37,10 +37,29 @@ export interface AdapterContext {
   nodeRefs?: { ids: ReadonlySet<string>; aliases: ReadonlyMap<string, string> }
 }
 
+/** A source-native or declared ID registered against a Corum node ID (per run, not persisted). */
+export interface SourceId {
+  id: string
+  target: string
+}
+
+/** A reference left as a fallback type string while mapping, which ID maps may still resolve after all adapters run. */
+export interface DeferredRef {
+  /** Node whose properties hold the fallback type string. */
+  nodeId: string
+  ref: string
+  owner: string
+  file: string
+  /** The warning the adapter already emitted; the runner removes it if the reference resolves later. */
+  message: string
+}
+
 export interface AdapterResult {
   nodes: Node[]
   edges: Edge[]
   diagnostics: Diagnostic[]
+  sourceIds?: SourceId[]
+  deferredRefs?: DeferredRef[]
 }
 
 export interface SpecAdapter<TEntry extends ImportEntry = ImportEntry> {

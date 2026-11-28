@@ -3,6 +3,7 @@ import { getTemplateSchema } from '../../loader/template-props.js'
 import type { CorumInterchangeDocument, CorumInterchangeEdge, CorumInterchangeProvenance } from './parser.js'
 import { CORE_EDGE_TYPE_MAP } from '../../loader/constants.js'
 import { shapeDriftDiagnostic } from '../shared/schema-reuse.js'
+import type { DeferredRef, SourceId } from '../index.js'
 
 const UNRESOLVED_COMPONENT = '_unresolved'
 
@@ -10,6 +11,8 @@ export interface MapResult {
   nodes: Node[]
   edges: Edge[]
   diagnostics: Diagnostic[]
+  sourceIds?: SourceId[]
+  deferredRefs?: DeferredRef[]
 }
 
 type SchemaUsage = {
@@ -32,10 +35,13 @@ export function mapDocument(
   nodeRefs: NodeRefResolver = { ids: new Set(), aliases: new Map() },
 ): MapResult {
   activeNodeRefs = nodeRefs
+  activeDeferred = []
   try {
-    return mapDocumentInner(document, specPath, existingSchemas, edgeTypes, templates)
+    const result = mapDocumentInner(document, specPath, existingSchemas, edgeTypes, templates)
+    return { ...result, deferredRefs: activeDeferred }
   } finally {
     activeNodeRefs = undefined
+    activeDeferred = undefined
   }
 }
 
@@ -51,16 +57,19 @@ export interface NodeRefResolver {
 
 // mapDocument is synchronous; this avoids threading the resolver through every helper.
 let activeNodeRefs: NodeRefResolver | undefined
+let activeDeferred: DeferredRef[] | undefined
 
 function resolveNodeRef(ref: string, ownerId: string, specPath: string, diagnostics: Diagnostic[]): string | undefined {
   const refs = activeNodeRefs
   if (refs?.ids.has(ref)) return ref
   const aliased = refs?.aliases.get(ref)
   if (aliased !== undefined && refs?.ids.has(aliased)) return aliased
-  diagnostics.push({
-    severity: 'warning', file: specPath,
-    message: `Field '${ownerId}' references '${ref}', which is not an existing node in the target graph; falling back to type string`,
-  })
+  const message = `Field '${ownerId}' references '${ref}', which is not an existing node in the target graph; falling back to type string`
+  diagnostics.push({ severity: 'warning', file: specPath, message })
+  // The node keeps its type-string fallback. The import runner retries once
+  // every adapter has run (source IDs, ID maps) and drops this warning if the
+  // reference resolves then.
+  activeDeferred?.push({ nodeId: ownerId, ref, owner: ownerId, file: specPath, message })
   return undefined
 }
 
@@ -74,6 +83,7 @@ function mapDocumentInner(
   const nodes: Node[] = []
   const edges: Edge[] = []
   const diagnostics: Diagnostic[] = []
+  const sourceIds: SourceId[] = []
   const allSchemas = (document.components?.schemas ?? {}) as Record<string, unknown>
   // Maps #/components/schemas/X and #/components/schemas/X/properties/Y to materialized node IDs
   const refToNodeId = new Map<string, string>()
@@ -128,6 +138,7 @@ function mapDocumentInner(
 
     const node = makeNode(entry.type, component, specPath, normalizedNodeId, entry.provenance, properties, parents.get(normalizedNodeId))
     nodes.push(node)
+    for (const id of entry.ids ?? []) sourceIds.push({ id, target: normalizedNodeId })
 
     if (schemaName) {
       const expanded = new Map<string, string>()
@@ -195,7 +206,7 @@ function mapDocumentInner(
     edges.push(mapEdge({ ...raw, from, to }))
   }
 
-  return { nodes, edges, diagnostics }
+  return { nodes, edges, diagnostics, sourceIds }
 }
 
 // Resolved templates include inherited declarations through allOf.

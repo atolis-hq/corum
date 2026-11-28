@@ -1,6 +1,6 @@
 import type { OperationInterface, MessageInterface, AsyncAPIDocumentInterface } from '@asyncapi/parser'
 import type { Node, Edge, Diagnostic } from '../../schema/index.js'
-import type { AdapterPackConfig } from '../index.js'
+import type { AdapterPackConfig, SourceId } from '../index.js'
 import type { AsyncAPIImportEntry, FieldStrategy, ComponentNameReplacement } from '../../import/config.js'
 import { applyComponentNameReplacements } from '../../import/config.js'
 import { sanitizeIdSegment } from '../../loader/id-grammar.js'
@@ -10,6 +10,7 @@ export interface MapResult {
   nodes: Node[]
   edges: Edge[]
   diagnostics: Diagnostic[]
+  sourceIds?: SourceId[]
 }
 
 export function extractValue(
@@ -253,6 +254,7 @@ export function mapDocument(
   const sharedSchemas = new Map<string, string>()
   const sourceSchemas = new Map<string, unknown>()
   const reusedSchemaNames = new Set<string>()
+  const sourceIds: SourceId[] = []
 
   const rawDoc = document.json() as { components?: { schemas?: Record<string, unknown> } }
 
@@ -438,10 +440,13 @@ export function mapDocument(
 
       eventNode.properties = properties
       nodes.push(eventNode)
+      // Source-native IDs come from the spec, so they survive changes to Corum ID derivation.
+      sourceIds.push({ id: `asyncapi:${component}/message/${messageName}`, target: eventId })
+      if (channelAddress) sourceIds.push({ id: `asyncapi:${component}/channel/${channelAddress}`, target: eventId })
     }
   }
 
-  return { nodes, edges, diagnostics }
+  return { nodes, edges, diagnostics, sourceIds }
 }
 
 function makeNode(template: string, component: string, specPath: string, id: string, parentId?: string): Node {
