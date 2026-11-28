@@ -105,7 +105,10 @@ reference](cli.md#corum-import).
 
 ## Config file
 
-For repeatable or multi-spec imports, use a config file:
+For repeatable or multi-spec imports, use a config file. All relative file paths
+in the config (`imports[].spec` and `idMaps`) resolve from the current working
+directory where you run `corum import`, regardless of the config file’s location.
+Absolute paths are used unchanged:
 
 ```bash
 corum import --config .corum/imports.yaml
@@ -166,7 +169,7 @@ Corum node IDs.
 ```yaml
 # .corum/imports.yaml
 idMaps:
-  - ./maps/code-to-spec.yaml   # relative to this config file; earlier files take precedence
+  - ./maps/code-to-spec.yaml   # earlier files take precedence
 ```
 
 ```yaml

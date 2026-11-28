@@ -76,9 +76,9 @@ async function setupOrders(extra: Parameters<typeof interchange>[0] = {}, map: u
   write('openapi.yaml', OPENAPI)
   write('code.corum.yaml', interchange(extra))
   write('maps/code-to-spec.yaml', map)
-  // Spec paths resolve against the CWD, so they are written absolute; idMaps are relative to the config.
+  // Absolute paths keep these fixtures independent of the invocation directory.
   write('imports.yaml', {
-    idMaps: ['./maps/code-to-spec.yaml'],
+    idMaps: [path.join(dir, 'maps/code-to-spec.yaml')],
     imports: [
       { adapter: 'openapi', spec: path.join(dir, 'openapi.yaml'), componentMapping: { strategy: 'uri-segment', segment: 0 } },
       { adapter: 'corum', spec: path.join(dir, 'code.corum.yaml') },
@@ -97,6 +97,33 @@ async function setupOrders(extra: Parameters<typeof interchange>[0] = {}, map: u
 const edgeKeys = (g: Graph) => [...g.edgesByFrom.values()].flat().map(e => e.id).filter(k => !k.includes('__has-')).sort()
 
 describe('ID maps — single run, fresh graph', () => {
+  it('loads workspace-relative specs and maps from a nested config and applies the map', async () => {
+    const t = await setupOrders()
+    const cwd = process.cwd()
+    try {
+      t.write('specs/code.corum.yaml', interchange())
+      t.write('specs/openapi.yaml', OPENAPI)
+      t.write('.corum/imports.yaml', {
+        idMaps: ['./maps/code-to-spec.yaml'],
+        imports: [
+          { adapter: 'openapi', spec: './specs/openapi.yaml', componentMapping: { strategy: 'uri-segment', segment: 0 } },
+          { adapter: 'corum', spec: './specs/code.corum.yaml' },
+        ],
+      })
+      process.chdir(t.dir)
+      const config = loadImportConfig('.corum/imports.yaml')
+      assert.deepEqual(config.idMaps, [path.join(t.dir, 'maps/code-to-spec.yaml')])
+      assert.equal(config.imports[1].spec, './specs/code.corum.yaml')
+      const result = await runImport(config, createGraphRuntimeConfig())
+      assert.deepEqual(result.diagnostics.filter(d => d.severity === 'error'), [])
+      assert.equal(result.idMapSummary?.exact[0].resolved, 1)
+      assert.ok(edgeKeys(await t.load()).includes('orders.DomainModel.OrderAggregate__calls__orders.APIEndpoint.createOrder'))
+    } finally {
+      process.chdir(cwd)
+      t.cleanup()
+    }
+  })
+
   it('links a clr: interchange to OpenAPI schema, field and operation with no Corum IDs in the interchange', async () => {
     const t = await setupOrders()
     try {
@@ -265,7 +292,7 @@ describe('ID maps — field $ref and deduplication', () => {
         edges: [],
       })
       t.write('imports.yaml', {
-        idMaps: ['./maps/code-to-spec.yaml'],
+        idMaps: [path.join(t.dir, 'maps/code-to-spec.yaml')],
         deduplication: [{ primary: 'openapi', secondary: 'corum' }],
         imports: [
           { adapter: 'openapi', spec: path.join(t.dir, 'openapi.yaml'), componentMapping: { strategy: 'uri-segment', segment: 0 } },

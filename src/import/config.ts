@@ -69,8 +69,8 @@ export interface ImportConfig {
   edgeCasing?: EdgeCasingMode
   /**
    * ID map files (exact entries + naming rules) that link source-native IDs
-   * across sources. Paths resolve relative to the config file. Earlier files
-   * win for conflicting `exact` entries; `rules` are all evaluated and
+   * across sources. Paths resolve relative to the current working directory.
+   * Earlier files win for conflicting `exact` entries; `rules` are all evaluated and
    * disagreeing targets are reported as ambiguous.
    */
   idMaps?: string[]
@@ -105,8 +105,7 @@ export function loadImportConfig(filePath: string): ImportConfig {
     if (!Array.isArray(cfg.idMaps) || cfg.idMaps.some(p => typeof p !== 'string' || p === '')) {
       throw new Error(`Invalid import config: idMaps must be a list of non-empty file paths`)
     }
-    const base = path.dirname(path.resolve(filePath))
-    cfg.idMaps = cfg.idMaps.map(p => path.resolve(base, p))
+    cfg.idMaps = cfg.idMaps.map(p => path.resolve(p))
   }
   return cfg
 }
