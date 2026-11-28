@@ -94,6 +94,9 @@ export async function runImport(
       edgeTypes: graph.edgeTypes,
       componentNameReplacements: config.componentNameReplacements ?? [],
       existingSchemas,
+      ownedSchemaIds: new Set([...graph.nodesById.values()]
+        .filter(n => n.extractedFrom !== undefined && specKey(n.extractedFrom) === specPath)
+        .map(n => n.id)),
       nodeRefs,
     })
     allDiagnostics.push(...result.diagnostics)

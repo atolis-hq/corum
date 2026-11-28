@@ -245,6 +245,7 @@ export function mapDocument(
   packConfig: AdapterPackConfig,
   componentNameReplacements: ComponentNameReplacement[] = [],
   existingSchemas: Map<string, Set<string>> = new Map(),
+  ownedSchemaIds: ReadonlySet<string> = new Set(),
 ): MapResult {
   const nodes: Node[] = []
   const edges: Edge[] = []
@@ -330,7 +331,8 @@ export function mapDocument(
     if (!sharedSchemaNames.has(name) && !reusedSchemaNames.has(name)) continue
     const [component] = registeredId.split('.')
 
-    if (reusedSchemaNames.has(name)) {
+    // Same-source schemas must be emitted so reconciliation can preserve or update them.
+    if (reusedSchemaNames.has(name) && !ownedSchemaIds.has(registeredId)) {
       // ADR-009b rule 2: shape-drift warning — surface contract drift instead of
       // silently merging it. Never create a duplicate/inline node for a reused schema.
       const incomingFields = new Set(Object.keys(s.properties ?? {}))
