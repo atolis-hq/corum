@@ -10,7 +10,7 @@ metadata:
   derivation: determined
   derivedBy: extractor:treesitter
 properties:
-  schema: OrderPlacedDomainEvent
+  payload: OrderPlacedDomainEvent
 schemas:
   OrderPlacedDomainEvent:
     fields:

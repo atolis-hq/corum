@@ -1,4 +1,5 @@
-import type { Diagnostic, Edge, EdgeType, EdgeTypeDef, Node } from '../../schema/index.js'
+import type { Diagnostic, Edge, EdgeType, EdgeTypeDef, Node, Template } from '../../schema/index.js'
+import { getTemplateSchema } from '../../loader/template-props.js'
 import type { CorumInterchangeDocument, CorumInterchangeEdge, CorumInterchangeProvenance } from './parser.js'
 import { CORE_EDGE_TYPE_MAP } from '../../loader/constants.js'
 import { shapeDriftDiagnostic } from '../shared/schema-reuse.js'
@@ -27,6 +28,7 @@ export function mapDocument(
   specPath: string,
   existingSchemas: Map<string, Set<string>> = new Map(),
   edgeTypes: ReadonlyMap<string, EdgeTypeDef> = CORE_EDGE_TYPE_MAP,
+  templates: ReadonlyMap<string, Template> = new Map(),
 ): MapResult {
   const nodes: Node[] = []
   const edges: Edge[] = []
@@ -62,7 +64,17 @@ export function mapDocument(
     let schemaName: string | undefined
     if (entry.schema?.$ref) {
       schemaName = schemaRefName(entry.schema.$ref)
-      if (schemaName) properties.schema = schemaName
+      if (schemaName) {
+        const property = schemaReferenceProperty(templates.get(entry.type))
+        if (property !== undefined) {
+          properties[property] = schemaName
+        } else {
+          diagnostics.push({
+            severity: 'warning', file: specPath,
+            message: `Node '${normalizedNodeId}' template '${entry.type}' has ambiguous node-ref properties; schema reference '${entry.schema.$ref}' left unset`,
+          })
+        }
+      }
     }
 
     if (entry.title && !schemaName) {
@@ -143,6 +155,17 @@ export function mapDocument(
   }
 
   return { nodes, edges, diagnostics }
+}
+
+// Resolved templates include inherited declarations through allOf.
+function schemaReferenceProperty(template: Template | undefined): string | undefined {
+  const { properties } = getTemplateSchema(template?.properties)
+  const candidates = Object.keys(properties).filter(name => properties[name].format === 'node-ref')
+  if (candidates.length === 0) return 'schema' // Legacy fallback, including unavailable templates.
+  if (candidates.length === 1) return candidates[0]
+  if (candidates.includes('schema')) return 'schema'
+  if (candidates.includes('payload')) return 'payload'
+  return undefined
 }
 
 // Pre-pass: walk every node's schema tree to determine which component each schema belongs to.
