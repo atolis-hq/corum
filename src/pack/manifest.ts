@@ -4,9 +4,10 @@ import { parse, stringify } from 'yaml'
 
 export interface InstalledPack {
   name: string
-  repo: string
-  path: string
-  ref: string
+  repo?: string
+  path?: string
+  ref?: string
+  sourcePath?: string
   installedAt: string
 }
 

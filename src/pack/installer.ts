@@ -57,3 +57,59 @@ export async function installPackFiles(
     await writeFile(dest, await res.text())
   }
 }
+
+/** Copy a local pack after validating its metadata and filesystem boundaries. */
+export async function installLocalPackFiles(sourceDir: string, destDir: string): Promise<string> {
+  const { cp, lstat, mkdtemp, readFile, readdir, realpath, rename, rm, stat } = await import('node:fs/promises')
+  const source = await realpath(sourceDir)
+  if (!(await stat(source)).isDirectory()) throw new Error('Local pack source must be a directory')
+  const meta = parse(await readFile(path.join(source, 'pack.yaml'), 'utf8')) as PackMeta | null
+  if (!meta || !Array.isArray(meta.templates) || !meta.templates.every(t => typeof t === 'string')) {
+    throw new Error('Invalid pack.yaml: templates must be an array of strings')
+  }
+  for (const name of meta.templates) {
+    validateTemplateName(name)
+    if (!(await stat(path.join(source, 'templates', name + '.yaml'))).isFile()) {
+      throw new Error(`Missing template file: ${name}`)
+    }
+  }
+  for (const key of ['files', 'plugins'] as const) {
+    const entries = meta[key]
+    if (entries !== undefined && (!Array.isArray(entries) || !entries.every(p => typeof p === 'string'))) {
+      throw new Error(`Invalid pack.yaml: ${key} must be an array of strings`)
+    }
+    for (const entry of entries ?? []) await stat(resolveContentPath(source, entry))
+  }
+
+  // Reject links rather than copying references outside the selected pack.
+  async function checkTree(dir: string): Promise<void> {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) throw new Error(`Local pack contains a symbolic link: ${entry.name}`)
+      if (entry.isDirectory()) await checkTree(path.join(dir, entry.name))
+      else if (!entry.isFile()) throw new Error(`Unsupported local pack file: ${entry.name}`)
+    }
+  }
+  await checkTree(source)
+  await mkdir(path.dirname(destDir), { recursive: true })
+  const parent = await realpath(path.dirname(destDir))
+  const dest = path.join(parent, path.basename(destDir))
+  const contains = (a: string, b: string) => {
+    const relative = path.relative(a, b)
+    return relative === '' || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative))
+  }
+  if (contains(source, dest) || contains(dest, source)) throw new Error('Local pack source and destination must not overlap')
+  try {
+    if ((await lstat(dest)).isSymbolicLink()) throw new Error('Local pack destination must not be a symbolic link')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+  }
+  const staging = await mkdtemp(path.join(parent, '.install-'))
+  try {
+    await cp(source, path.join(staging, 'pack'), { recursive: true })
+    await rm(dest, { recursive: true, force: true })
+    await rename(path.join(staging, 'pack'), dest)
+  } finally {
+    await rm(staging, { recursive: true, force: true })
+  }
+  return source
+}

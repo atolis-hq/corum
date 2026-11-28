@@ -106,6 +106,8 @@ writers. Read models can own `DomainOperation` entries in an `operations` sectio
 ```bash
 corum pack install domain            # latest
 corum pack install domain@v0.1.5    # a specific tag
+corum pack install ./packs/my-pack # copy a local pack
+corum pack install my-pack --path ./packs/my-pack
 corum pack list
 ```
 
@@ -184,3 +186,5 @@ check the result. You can also ask your agent to draft a template, using
 
 > **Status:** pack authoring, the registry and versioning are still being
 > developed. Expect details of `pack.yaml` and the registry to change.
+
+Local pack installs copy the directory into `.corum/packs/<name>` and record its resolved absolute source path in `.corum/packs.yaml`. Reinstalling replaces the installed copy; source edits take effect only after reinstalling. The source must contain `pack.yaml` with a `templates` array and the declared files. Symbolic links and overlapping source/destination directories are rejected.
