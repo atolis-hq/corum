@@ -33,13 +33,13 @@ async function setup() {
   }
   write('maps/map.yaml', MAP)
   process.env.CORUM_GRAPH_PATH = graphDir
-  const importA = (edges: unknown[]) => {
+  const importA = (edges: unknown[], withMap = true) => {
     write('a.corum.yaml', {
       corum: '1.0',
       nodes: { [FROM]: { type: 'DomainModel', title: 'OrderAggregate' } },
       edges,
     })
-    write('a.yaml', { idMaps: ['./maps/map.yaml'], imports: [{ adapter: 'corum', spec: path.join(dir, 'a.corum.yaml') }] })
+    write('a.yaml', { ...(withMap ? { idMaps: ['./maps/map.yaml'] } : {}), imports: [{ adapter: 'corum', spec: path.join(dir, 'a.corum.yaml') }] })
     return runImport(loadImportConfig(path.join(dir, 'a.yaml')), createGraphRuntimeConfig())
   }
   const importB = (nodes: Record<string, unknown>) => {
@@ -129,7 +129,9 @@ describe('pending edges', () => {
         { type: 'reads', from: FROM, to: 'clr:Other.Thing#x' },
       ])
       g = await t.load()
-      const edges = explicit(g).filter(e => e.state !== 'removed')
+      const edges = explicit(g)
+      assert.equal(edges.length, 2, edges.map(e => e.id).join('\n'))
+      assert.ok(edges.every(e => e.state !== 'removed'))
       assert.ok(edges.every(e => e.pending === undefined && e.to === 'orders.DomainModel.thing'), edges.map(e => e.id).join('\n'))
     } finally {
       t.cleanup()
@@ -160,6 +162,26 @@ describe('pending edges', () => {
       await t.importA(edges)
       assert.equal(t.readEdges(), before)
       assert.equal(explicit(await t.load()).length, 1)
+    } finally {
+      t.cleanup()
+    }
+  })
+
+  it('revives a removed edge when a live pending edge resolves onto it', async () => {
+    const t = await setup()
+    try {
+      const node = { 'orders.DomainModel.thing': { type: 'DomainModel', title: 'Thing' } }
+      const edges = [{ type: 'derived-from', from: FROM, to: 'clr:Orders.Contracts.Thing' }]
+      await t.importB(node)
+      await t.importA(edges) // resolves through the map, owned by A
+      await t.importA(edges, false) // no map: pending, and the resolved copy is marked removed
+      assert.ok(explicit(await t.load()).some(e => e.state === 'removed'))
+      await t.importB(node) // the map applies again: pending resolves onto the removed edge
+      const found = explicit(await t.load())
+      assert.equal(found.length, 1, found.map(e => `${e.id} ${e.state}`).join('\n'))
+      assert.equal(found[0].to, 'orders.DomainModel.thing')
+      assert.notEqual(found[0].state, 'removed')
+      assert.equal(found[0].pending, undefined)
     } finally {
       t.cleanup()
     }

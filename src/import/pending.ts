@@ -61,6 +61,13 @@ export function resolvePendingEdges(
     removeFromIndex(graph.edgesByFrom, edge.from, edge.id)
     removeFromIndex(graph.edgesByTo, edge.to, edge.id)
     all.delete(edge.id)
+    const existing = all.get(next.id)
+    if (existing !== undefined && existing.state === 'removed' && edge.state !== 'removed') {
+      // The relationship was only stored as a removed copy: the live pending edge replaces it.
+      removeFromIndex(graph.edgesByFrom, existing.from, existing.id)
+      removeFromIndex(graph.edgesByTo, existing.to, existing.id)
+      all.delete(next.id)
+    }
     if (all.has(next.id)) {
       diagnostics.push({
         severity: 'warning',
