@@ -1,0 +1,25 @@
+name: Handler
+info:
+  version: "1.0.0"
+  core: false
+  abstract: true
+  description: |
+    Abstract base for code that handles a message.
+    Handlers are optional: model effects on either the message or its handlers
+    for a given message to avoid representing each effect twice.
+
+properties:
+  type: object
+  additionalProperties: false
+  properties:
+    description:
+      type: string
+
+edge-types:
+  outgoing: [calls, writes, reads, triggers, produces]
+  incoming: [triggers]
+
+ui:
+  icon: gear
+  displayName: Handler
+  displayProperties: [description]

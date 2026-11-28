@@ -7,6 +7,9 @@ templates:
   - DomainModel
   - DomainOperation
   - Command
+  - Handler
+  - CommandHandler
+  - EventHandler
   - ReadModel
   - ValueObject
   - Invariant
