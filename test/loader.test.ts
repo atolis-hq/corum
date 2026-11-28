@@ -9,6 +9,8 @@ import { loadPacks } from '../src/loader/pack-loader.js'
 import { loadClusters } from '../src/loader/cluster-loader.js'
 import { loadEdges } from '../src/loader/edge-loader.js'
 import { loadGraph } from '../src/loader/index.js'
+import { getEdgeTypeConstraints } from '../src/graph/roles.js'
+import { lintNode } from '../src/linter/index.js'
 import { getGraphSummary } from '../src/graph/index.js'
 import { deleteEdge } from '../src/mutate/delete.js'
 import { findEdgeById } from '../src/mutate/util.js'
@@ -62,6 +64,36 @@ describe('pack loader', () => {
     assert.ok(templates.has('EnumValue'), 'EnumValue template loaded')
     assert.ok(templates.has('DomainEvent'), 'DomainEvent template loaded')
     assert.ok(templates.has('IntegrationEvent'), 'IntegrationEvent template loaded')
+  })
+
+  it('loads optional handlers with inherited properties and edge contracts', async () => {
+    const source = new FileGraphSource({ graphDir: fixtureGraphDir })
+    const graph = await loadGraph({ source })
+    assert.equal(graph.templates.get('Handler')!.info.abstract, true)
+    for (const name of ['CommandHandler', 'EventHandler']) {
+      const template = graph.templates.get(name)!
+      assert.equal(template.info.abstract, false)
+      assert.equal(template.extends, 'Handler')
+      assert.equal(template.ui?.nav?.navGroup, 'Handler')
+      assert.deepEqual(getEdgeTypeConstraints(graph.templates, name), {
+        outgoing: ['calls', 'writes', 'reads', 'triggers', 'produces'], incoming: ['triggers'],
+      })
+      const node: Node = {
+        id: 'orders.' + name + '.handle', namespace: 'orders', template: name,
+        state: 'proposed', stability: 'unstable', schemaVersion: '1',
+        lastModifiedAt: '2026-01-01', properties: {},
+      }
+      assert.deepEqual(lintNode(graph, node), [])
+      assert.deepEqual(lintNode(graph, { ...node, properties: { description: 'Handles a message' } }), [])
+      assert.ok(lintNode(graph, { ...node, properties: { description: 42 } }).length > 0)
+      assert.ok(lintNode(graph, { ...node, properties: { unknown: true } }).length > 0)
+    }
+    assert.deepEqual(getEdgeTypeConstraints(graph.templates, 'Command'), {
+      outgoing: ['triggers', 'calls', 'writes'], incoming: ['produces', 'triggers'],
+    })
+    assert.deepEqual(getEdgeTypeConstraints(graph.templates, 'Event'), {
+      outgoing: ['triggers'], incoming: ['produces', 'triggers'],
+    })
   })
 
   it('applies _base owned sections to all templates', async () => {

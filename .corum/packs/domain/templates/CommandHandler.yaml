@@ -1,0 +1,11 @@
+name: CommandHandler
+info:
+  version: "1.0.0"
+  core: false
+  abstract: false
+
+extends: Handler
+ui:
+  displayName: Command Handler
+  nav:
+    navGroup: Handler

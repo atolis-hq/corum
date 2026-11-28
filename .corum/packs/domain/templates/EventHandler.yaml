@@ -1,0 +1,11 @@
+name: EventHandler
+info:
+  version: "1.0.0"
+  core: false
+  abstract: false
+
+extends: Handler
+ui:
+  displayName: Event Handler
+  nav:
+    navGroup: Handler
